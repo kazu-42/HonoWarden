@@ -2,7 +2,7 @@
   "title": "Week 9 Folder CRUD",
   "slug": "week-9-folder-crud",
   "created_at": "2026-07-06T10:49:39+00:00",
-  "status": "in_progress",
+  "status": "ci_passed",
   "approval": {
     "required": false,
     "granted": true,
@@ -23,11 +23,11 @@
     },
     {
       "id": "04-verification",
-      "status": "local_verified"
+      "status": "ci_passed"
     }
   ],
   "verification": {
-    "status": "local_verified",
+    "status": "ci_passed",
     "checks": [
       "pnpm check",
       "pnpm lint",

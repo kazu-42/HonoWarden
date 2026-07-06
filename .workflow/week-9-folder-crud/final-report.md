@@ -36,7 +36,7 @@ Authenticated folder CRUD is implemented and locally verified. Folder names are 
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: folder create without token secret returns `503 server_misconfigured`.
-- GitHub Actions CI: pending push.
+- GitHub Actions CI: passed for implementation commit `e11b41c` in run `28786414228`.
 
 ## Remaining Risks
 
