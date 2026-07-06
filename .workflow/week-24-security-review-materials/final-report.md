@@ -12,6 +12,7 @@ has alpha security docs and CI coverage that keeps the document set present.
 - Added `docs/security/auth-state-machine.md`.
 - Added `docs/security/secrets-inventory.md`.
 - Added `docs/security/known-limitations.md`.
+- Added `docs/security/dependency-audit.md`.
 - Added `docs/security/review-index.md`.
 - Linked the review index from `SECURITY.md`.
 - Added `test/security-docs.test.ts`.

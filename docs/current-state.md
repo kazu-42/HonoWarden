@@ -391,6 +391,7 @@ Implemented:
 - authentication state machine for account, password grant, refresh grant, access-token verification, and device revoke states
 - secrets inventory for runtime secrets, non-secret runtime config, sensitive stored data, and rotation notes
 - known limitations document preserving pre-alpha and no-independent-audit warnings
+- dependency audit evidence with package manager output and lockfile SHA-256
 - `SECURITY.md` link to the security review materials
 - CI-backed security docs test under `test/security-docs.test.ts`
 - dependency audit evidence with no known vulnerabilities found on 2026-07-06

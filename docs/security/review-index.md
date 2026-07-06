@@ -9,11 +9,12 @@ Use these documents together when reviewing alpha readiness:
 - [Authentication State Machine](auth-state-machine.md)
 - [Secrets Inventory](secrets-inventory.md)
 - [Known Limitations](known-limitations.md)
+- [Dependency Audit Evidence](dependency-audit.md)
 
 ## Local Evidence
 
-- `pnpm audit --audit-level low`: no known vulnerabilities found on
-  2026-07-06.
+- `pnpm audit --audit-level low`: see
+  [Dependency Audit Evidence](dependency-audit.md).
 - `pnpm check`
 - `pnpm lint`
 - `pnpm test`

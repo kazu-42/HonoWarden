@@ -5,7 +5,8 @@
 - Added a threat model with assets, actors, trust boundaries, STRIDE summary,
   attack surface, and high-risk abuse paths.
 - Added data-flow, auth-state-machine, secrets-inventory, known-limitations, and
-  review-index documents.
+  dependency-audit documents.
+- Added a review index that links the security document set.
 - Linked security docs from `SECURITY.md`.
 
 ## Rejected

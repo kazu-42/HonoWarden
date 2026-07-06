@@ -9,6 +9,7 @@ const securityDocPaths = [
   'auth-state-machine.md',
   'secrets-inventory.md',
   'known-limitations.md',
+  'dependency-audit.md',
   'review-index.md',
 ] as const
 
@@ -48,6 +49,11 @@ describe('security review materials', () => {
     const knownLimitations = readSecurityDoc('known-limitations.md')
     expect(knownLimitations).toContain('pre-alpha')
     expect(knownLimitations).toContain('no independent security audit')
+
+    const dependencyAudit = readSecurityDoc('dependency-audit.md')
+    expect(dependencyAudit).toContain('pnpm audit --audit-level low')
+    expect(dependencyAudit).toContain('No known vulnerabilities found')
+    expect(dependencyAudit).toContain('pnpm-lock.yaml')
   })
 })
 
