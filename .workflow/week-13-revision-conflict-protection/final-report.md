@@ -34,7 +34,7 @@ Revision conflict protection is implemented for folder and cipher update routes.
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: sync without token secret returns `503 server_misconfigured`.
-- GitHub Actions CI: pending push.
+- GitHub Actions CI: passed for implementation commit `283333c` in run `28788062578`.
 
 ## Remaining Risks
 

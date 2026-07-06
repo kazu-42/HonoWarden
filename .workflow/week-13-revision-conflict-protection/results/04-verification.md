@@ -15,7 +15,8 @@ Verification:
 - Workflow verification: passed.
 - Repository brand scan: no hits.
 - Local HTTP smoke: sync without token secret returns `503 server_misconfigured`.
+- GitHub Actions CI: passed for implementation commit `283333c` in run `28788062578`.
 
 Remaining risks:
 
-- CI result is still pending until the implementation is pushed.
+- None for this verification packet.

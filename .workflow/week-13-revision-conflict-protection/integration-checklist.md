@@ -63,9 +63,12 @@ Accepted:
 - `pnpm test`: passed, 12 files and 117 tests.
 - `pnpm compat:test`: passed, 1 file and 5 tests.
 - `pnpm format`: passed.
+- Workflow verification: passed.
 - Repository brand scan: no hits.
+- Local HTTP smoke: sync without token secret returns `503 server_misconfigured`.
+- GitHub Actions CI: passed for implementation commit `283333c` in run `28788062578`.
   Remaining risks:
-- Workflow verification and CI result are still pending in this packet until the final pass completes.
+- None for this verification packet.
 
 ## Integration Decisions
 
