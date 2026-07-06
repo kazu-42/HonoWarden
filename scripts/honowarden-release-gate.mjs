@@ -282,6 +282,33 @@ function checkBackupRestoreDrillEvidence() {
     }
   }
 
+  const evidenceDoc = readText(evidencePath)
+  const requiredEvidence = [
+    'Status: passed',
+    'Mode: local synthetic drill',
+    'Source commit:',
+    'Wrangler version:',
+    'Export command:',
+    'Restore command:',
+    'D1 SQL SHA-256:',
+    'Verification result:',
+  ]
+  const missingEvidence = requiredEvidence.filter(
+    (required) => !evidenceDoc.includes(required),
+  )
+
+  if (missingEvidence.length > 0) {
+    return {
+      id: 'backup_restore_drill_evidence',
+      status: 'block',
+      title: 'Backup export and fresh-target restore drill evidence exists',
+      evidence: [evidencePath],
+      details: { missingEvidence },
+      nextAction:
+        'Complete the backup/restore drill evidence with source, target, commands, checksum, and verification result.',
+    }
+  }
+
   return {
     id: 'backup_restore_drill_evidence',
     status: 'pass',

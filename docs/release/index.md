@@ -12,6 +12,7 @@ Use this index as the feature-freeze entry point:
 - [Rollback Guide](rollback-guide.md)
 - [Migration Freeze](migration-freeze.md)
 - [Release Gate Preflight](release-gate-preflight.md)
+- [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
 - [Alpha Release Notes](v0.1.0-alpha-release-notes.md)
 
 ## Freeze Position

@@ -466,9 +466,25 @@ Implemented:
 Current blockers reported by the preflight:
 
 - synthetic live-client evidence is still fixture-only
-- backup export and fresh-target restore drill evidence is not recorded
 - staging deploy smoke evidence is not recorded
 - Cloudflare resource evidence is not recorded
 
 The preflight is intentionally read-only and does not tag, deploy, call
 Cloudflare, call Linear, or contact external client services.
+
+## Week 26 Backup Restore Drill Evidence
+
+Implemented:
+
+- local synthetic backup export and fresh-target restore drill
+- restored D1 schema verification against a separate local persistence target
+- release evidence document under
+  `docs/release/backup-restore-drill-evidence.md`
+- release gate preflight validation for required backup evidence fields
+
+Not implemented:
+
+- remote Cloudflare backup/restore drill
+- R2 object restore evidence with non-empty object list
+- staging deploy smoke evidence
+- production-like restore evidence

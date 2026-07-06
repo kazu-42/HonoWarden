@@ -41,7 +41,6 @@ official clients. It does not tag a release and does not deploy.
 These remain release blockers until recorded as separate evidence:
 
 - synthetic live-client login and sync evidence
-- backup export and fresh-target restore drill evidence
 - staging fresh deploy smoke evidence
 - Cloudflare D1, R2, Worker, route, and rollback evidence
 

@@ -1,0 +1,40 @@
+{
+  "title": "Week 26 Backup Restore Drill Evidence",
+  "slug": "week-26-backup-restore-drill-evidence",
+  "created_at": "2026-07-06T14:40:52Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local synthetic drill artifacts, docs, tests, git push, and CI are within the sustained repo-development request. Remote Cloudflare resource mutation requires a separate gate."
+  },
+  "packets": [
+    {
+      "id": "01-local-drill",
+      "status": "completed"
+    },
+    {
+      "id": "02-evidence-doc",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "pending_ci",
+    "checks": [
+      "pnpm release:gate",
+      "pnpm test -- test/ops/release-gate.test.ts test/release-docs.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-backup-restore-drill-evidence"
+    ]
+  }
+}
