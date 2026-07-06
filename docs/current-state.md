@@ -178,10 +178,23 @@ Implemented:
 - refresh grant rejection coverage for revoked devices
 - repository and HTTP tests for successful revoke, missing target, and self-revoke behavior
 
+## Week 15 Increment
+
+Implemented:
+
+- structured client compatibility matrix under `compat/client-matrix.json`
+- human-readable compatibility matrix under `docs/compatibility-matrix.md`
+- exact tracked versions for browser extension, desktop, mobile Android, mobile iOS, and CLI surfaces
+- mobile build number tracking for Android and iOS rows
+- conservative `fixture_only` verification level for all rows
+- explicit known issues per client surface
+- compatibility matrix validation in `pnpm compat:test`
+
 Not implemented:
 
 - refresh token reuse alerting
 - device list and device metadata update APIs
+- live client compatibility evidence
 - any storage of real password-vault data
 
 The project remains pre-alpha and must not be used to store real secrets.

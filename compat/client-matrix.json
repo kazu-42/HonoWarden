@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-07-06T11:35:37Z",
+  "sourceKind": "official-upstream-release-metadata",
+  "entries": [
+    {
+      "surface": "browser_extension",
+      "version": "2026.6.1",
+      "releaseTag": "browser-v2026.6.1",
+      "releasePublishedAt": "2026-06-30T17:07:46Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke"
+      ],
+      "knownIssues": [
+        "No live client login or sync run is recorded for this exact version.",
+        "TOTP login is not implemented yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "desktop",
+      "version": "2026.6.1",
+      "releaseTag": "desktop-v2026.6.1",
+      "releasePublishedAt": "2026-06-30T16:09:04Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke"
+      ],
+      "knownIssues": [
+        "No live client login or sync run is recorded for this exact version.",
+        "TOTP login is not implemented yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "mobile_android",
+      "version": "2026.6.0",
+      "build": "21686",
+      "releaseTag": "v2026.6.0-bwpm",
+      "releasePublishedAt": "2026-06-25T21:37:09Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke"
+      ],
+      "knownIssues": [
+        "No live mobile login or sync run is recorded for this exact version.",
+        "TOTP login is not implemented yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "mobile_ios",
+      "version": "2026.6.0",
+      "build": "3325",
+      "releaseTag": "v2026.6.0-bwpm",
+      "releasePublishedAt": "2026-06-26T15:03:00Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke"
+      ],
+      "knownIssues": [
+        "No live mobile login or sync run is recorded for this exact version.",
+        "TOTP login is not implemented yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "cli",
+      "version": "2026.6.0",
+      "releaseTag": "cli-v2026.6.0",
+      "releasePublishedAt": "2026-06-25T18:32:52Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke"
+      ],
+      "knownIssues": [
+        "No live CLI command run is recorded for this exact version.",
+        "TOTP login is not implemented yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    }
+  ]
+}

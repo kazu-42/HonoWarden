@@ -1,0 +1,42 @@
+{
+  "title": "Week 15 Client Compatibility Matrix",
+  "slug": "week-15-client-compatibility-matrix",
+  "created_at": "2026-07-06T11:35:23+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local docs, tests, git push, and CI are within the sustained repo-development request. Ask before live client account setup, real secrets, deploys, destructive git, billing, or production data."
+  },
+  "packets": [
+    {
+      "id": "01-release-metadata",
+      "status": "completed"
+    },
+    {
+      "id": "02-matrix-artifacts",
+      "status": "completed"
+    },
+    {
+      "id": "03-matrix-validation",
+      "status": "completed"
+    },
+    {
+      "id": "04-verification",
+      "status": "local_passed"
+    }
+  ],
+  "verification": {
+    "status": "local_passed",
+    "checks": [
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "workflow verification",
+      "local HTTP smoke"
+    ]
+  }
+}
