@@ -23,11 +23,11 @@
     },
     {
       "id": "04-verification",
-      "status": "in_progress"
+      "status": "complete"
     }
   ],
   "verification": {
-    "status": "local_passed",
+    "status": "ci_passed_for_f92ddcf",
     "checks": [
       "pnpm check",
       "pnpm lint",

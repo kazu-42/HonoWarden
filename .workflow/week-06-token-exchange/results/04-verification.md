@@ -10,6 +10,7 @@ Accepted:
 - Repository brand scan returned no hits.
 - Workflow verification passed.
 - Local HTTP smoke confirmed missing `HONOWARDEN_TOKEN_SECRET` returns `503 server_misconfigured`.
+- GitHub Actions CI passed for implementation commit `f92ddcf`.
 
 Rejected:
 
@@ -19,4 +20,4 @@ Rejected:
 
 Remaining risks:
 
-- CI still needs to confirm the pushed state.
+- Follow-up documentation-only workflow status commits still need normal CI after push.

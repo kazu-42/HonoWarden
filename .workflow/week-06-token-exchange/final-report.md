@@ -32,12 +32,14 @@ Password grant token exchange is implemented and verified locally. The endpoint 
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: missing token secret returns `503 server_misconfigured`.
+- GitHub Actions CI: passed for implementation commit `f92ddcf`.
 
 ## Remaining Risks
 
 - Access token verification middleware is not implemented yet.
 - Refresh grant, refresh rotation, and reuse detection are deferred to the next slice.
 - Live successful login requires local or deployed secrets and seeded bootstrap user data.
+- Follow-up documentation-only workflow status commits still need normal CI after push.
 
 ## Reusable Follow-up
 
