@@ -640,6 +640,42 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rejects password grants for disabled users without revealing account state', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: {
+            ...authUserRecord(),
+            disabledAt: '2026-07-06T00:00:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      ErrorModel: {
+        Message: 'Invalid username or password.',
+        Object: 'error',
+      },
+    })
+  })
+
   it('emits a secret-safe audit event for failed password grants when enabled', async () => {
     const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
     const response = await app.request(
@@ -859,6 +895,37 @@ describe('HonoWarden app', () => {
             ...refreshTokenSessionRecord(),
             deviceRevokedAt: '2026-07-06T00:00:00.000Z',
           },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+  })
+
+  it('rejects refresh grants for disabled users before rotating tokens', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          refreshSession: {
+            ...refreshTokenSessionRecord(),
+            disabledAt: '2026-07-06T00:00:00.000Z',
+          },
+          refreshRotationChanges: 0,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -1928,6 +1995,155 @@ describe('HonoWarden app', () => {
         },
       ],
     })
+  })
+
+  it('keeps sync folders and ciphers isolated between personal vault users', async () => {
+    const alice = {
+      ...authUserRecord(),
+      id: 'alice-id',
+      email: 'Alice@Example.Test',
+      emailNormalized: 'alice@example.test',
+      displayName: 'Alice',
+      userKey: '2.alice-user-key',
+      securityStamp: 'alice-security-stamp',
+    }
+    const bob = {
+      ...authUserRecord(),
+      id: 'bob-id',
+      email: 'Bob@Example.Test',
+      emailNormalized: 'bob@example.test',
+      displayName: 'Bob',
+      userKey: '2.bob-user-key',
+      securityStamp: 'bob-security-stamp',
+    }
+    const databaseOptions = {
+      authUsers: [alice, bob],
+      folders: [
+        {
+          id: 'alice-folder-id',
+          userId: 'alice-id',
+          name: '2.alice-encrypted-folder',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+        {
+          id: 'bob-folder-id',
+          userId: 'bob-id',
+          name: '2.bob-encrypted-folder',
+          revisionDate: '2026-07-06T00:04:00.000Z',
+        },
+      ],
+      ciphers: [
+        {
+          id: 'alice-cipher-id',
+          userId: 'alice-id',
+          folderId: 'alice-folder-id',
+          type: 1,
+          favorite: 1,
+          encryptedJson: JSON.stringify({
+            ...cipherCreateBody(),
+            folderId: 'alice-folder-id',
+            name: '2.alice-encrypted-cipher',
+          }),
+          revisionDate: '2026-07-06T00:05:00.000Z',
+          createdAt: '2026-07-06T00:04:00.000Z',
+        },
+        {
+          id: 'bob-cipher-id',
+          userId: 'bob-id',
+          folderId: 'bob-folder-id',
+          type: 1,
+          favorite: 0,
+          encryptedJson: JSON.stringify({
+            ...cipherCreateBody(),
+            folderId: 'bob-folder-id',
+            name: '2.bob-encrypted-cipher',
+          }),
+          revisionDate: '2026-07-06T00:06:00.000Z',
+          createdAt: '2026-07-06T00:04:00.000Z',
+        },
+      ],
+    }
+
+    const aliceResponse = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(alice)}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], databaseOptions),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    const bobResponse = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(bob)}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], databaseOptions),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(aliceResponse.status).toBe(200)
+    expect(bobResponse.status).toBe(200)
+    const aliceBody = (await aliceResponse.json()) as {
+      Folders: Array<{ id: string; name: string }>
+      Ciphers: Array<{ folderId: string; id: string; name: string }>
+    }
+    const bobBody = (await bobResponse.json()) as {
+      Folders: Array<{ id: string; name: string }>
+      Ciphers: Array<{ folderId: string; id: string; name: string }>
+    }
+
+    expect(aliceBody.Folders).toHaveLength(1)
+    expect(aliceBody.Ciphers).toHaveLength(1)
+    expect(aliceBody).toMatchObject({
+      Profile: {
+        Id: 'alice-id',
+        Email: 'alice@example.test',
+      },
+      Folders: [
+        {
+          id: 'alice-folder-id',
+          name: '2.alice-encrypted-folder',
+        },
+      ],
+      Ciphers: [
+        {
+          id: 'alice-cipher-id',
+          folderId: 'alice-folder-id',
+          name: '2.alice-encrypted-cipher',
+        },
+      ],
+    })
+    expect(JSON.stringify(aliceBody)).not.toContain('bob-')
+    expect(bobBody.Folders).toHaveLength(1)
+    expect(bobBody.Ciphers).toHaveLength(1)
+    expect(bobBody).toMatchObject({
+      Profile: {
+        Id: 'bob-id',
+        Email: 'bob@example.test',
+      },
+      Folders: [
+        {
+          id: 'bob-folder-id',
+          name: '2.bob-encrypted-folder',
+        },
+      ],
+      Ciphers: [
+        {
+          id: 'bob-cipher-id',
+          folderId: 'bob-folder-id',
+          name: '2.bob-encrypted-cipher',
+        },
+      ],
+    })
+    expect(JSON.stringify(bobBody)).not.toContain('alice-')
   })
 
   it('syncs 50 active ciphers while preserving favorites and unknown encrypted fields', async () => {

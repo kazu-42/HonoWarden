@@ -362,4 +362,23 @@ Not implemented:
 - sync of trashed cipher tombstones in `/api/sync`
 - promotion beyond `fixture_only`
 
+## Week 23 Increment
+
+Implemented:
+
+- FakeD1 multi-user lookup by normalized email and user ID for app-level tests
+- FakeD1 folder and cipher list filtering by bound user ID
+- HTTP test proving mixed Alice/Bob sync returns only the authenticated user's folders and ciphers
+- HTTP test proving disabled users cannot complete password grants with valid credentials
+- HTTP test proving disabled users cannot refresh tokens before rotation
+- generic invalid-grant wording preserved for disabled auth failures
+- Week 23 dynamic workflow artifacts
+
+Not implemented:
+
+- live two-user dogfood evidence
+- live disabled-user lifecycle operation
+- shared vault or Organization isolation
+- production admin tooling for disabling users
+
 The project remains pre-alpha and must not be used to store real secrets.

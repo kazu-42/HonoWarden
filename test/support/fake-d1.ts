@@ -13,6 +13,7 @@ type FakeD1DatabaseOptions = {
   lockedAccountFailureBucket?: boolean
   lockedIpFailureBucket?: boolean
   authUser?: Record<string, unknown> | null
+  authUsers?: Record<string, unknown>[]
   userTotp?: Record<string, unknown> | null
   totpChallenge?: Record<string, unknown> | null
   cipher?: Record<string, unknown> | null
@@ -107,11 +108,19 @@ export class FakeD1Database {
         }
 
         if (query.includes('FROM folders')) {
-          return (options.folder ?? null) as T | null
+          if (options.folder !== undefined) {
+            return (options.folder ?? null) as T | null
+          }
+
+          return findScopedRow(options.folders ?? [], boundValues) as T | null
         }
 
         if (query.includes('FROM ciphers')) {
-          return (options.cipher ?? null) as T | null
+          if (options.cipher !== undefined) {
+            return (options.cipher ?? null) as T | null
+          }
+
+          return findScopedRow(options.ciphers ?? [], boundValues) as T | null
         }
 
         if (query.includes('FROM user_totp')) {
@@ -123,7 +132,7 @@ export class FakeD1Database {
         }
 
         if (query.includes('FROM users')) {
-          return (options.authUser ?? null) as T | null
+          return findAuthUser(options, query, boundValues) as T | null
         }
 
         if (query.includes('FROM schema_migrations')) {
@@ -145,7 +154,10 @@ export class FakeD1Database {
         if (query.includes('FROM ciphers')) {
           return {
             success: true,
-            results: (options.ciphers ?? []) as T[],
+            results: filterRowsByUserId(
+              options.ciphers ?? [],
+              boundValues,
+            ) as T[],
             meta: fakeMeta,
           }
         }
@@ -153,7 +165,10 @@ export class FakeD1Database {
         if (query.includes('FROM folders')) {
           return {
             success: true,
-            results: (options.folders ?? []) as T[],
+            results: filterRowsByUserId(
+              options.folders ?? [],
+              boundValues,
+            ) as T[],
             meta: fakeMeta,
           }
         }
@@ -414,6 +429,56 @@ export class FakeD1Database {
       meta: fakeMeta,
     }))
   }
+}
+
+function findAuthUser(
+  options: FakeD1DatabaseOptions,
+  query: string,
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  if (!options.authUsers) {
+    return options.authUser ?? null
+  }
+
+  const lookupValue = String(boundValues[0] ?? '')
+  if (query.includes('u.email_normalized = ?')) {
+    return (
+      options.authUsers.find((user) => user.emailNormalized === lookupValue) ??
+      null
+    )
+  }
+
+  if (query.includes('u.id = ?')) {
+    return options.authUsers.find((user) => user.id === lookupValue) ?? null
+  }
+
+  return options.authUsers[0] ?? null
+}
+
+function filterRowsByUserId(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  if (boundValues.length === 0) {
+    return rows
+  }
+
+  const userId = String(boundValues[0])
+  return rows.filter((row) => row.userId === userId)
+}
+
+function findScopedRow(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  if (boundValues.length >= 2) {
+    const id = String(boundValues[0])
+    const userId = String(boundValues[1])
+
+    return rows.find((row) => row.id === id && row.userId === userId) ?? null
+  }
+
+  return filterRowsByUserId(rows, boundValues)[0] ?? null
 }
 
 export const requiredTables = [
