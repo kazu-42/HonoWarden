@@ -8,7 +8,9 @@
   `pnpm format` passed.
 - Repository brand scans passed for content and paths.
 - Workflow verifier passed.
+- GitHub Actions CI run `28800000201` passed, including the release gate
+  preflight step.
 
 ## Rejected
 
-- GitHub Actions CI is pending until the implementation commit is pushed.
+- Did not run remote Cloudflare backup/restore or strict release gate in CI.

@@ -42,7 +42,8 @@ drill as passing.
 - repository brand scan: no content hits
 - repository path brand scan: no path hits
 - workflow verifier: passed
-- GitHub Actions CI: pending
+- GitHub Actions CI run `28800000201`: passed
+  - https://github.com/kazu-42/HonoWarden/actions/runs/28800000201
 
 ## Remaining Risks
 
