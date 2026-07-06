@@ -38,7 +38,30 @@ describe('HonoWarden app', () => {
       status: 'ok',
       service: 'honowarden',
       version: '0.0.0-alpha',
+      environment: 'development',
       requestId: 'health-request',
+    })
+  })
+
+  it('reports the configured deployment environment in health responses', async () => {
+    const response = await app.request(
+      '/health',
+      {
+        headers: {
+          'X-Request-Id': 'staging-health-request',
+        },
+      },
+      {
+        HONOWARDEN_ENV: 'staging',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'ok',
+      service: 'honowarden',
+      environment: 'staging',
+      requestId: 'staging-health-request',
     })
   })
 
@@ -53,6 +76,7 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toMatchObject({
       status: 'ok',
       service: 'honowarden',
+      environment: 'development',
       requestId: 'healthz-request',
     })
   })

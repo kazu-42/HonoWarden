@@ -197,4 +197,22 @@ Not implemented:
 - live client compatibility evidence
 - any storage of real password-vault data
 
+## Week 16 Increment
+
+Implemented:
+
+- runtime environment resolution for `development`, `staging`, and `production`
+- `GET /health` and `GET /healthz` environment visibility for operational checks
+- fail-closed fallback to `development` for missing or unknown environment values
+- CI-covered Wrangler environment separation checks for staging and production worker names, D1 database names, R2 bucket names, and bootstrap defaults
+- staging-first dogfood runbook with low-risk synthetic-data policy, promotion gates, abort conditions, and future evidence format
+- Week 16 dynamic workflow artifacts
+
+Not implemented:
+
+- live one-week dogfood evidence
+- Cloudflare resource creation for real staging or production D1/R2 IDs
+- production deploy, production secrets, or real client-account setup
+- promotion of compatibility matrix rows beyond `fixture_only`
+
 The project remains pre-alpha and must not be used to store real secrets.

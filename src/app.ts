@@ -25,6 +25,7 @@ import {
   verifyPresentedPasswordHash,
 } from './domain/tokens'
 import { getDatabaseHealth } from './infra/db-health'
+import { resolveRuntimeEnvironment } from './infra/environment'
 import { buildServerConfig } from './protocol/config'
 import {
   createCipher,
@@ -137,11 +138,12 @@ function isExtensionOrigin(origin: string): boolean {
   )
 }
 
-function buildHealthResponse(requestIdValue: string) {
+function buildHealthResponse(requestIdValue: string, environment?: string) {
   return {
     status: 'ok',
     service: 'honowarden',
     version: '0.0.0-alpha',
+    environment: resolveRuntimeEnvironment(environment),
     requestId: requestIdValue,
   }
 }
@@ -160,11 +162,11 @@ app.get('/', (c) => {
 })
 
 app.get('/health', (c) => {
-  return c.json(buildHealthResponse(c.get('requestId')))
+  return c.json(buildHealthResponse(c.get('requestId'), c.env?.HONOWARDEN_ENV))
 })
 
 app.get('/healthz', (c) => {
-  return c.json(buildHealthResponse(c.get('requestId')))
+  return c.json(buildHealthResponse(c.get('requestId'), c.env?.HONOWARDEN_ENV))
 })
 
 app.get('/health/db', async (c) => {
