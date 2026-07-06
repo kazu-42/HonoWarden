@@ -8,7 +8,10 @@
   `pnpm format` passed before workflow finalization.
 - Repository brand scans passed for content and paths.
 - Workflow verifier passed.
+- GitHub Actions CI run `28799578480` passed, including the release gate
+  preflight step.
 
 ## Rejected
 
-- GitHub Actions CI is pending until the implementation commit is pushed.
+- Did not run strict release gate in CI because current alpha blockers are
+  expected until live evidence is recorded.
