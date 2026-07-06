@@ -34,7 +34,8 @@
       "pnpm format",
       "repository brand scan",
       "repository path brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-23-user-isolation"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-23-user-isolation",
+      "GitHub Actions CI run 28797130338"
     ]
   }
 }
