@@ -2,7 +2,7 @@
   "title": "Week 14 Device Revoke",
   "slug": "week-14-device-revoke",
   "created_at": "2026-07-06T11:27:38+00:00",
-  "status": "in_progress",
+  "status": "ci_passed",
   "approval": {
     "required": false,
     "granted": true,
@@ -23,11 +23,11 @@
     },
     {
       "id": "04-verification",
-      "status": "local_passed"
+      "status": "ci_passed"
     }
   ],
   "verification": {
-    "status": "local_passed",
+    "status": "ci_passed",
     "checks": [
       "pnpm check",
       "pnpm lint",
@@ -36,7 +36,8 @@
       "pnpm format",
       "repository brand scan",
       "workflow verification",
-      "local HTTP smoke"
+      "local HTTP smoke",
+      "GitHub Actions CI"
     ]
   }
 }
