@@ -263,4 +263,26 @@ Not implemented:
 - challenge retention cleanup job
 - recent re-auth requirements for sensitive operations
 
+## Week 19 Increment
+
+Implemented:
+
+- access token `authMethod` claim for newly issued tokens
+- password-grant access tokens marked with `authMethod: "password"`
+- refresh-grant access tokens marked with `authMethod: "refresh"`
+- backward-compatible bearer token verification for legacy claimless tokens on normal API routes
+- fail-closed recent-password-auth guard for sensitive TOTP setup routes
+- `POST /identity/accounts/totp/setup` requires a password-auth token issued within five minutes
+- `POST /identity/accounts/totp/setup/verify` requires a password-auth token issued within five minutes
+- stale password-auth tokens, refresh-auth tokens, and legacy claimless tokens are rejected with `reauth_required` on TOTP setup routes
+- tests for token claim validation, grant-specific token issuance, recent-auth success, stale-token rejection, refresh-token rejection, and legacy-token rejection
+- Week 19 dynamic workflow artifacts
+
+Not implemented:
+
+- backup export route or backup-export re-auth guard
+- revoke-all-sessions route or revoke-all re-auth guard
+- TOTP disable/change route
+- live client re-auth evidence
+
 The project remains pre-alpha and must not be used to store real secrets.

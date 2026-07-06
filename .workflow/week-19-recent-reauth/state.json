@@ -1,0 +1,38 @@
+{
+  "title": "Week 19 Recent Reauth",
+  "slug": "week-19-recent-reauth",
+  "created_at": "2026-07-06T12:59:55+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation, tests, docs, git push, and CI are within the sustained repo-development request. Live deploys, migrations, secrets, and client attempts require a separate gate."
+  },
+  "packets": [
+    {
+      "id": "01-token-claims",
+      "status": "completed"
+    },
+    {
+      "id": "02-recent-auth-guard",
+      "status": "completed"
+    },
+    {
+      "id": "03-docs-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/domain/tokens.test.ts test/app.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-19-recent-reauth"
+    ]
+  }
+}

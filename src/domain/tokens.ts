@@ -35,6 +35,8 @@ export type TokenError = {
   }
 }
 
+export type AccessTokenAuthMethod = 'password' | 'refresh'
+
 export type AccessTokenClaims = {
   sub: string
   email: string
@@ -42,6 +44,7 @@ export type AccessTokenClaims = {
   securityStamp: string
   iat: number
   exp: number
+  authMethod?: AccessTokenAuthMethod
 }
 
 export type AccessTokenVerification =
@@ -290,7 +293,10 @@ function isAccessTokenClaims(value: unknown): value is AccessTokenClaims {
     typeof claims.device === 'string' &&
     typeof claims.securityStamp === 'string' &&
     typeof claims.iat === 'number' &&
-    typeof claims.exp === 'number'
+    typeof claims.exp === 'number' &&
+    (claims.authMethod === undefined ||
+      claims.authMethod === 'password' ||
+      claims.authMethod === 'refresh')
   )
 }
 

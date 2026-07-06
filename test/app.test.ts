@@ -6,7 +6,7 @@ import {
   loginDefensePolicy,
 } from '../src/domain/login-defense'
 import { encryptTotpSecret } from '../src/domain/totp-secret'
-import { signAccessToken } from '../src/domain/tokens'
+import { signAccessToken, verifyAccessToken } from '../src/domain/tokens'
 import { hotp } from '../src/domain/totp'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 
@@ -368,7 +368,8 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(200)
     expect(database.deletedAuthFailureBucketKeys).toContain(accountBucketKey)
-    await expect(response.json()).resolves.toMatchObject({
+    const body = (await response.json()) as { access_token: string }
+    expect(body).toMatchObject({
       access_token: expect.any(String),
       refresh_token: expect.any(String),
       token_type: 'Bearer',
@@ -385,6 +386,14 @@ describe('HonoWarden app', () => {
       MasterPasswordPolicy: null,
       UserDecryptionOptions: null,
       KeyConnectorUrl: null,
+    })
+    await expect(
+      verifyAccessToken('test-token-secret', body.access_token),
+    ).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        authMethod: 'password',
+      },
     })
   })
 
@@ -421,7 +430,7 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(400)
-    const body = await response.json()
+    const body = (await response.json()) as Record<string, unknown>
     expect(body).toMatchObject({
       error: 'invalid_grant',
       TwoFactorToken: expect.any(String),
@@ -479,11 +488,20 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toMatchObject({
+    const body = (await response.json()) as { access_token: string }
+    expect(body).toMatchObject({
       access_token: expect.any(String),
       refresh_token: expect.any(String),
       token_type: 'Bearer',
       TwoFactorToken: null,
+    })
+    await expect(
+      verifyAccessToken('test-token-secret', body.access_token),
+    ).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        authMethod: 'password',
+      },
     })
   })
 
@@ -717,7 +735,8 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toMatchObject({
+    const body = (await response.json()) as { access_token: string }
+    expect(body).toMatchObject({
       access_token: expect.any(String),
       refresh_token: expect.any(String),
       token_type: 'Bearer',
@@ -725,6 +744,14 @@ describe('HonoWarden app', () => {
       Key: '2.synthetic-user-key',
       Kdf: 0,
       KdfIterations: 600000,
+    })
+    await expect(
+      verifyAccessToken('test-token-secret', body.access_token),
+    ).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        authMethod: 'refresh',
+      },
     })
   })
 
@@ -883,7 +910,7 @@ describe('HonoWarden app', () => {
 
   it('sets up TOTP for an authenticated user', async () => {
     const user = authUserRecord()
-    const accessToken = await accessTokenFor(user)
+    const accessToken = await recentPasswordAccessTokenFor(user)
     const response = await app.request(
       '/identity/accounts/totp/setup',
       {
@@ -912,7 +939,7 @@ describe('HonoWarden app', () => {
 
   it('fails closed when TOTP setup secret wrapping is not configured', async () => {
     const user = authUserRecord()
-    const accessToken = await accessTokenFor(user)
+    const accessToken = await recentPasswordAccessTokenFor(user)
     const response = await app.request(
       '/identity/accounts/totp/setup',
       {
@@ -939,7 +966,7 @@ describe('HonoWarden app', () => {
 
   it('verifies TOTP setup and enables the user flag', async () => {
     const user = authUserRecord()
-    const accessToken = await accessTokenFor(user)
+    const accessToken = await recentPasswordAccessTokenFor(user)
     const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
     const encryptedSecret = await encryptTotpSecret('test-totp-secret', secret)
     const response = await app.request(
@@ -976,6 +1003,96 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toEqual({
       object: 'totp',
       enabled: true,
+    })
+  })
+
+  it('requires recent password authentication for TOTP setup', async () => {
+    const user = authUserRecord()
+    const accessToken = await stalePasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/setup',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'stale-totp-setup-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'reauth_required',
+      },
+      requestId: 'stale-totp-setup-request',
+    })
+  })
+
+  it('rejects legacy claimless access tokens for TOTP setup', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/setup',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'reauth_required',
+      },
+    })
+  })
+
+  it('rejects refresh-issued access tokens for TOTP setup verification', async () => {
+    const user = authUserRecord()
+    const accessToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/setup/verify',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: '123456',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'reauth_required',
+      },
     })
   })
 
@@ -2382,6 +2499,63 @@ async function accessTokenFor(
     securityStamp: user.securityStamp,
     iat: 1,
     exp: 4_102_444_800,
+  })
+}
+
+async function recentPasswordAccessTokenFor(
+  user: Pick<
+    ReturnType<typeof authUserRecord>,
+    'emailNormalized' | 'id' | 'securityStamp'
+  >,
+) {
+  const issuedAt = Math.floor(Date.now() / 1000)
+
+  return signAccessToken('test-token-secret', {
+    sub: user.id,
+    email: user.emailNormalized,
+    device: 'fixture-device',
+    securityStamp: user.securityStamp,
+    iat: issuedAt,
+    exp: issuedAt + 3600,
+    authMethod: 'password',
+  })
+}
+
+async function stalePasswordAccessTokenFor(
+  user: Pick<
+    ReturnType<typeof authUserRecord>,
+    'emailNormalized' | 'id' | 'securityStamp'
+  >,
+) {
+  const issuedAt = Math.floor(Date.now() / 1000) - 600
+
+  return signAccessToken('test-token-secret', {
+    sub: user.id,
+    email: user.emailNormalized,
+    device: 'fixture-device',
+    securityStamp: user.securityStamp,
+    iat: issuedAt,
+    exp: issuedAt + 3600,
+    authMethod: 'password',
+  })
+}
+
+async function refreshAccessTokenFor(
+  user: Pick<
+    ReturnType<typeof authUserRecord>,
+    'emailNormalized' | 'id' | 'securityStamp'
+  >,
+) {
+  const issuedAt = Math.floor(Date.now() / 1000)
+
+  return signAccessToken('test-token-secret', {
+    sub: user.id,
+    email: user.emailNormalized,
+    device: 'fixture-device',
+    securityStamp: user.securityStamp,
+    iat: issuedAt,
+    exp: issuedAt + 3600,
+    authMethod: 'refresh',
   })
 }
 

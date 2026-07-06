@@ -91,6 +91,8 @@ type AuthenticatedVaultRequest =
       ok: true
       user: AuthUserRecord
       deviceIdentifier: string
+      tokenIssuedAt: number
+      authMethod: 'password' | 'refresh' | null
     }
   | {
       ok: false
@@ -104,6 +106,7 @@ const upstreamClientHeaderPrefix = ['Bit', 'warden'].join('')
 const accessTokenTtlSeconds = 3600
 const refreshTokenTtlSeconds = 60 * 60 * 24 * 30
 const totpChallengeTtlSeconds = 5 * 60
+const recentPasswordAuthTtlSeconds = 5 * 60
 
 const defaultCorsHeaders = [
   'Accept',
@@ -461,6 +464,7 @@ app.post('/identity/connect/token', async (c) => {
         securityStamp: session.user.securityStamp,
         iat: issuedAt,
         exp: issuedAt + accessTokenTtlSeconds,
+        authMethod: 'refresh',
       })
 
       return c.json(
@@ -760,6 +764,7 @@ app.post('/identity/connect/token', async (c) => {
       securityStamp: user.securityStamp,
       iat: issuedAt,
       exp: expiresAt,
+      authMethod: 'password',
     })
 
     return c.json(buildTokenResponse(user, accessToken, refreshToken))
@@ -803,7 +808,7 @@ app.get('/api/sync', async (c) => {
 })
 
 app.post('/identity/accounts/totp/setup', async (c) => {
-  const auth = await authenticateVaultRequest(c)
+  const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
     return auth.response
   }
@@ -849,7 +854,7 @@ app.post('/identity/accounts/totp/setup', async (c) => {
 })
 
 app.post('/identity/accounts/totp/setup/verify', async (c) => {
-  const auth = await authenticateVaultRequest(c)
+  const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
     return auth.response
   }
@@ -1611,6 +1616,7 @@ function apiError(
     | 'invalid_request'
     | 'invalid_token'
     | 'missing_token'
+    | 'reauth_required'
     | 'revision_conflict'
     | 'server_misconfigured',
   message: string,
@@ -1709,6 +1715,8 @@ async function authenticateVaultRequest(
       ok: true,
       user,
       deviceIdentifier: verification.claims.device,
+      tokenIssuedAt: verification.claims.iat,
+      authMethod: verification.claims.authMethod ?? null,
     }
   } catch {
     return {
@@ -1723,6 +1731,38 @@ async function authenticateVaultRequest(
       ),
     }
   }
+}
+
+async function authenticateRecentPasswordRequest(
+  c: AppContext,
+): Promise<AuthenticatedVaultRequest> {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000)
+  const tokenAgeSeconds = nowSeconds - auth.tokenIssuedAt
+  const recentPasswordAuth =
+    auth.authMethod === 'password' &&
+    tokenAgeSeconds >= 0 &&
+    tokenAgeSeconds <= recentPasswordAuthTtlSeconds
+
+  if (!recentPasswordAuth) {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'reauth_required',
+          'Recent password authentication is required.',
+        ),
+        401,
+      ),
+    }
+  }
+
+  return auth
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {

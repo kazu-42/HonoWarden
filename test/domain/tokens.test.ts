@@ -157,6 +157,42 @@ describe('token domain', () => {
     })
   })
 
+  it('preserves access token auth method claims', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+      authMethod: 'password',
+    })
+
+    await expect(verifyAccessToken('secret', token, 2)).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        authMethod: 'password',
+      },
+    })
+  })
+
+  it('rejects signed access tokens with invalid auth method claims', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+      authMethod: 'api-key' as 'password',
+    })
+
+    await expect(verifyAccessToken('secret', token, 2)).resolves.toEqual({
+      ok: false,
+      code: 'invalid',
+    })
+  })
+
   it('rejects access tokens with invalid signatures', async () => {
     const token = await signAccessToken('secret', {
       sub: 'user-id',
