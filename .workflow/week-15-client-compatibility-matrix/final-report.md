@@ -32,7 +32,7 @@ Client compatibility matrix artifacts are implemented locally. The matrix record
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: sync without token secret returns `503 server_misconfigured`.
-- GitHub Actions CI: pending push.
+- GitHub Actions CI: passed for implementation commit `e95f392` in run `28788753431`.
 
 ## Remaining Risks
 
