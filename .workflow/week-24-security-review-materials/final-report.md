@@ -41,7 +41,8 @@ has alpha security docs and CI coverage that keeps the document set present.
 - repository brand scan: no content hits
 - repository path brand scan: no path hits
 - workflow verifier: passed
-- GitHub Actions CI: pending
+- GitHub Actions CI run `28797937405`: passed
+  - https://github.com/kazu-42/HonoWarden/actions/runs/28797937405
 
 ## Remaining Risks
 
