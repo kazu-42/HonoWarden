@@ -44,10 +44,19 @@ Implemented:
 - `pnpm compat:test`
 - CI coverage for compatibility fixtures
 
+## Week 4 Increment
+
+Implemented:
+
+- `POST /identity/accounts/prelogin`
+- email normalization and `HONOWARDEN_ALLOWED_EMAILS` allowlist parsing
+- default-deny prelogin behavior
+- explicit `403` responses for public registration endpoints
+- regenerated Cloudflare binding types for the allowlist variable
+
 Not implemented:
 
 - upstream account bootstrap
-- `prelogin`
 - token exchange
 - vault sync
 - any storage of real password-vault data

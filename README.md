@@ -58,6 +58,12 @@ Run locally with Wrangler:
 pnpm dev
 ```
 
+Configure local prelogin allowlist in `wrangler.jsonc` before testing login-related endpoints:
+
+```json
+"HONOWARDEN_ALLOWED_EMAILS": "person@example.test"
+```
+
 Generate Cloudflare binding types after editing `wrangler.jsonc`:
 
 ```sh

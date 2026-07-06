@@ -101,6 +101,100 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('returns prelogin KDF parameters for an allowed email', async () => {
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'prelogin-request',
+        },
+        body: JSON.stringify({
+          email: 'Person@Example.Test',
+        }),
+      },
+      {
+        HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('X-Request-Id')).toBe('prelogin-request')
+    await expect(response.json()).resolves.toEqual({
+      kdf: 0,
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+    })
+  })
+
+  it('denies prelogin for emails outside the allowlist', async () => {
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'person@example.test',
+        }),
+      },
+      {
+        HONOWARDEN_ALLOWED_EMAILS: '',
+      },
+    )
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'prelogin_not_allowed',
+      },
+    })
+  })
+
+  it('rejects malformed prelogin requests', async () => {
+    const response = await app.request('/identity/accounts/prelogin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    })
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+    })
+  })
+
+  it('rejects public account registration', async () => {
+    for (const path of [
+      '/api/accounts/register',
+      '/identity/accounts/register',
+    ]) {
+      const response = await app.request(path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'person@example.test',
+        }),
+      })
+
+      expect(response.status).toBe(403)
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'registration_disabled',
+        },
+      })
+    }
+  })
+
   it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 

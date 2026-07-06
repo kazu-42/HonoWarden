@@ -4,6 +4,7 @@ import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
+import { resolvePrelogin } from './domain/prelogin'
 import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
 
@@ -141,6 +142,49 @@ app.get('/config', (c) => {
   return c.json(buildServerConfig(origin))
 })
 
+app.post('/identity/accounts/prelogin', async (c) => {
+  const body = await readJsonBody(c.req.raw)
+  const decision = resolvePrelogin(body, c.env?.HONOWARDEN_ALLOWED_EMAILS)
+
+  if (!decision.ok) {
+    return c.json(
+      {
+        error: decision.error,
+        requestId: c.get('requestId'),
+      },
+      decision.status,
+    )
+  }
+
+  return c.json(decision.response)
+})
+
+app.post('/api/accounts/register', (c) => {
+  return c.json(
+    {
+      error: {
+        code: 'registration_disabled',
+        message: 'Public registration is disabled.',
+      },
+      requestId: c.get('requestId'),
+    },
+    403,
+  )
+})
+
+app.post('/identity/accounts/register', (c) => {
+  return c.json(
+    {
+      error: {
+        code: 'registration_disabled',
+        message: 'Public registration is disabled.',
+      },
+      requestId: c.get('requestId'),
+    },
+    403,
+  )
+})
+
 app.notFound((c) => {
   return c.json(
     {
@@ -153,5 +197,13 @@ app.notFound((c) => {
     404,
   )
 })
+
+async function readJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json()
+  } catch {
+    return null
+  }
+}
 
 export default app
