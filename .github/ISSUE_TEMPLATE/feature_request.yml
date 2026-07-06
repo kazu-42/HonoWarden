@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose a scoped compatibility or project feature
+title: 'feat: '
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What use case or compatibility gap does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should change?
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks
+      description: Security, compatibility, migration, or operational risks.
+    validations:
+      required: true
