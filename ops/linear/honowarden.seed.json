@@ -1,0 +1,464 @@
+{
+  "schemaVersion": 1,
+  "workspaceSlug": "honowarden",
+  "team": {
+    "key": "HW",
+    "name": "HonoWarden"
+  },
+  "initiative": {
+    "key": "alpha-launch",
+    "name": "HonoWarden Alpha Launch",
+    "summary": "Track the remaining work to reach v0.1.0-alpha with deployable, tested, and evidence-backed increments.",
+    "targetDate": "2027-01-03",
+    "priority": 2
+  },
+  "labels": [
+    {
+      "name": "area:api",
+      "color": "#4EA7FC",
+      "description": "HTTP API, protocol DTOs, compatibility behavior, and route boundaries."
+    },
+    {
+      "name": "area:auth",
+      "color": "#EB5757",
+      "description": "Authentication, sessions, token issuance, second factor, and recent-auth gates."
+    },
+    {
+      "name": "area:ops",
+      "color": "#F2994A",
+      "description": "Backup, restore, observability, release, and operator runbooks."
+    },
+    {
+      "name": "area:infra",
+      "color": "#26B5CE",
+      "description": "Cloudflare resources, domain routing, email routing, and deployment wiring."
+    },
+    {
+      "name": "area:docs",
+      "color": "#5E6AD2",
+      "description": "Project documentation, threat model, compatibility notes, and release docs."
+    },
+    {
+      "name": "area:website",
+      "color": "#BB87FC",
+      "description": "Public homepage, domain, and OSS project presentation."
+    },
+    {
+      "name": "type:feature",
+      "color": "#4CB782",
+      "description": "User-visible or operator-visible feature work."
+    },
+    {
+      "name": "type:ops",
+      "color": "#F2994A",
+      "description": "Operational setup, drills, automation, and release mechanics."
+    },
+    {
+      "name": "type:docs",
+      "color": "#5E6AD2",
+      "description": "Documentation deliverable."
+    },
+    {
+      "name": "type:spike",
+      "color": "#95A2B3",
+      "description": "Bounded research or validation task with a written decision."
+    },
+    {
+      "name": "risk:security",
+      "color": "#C5282F",
+      "description": "Security-sensitive work requiring explicit review evidence."
+    },
+    {
+      "name": "evidence:required",
+      "color": "#D97706",
+      "description": "Cannot close without test, CI, deployment, or live-client evidence."
+    },
+    {
+      "name": "agent:codex",
+      "color": "#111827",
+      "description": "Primary implementation queue for Codex."
+    },
+    {
+      "name": "agent:spark",
+      "color": "#7C3AED",
+      "description": "Bounded parallel task suitable for a Spark sub-agent."
+    },
+    {
+      "name": "release:alpha",
+      "color": "#16A34A",
+      "description": "Required for the v0.1.0-alpha release gate."
+    }
+  ],
+  "projects": [
+    {
+      "key": "alpha-api",
+      "name": "HonoWarden v0.1.0-alpha",
+      "summary": "Finish the minimal API-only encrypted-vault sync server through Week 26 alpha acceptance.",
+      "description": "Primary execution project for the alpha roadmap. Scope stays intentionally narrow: official upstream clients, personal and small-team vault sync, no Web Vault, no public registration, no organization sharing, and no public file-sharing surface in the alpha window.",
+      "startDate": "2026-07-06",
+      "targetDate": "2027-01-03",
+      "priority": 2,
+      "labels": ["release:alpha"]
+    },
+    {
+      "key": "ops-readiness",
+      "name": "Operations Readiness",
+      "summary": "Make backup, restore, auditability, deployment, rollback, and release operations repeatable.",
+      "description": "Operational hardening needed before real-secret use. Each issue should leave behind a runbook, automated check, or explicit acceptance record.",
+      "startDate": "2026-07-06",
+      "targetDate": "2026-12-27",
+      "priority": 2,
+      "labels": ["area:ops"]
+    },
+    {
+      "key": "website-domain",
+      "name": "Website and Domain",
+      "summary": "Launch honowarden.com and the HonoWarden-website repository with domain and email routing.",
+      "description": "Separate website repository and Cloudflare domain/email setup for project presentation, documentation entry points, and OSS trust signals.",
+      "startDate": "2026-07-06",
+      "targetDate": "2026-08-02",
+      "priority": 3,
+      "labels": ["area:website", "area:infra"]
+    }
+  ],
+  "milestones": [
+    {
+      "projectKey": "alpha-api",
+      "name": "Week 20 - Backup and restore",
+      "targetDate": "2026-11-22"
+    },
+    {
+      "projectKey": "alpha-api",
+      "name": "Week 21 - Observability",
+      "targetDate": "2026-11-29"
+    },
+    {
+      "projectKey": "alpha-api",
+      "name": "Week 22 - Regression suite",
+      "targetDate": "2026-12-06"
+    },
+    {
+      "projectKey": "alpha-api",
+      "name": "Week 23 - Multi-user dogfood",
+      "targetDate": "2026-12-13"
+    },
+    {
+      "projectKey": "alpha-api",
+      "name": "Week 24 - Security review materials",
+      "targetDate": "2026-12-20"
+    },
+    {
+      "projectKey": "alpha-api",
+      "name": "Week 25 - Feature freeze",
+      "targetDate": "2026-12-27"
+    },
+    {
+      "projectKey": "alpha-api",
+      "name": "Week 26 - v0.1.0-alpha",
+      "targetDate": "2027-01-03"
+    }
+  ],
+  "issues": [
+    {
+      "key": "backup-restore",
+      "title": "Week 20: finish backup and restore tooling",
+      "projectKey": "alpha-api",
+      "milestone": "Week 20 - Backup and restore",
+      "priority": 2,
+      "estimate": 3,
+      "labels": [
+        "area:ops",
+        "type:ops",
+        "evidence:required",
+        "agent:codex",
+        "release:alpha"
+      ],
+      "description": "Complete the D1/R2 backup and restore slice.\n\nAcceptance criteria:\n- dry-run backup manifest covers D1 SQL and explicit R2 object keys\n- restore plan targets fresh D1/R2 resources\n- runbook explains local and remote modes, object-list limitations, and rollback expectations\n- tests cover command planning and manifest validation\n- full local gates and CI are recorded in the workflow final report"
+    },
+    {
+      "key": "audit-observability",
+      "title": "Week 21: add secret-safe audit event spine",
+      "projectKey": "alpha-api",
+      "milestone": "Week 21 - Observability",
+      "priority": 2,
+      "estimate": 3,
+      "labels": [
+        "area:ops",
+        "area:auth",
+        "type:feature",
+        "risk:security",
+        "evidence:required",
+        "release:alpha"
+      ],
+      "description": "Create minimal auditability for auth failures, device revokes, backup actions, and operator-sensitive actions.\n\nAcceptance criteria:\n- no secret, token, password hash, encrypted vault payload, or plaintext vault content is logged\n- event schema has stable names, request IDs, actor IDs when available, and safe outcome fields\n- tests prove sensitive values are excluded\n- docs explain retention and operational use"
+    },
+    {
+      "key": "compat-regression",
+      "title": "Week 22: broaden compatibility regression fixtures",
+      "projectKey": "alpha-api",
+      "milestone": "Week 22 - Regression suite",
+      "priority": 2,
+      "estimate": 3,
+      "labels": [
+        "area:api",
+        "type:feature",
+        "evidence:required",
+        "agent:codex",
+        "release:alpha"
+      ],
+      "description": "Expand fixture coverage from basic endpoint shapes to the alpha-critical flows.\n\nAcceptance criteria:\n- fixtures cover empty vault, one cipher, folder, deleted cipher, TOTP, refresh rotation, and revision conflict behavior\n- matrix distinguishes fixture-only evidence from live-client evidence\n- CI fails on incompatible response-shape drift"
+    },
+    {
+      "key": "multi-user-dogfood",
+      "title": "Week 23: verify isolated multi-user dogfood",
+      "projectKey": "alpha-api",
+      "milestone": "Week 23 - Multi-user dogfood",
+      "priority": 2,
+      "estimate": 3,
+      "labels": [
+        "area:api",
+        "area:auth",
+        "type:feature",
+        "risk:security",
+        "evidence:required",
+        "release:alpha"
+      ],
+      "description": "Prove two to three allowlisted users can use separate personal vaults without cross-user visibility.\n\nAcceptance criteria:\n- Alice/Bob style tests cover folder, cipher, device, and refresh-token isolation\n- disabled user cannot password-login or refresh\n- docs include synthetic-data dogfood evidence format\n- no real secrets are used during dogfood"
+    },
+    {
+      "key": "security-review-materials",
+      "title": "Week 24: produce threat model and security review packet",
+      "projectKey": "alpha-api",
+      "milestone": "Week 24 - Security review materials",
+      "priority": 1,
+      "estimate": 5,
+      "labels": [
+        "area:docs",
+        "area:auth",
+        "type:docs",
+        "risk:security",
+        "evidence:required",
+        "release:alpha"
+      ],
+      "description": "Create the review packet needed before anyone stores real secrets.\n\nAcceptance criteria:\n- threat model covers assets, trust boundaries, attacker capabilities, abuse paths, and mitigations\n- auth state machine and data-flow diagrams are documented\n- secrets inventory distinguishes Worker secrets, D1 encrypted payloads, R2 objects, and local test values\n- known limitations are explicit and user-facing"
+    },
+    {
+      "key": "feature-freeze-docs",
+      "title": "Week 25: freeze alpha docs, upgrade, and rollback guides",
+      "projectKey": "alpha-api",
+      "milestone": "Week 25 - Feature freeze",
+      "priority": 2,
+      "estimate": 3,
+      "labels": [
+        "area:docs",
+        "area:ops",
+        "type:docs",
+        "evidence:required",
+        "release:alpha"
+      ],
+      "description": "Freeze the release surface and make installation, upgrade, rollback, and limitation docs coherent.\n\nAcceptance criteria:\n- fresh deploy guide works from a clean checkout\n- migration and rollback notes are current\n- unsupported feature behavior is listed\n- release notes draft references evidence links, not claims without proof"
+    },
+    {
+      "key": "alpha-release",
+      "title": "Week 26: tag v0.1.0-alpha with evidence",
+      "projectKey": "alpha-api",
+      "milestone": "Week 26 - v0.1.0-alpha",
+      "priority": 1,
+      "estimate": 5,
+      "labels": ["area:ops", "type:ops", "evidence:required", "release:alpha"],
+      "blockedBy": ["security-review-materials", "feature-freeze-docs"],
+      "description": "Cut the alpha release only after the release gate evidence is attached.\n\nAcceptance criteria:\n- browser extension, desktop, and mobile live-client evidence is recorded or explicitly downgraded with rationale\n- backup/restore drill evidence is linked\n- CI, compatibility fixtures, brand scan, and workflow verifier pass\n- GitHub release and tag are created from the reviewed commit"
+    },
+    {
+      "key": "cf-resources",
+      "title": "Provision staging and production Cloudflare resources",
+      "projectKey": "ops-readiness",
+      "priority": 2,
+      "estimate": 3,
+      "labels": [
+        "area:infra",
+        "area:ops",
+        "type:ops",
+        "evidence:required",
+        "release:alpha"
+      ],
+      "description": "Create and record the real Cloudflare D1, R2, Worker, route, and secret configuration needed for staging and production.\n\nAcceptance criteria:\n- staging and production resource names and IDs are recorded outside source-controlled secrets\n- required Worker secrets are set through secure channels\n- deploy and rollback commands are documented\n- local placeholder config remains safe to commit"
+    },
+    {
+      "key": "domain-email",
+      "title": "Set honowarden.com DNS, Worker routes, and email routing",
+      "projectKey": "website-domain",
+      "priority": 2,
+      "estimate": 3,
+      "labels": ["area:infra", "area:website", "type:ops", "evidence:required"],
+      "description": "Wire honowarden.com for the homepage and project email handling.\n\nAcceptance criteria:\n- apex and www route to the website Worker or Pages deployment\n- security contact email routing is configured and tested\n- DNS records are documented with rollback notes\n- no private account identifiers are committed"
+    },
+    {
+      "key": "website-repo",
+      "title": "Create HonoWarden-website repository and homepage",
+      "projectKey": "website-domain",
+      "priority": 3,
+      "estimate": 3,
+      "labels": ["area:website", "type:feature", "agent:codex"],
+      "description": "Create the separate HonoWarden-website repository and ship a small Hono-based homepage.\n\nAcceptance criteria:\n- repository exists with license, README, CI, and deploy config\n- homepage is a real project page, not a placeholder landing shell\n- primary calls point to docs, GitHub, and security contact\n- deployed URL and honowarden.com route are verified"
+    },
+    {
+      "key": "live-client-evidence",
+      "title": "Record live official client compatibility evidence",
+      "projectKey": "alpha-api",
+      "priority": 2,
+      "estimate": 5,
+      "labels": ["area:api", "type:ops", "evidence:required", "release:alpha"],
+      "description": "Upgrade selected compatibility matrix rows from fixture-only to live-client evidence.\n\nAcceptance criteria:\n- exact client versions and platforms are recorded\n- login, sync, folder, cipher, refresh, and second-factor flows have evidence where in scope\n- failures are listed as known issues instead of being hidden\n- no real secrets appear in captured evidence"
+    },
+    {
+      "key": "cleanup-jobs",
+      "title": "Add retention cleanup for auth attempts and second-factor challenges",
+      "projectKey": "ops-readiness",
+      "priority": 3,
+      "estimate": 2,
+      "labels": ["area:ops", "area:auth", "type:feature", "risk:security"],
+      "description": "Keep transient auth-defense tables bounded.\n\nAcceptance criteria:\n- stale auth-attempt buckets and expired login challenges can be pruned safely\n- cleanup is idempotent and owner-safe\n- runbook explains schedule and failure behavior"
+    },
+    {
+      "key": "revoke-all-sessions",
+      "title": "Implement revoke-all-sessions with recent re-auth",
+      "projectKey": "alpha-api",
+      "priority": 3,
+      "estimate": 3,
+      "labels": ["area:auth", "type:feature", "risk:security", "agent:spark"],
+      "description": "Add an authenticated route to revoke all other sessions for the current user.\n\nAcceptance criteria:\n- route requires recent password authentication\n- current token behavior is explicit\n- refresh tokens are invalidated transactionally where possible\n- tests cover self-device behavior and revoked refresh rejection"
+    },
+    {
+      "key": "totp-manage",
+      "title": "Add TOTP disable and change flows with recent re-auth",
+      "projectKey": "alpha-api",
+      "priority": 3,
+      "estimate": 3,
+      "labels": ["area:auth", "type:feature", "risk:security", "agent:spark"],
+      "description": "Complete second-factor lifecycle management after setup and login are stable.\n\nAcceptance criteria:\n- disable and change routes require recent password authentication\n- replay and stale-token behavior remains fail-closed\n- sync profile state reflects changes\n- tests cover invalid code, stale token, and successful lifecycle transitions"
+    },
+    {
+      "key": "backup-drill-cadence",
+      "title": "Document backup restore drill cadence",
+      "projectKey": "ops-readiness",
+      "priority": 3,
+      "estimate": 1,
+      "labels": ["area:ops", "type:docs", "evidence:required"],
+      "description": "Turn the Week 20 runbook into an operating habit.\n\nAcceptance criteria:\n- cadence is documented for staging and production-like resources\n- drill evidence template includes source, target, timestamps, commands, and verification result\n- failure escalation and abort conditions are explicit"
+    },
+    {
+      "key": "release-automation",
+      "title": "Create release automation and changelog template",
+      "projectKey": "ops-readiness",
+      "priority": 4,
+      "estimate": 2,
+      "labels": ["area:ops", "type:ops", "release:alpha"],
+      "description": "Make release creation repeatable.\n\nAcceptance criteria:\n- changelog template separates features, fixes, operations, security notes, and known limitations\n- tag and GitHub release commands are documented\n- rollback notes are linked from the release checklist"
+    },
+    {
+      "key": "unsupported-surfaces",
+      "title": "Track unsupported API surfaces explicitly",
+      "projectKey": "alpha-api",
+      "priority": 3,
+      "estimate": 2,
+      "labels": ["area:api", "area:docs", "type:docs", "release:alpha"],
+      "description": "Prevent unsupported protocol surfaces from silently pretending to work.\n\nAcceptance criteria:\n- unsupported routes are listed with expected 403 or 501 behavior\n- compatibility docs explain alpha non-goals\n- tests cover representative unsupported surfaces"
+    }
+  ],
+  "views": [
+    {
+      "name": "Alpha Command Center",
+      "type": "issue",
+      "scope": "team",
+      "layout": "board",
+      "filters": {
+        "project": [
+          "HonoWarden v0.1.0-alpha",
+          "Operations Readiness",
+          "Website and Domain"
+        ],
+        "statusType": ["backlog", "unstarted", "started"]
+      },
+      "groupBy": "status",
+      "orderBy": "priority"
+    },
+    {
+      "name": "Week 26 Release Gate",
+      "type": "issue",
+      "scope": "team",
+      "layout": "list",
+      "filters": {
+        "label": ["release:alpha"],
+        "statusType": ["backlog", "unstarted", "started"]
+      },
+      "groupBy": "project",
+      "orderBy": "priority"
+    },
+    {
+      "name": "Security and Ops Risk",
+      "type": "issue",
+      "scope": "team",
+      "layout": "list",
+      "filters": {
+        "labelAny": ["risk:security", "area:ops"],
+        "statusType": ["backlog", "unstarted", "started"]
+      },
+      "groupBy": "label",
+      "orderBy": "priority"
+    },
+    {
+      "name": "Agent Queue",
+      "type": "issue",
+      "scope": "team",
+      "layout": "list",
+      "filters": {
+        "labelAny": ["agent:codex", "agent:spark"],
+        "statusType": ["backlog", "unstarted", "started"]
+      },
+      "groupBy": "label",
+      "orderBy": "priority"
+    },
+    {
+      "name": "Website and Domain",
+      "type": "issue",
+      "scope": "project",
+      "layout": "board",
+      "filters": {
+        "project": ["Website and Domain"]
+      },
+      "groupBy": "status",
+      "orderBy": "priority"
+    },
+    {
+      "name": "Evidence Missing",
+      "type": "issue",
+      "scope": "team",
+      "layout": "list",
+      "filters": {
+        "label": ["evidence:required"],
+        "statusType": ["backlog", "unstarted", "started"]
+      },
+      "groupBy": "project",
+      "orderBy": "priority"
+    }
+  ],
+  "pulse": {
+    "workspaceDefaultCadence": "weekdays",
+    "summaryDelivery": "by 07:00 local time",
+    "projectUpdateReminder": "Monday and Friday at 18:00 Asia/Tokyo for the alpha project; Friday at 18:00 Asia/Tokyo for operations and website projects.",
+    "defaultHealth": "atRisk",
+    "firstUpdate": {
+      "projectKey": "alpha-api",
+      "health": "atRisk",
+      "body": "Local implementation is ahead of the written roadmap through Week 19, and Week 20 backup/restore tooling is in progress. The alpha remains at risk until live Cloudflare resources, live official-client compatibility evidence, backup/restore drill evidence, and security review materials are recorded. Next focus: finish Week 20, then add secret-safe auditability and broaden compatibility fixtures."
+    }
+  },
+  "documents": [
+    {
+      "title": "HonoWarden Tracking Overview",
+      "projectKey": "alpha-api",
+      "content": "This project tracks HonoWarden through v0.1.0-alpha.\n\nOperating rules:\n- every close needs tests or explicit evidence\n- fixture-only compatibility is not live-client evidence\n- no real secrets in issues, comments, fixtures, logs, or screenshots\n- unsupported feature surfaces must fail explicitly\n- project updates are the source of truth for weekly health\n\nCore views:\n- Alpha Command Center\n- Week 26 Release Gate\n- Security and Ops Risk\n- Agent Queue\n- Evidence Missing"
+    }
+  ]
+}
