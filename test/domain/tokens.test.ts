@@ -4,6 +4,7 @@ import {
   generateRefreshToken,
   hashRefreshToken,
   parsePasswordGrantForm,
+  parseRefreshTokenGrantForm,
   signAccessToken,
   tokenErrorResponse,
   verifyPresentedPasswordHash,
@@ -40,6 +41,40 @@ describe('token domain', () => {
       ok: false,
       error: {
         error: 'unsupported_grant_type',
+      },
+    })
+  })
+
+  it('parses refresh token grant fields', () => {
+    expect(
+      parseRefreshTokenGrantForm(
+        new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      grant: {
+        refreshToken: 'synthetic-refresh-token',
+      },
+    })
+  })
+
+  it('rejects refresh token grant without refresh token', () => {
+    expect(
+      parseRefreshTokenGrantForm(
+        new URLSearchParams({
+          grant_type: 'refresh_token',
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        error: 'invalid_request',
+        errorModel: {
+          Message: 'Refresh token is required.',
+        },
       },
     })
   })

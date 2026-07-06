@@ -7,6 +7,10 @@ export type PasswordGrantRequest = {
   scope: string | null
 }
 
+export type RefreshTokenGrantRequest = {
+  refreshToken: string
+}
+
 export type PasswordGrantParseResult =
   | {
       ok: true
@@ -74,6 +78,31 @@ export function parsePasswordGrantForm(
       usernameNormalized,
       password,
       scope: form.get('scope')?.trim() || null,
+    },
+  }
+}
+
+export function parseRefreshTokenGrantForm(
+  form: URLSearchParams,
+): { ok: true; grant: RefreshTokenGrantRequest } | FailedTokenRequest {
+  const grantType = form.get('grant_type')
+
+  if (grantType !== 'refresh_token') {
+    return tokenRequestError(
+      'unsupported_grant_type',
+      'The requested grant type is not supported.',
+    )
+  }
+
+  const refreshToken = form.get('refresh_token')?.trim()
+  if (!refreshToken) {
+    return tokenRequestError('invalid_request', 'Refresh token is required.')
+  }
+
+  return {
+    ok: true,
+    grant: {
+      refreshToken,
     },
   }
 }

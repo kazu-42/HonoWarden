@@ -78,9 +78,21 @@ Implemented:
 - device upsert before refresh token persistence
 - stable invalid grant, invalid request, misconfigured, and database unavailable responses
 
+## Week 7 Increment
+
+Implemented:
+
+- `refresh_token` grant support on `POST /identity/connect/token`
+- refresh token lookup by secret-bound hash
+- refresh token rotation with old-token revocation and child token insertion
+- session invalidation when a revoked token is presented again
+- invalid grant handling for unknown, expired, disabled-user, and revoked-device refresh tokens
+- refresh grant compatibility fixture
+
 Not implemented:
 
-- refresh token grant and rotation
+- access token verification middleware
+- refresh token reuse alerting
 - vault sync
 - any storage of real password-vault data
 

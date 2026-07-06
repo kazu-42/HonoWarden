@@ -16,6 +16,7 @@ import {
   hashRefreshToken,
   invalidGrantError,
   parsePasswordGrantForm,
+  parseRefreshTokenGrantForm,
   signAccessToken,
   tokenErrorResponse,
   tokenRequestError,
@@ -25,8 +26,12 @@ import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
 import {
   createPasswordGrantSession,
+  findRefreshTokenSessionByHash,
   findAuthUserByEmail,
+  invalidateRefreshTokenSession,
+  rotateRefreshToken,
 } from './repositories/auth-repository'
+import type { AuthUserRecord } from './repositories/auth-repository'
 import { createBootstrapUser } from './repositories/user-repository'
 
 type Variables = {
@@ -317,7 +322,104 @@ app.post('/identity/connect/token', async (c) => {
     )
   }
 
-  const grantDecision = parsePasswordGrantForm(await readFormBody(c.req.raw))
+  const form = await readFormBody(c.req.raw)
+
+  if (form.get('grant_type') === 'refresh_token') {
+    const grantDecision = parseRefreshTokenGrantForm(form)
+    if (!grantDecision.ok) {
+      return c.json(
+        tokenErrorResponse(grantDecision.error),
+        grantDecision.status,
+      )
+    }
+
+    try {
+      const refreshTokenHash = await hashRefreshToken(
+        tokenSecret,
+        grantDecision.grant.refreshToken,
+      )
+      const session = await findRefreshTokenSessionByHash(
+        c.env.DB,
+        refreshTokenHash,
+      )
+
+      if (!session) {
+        return c.json(tokenErrorResponse(invalidGrantError()), 400)
+      }
+
+      const issuedAt = Math.floor(Date.now() / 1000)
+      const now = new Date(issuedAt * 1000).toISOString()
+
+      if (session.tokenRevokedAt) {
+        await invalidateRefreshTokenSession(
+          c.env.DB,
+          session.userId,
+          session.deviceId,
+          now,
+        )
+
+        return c.json(tokenErrorResponse(invalidGrantError()), 400)
+      }
+
+      if (
+        session.user.disabledAt ||
+        session.deviceRevokedAt ||
+        Date.parse(session.tokenExpiresAt) <= issuedAt * 1000
+      ) {
+        return c.json(tokenErrorResponse(invalidGrantError()), 400)
+      }
+
+      const nextRefreshToken = generateRefreshToken()
+      const nextRefreshTokenHash = await hashRefreshToken(
+        tokenSecret,
+        nextRefreshToken,
+      )
+      const rotation = await rotateRefreshToken(c.env.DB, {
+        currentTokenId: session.tokenId,
+        userId: session.userId,
+        deviceId: session.deviceId,
+        deviceIdentifier: session.deviceIdentifier,
+        deviceName: null,
+        deviceType: null,
+        nextRefreshTokenId: crypto.randomUUID(),
+        nextRefreshTokenHash,
+        nextRefreshTokenExpiresAt: new Date(
+          (issuedAt + refreshTokenTtlSeconds) * 1000,
+        ).toISOString(),
+        now,
+      })
+
+      if (rotation.status === 'reuse_detected') {
+        return c.json(tokenErrorResponse(invalidGrantError()), 400)
+      }
+
+      const accessToken = await signAccessToken(tokenSecret, {
+        sub: session.user.id,
+        email: session.user.emailNormalized,
+        device: session.deviceIdentifier,
+        securityStamp: session.user.securityStamp,
+        iat: issuedAt,
+        exp: issuedAt + accessTokenTtlSeconds,
+      })
+
+      return c.json(
+        buildTokenResponse(session.user, accessToken, nextRefreshToken),
+      )
+    } catch {
+      return c.json(
+        {
+          error: {
+            code: 'database_unavailable',
+            message: 'Token exchange failed.',
+          },
+          requestId: c.get('requestId'),
+        },
+        503,
+      )
+    }
+  }
+
+  const grantDecision = parsePasswordGrantForm(form)
   if (!grantDecision.ok) {
     return c.json(tokenErrorResponse(grantDecision.error), grantDecision.status)
   }
@@ -377,24 +479,7 @@ app.post('/identity/connect/token', async (c) => {
       exp: expiresAt,
     })
 
-    return c.json({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      token_type: 'Bearer',
-      expires_in: accessTokenTtlSeconds,
-      Key: user.userKey,
-      PrivateKey: user.privateKey,
-      Kdf: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
-      KdfIterations: user.kdfIterations,
-      KdfMemory: user.kdfMemory,
-      KdfParallelism: user.kdfParallelism,
-      AccountKeys: null,
-      ForcePasswordReset: false,
-      TwoFactorToken: null,
-      MasterPasswordPolicy: null,
-      UserDecryptionOptions: null,
-      KeyConnectorUrl: null,
-    })
+    return c.json(buildTokenResponse(user, accessToken, refreshToken))
   } catch {
     return c.json(
       {
@@ -421,6 +506,31 @@ app.notFound((c) => {
     404,
   )
 })
+
+function buildTokenResponse(
+  user: AuthUserRecord,
+  accessToken: string,
+  refreshToken: string,
+) {
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    token_type: 'Bearer',
+    expires_in: accessTokenTtlSeconds,
+    Key: user.userKey,
+    PrivateKey: user.privateKey,
+    Kdf: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
+    KdfIterations: user.kdfIterations,
+    KdfMemory: user.kdfMemory,
+    KdfParallelism: user.kdfParallelism,
+    AccountKeys: null,
+    ForcePasswordReset: false,
+    TwoFactorToken: null,
+    MasterPasswordPolicy: null,
+    UserDecryptionOptions: null,
+    KeyConnectorUrl: null,
+  }
+}
 
 async function readJsonBody(request: Request): Promise<unknown> {
   try {

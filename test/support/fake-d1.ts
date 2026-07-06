@@ -10,6 +10,8 @@ const fakeMeta = {
 
 type FakeD1DatabaseOptions = {
   authUser?: Record<string, unknown> | null
+  refreshSession?: Record<string, unknown> | null
+  refreshRotationChanges?: number
   userInsertChanges?: number
 }
 
@@ -30,6 +32,10 @@ export class FakeD1Database {
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (query.includes('FROM refresh_tokens')) {
+          return (options.refreshSession ?? null) as T | null
+        }
+
         if (query.includes('FROM users')) {
           return (options.authUser ?? null) as T | null
         }
@@ -72,6 +78,17 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.userInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (/UPDATE\s+refresh_tokens/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.refreshRotationChanges ?? 1,
             },
           }
         }

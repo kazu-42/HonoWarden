@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDeviceId,
   createPasswordGrantSession,
+  findRefreshTokenSessionByHash,
   findAuthUserByEmail,
+  invalidateRefreshTokenSession,
+  rotateRefreshToken,
 } from '../../src/repositories/auth-repository'
 
 const fakeMeta = {
@@ -75,19 +78,128 @@ describe('auth repository', () => {
     expect(database.boundValues).toContain('hashed-refresh-token')
     expect(database.boundValues).not.toContain('plaintext-refresh-token')
   })
+
+  it('finds refresh token sessions with user and device context', async () => {
+    const database = new RecordingAuthD1Database(null, {
+      tokenId: 'refresh-token-id',
+      userId: 'user-id',
+      deviceId: 'device-id',
+      deviceIdentifier: 'device-identifier',
+      tokenExpiresAt: '2026-08-05T00:00:00.000Z',
+      tokenRevokedAt: null,
+      deviceRevokedAt: null,
+      email: 'Person@Example.Test',
+      emailNormalized: 'person@example.test',
+      displayName: 'Person',
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+      masterPasswordHash: 'synthetic-master-password-hash',
+      userKey: '2.synthetic-user-key',
+      privateKey: null,
+      securityStamp: 'security-stamp',
+      disabledAt: null,
+    })
+
+    await expect(
+      findRefreshTokenSessionByHash(database, 'hashed-refresh-token'),
+    ).resolves.toMatchObject({
+      tokenId: 'refresh-token-id',
+      userId: 'user-id',
+      deviceId: 'device-id',
+      deviceIdentifier: 'device-identifier',
+      user: {
+        emailNormalized: 'person@example.test',
+      },
+    })
+    expect(database.boundValues).toContain('hashed-refresh-token')
+  })
+
+  it('rotates refresh token hashes after conditionally revoking the old token', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1)
+
+    await expect(
+      rotateRefreshToken(database, {
+        currentTokenId: 'current-refresh-token-id',
+        userId: 'user-id',
+        deviceId: 'device-id',
+        deviceIdentifier: 'device-identifier',
+        deviceName: 'Desktop',
+        deviceType: 9,
+        nextRefreshTokenId: 'next-refresh-token-id',
+        nextRefreshTokenHash: 'next-refresh-token-hash',
+        nextRefreshTokenExpiresAt: '2026-08-05T00:00:00.000Z',
+        now: '2026-07-06T00:00:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'rotated',
+    })
+
+    expect(database.boundValues).toContain('current-refresh-token-id')
+    expect(database.boundValues).toContain('next-refresh-token-hash')
+    expect(database.boundValues).not.toContain('next-refresh-token-plaintext')
+    expect(database.batchStatements).toHaveLength(2)
+  })
+
+  it('invalidates the device session when rotation detects reuse', async () => {
+    const database = new RecordingAuthD1Database(null, null, 0)
+
+    await expect(
+      rotateRefreshToken(database, {
+        currentTokenId: 'current-refresh-token-id',
+        userId: 'user-id',
+        deviceId: 'device-id',
+        deviceIdentifier: 'device-identifier',
+        deviceName: 'Desktop',
+        deviceType: 9,
+        nextRefreshTokenId: 'next-refresh-token-id',
+        nextRefreshTokenHash: 'next-refresh-token-hash',
+        nextRefreshTokenExpiresAt: '2026-08-05T00:00:00.000Z',
+        now: '2026-07-06T00:00:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'reuse_detected',
+    })
+
+    expect(database.batchStatements).toHaveLength(2)
+    expect(database.boundValues).toContain('device-id')
+    expect(database.boundValues).not.toContain('next-refresh-token-hash')
+  })
+
+  it('can invalidate active refresh tokens for one device session', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await invalidateRefreshTokenSession(
+      database,
+      'user-id',
+      'device-id',
+      '2026-07-06T00:00:00.000Z',
+    )
+
+    expect(database.batchStatements).toHaveLength(2)
+    expect(database.boundValues).toContain('user-id')
+    expect(database.boundValues).toContain('device-id')
+  })
 })
 
 class RecordingAuthD1Database {
   boundValues: unknown[] = []
   batchStatements: D1PreparedStatement[] = []
 
-  constructor(private readonly userRow: unknown) {}
+  constructor(
+    private readonly userRow: unknown,
+    private readonly refreshSessionRow: unknown = null,
+    private readonly updateChanges = 1,
+  ) {}
 
   prepare(query: string): D1PreparedStatement {
     const pushValues = (values: unknown[]) => {
       this.boundValues.push(...values)
     }
     const getUserRow = () => this.userRow
+    const getRefreshSessionRow = () => this.refreshSessionRow
+    const getUpdateChanges = () => this.updateChanges
 
     const statement = {
       bind(...values: unknown[]) {
@@ -95,6 +207,10 @@ class RecordingAuthD1Database {
         return statement
       },
       async first<T = unknown>(): Promise<T | null> {
+        if (query.includes('FROM refresh_tokens')) {
+          return getRefreshSessionRow() as T | null
+        }
+
         if (query.includes('FROM users')) {
           return getUserRow() as T | null
         }
@@ -112,7 +228,12 @@ class RecordingAuthD1Database {
         return {
           success: true,
           results: [],
-          meta: fakeMeta,
+          meta: {
+            ...fakeMeta,
+            changes: /UPDATE\s+refresh_tokens/.test(query)
+              ? getUpdateChanges()
+              : fakeMeta.changes,
+          },
         }
       },
       async raw<T = unknown>(): Promise<T[]> {

@@ -1,0 +1,42 @@
+{
+  "title": "Week 7 Refresh Rotation",
+  "slug": "week-07-refresh-rotation",
+  "created_at": "2026-07-06T10:32:28+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation and tests are within the sustained repo-development request. Ask before real secrets, deploys, or remote resources."
+  },
+  "packets": [
+    {
+      "id": "01-refresh-domain",
+      "status": "complete"
+    },
+    {
+      "id": "02-refresh-repository",
+      "status": "complete"
+    },
+    {
+      "id": "03-route-fixture-docs",
+      "status": "complete"
+    },
+    {
+      "id": "04-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "local_passed",
+    "checks": [
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "workflow verification",
+      "GitHub Actions CI"
+    ]
+  }
+}

@@ -433,6 +433,101 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rotates refresh tokens for a valid refresh grant', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          refreshSession: refreshTokenSessionRecord(),
+          refreshRotationChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+      token_type: 'Bearer',
+      expires_in: 3600,
+      Key: '2.synthetic-user-key',
+      Kdf: 0,
+      KdfIterations: 600000,
+    })
+  })
+
+  it('invalidates a refresh token session when a revoked token is reused', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          refreshSession: {
+            ...refreshTokenSessionRecord(),
+            tokenRevokedAt: '2026-07-06T00:00:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      ErrorModel: {
+        Message: 'Invalid username or password.',
+        Object: 'error',
+      },
+    })
+  })
+
+  it('rejects unknown refresh tokens without session changes', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'unknown-refresh-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          refreshSession: null,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+  })
+
   it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 
@@ -475,6 +570,30 @@ describe('HonoWarden app', () => {
 function authUserRecord() {
   return {
     id: 'user-id',
+    email: 'Person@Example.Test',
+    emailNormalized: 'person@example.test',
+    displayName: 'Person',
+    kdfAlgorithm: 'pbkdf2-sha256',
+    kdfIterations: 600000,
+    kdfMemory: null,
+    kdfParallelism: null,
+    masterPasswordHash: 'synthetic-master-password-hash',
+    userKey: '2.synthetic-user-key',
+    privateKey: null,
+    securityStamp: 'security-stamp',
+    disabledAt: null,
+  }
+}
+
+function refreshTokenSessionRecord() {
+  return {
+    tokenId: 'refresh-token-id',
+    userId: 'user-id',
+    deviceId: 'device-id',
+    deviceIdentifier: 'fixture-device',
+    tokenExpiresAt: '2999-08-05T00:00:00.000Z',
+    tokenRevokedAt: null,
+    deviceRevokedAt: null,
     email: 'Person@Example.Test',
     emailNormalized: 'person@example.test',
     displayName: 'Person',
