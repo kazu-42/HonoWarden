@@ -649,6 +649,45 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('includes active folders in sync', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folders: [
+            {
+              id: 'folder-id',
+              userId: 'user-id',
+              name: '2.encrypted-folder-name',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      Folders: [
+        {
+          object: 'folder',
+          id: 'folder-id',
+          name: '2.encrypted-folder-name',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+      ],
+    })
+  })
+
   it('rejects sync for disabled users', async () => {
     const user = {
       ...authUserRecord(),
@@ -703,6 +742,192 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: 'invalid_token',
+      },
+    })
+  })
+
+  it('creates a folder for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: '2.encrypted-folder-name',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'folder',
+      id: expect.any(String),
+      name: '2.encrypted-folder-name',
+      revisionDate: expect.any(String),
+    })
+  })
+
+  it('rejects malformed folder create requests', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'folder-invalid-body-request',
+        },
+        body: JSON.stringify({
+          name: '',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'folder-invalid-body-request',
+    })
+  })
+
+  it('updates a folder for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: '2.updated-encrypted-folder-name',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folderUpdateChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'folder',
+      id: 'folder-id',
+      name: '2.updated-encrypted-folder-name',
+      revisionDate: expect.any(String),
+    })
+  })
+
+  it('returns not found when updating a missing or cross-user folder', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: '2.updated-encrypted-folder-name',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folderUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'folder_not_found',
+      },
+    })
+  })
+
+  it('soft-deletes a folder for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folderDeleteChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'folderDeletion',
+      id: 'folder-id',
+      revisionDate: expect.any(String),
+    })
+  })
+
+  it('returns not found when deleting a missing or cross-user folder', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folderDeleteChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'folder_not_found',
       },
     })
   })

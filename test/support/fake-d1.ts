@@ -10,6 +10,9 @@ const fakeMeta = {
 
 type FakeD1DatabaseOptions = {
   authUser?: Record<string, unknown> | null
+  folderDeleteChanges?: number
+  folders?: Record<string, unknown>[]
+  folderUpdateChanges?: number
   refreshSession?: Record<string, unknown> | null
   refreshRotationChanges?: number
   userInsertChanges?: number
@@ -56,6 +59,14 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (query.includes('FROM folders')) {
+          return {
+            success: true,
+            results: (options.folders ?? []) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('sqlite_master')) {
           return {
             success: true,
@@ -78,6 +89,30 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.userInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO folders')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (/UPDATE\s+folders/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: query.includes('deleted_at = ?')
+                ? (options.folderDeleteChanges ?? 1)
+                : (options.folderUpdateChanges ?? 1),
             },
           }
         }

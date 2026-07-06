@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { cors } from 'hono/cors'
 import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
@@ -26,6 +27,13 @@ import {
 import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
 import {
+  createFolder,
+  deleteFolder,
+  listFoldersByUser,
+  updateFolder,
+} from './repositories/folder-repository'
+import type { FolderRecord } from './repositories/folder-repository'
+import {
   createPasswordGrantSession,
   findAuthUserByEmail,
   findAuthUserById,
@@ -39,6 +47,18 @@ import { createBootstrapUser } from './repositories/user-repository'
 type Variables = {
   requestId: string
 }
+
+type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
+
+type AuthenticatedVaultRequest =
+  | {
+      ok: true
+      user: AuthUserRecord
+    }
+  | {
+      ok: false
+      response: Response
+    }
 
 const serviceDescription =
   'A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.'
@@ -497,72 +517,158 @@ app.post('/identity/connect/token', async (c) => {
 })
 
 app.get('/api/sync', async (c) => {
-  const tokenSecret = c.env?.HONOWARDEN_TOKEN_SECRET
-  if (!tokenSecret) {
-    return c.json(
-      {
-        error: {
-          code: 'server_misconfigured',
-          message: 'Vault sync is not configured.',
-        },
-        requestId: c.get('requestId'),
-      },
-      503,
-    )
-  }
-
-  const accessToken = readBearerToken(c.req.header('Authorization'))
-  if (!accessToken) {
-    return c.json(
-      syncAuthError(
-        c.get('requestId'),
-        'missing_token',
-        'Bearer authorization is required.',
-      ),
-      401,
-    )
-  }
-
-  const verification = await verifyAccessToken(tokenSecret, accessToken)
-  if (!verification.ok) {
-    return c.json(
-      syncAuthError(
-        c.get('requestId'),
-        'invalid_token',
-        'The access token is invalid.',
-      ),
-      401,
-    )
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
   }
 
   try {
-    const user = await findAuthUserById(c.env.DB, verification.claims.sub)
+    const folders = await listFoldersByUser(c.env.DB, auth.user.id)
 
-    if (
-      !user ||
-      user.disabledAt ||
-      user.securityStamp !== verification.claims.securityStamp
-    ) {
+    return c.json(buildSyncResponse(auth.user, folders))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Vault sync failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/folders', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const folderRequest = parseFolderRequestBody(await readJsonBody(c.req.raw))
+  if (!folderRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Folder name is required.',
+      ),
+      400,
+    )
+  }
+
+  const revisionDate = new Date().toISOString()
+
+  try {
+    const folder = await createFolder(c.env.DB, {
+      id: crypto.randomUUID(),
+      userId: auth.user.id,
+      name: folderRequest.name,
+      revisionDate,
+    })
+
+    return c.json(buildFolderResponse(folder), 201)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Folder create failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.put('/api/folders/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const folderRequest = parseFolderRequestBody(await readJsonBody(c.req.raw))
+  if (!folderRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Folder name is required.',
+      ),
+      400,
+    )
+  }
+
+  const revisionDate = new Date().toISOString()
+
+  try {
+    const folder = await updateFolder(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+      name: folderRequest.name,
+      revisionDate,
+    })
+
+    if (!folder) {
       return c.json(
-        syncAuthError(
+        apiError(
           c.get('requestId'),
-          'invalid_token',
-          'The access token is invalid.',
+          'folder_not_found',
+          'Folder was not found.',
         ),
-        401,
+        404,
       )
     }
 
-    return c.json(buildEmptySyncResponse(user))
+    return c.json(buildFolderResponse(folder))
   } catch {
     return c.json(
-      {
-        error: {
-          code: 'database_unavailable',
-          message: 'Vault sync failed.',
-        },
-        requestId: c.get('requestId'),
-      },
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Folder update failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.delete('/api/folders/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const revisionDate = new Date().toISOString()
+
+  try {
+    const result = await deleteFolder(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+      revisionDate,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'folder_not_found',
+          'Folder was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json({
+      object: 'folderDeletion',
+      id: result.id,
+      revisionDate: result.revisionDate,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Folder delete failed.',
+      ),
       503,
     )
   }
@@ -606,7 +712,10 @@ function buildTokenResponse(
   }
 }
 
-function buildEmptySyncResponse(user: AuthUserRecord) {
+function buildSyncResponse(
+  user: AuthUserRecord,
+  folders: readonly FolderRecord[] = [],
+) {
   return {
     object: 'sync',
     Profile: {
@@ -632,7 +741,7 @@ function buildEmptySyncResponse(user: AuthUserRecord) {
       Providers: [],
       ProviderOrganizations: [],
     },
-    Folders: [],
+    Folders: folders.map(buildFolderResponse),
     Collections: [],
     Ciphers: [],
     Domains: {
@@ -646,9 +755,24 @@ function buildEmptySyncResponse(user: AuthUserRecord) {
   }
 }
 
-function syncAuthError(
+function buildFolderResponse(folder: FolderRecord) {
+  return {
+    object: 'folder',
+    id: folder.id,
+    name: folder.name,
+    revisionDate: folder.revisionDate,
+  }
+}
+
+function apiError(
   requestIdValue: string,
-  code: 'invalid_token' | 'missing_token',
+  code:
+    | 'database_unavailable'
+    | 'folder_not_found'
+    | 'invalid_request'
+    | 'invalid_token'
+    | 'missing_token'
+    | 'server_misconfigured',
   message: string,
 ) {
   return {
@@ -657,6 +781,94 @@ function syncAuthError(
       message,
     },
     requestId: requestIdValue,
+  }
+}
+
+async function authenticateVaultRequest(
+  c: AppContext,
+): Promise<AuthenticatedVaultRequest> {
+  const tokenSecret = c.env?.HONOWARDEN_TOKEN_SECRET
+  if (!tokenSecret) {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Vault sync is not configured.',
+        ),
+        503,
+      ),
+    }
+  }
+
+  const accessToken = readBearerToken(c.req.header('Authorization'))
+  if (!accessToken) {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'missing_token',
+          'Bearer authorization is required.',
+        ),
+        401,
+      ),
+    }
+  }
+
+  const verification = await verifyAccessToken(tokenSecret, accessToken)
+  if (!verification.ok) {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_token',
+          'The access token is invalid.',
+        ),
+        401,
+      ),
+    }
+  }
+
+  try {
+    const user = await findAuthUserById(c.env.DB, verification.claims.sub)
+
+    if (
+      !user ||
+      user.disabledAt ||
+      user.securityStamp !== verification.claims.securityStamp
+    ) {
+      return {
+        ok: false,
+        response: c.json(
+          apiError(
+            c.get('requestId'),
+            'invalid_token',
+            'The access token is invalid.',
+          ),
+          401,
+        ),
+      }
+    }
+
+    return {
+      ok: true,
+      user,
+    }
+  } catch {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'database_unavailable',
+          'Vault request failed.',
+        ),
+        503,
+      ),
+    }
   }
 }
 
@@ -670,6 +882,24 @@ async function readJsonBody(request: Request): Promise<unknown> {
 
 async function readFormBody(request: Request): Promise<URLSearchParams> {
   return new URLSearchParams(await request.text())
+}
+
+function parseFolderRequestBody(
+  body: unknown,
+): { ok: true; name: string } | { ok: false } {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false }
+  }
+
+  const name = (body as Record<string, unknown>).name
+  if (typeof name !== 'string' || !name.trim()) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    name,
+  }
 }
 
 function readBearerToken(authorization: string | undefined): string | null {

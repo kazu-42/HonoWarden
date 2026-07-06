@@ -1,0 +1,169 @@
+export type FolderRecord = {
+  id: string
+  userId: string
+  name: string
+  revisionDate: string
+}
+
+export type FolderWriteInput = {
+  id: string
+  userId: string
+  name: string
+  revisionDate: string
+}
+
+export type FolderDeleteInput = {
+  id: string
+  userId: string
+  revisionDate: string
+}
+
+export type FolderDeleteResult =
+  | {
+      status: 'deleted'
+      id: string
+      revisionDate: string
+    }
+  | {
+      status: 'not_found'
+    }
+
+type FolderDatabase = Pick<D1Database, 'prepare'>
+
+type FolderRow = {
+  id: string
+  userId: string
+  name: string
+  revisionDate: string
+}
+
+export async function listFoldersByUser(
+  database: FolderDatabase,
+  userId: string,
+): Promise<FolderRecord[]> {
+  const result = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          encrypted_name as name,
+          revision_date as revisionDate
+        FROM folders
+        WHERE user_id = ? AND deleted_at IS NULL
+        ORDER BY revision_date ASC, id ASC
+      `,
+    )
+    .bind(userId)
+    .all<FolderRow>()
+
+  return result.results.map(folderFromRow)
+}
+
+export async function createFolder(
+  database: FolderDatabase,
+  input: FolderWriteInput,
+): Promise<FolderRecord> {
+  await database
+    .prepare(
+      `
+        INSERT INTO folders (
+          id,
+          user_id,
+          encrypted_name,
+          revision_date,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+    )
+    .bind(
+      input.id,
+      input.userId,
+      input.name,
+      input.revisionDate,
+      input.revisionDate,
+      input.revisionDate,
+    )
+    .run()
+
+  return input
+}
+
+export async function updateFolder(
+  database: FolderDatabase,
+  input: FolderWriteInput,
+): Promise<FolderRecord | null> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE folders
+        SET
+          encrypted_name = ?,
+          revision_date = ?,
+          updated_at = ?
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+      `,
+    )
+    .bind(
+      input.name,
+      input.revisionDate,
+      input.revisionDate,
+      input.id,
+      input.userId,
+    )
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return null
+  }
+
+  return input
+}
+
+export async function deleteFolder(
+  database: FolderDatabase,
+  input: FolderDeleteInput,
+): Promise<FolderDeleteResult> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE folders
+        SET
+          deleted_at = ?,
+          revision_date = ?,
+          updated_at = ?
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+      `,
+    )
+    .bind(
+      input.revisionDate,
+      input.revisionDate,
+      input.revisionDate,
+      input.id,
+      input.userId,
+    )
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  return {
+    status: 'deleted',
+    id: input.id,
+    revisionDate: input.revisionDate,
+  }
+}
+
+function folderFromRow(row: FolderRow): FolderRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    name: row.name,
+    revisionDate: row.revisionDate,
+  }
+}

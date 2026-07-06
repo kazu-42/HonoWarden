@@ -101,10 +101,22 @@ Implemented:
 - empty personal vault sync response with profile metadata and empty folders, collections, ciphers, domains, policies, and sends
 - HTTP tests for successful empty sync and auth failure cases
 
+## Week 9 Increment
+
+Implemented:
+
+- owner-scoped folder repository for list, create, update, and soft delete
+- shared protected-route authentication helper for sync and folder routes
+- `POST /api/folders`
+- `PUT /api/folders/:id`
+- `DELETE /api/folders/:id`
+- folder inclusion in `GET /api/sync`
+- stable `400`, `401`, `404`, and `503` folder-route responses
+- HTTP tests for folder create, update, delete, invalid body, not found, and sync-with-folders
+
 Not implemented:
 
 - refresh token reuse alerting
-- folder CRUD
 - cipher CRUD
 - any storage of real password-vault data
 
