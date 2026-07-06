@@ -11,6 +11,13 @@ export default tseslint.config(
       'worker-configuration.d.ts',
     ],
   },
+  {
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+      },
+    },
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
 )

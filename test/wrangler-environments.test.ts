@@ -66,4 +66,10 @@ describe('wrangler deployment environments', () => {
       'false',
     )
   })
+
+  it('keeps audit logging opt-in across deployable environments', () => {
+    expect(config.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
+    expect(config.env.staging.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
+    expect(config.env.production.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
+  })
 })

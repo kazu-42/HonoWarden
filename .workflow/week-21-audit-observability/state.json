@@ -1,0 +1,39 @@
+{
+  "title": "Week 21 Audit Observability",
+  "slug": "week-21-audit-observability",
+  "created_at": "2026-07-06T13:38:00+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation, tests, docs, git push, and CI are within the sustained repo-development request. Enabling audit logs in live Cloudflare environments requires a separate gate."
+  },
+  "packets": [
+    {
+      "id": "01-audit-domain",
+      "status": "completed"
+    },
+    {
+      "id": "02-route-instrumentation",
+      "status": "completed"
+    },
+    {
+      "id": "03-docs-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed_local",
+    "checks": [
+      "pnpm test -- test/domain/audit.test.ts test/app.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-21-audit-observability"
+    ]
+  }
+}

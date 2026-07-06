@@ -6,6 +6,12 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
 import {
+  buildAuditEvent,
+  isAuditLoggingEnabled,
+  serializeAuditEvent,
+} from './domain/audit'
+import type { AuditEventName, AuditEventOutcome } from './domain/audit'
+import {
   buildBootstrapUserRecord,
   isBootstrapEnabled,
   resolveBootstrapAccount,
@@ -86,6 +92,20 @@ type Variables = {
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
+type AuditInput = {
+  name: AuditEventName
+  outcome: AuditEventOutcome
+  actor?: {
+    userId?: string | undefined
+    deviceIdentifier?: string | undefined
+  }
+  target?: {
+    type: 'account' | 'device' | 'session' | 'backup'
+    id?: string | undefined
+  }
+  context?: Record<string, string | number | boolean | null>
+}
+
 type AuthenticatedVaultRequest =
   | {
       ok: true
@@ -162,6 +182,22 @@ function isExtensionOrigin(origin: string): boolean {
     origin.startsWith('chrome-extension://') ||
     origin.startsWith('moz-extension://') ||
     origin.startsWith('safari-web-extension://')
+  )
+}
+
+function emitAuditEvent(c: AppContext, input: AuditInput): void {
+  if (!isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+    return
+  }
+
+  console.info(
+    serializeAuditEvent(
+      buildAuditEvent({
+        ...input,
+        requestId: c.get('requestId'),
+        occurredAt: new Date().toISOString(),
+      }),
+    ),
   )
 }
 
@@ -348,6 +384,15 @@ app.post('/api/accounts/bootstrap', async (c) => {
       )
     }
 
+    emitAuditEvent(c, {
+      name: 'admin.bootstrap',
+      outcome: 'success',
+      target: {
+        type: 'account',
+        id: result.userId,
+      },
+    })
+
     return c.json(
       {
         object: 'user',
@@ -454,6 +499,22 @@ app.post('/identity/connect/token', async (c) => {
       })
 
       if (rotation.status === 'reuse_detected') {
+        emitAuditEvent(c, {
+          name: 'auth.refresh_reuse',
+          outcome: 'failure',
+          actor: {
+            userId: session.userId,
+            deviceIdentifier: session.deviceIdentifier,
+          },
+          target: {
+            type: 'session',
+            id: session.tokenId,
+          },
+          context: {
+            reason: 'reuse_detected',
+          },
+        })
+
         return c.json(tokenErrorResponse(invalidGrantError()), 400)
       }
 
@@ -591,12 +652,36 @@ app.post('/identity/connect/token', async (c) => {
     )
 
     if (!user || user.disabledAt) {
+      emitAuditEvent(c, {
+        name: 'auth.password_grant',
+        outcome: 'failure',
+        actor: {
+          userId: user?.id,
+          deviceIdentifier: device.identifier,
+        },
+        context: {
+          reason: user?.disabledAt ? 'user_disabled' : 'invalid_grant',
+        },
+      })
+
       const failure = await recordFailedAttempt({ accountBucket: true })
 
       return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
     }
 
     const recordAccountFailure = async () => {
+      emitAuditEvent(c, {
+        name: 'auth.password_grant',
+        outcome: 'failure',
+        actor: {
+          userId: user.id,
+          deviceIdentifier: device.identifier,
+        },
+        context: {
+          reason: 'invalid_grant',
+        },
+      })
+
       const failure = await recordFailedAttempt({ accountBucket: true })
       const accountFailureBucket = failure.accountFailureBucket
 
@@ -1003,6 +1088,22 @@ app.post('/api/devices/:id/revoke', async (c) => {
     })
 
     if (result.status === 'not_found') {
+      emitAuditEvent(c, {
+        name: 'device.revoke',
+        outcome: 'failure',
+        actor: {
+          userId: auth.user.id,
+          deviceIdentifier: auth.deviceIdentifier,
+        },
+        target: {
+          type: 'device',
+          id: targetDeviceId,
+        },
+        context: {
+          reason: 'not_found',
+        },
+      })
+
       return c.json(
         apiError(
           c.get('requestId'),
@@ -1012,6 +1113,19 @@ app.post('/api/devices/:id/revoke', async (c) => {
         404,
       )
     }
+
+    emitAuditEvent(c, {
+      name: 'device.revoke',
+      outcome: 'success',
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'device',
+        id: result.deviceId,
+      },
+    })
 
     return c.json({
       object: 'deviceRevoke',

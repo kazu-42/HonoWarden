@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import app from '../src/app'
 import {
@@ -11,6 +11,10 @@ import { hotp } from '../src/domain/totp'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 
 describe('HonoWarden app', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('returns service metadata from the root route', async () => {
     const response = await app.request('/', {
       headers: {
@@ -634,6 +638,53 @@ describe('HonoWarden app', () => {
         Object: 'error',
       },
     })
+  })
+
+  it('emits a secret-safe audit event for failed password grants when enabled', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+          'X-Request-Id': 'audit-password-failure-request',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'wrong-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const event = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
+    expect(event).toMatchObject({
+      object: 'auditEvent',
+      schemaVersion: 1,
+      name: 'auth.password_grant',
+      outcome: 'failure',
+      requestId: 'audit-password-failure-request',
+      actor: {
+        userId: 'user-id',
+        deviceIdentifier: 'fixture-device',
+      },
+      context: {
+        reason: 'invalid_grant',
+      },
+    })
+    expect(JSON.stringify(event)).not.toContain('wrong-master-password-hash')
+    expect(JSON.stringify(event)).not.toContain('test-token-secret')
   })
 
   it('temporarily rate limits password grants from an over-limit client address', async () => {
@@ -1307,6 +1358,52 @@ describe('HonoWarden app', () => {
       id: targetDeviceId,
       revokedDate: expect.any(String),
     })
+  })
+
+  it('emits a secret-safe audit event for device revoke when enabled', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const targetDeviceId = buildDevicePathId('other-device')
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(targetDeviceId)}/revoke`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-device-revoke-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          deviceRevokeChanges: 1,
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const event = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
+    expect(event).toMatchObject({
+      object: 'auditEvent',
+      schemaVersion: 1,
+      name: 'device.revoke',
+      outcome: 'success',
+      requestId: 'audit-device-revoke-request',
+      actor: {
+        userId: 'user-id',
+        deviceIdentifier: 'fixture-device',
+      },
+      target: {
+        type: 'device',
+        id: targetDeviceId,
+      },
+    })
+    expect(JSON.stringify(event)).not.toContain(accessToken)
+    expect(JSON.stringify(event)).not.toContain('test-token-secret')
   })
 
   it('rejects revoking the current device', async () => {

@@ -70,6 +70,8 @@ Password grant token exchange requires `HONOWARDEN_TOKEN_SECRET`. Set it through
 
 TOTP setup and login require `HONOWARDEN_TOTP_SECRET` to wrap authenticator secrets before they are stored in D1. Set it through local environment or Wrangler secrets; do not put it in `wrangler.jsonc` vars.
 
+Audit JSON lines are opt-in through `HONOWARDEN_AUDIT_LOGS=true`. See [docs/operations/audit-events.md](docs/operations/audit-events.md) for the event contract and secret-safety rules.
+
 Backup and restore planning commands are available for operator drills:
 
 ```sh

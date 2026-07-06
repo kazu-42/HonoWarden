@@ -315,3 +315,29 @@ Not implemented:
 - server-side public backup API
 
 The project remains pre-alpha and must not be used to store real secrets.
+
+## Week 21 Increment
+
+Implemented:
+
+- secret-safe audit event domain model under `src/domain/audit.ts`
+- audit event serialization as structured JSON lines
+- sensitive audit context key filtering for password, token, secret, hash, key, encrypted payload, and body-like fields
+- opt-in audit logging through `HONOWARDEN_AUDIT_LOGS=true`
+- fail-closed Wrangler defaults with audit logging disabled in development, staging, and production configs
+- audit events for successful restricted account bootstrap
+- audit events for failed password-grant attempts that reach credential validation
+- audit event for refresh-token reuse detection
+- audit events for successful and not-found device revoke attempts
+- docs for audit event shape, implemented event names, non-goals, and operator notes
+- tests proving audit builder sanitization and route-level opt-in event emission
+
+Not implemented:
+
+- D1 audit-event persistence
+- external log sink integration
+- audit events for every vault CRUD route
+- live log-retention verification
+- automated backup audit ingestion beyond the Week 20 runbook evidence
+
+The project remains pre-alpha and must not be used to store real secrets.
