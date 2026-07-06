@@ -1,0 +1,97 @@
+{
+  "name": "cipher-create-login-success",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/ciphers"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "content-type": "application/json"
+    },
+    "body": {
+      "type": 1,
+      "folderId": "folder-id",
+      "favorite": true,
+      "name": "2.encrypted-cipher-name",
+      "notes": null,
+      "login": {
+        "username": "2.encrypted-username",
+        "password": "2.encrypted-password",
+        "uris": []
+      }
+    }
+  },
+  "response": {
+    "status": 201,
+    "body": {
+      "object": "cipher",
+      "id": "cipher-id",
+      "organizationId": null,
+      "folderId": "folder-id",
+      "type": 1,
+      "favorite": true,
+      "name": "2.encrypted-cipher-name",
+      "notes": null,
+      "login": {
+        "username": "2.encrypted-username",
+        "password": "2.encrypted-password",
+        "uris": []
+      },
+      "revisionDate": "2026-07-06T00:05:00.000Z",
+      "creationDate": "2026-07-06T00:05:00.000Z",
+      "deletedDate": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "cipher"
+    },
+    {
+      "path": "$.id",
+      "type": "string"
+    },
+    {
+      "path": "$.organizationId",
+      "type": "null"
+    },
+    {
+      "path": "$.folderId",
+      "type": "string",
+      "value": "folder-id"
+    },
+    {
+      "path": "$.type",
+      "type": "number",
+      "value": 1
+    },
+    {
+      "path": "$.favorite",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "path": "$.login.username",
+      "type": "string",
+      "value": "2.encrypted-username"
+    },
+    {
+      "path": "$.login.uris",
+      "type": "array"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string"
+    },
+    {
+      "path": "$.creationDate",
+      "type": "string"
+    },
+    {
+      "path": "$.deletedDate",
+      "type": "null"
+    }
+  ]
+}

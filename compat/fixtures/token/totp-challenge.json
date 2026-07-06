@@ -1,0 +1,68 @@
+{
+  "name": "token-totp-challenge",
+  "endpoint": {
+    "method": "POST",
+    "path": "/identity/connect/token"
+  },
+  "request": {
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded",
+      "device-identifier": "fixture-device"
+    },
+    "form": {
+      "grant_type": "password",
+      "username": "person@example.test",
+      "password": "synthetic-master-password-hash"
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "invalid_grant",
+      "ErrorModel": {
+        "Message": "TOTP verification is required.",
+        "Object": "error"
+      },
+      "TwoFactorToken": "synthetic-two-factor-token",
+      "TwoFactorProviders": [
+        {
+          "type": "totp"
+        }
+      ]
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.error",
+      "type": "string",
+      "value": "invalid_grant"
+    },
+    {
+      "path": "$.ErrorModel.Object",
+      "type": "string",
+      "value": "error"
+    },
+    {
+      "path": "$.TwoFactorToken",
+      "type": "string"
+    },
+    {
+      "path": "$.TwoFactorProviders",
+      "type": "array",
+      "length": 1
+    },
+    {
+      "path": "$.TwoFactorProviders.0.type",
+      "type": "string",
+      "value": "totp"
+    },
+    {
+      "path": "$.access_token",
+      "absent": true
+    },
+    {
+      "path": "$.refresh_token",
+      "absent": true
+    }
+  ]
+}

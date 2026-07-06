@@ -1,0 +1,129 @@
+{
+  "name": "sync-with-folder-and-cipher",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/sync"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "sync",
+      "Profile": {
+        "Id": "00000000-0000-4000-8000-000000000001",
+        "Name": "Fixture User",
+        "Email": "person@example.test",
+        "EmailVerified": true,
+        "Premium": false,
+        "PremiumFromOrganization": false,
+        "Culture": "en-US",
+        "TwoFactorEnabled": true,
+        "Key": "2.c3ludGhldGljLXVzZXIta2V5",
+        "AccountKeys": null,
+        "AvatarColor": "#3366cc",
+        "CreationDate": "2026-07-06T00:00:00.000Z",
+        "PrivateKey": null,
+        "SecurityStamp": "fixture-security-stamp",
+        "ForcePasswordReset": false,
+        "UsesKeyConnector": false,
+        "VerifyDevices": false,
+        "Organizations": [],
+        "OrganizationsNew": [],
+        "Providers": [],
+        "ProviderOrganizations": []
+      },
+      "Folders": [
+        {
+          "object": "folder",
+          "id": "folder-id",
+          "name": "2.encrypted-folder-name",
+          "revisionDate": "2026-07-06T00:03:00.000Z"
+        }
+      ],
+      "Collections": [],
+      "Ciphers": [
+        {
+          "object": "cipher",
+          "id": "cipher-id",
+          "organizationId": null,
+          "folderId": "folder-id",
+          "type": 1,
+          "favorite": true,
+          "name": "2.encrypted-cipher-name",
+          "notes": null,
+          "login": {
+            "username": "2.encrypted-username",
+            "password": "2.encrypted-password",
+            "uris": []
+          },
+          "revisionDate": "2026-07-06T00:05:00.000Z",
+          "creationDate": "2026-07-06T00:04:00.000Z",
+          "deletedDate": null
+        }
+      ],
+      "Domains": {
+        "EquivalentDomains": [],
+        "GlobalEquivalentDomains": []
+      },
+      "Policies": [],
+      "PoliciesNew": [],
+      "Sends": [],
+      "UserDecryption": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "sync"
+    },
+    {
+      "path": "$.Profile.TwoFactorEnabled",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "path": "$.Folders",
+      "type": "array",
+      "length": 1
+    },
+    {
+      "path": "$.Folders.0.object",
+      "type": "string",
+      "value": "folder"
+    },
+    {
+      "path": "$.Folders.0.name",
+      "type": "string",
+      "value": "2.encrypted-folder-name"
+    },
+    {
+      "path": "$.Ciphers",
+      "type": "array",
+      "length": 1
+    },
+    {
+      "path": "$.Ciphers.0.object",
+      "type": "string",
+      "value": "cipher"
+    },
+    {
+      "path": "$.Ciphers.0.folderId",
+      "type": "string",
+      "value": "folder-id"
+    },
+    {
+      "path": "$.Ciphers.0.login.username",
+      "type": "string",
+      "value": "2.encrypted-username"
+    },
+    {
+      "path": "$.Ciphers.0.deletedDate",
+      "type": "null"
+    }
+  ]
+}

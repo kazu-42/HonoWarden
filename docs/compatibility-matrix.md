@@ -4,6 +4,8 @@ Last release metadata check: 2026-07-06T11:35:37Z.
 
 This matrix records the exact upstream client versions currently tracked by HonoWarden. It is intentionally conservative: every row is marked `fixture_only` until a live client run is captured with request and response evidence. The structured source of truth is [`compat/client-matrix.json`](../compat/client-matrix.json).
 
+Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compat/fixture-flows.json). CI verifies that every `coveredFlows` value in the matrix maps to at least one fixture file.
+
 ## Current Matrix
 
 | Surface           | Version  | Build | Release Tag       | Release Published    | Verification | Known Issues                                                                                                                                                                                       |
@@ -26,3 +28,17 @@ This matrix records the exact upstream client versions currently tracked by Hono
 2. Record exact client version, build number where available, local server commit, test date, and known issues.
 3. Do not capture real secrets, vault exports, passwords, token values, or personal vault data.
 4. Keep unsupported feature behavior explicit; do not mark a client as broadly compatible when a required flow is untested.
+
+## Fixture-Covered Flows
+
+- `prelogin`
+- `password_grant`
+- `refresh_grant`
+- `empty_sync`
+- `sync_with_items`
+- `folder_crud`
+- `cipher_create`
+- `cipher_lifecycle`
+- `revision_conflict`
+- `device_revoke`
+- `totp_login`

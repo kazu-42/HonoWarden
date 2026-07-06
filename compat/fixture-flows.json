@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "flows": [
+    {
+      "id": "prelogin",
+      "fixtures": ["prelogin/pbkdf2.json"]
+    },
+    {
+      "id": "password_grant",
+      "fixtures": ["token/password-grant-success.json"]
+    },
+    {
+      "id": "refresh_grant",
+      "fixtures": ["token/refresh-grant-success.json"]
+    },
+    {
+      "id": "empty_sync",
+      "fixtures": ["sync/empty-personal-vault.json"]
+    },
+    {
+      "id": "folder_crud",
+      "fixtures": [
+        "folders/create-success.json",
+        "folders/update-success.json",
+        "folders/delete-success.json"
+      ]
+    },
+    {
+      "id": "cipher_create",
+      "fixtures": ["ciphers/create-login-success.json"]
+    },
+    {
+      "id": "cipher_lifecycle",
+      "fixtures": [
+        "ciphers/update-login-success.json",
+        "ciphers/trash-success.json",
+        "ciphers/restore-success.json",
+        "ciphers/delete-success.json"
+      ]
+    },
+    {
+      "id": "revision_conflict",
+      "fixtures": ["errors/revision-conflict.json"]
+    },
+    {
+      "id": "device_revoke",
+      "fixtures": ["devices/revoke-success.json"]
+    },
+    {
+      "id": "totp_login",
+      "fixtures": ["token/totp-challenge.json", "token/totp-login-success.json"]
+    },
+    {
+      "id": "sync_with_items",
+      "fixtures": ["sync/with-folder-and-cipher.json"]
+    }
+  ]
+}

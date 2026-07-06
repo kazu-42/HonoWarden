@@ -1,0 +1,36 @@
+{
+  "name": "cipher-delete-success",
+  "endpoint": {
+    "method": "DELETE",
+    "path": "/api/ciphers/cipher-id/delete"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "cipherDeletion",
+      "id": "cipher-id",
+      "revisionDate": "2026-07-06T00:09:00.000Z"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "cipherDeletion"
+    },
+    {
+      "path": "$.id",
+      "type": "string",
+      "value": "cipher-id"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string"
+    }
+  ]
+}

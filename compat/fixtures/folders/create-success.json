@@ -1,0 +1,45 @@
+{
+  "name": "folder-create-success",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/folders"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "content-type": "application/json"
+    },
+    "body": {
+      "name": "2.encrypted-folder-name"
+    }
+  },
+  "response": {
+    "status": 201,
+    "body": {
+      "object": "folder",
+      "id": "folder-id",
+      "name": "2.encrypted-folder-name",
+      "revisionDate": "2026-07-06T00:03:00.000Z"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "folder"
+    },
+    {
+      "path": "$.id",
+      "type": "string"
+    },
+    {
+      "path": "$.name",
+      "type": "string",
+      "value": "2.encrypted-folder-name"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string"
+    }
+  ]
+}

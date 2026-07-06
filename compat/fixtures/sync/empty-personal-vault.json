@@ -69,15 +69,18 @@
     },
     {
       "path": "$.Folders",
-      "type": "array"
+      "type": "array",
+      "length": 0
     },
     {
       "path": "$.Collections",
-      "type": "array"
+      "type": "array",
+      "length": 0
     },
     {
       "path": "$.Ciphers",
-      "type": "array"
+      "type": "array",
+      "length": 0
     },
     {
       "path": "$.Domains.EquivalentDomains",
@@ -85,11 +88,13 @@
     },
     {
       "path": "$.Policies",
-      "type": "array"
+      "type": "array",
+      "length": 0
     },
     {
       "path": "$.Sends",
-      "type": "array"
+      "type": "array",
+      "length": 0
     }
   ]
 }

@@ -340,4 +340,26 @@ Not implemented:
 - live log-retention verification
 - automated backup audit ingestion beyond the Week 20 runbook evidence
 
+## Week 22 Increment
+
+Implemented:
+
+- fixture-flow manifest under `compat/fixture-flows.json`
+- matrix validation that every declared covered flow maps to at least one fixture file
+- compatibility fixtures for folder create, update, and delete
+- compatibility fixtures for login cipher create, update, trash, restore, and permanent delete
+- compatibility fixtures for stale revision conflict, device revoke, TOTP login challenge, and TOTP login success
+- sync fixture with one folder and one active cipher in addition to the empty-vault sync fixture
+- fixture assertion support for array indexes, absent fields, array length checks, minimum lengths, and `notValue`
+- refresh rotation fixture assertion that the returned refresh token differs from the presented token
+- docs for the fixture manifest and current fixture-covered flow list
+- Week 22 dynamic workflow artifacts
+
+Not implemented:
+
+- route-executed fixture replay for every compatibility fixture
+- live client binary evidence for the tracked versions
+- sync of trashed cipher tombstones in `/api/sync`
+- promotion beyond `fixture_only`
+
 The project remains pre-alpha and must not be used to store real secrets.

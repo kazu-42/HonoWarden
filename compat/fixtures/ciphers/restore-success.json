@@ -1,0 +1,41 @@
+{
+  "name": "cipher-restore-success",
+  "endpoint": {
+    "method": "PUT",
+    "path": "/api/ciphers/cipher-id/restore"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "cipher",
+      "id": "cipher-id",
+      "revisionDate": "2026-07-06T00:08:00.000Z",
+      "deletedDate": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "cipher"
+    },
+    {
+      "path": "$.id",
+      "type": "string",
+      "value": "cipher-id"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string"
+    },
+    {
+      "path": "$.deletedDate",
+      "type": "null"
+    }
+  ]
+}

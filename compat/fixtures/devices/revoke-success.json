@@ -1,0 +1,36 @@
+{
+  "name": "device-revoke-success",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/devices/user-id%3Aother-device/revoke"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "deviceRevoke",
+      "id": "user-id:other-device",
+      "revokedDate": "2026-07-06T00:10:00.000Z"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "deviceRevoke"
+    },
+    {
+      "path": "$.id",
+      "type": "string",
+      "value": "user-id:other-device"
+    },
+    {
+      "path": "$.revokedDate",
+      "type": "string"
+    }
+  ]
+}

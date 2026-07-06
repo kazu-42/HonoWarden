@@ -1,23 +1,28 @@
 {
-  "name": "token-refresh-grant-success",
+  "name": "token-totp-login-success",
   "endpoint": {
     "method": "POST",
     "path": "/identity/connect/token"
   },
   "request": {
     "headers": {
-      "content-type": "application/x-www-form-urlencoded"
+      "content-type": "application/x-www-form-urlencoded",
+      "device-identifier": "fixture-device"
     },
     "form": {
-      "grant_type": "refresh_token",
-      "refresh_token": "synthetic-refresh-token"
+      "grant_type": "password",
+      "username": "person@example.test",
+      "password": "synthetic-master-password-hash",
+      "twoFactorToken": "synthetic-two-factor-token",
+      "twoFactorProvider": "totp",
+      "twoFactorCode": "123456"
     }
   },
   "response": {
     "status": 200,
     "body": {
       "access_token": "synthetic-access-token",
-      "refresh_token": "synthetic-next-refresh-token",
+      "refresh_token": "synthetic-refresh-token",
       "token_type": "Bearer",
       "expires_in": 3600,
       "Key": "2.c3ludGhldGljLXVzZXIta2V5",
@@ -41,8 +46,7 @@
     },
     {
       "path": "$.refresh_token",
-      "type": "string",
-      "notValue": "synthetic-refresh-token"
+      "type": "string"
     },
     {
       "path": "$.token_type",
@@ -50,13 +54,8 @@
       "value": "Bearer"
     },
     {
-      "path": "$.expires_in",
-      "type": "number"
-    },
-    {
-      "path": "$.Kdf",
-      "type": "number",
-      "value": 0
+      "path": "$.TwoFactorToken",
+      "type": "null"
     },
     {
       "path": "$.KdfIterations",

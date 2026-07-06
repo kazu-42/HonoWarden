@@ -1,0 +1,52 @@
+{
+  "name": "revision-conflict",
+  "endpoint": {
+    "method": "PUT",
+    "path": "/api/ciphers/cipher-id"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "content-type": "application/json",
+      "x-request-id": "cipher-update-conflict-request"
+    },
+    "body": {
+      "type": 1,
+      "folderId": null,
+      "favorite": true,
+      "name": "2.encrypted-cipher-name",
+      "login": {
+        "username": "2.encrypted-username",
+        "password": "2.encrypted-password",
+        "uris": []
+      },
+      "revisionDate": "2026-07-06T00:04:00.000Z"
+    }
+  },
+  "response": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "revision_conflict",
+        "message": "The resource was modified by another client."
+      },
+      "requestId": "cipher-update-conflict-request"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.error.code",
+      "type": "string",
+      "value": "revision_conflict"
+    },
+    {
+      "path": "$.error.message",
+      "type": "string"
+    },
+    {
+      "path": "$.requestId",
+      "type": "string",
+      "value": "cipher-update-conflict-request"
+    }
+  ]
+}

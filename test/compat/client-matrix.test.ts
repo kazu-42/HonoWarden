@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -21,8 +22,24 @@ type ClientMatrixEntry = {
   knownIssues: string[]
 }
 
+type FixtureFlowManifest = {
+  schemaVersion: number
+  flows: FixtureFlow[]
+}
+
+type FixtureFlow = {
+  id: string
+  fixtures: string[]
+}
+
 const matrixPath = fileURLToPath(
   new URL('../../compat/client-matrix.json', import.meta.url).toString(),
+)
+const fixtureFlowsPath = fileURLToPath(
+  new URL('../../compat/fixture-flows.json', import.meta.url).toString(),
+)
+const fixturesRoot = fileURLToPath(
+  new URL('../../compat/fixtures', import.meta.url).toString(),
 )
 
 const requiredSurfaces = [
@@ -44,10 +61,12 @@ const requiredFlows = [
   'revision_conflict',
   'device_revoke',
   'totp_login',
+  'sync_with_items',
 ] as const
 
 describe('client compatibility matrix', () => {
   const matrix = readMatrix()
+  const fixtureFlows = readFixtureFlows()
 
   it('records release metadata provenance', () => {
     expect(matrix.schemaVersion).toBe(1)
@@ -81,6 +100,29 @@ describe('client compatibility matrix', () => {
     }
   })
 
+  it('maps every covered flow to existing fixture files', () => {
+    expect(fixtureFlows.schemaVersion).toBe(1)
+
+    const manifestFlowIds = fixtureFlows.flows.map((flow) => flow.id)
+    expect(new Set(manifestFlowIds)).toEqual(new Set(requiredFlows))
+
+    for (const flow of fixtureFlows.flows) {
+      expect(flow.fixtures.length).toBeGreaterThan(0)
+
+      for (const fixturePath of flow.fixtures) {
+        expect(fixturePath).toMatch(/^[A-Za-z0-9/_-]+\.json$/)
+        expect(
+          existsSync(join(fixturesRoot, fixturePath)),
+          `${flow.id} missing ${fixturePath}`,
+        ).toBe(true)
+      }
+    }
+
+    for (const entry of matrix.entries) {
+      expect(new Set(entry.coveredFlows)).toEqual(new Set(manifestFlowIds))
+    }
+  })
+
   it('keeps mobile build numbers explicit', () => {
     const mobileEntries = matrix.entries.filter((entry) =>
       entry.surface.startsWith('mobile_'),
@@ -95,4 +137,10 @@ describe('client compatibility matrix', () => {
 
 function readMatrix(): ClientMatrix {
   return JSON.parse(readFileSync(matrixPath, 'utf8')) as ClientMatrix
+}
+
+function readFixtureFlows(): FixtureFlowManifest {
+  return JSON.parse(
+    readFileSync(fixtureFlowsPath, 'utf8'),
+  ) as FixtureFlowManifest
 }

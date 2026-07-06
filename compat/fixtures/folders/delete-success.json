@@ -1,0 +1,36 @@
+{
+  "name": "folder-delete-success",
+  "endpoint": {
+    "method": "DELETE",
+    "path": "/api/folders/folder-id"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "folderDeletion",
+      "id": "folder-id",
+      "revisionDate": "2026-07-06T00:05:00.000Z"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "folderDeletion"
+    },
+    {
+      "path": "$.id",
+      "type": "string",
+      "value": "folder-id"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string"
+    }
+  ]
+}

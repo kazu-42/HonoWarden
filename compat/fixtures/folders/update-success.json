@@ -1,0 +1,47 @@
+{
+  "name": "folder-update-success",
+  "endpoint": {
+    "method": "PUT",
+    "path": "/api/folders/folder-id"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "content-type": "application/json"
+    },
+    "body": {
+      "name": "2.updated-encrypted-folder-name",
+      "revisionDate": "2026-07-06T00:00:00.000Z"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "folder",
+      "id": "folder-id",
+      "name": "2.updated-encrypted-folder-name",
+      "revisionDate": "2026-07-06T00:04:00.000Z"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "folder"
+    },
+    {
+      "path": "$.id",
+      "type": "string",
+      "value": "folder-id"
+    },
+    {
+      "path": "$.name",
+      "type": "string",
+      "value": "2.updated-encrypted-folder-name"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string"
+    }
+  ]
+}
