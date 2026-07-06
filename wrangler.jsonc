@@ -26,4 +26,44 @@
       "bucket_name": "honowarden-vault-objects",
     },
   ],
+  "env": {
+    "staging": {
+      "name": "honowarden-staging",
+      "vars": {
+        "HONOWARDEN_ENV": "staging",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "honowarden-staging",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "VAULT_OBJECTS",
+          "bucket_name": "honowarden-staging-vault-objects",
+        },
+      ],
+    },
+    "production": {
+      "name": "honowarden",
+      "vars": {
+        "HONOWARDEN_ENV": "production",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "honowarden",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "VAULT_OBJECTS",
+          "bucket_name": "honowarden-vault-objects",
+        },
+      ],
+    },
+  },
 }

@@ -1,11 +1,83 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { requestId } from 'hono/request-id'
+import { secureHeaders } from 'hono/secure-headers'
 
+import { buildServerConfig } from './bitwarden/config'
 import type { Bindings } from './bindings'
+
+type Variables = {
+  requestId: string
+}
 
 const serviceDescription =
   'A minimal, API-only Bitwarden-compatible server for Cloudflare Workers, built with Hono, D1, and R2.'
 
-const app = new Hono<{ Bindings: Bindings }>()
+const defaultCorsHeaders = [
+  'Accept',
+  'Authorization',
+  'Bitwarden-Client-Name',
+  'Bitwarden-Client-Version',
+  'Bitwarden-Package-Type',
+  'Content-Type',
+  'Device-Identifier',
+  'Device-Name',
+  'Device-Type',
+  'Is-Prerelease',
+  'X-Device-Identifier',
+  'X-Device-Name',
+  'X-Request-Email',
+  'X-Request-Id',
+]
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+app.use(
+  '*',
+  cors({
+    origin: (origin, c) => {
+      if (!origin) {
+        return ''
+      }
+
+      const requestOrigin = new URL(c.req.url).origin
+      if (origin === requestOrigin || isExtensionOrigin(origin)) {
+        return origin
+      }
+
+      return ''
+    },
+    allowHeaders: defaultCorsHeaders,
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    exposeHeaders: ['X-Request-Id'],
+    maxAge: 86400,
+    credentials: true,
+  }),
+)
+
+app.use('*', secureHeaders())
+app.use('*', requestId())
+app.use('*', async (c, next) => {
+  await next()
+  c.res.headers.set('X-Request-Id', c.get('requestId'))
+})
+
+function isExtensionOrigin(origin: string): boolean {
+  return (
+    origin.startsWith('chrome-extension://') ||
+    origin.startsWith('moz-extension://') ||
+    origin.startsWith('safari-web-extension://')
+  )
+}
+
+function buildHealthResponse(requestIdValue: string) {
+  return {
+    status: 'ok',
+    service: 'honowarden',
+    version: '0.0.0-alpha',
+    requestId: requestIdValue,
+  }
+}
 
 app.get('/', (c) => {
   return c.json({
@@ -13,16 +85,31 @@ app.get('/', (c) => {
     description: serviceDescription,
     status: 'pre-alpha',
     links: {
-      health: '/healthz',
+      config: '/api/config',
+      health: '/health',
     },
+    requestId: c.get('requestId'),
   })
 })
 
+app.get('/health', (c) => {
+  return c.json(buildHealthResponse(c.get('requestId')))
+})
+
 app.get('/healthz', (c) => {
-  return c.json({
-    status: 'ok',
-    service: 'honowarden',
-  })
+  return c.json(buildHealthResponse(c.get('requestId')))
+})
+
+app.get('/api/config', (c) => {
+  const origin = new URL(c.req.url).origin
+
+  return c.json(buildServerConfig(origin))
+})
+
+app.get('/config', (c) => {
+  const origin = new URL(c.req.url).origin
+
+  return c.json(buildServerConfig(origin))
 })
 
 app.notFound((c) => {
@@ -32,6 +119,7 @@ app.notFound((c) => {
         code: 'not_found',
         message: 'The requested resource was not found.',
       },
+      requestId: c.get('requestId'),
     },
     404,
   )

@@ -71,6 +71,8 @@ pnpm wrangler r2 bucket create honowarden-vault-objects
 
 Compatibility work is tracked in [docs/compatibility.md](docs/compatibility.md). HonoWarden aims to be protocol-compatible where needed by official Bitwarden clients, not feature-equivalent with Bitwarden Server.
 
+The project roadmap is tracked in [ROADMAP.md](ROADMAP.md). The development approach is incremental: every week should end with a deployable build that is more useful than the week before.
+
 Bitwarden is a trademark of Bitwarden, Inc. HonoWarden is an independent project and is not affiliated with, sponsored by, or endorsed by Bitwarden, Inc.
 
 ## Security
