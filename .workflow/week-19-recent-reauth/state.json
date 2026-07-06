@@ -32,7 +32,8 @@
       "pnpm compat:test",
       "pnpm format",
       "repository brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-19-recent-reauth"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-19-recent-reauth",
+      "GitHub Actions CI run 28793695973"
     ]
   }
 }
