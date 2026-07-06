@@ -21,6 +21,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "cf:typegen": "wrangler types",
+    "compat:test": "vitest run test/compat",
     "db:migrate:local": "wrangler d1 migrations apply honowarden --local",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",

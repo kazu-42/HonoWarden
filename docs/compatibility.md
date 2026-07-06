@@ -27,5 +27,7 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - Preserve end-to-end encryption boundaries; the server must not need plaintext vault secrets.
 - Keep unsupported surfaces explicit with typed errors instead of silent partial behavior.
 - Add compatibility tests before implementing each API surface.
+- Keep executable JSON fixtures for client-facing response shapes under `compat/fixtures`.
+- Treat fixture regressions as compatibility regressions once a route has been implemented.
 
 This project is independent and not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.

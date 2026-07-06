@@ -35,6 +35,15 @@ Implemented:
 - `GET /health/db` for D1 availability, schema version, and required-table checks
 - unit tests for migration shape, database health states, and the HTTP health route
 
+## Week 3 Increment
+
+Implemented:
+
+- executable compatibility fixture directory under `compat/fixtures`
+- fixture examples for prelogin KDF discovery, password grant token success, and empty vault sync
+- `pnpm compat:test`
+- CI coverage for compatibility fixtures
+
 Not implemented:
 
 - upstream account bootstrap

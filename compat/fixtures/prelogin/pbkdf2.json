@@ -1,0 +1,44 @@
+{
+  "name": "prelogin-pbkdf2",
+  "endpoint": {
+    "method": "POST",
+    "path": "/identity/accounts/prelogin"
+  },
+  "request": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "email": "person@example.test"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "kdf": 0,
+      "kdfIterations": 600000,
+      "kdfMemory": null,
+      "kdfParallelism": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.kdf",
+      "type": "number",
+      "value": 0
+    },
+    {
+      "path": "$.kdfIterations",
+      "type": "number",
+      "value": 600000
+    },
+    {
+      "path": "$.kdfMemory",
+      "type": "null"
+    },
+    {
+      "path": "$.kdfParallelism",
+      "type": "null"
+    }
+  ]
+}

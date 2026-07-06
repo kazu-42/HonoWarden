@@ -1,0 +1,95 @@
+{
+  "name": "sync-empty-personal-vault",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/sync"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "sync",
+      "Profile": {
+        "Id": "00000000-0000-4000-8000-000000000001",
+        "Name": "Fixture User",
+        "Email": "person@example.test",
+        "EmailVerified": true,
+        "Premium": false,
+        "PremiumFromOrganization": false,
+        "Culture": "en-US",
+        "TwoFactorEnabled": false,
+        "Key": "2.c3ludGhldGljLXVzZXIta2V5",
+        "AccountKeys": null,
+        "AvatarColor": "#3366cc",
+        "CreationDate": "2026-07-06T00:00:00.000Z",
+        "PrivateKey": null,
+        "SecurityStamp": "fixture-security-stamp",
+        "ForcePasswordReset": false,
+        "UsesKeyConnector": false,
+        "VerifyDevices": false,
+        "Organizations": [],
+        "OrganizationsNew": [],
+        "Providers": [],
+        "ProviderOrganizations": []
+      },
+      "Folders": [],
+      "Collections": [],
+      "Ciphers": [],
+      "Domains": {
+        "EquivalentDomains": [],
+        "GlobalEquivalentDomains": []
+      },
+      "Policies": [],
+      "PoliciesNew": [],
+      "Sends": [],
+      "UserDecryption": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "sync"
+    },
+    {
+      "path": "$.Profile.Id",
+      "type": "string"
+    },
+    {
+      "path": "$.Profile.Email",
+      "type": "string"
+    },
+    {
+      "path": "$.Profile.Key",
+      "type": "string"
+    },
+    {
+      "path": "$.Folders",
+      "type": "array"
+    },
+    {
+      "path": "$.Collections",
+      "type": "array"
+    },
+    {
+      "path": "$.Ciphers",
+      "type": "array"
+    },
+    {
+      "path": "$.Domains.EquivalentDomains",
+      "type": "array"
+    },
+    {
+      "path": "$.Policies",
+      "type": "array"
+    },
+    {
+      "path": "$.Sends",
+      "type": "array"
+    }
+  ]
+}
