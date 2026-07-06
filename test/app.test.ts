@@ -1087,6 +1087,269 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('updates a cipher for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          name: '2.updated-encrypted-cipher-name',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherUpdateChanges: 1,
+          folder: {
+            id: 'folder-id',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'cipher-id',
+      folderId: 'folder-id',
+      type: 1,
+      favorite: true,
+      name: '2.updated-encrypted-cipher-name',
+      revisionDate: expect.any(String),
+      creationDate: expect.any(String),
+      deletedDate: null,
+    })
+  })
+
+  it('rejects malformed cipher update requests', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'cipher-update-invalid-body-request',
+        },
+        body: JSON.stringify({
+          type: 999,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'cipher-update-invalid-body-request',
+    })
+  })
+
+  it('rejects cipher update when folder does not belong to the user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cipherCreateBody()),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folder: null,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'cipher_folder_not_found',
+      },
+    })
+  })
+
+  it('returns not found when updating a missing, deleted, or cross-user cipher', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          folderId: null,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'cipher_not_found',
+      },
+    })
+  })
+
+  it('trashes a cipher for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherSoftDeleteChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'cipher-id',
+      revisionDate: expect.any(String),
+      deletedDate: expect.any(String),
+    })
+  })
+
+  it('restores a trashed cipher for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id/restore',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherRestoreChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'cipher-id',
+      revisionDate: expect.any(String),
+      deletedDate: null,
+    })
+  })
+
+  it('permanently deletes a cipher for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id/delete',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherPermanentDeleteChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipherDeletion',
+      id: 'cipher-id',
+      revisionDate: expect.any(String),
+    })
+  })
+
+  it('returns not found for missing cipher lifecycle mutations', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const [method, path, options] of [
+      ['DELETE', '/api/ciphers/cipher-id', { cipherSoftDeleteChanges: 0 }],
+      ['PUT', '/api/ciphers/cipher-id/restore', { cipherRestoreChanges: 0 }],
+      [
+        'DELETE',
+        '/api/ciphers/cipher-id/delete',
+        { cipherPermanentDeleteChanges: 0 },
+      ],
+    ] as const) {
+      const response = await app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ...options,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'cipher_not_found',
+        },
+      })
+    }
+  })
+
   it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 

@@ -127,10 +127,24 @@ Implemented:
 - stable `400`, `401`, `404`, and `503` cipher-create responses
 - HTTP tests for cipher create, sync-with-ciphers, invalid body, and missing folder
 
+## Week 11 Increment
+
+Implemented:
+
+- owner-scoped cipher update repository operation
+- owner-scoped cipher trash, restore, and permanent delete repository operations
+- `PUT /api/ciphers/:id`
+- `DELETE /api/ciphers/:id`
+- `PUT /api/ciphers/:id/restore`
+- `DELETE /api/ciphers/:id/delete`
+- folder ownership check for cipher update
+- stable `400`, `401`, `404`, and `503` cipher lifecycle responses
+- HTTP tests for cipher update, trash, restore, permanent delete, invalid body, missing folder, and not found
+
 Not implemented:
 
 - refresh token reuse alerting
-- cipher update, delete, restore, and permanent delete
+- cipher revision conflict handling
 - any storage of real password-vault data
 
 The project remains pre-alpha and must not be used to store real secrets.

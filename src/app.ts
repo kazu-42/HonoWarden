@@ -29,6 +29,10 @@ import { buildServerConfig } from './protocol/config'
 import {
   createCipher,
   listCiphersByUser,
+  permanentlyDeleteCipher,
+  restoreCipher,
+  softDeleteCipher,
+  updateCipher,
 } from './repositories/cipher-repository'
 import type { CipherRecord } from './repositories/cipher-repository'
 import {
@@ -748,6 +752,185 @@ app.post('/api/ciphers', async (c) => {
   }
 })
 
+app.put('/api/ciphers/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherRequest = parseCipherCreateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!cipherRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const now = new Date().toISOString()
+
+  try {
+    if (cipherRequest.cipher.folderId) {
+      const folderExists = await folderBelongsToUser(c.env.DB, {
+        folderId: cipherRequest.cipher.folderId,
+        userId: auth.user.id,
+      })
+
+      if (!folderExists) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'cipher_folder_not_found',
+            'Cipher folder was not found.',
+          ),
+          404,
+        )
+      }
+    }
+
+    const cipher = await updateCipher(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+      folderId: cipherRequest.cipher.folderId,
+      type: cipherRequest.cipher.type,
+      favorite: cipherRequest.cipher.favorite,
+      encryptedJson: cipherRequest.cipher.encryptedJson,
+      revisionDate: now,
+      createdAt: now,
+    })
+
+    if (!cipher) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json(buildCipherResponse(cipher))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher update failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.delete('/api/ciphers/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const now = new Date().toISOString()
+
+  try {
+    const result = await softDeleteCipher(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+      deletedAt: now,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json({
+      object: 'cipher',
+      id: result.id,
+      revisionDate: result.revisionDate,
+      deletedDate: result.deletedAt,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher delete failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.put('/api/ciphers/:id/restore', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const now = new Date().toISOString()
+
+  try {
+    const result = await restoreCipher(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+      revisionDate: now,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json({
+      object: 'cipher',
+      id: result.id,
+      revisionDate: result.revisionDate,
+      deletedDate: null,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher restore failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.delete('/api/ciphers/:id/delete', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const now = new Date().toISOString()
+
+  try {
+    const result = await permanentlyDeleteCipher(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+      revisionDate: now,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json({
+      object: 'cipherDeletion',
+      id: result.id,
+      revisionDate: result.revisionDate,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher delete failed.',
+      ),
+      503,
+    )
+  }
+})
+
 app.notFound((c) => {
   return c.json(
     {
@@ -858,6 +1041,7 @@ function apiError(
   requestIdValue: string,
   code:
     | 'cipher_folder_not_found'
+    | 'cipher_not_found'
     | 'database_unavailable'
     | 'folder_not_found'
     | 'invalid_request'
@@ -873,6 +1057,10 @@ function apiError(
     },
     requestId: requestIdValue,
   }
+}
+
+function cipherNotFoundError(requestIdValue: string) {
+  return apiError(requestIdValue, 'cipher_not_found', 'Cipher was not found.')
 }
 
 async function authenticateVaultRequest(

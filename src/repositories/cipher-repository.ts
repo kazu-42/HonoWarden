@@ -11,6 +11,55 @@ export type CipherRecord = {
 
 export type CipherCreateInput = CipherRecord
 
+export type CipherDeleteInput = {
+  id: string
+  userId: string
+  deletedAt: string
+}
+
+export type CipherRestoreInput = {
+  id: string
+  userId: string
+  revisionDate: string
+}
+
+export type CipherPermanentDeleteInput = {
+  id: string
+  userId: string
+  revisionDate: string
+}
+
+export type CipherSoftDeleteResult =
+  | {
+      status: 'deleted'
+      id: string
+      revisionDate: string
+      deletedAt: string
+    }
+  | {
+      status: 'not_found'
+    }
+
+export type CipherRestoreResult =
+  | {
+      status: 'restored'
+      id: string
+      revisionDate: string
+    }
+  | {
+      status: 'not_found'
+    }
+
+export type CipherPermanentDeleteResult =
+  | {
+      status: 'deleted'
+      id: string
+      revisionDate: string
+    }
+  | {
+      status: 'not_found'
+    }
+
 type CipherDatabase = Pick<D1Database, 'prepare'>
 
 type CipherRow = {
@@ -86,6 +135,139 @@ export async function createCipher(
     .run()
 
   return input
+}
+
+export async function updateCipher(
+  database: CipherDatabase,
+  input: CipherCreateInput,
+): Promise<CipherRecord | null> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE ciphers
+        SET
+          folder_id = ?,
+          type = ?,
+          favorite = ?,
+          encrypted_json = ?,
+          revision_date = ?,
+          updated_at = ?
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+      `,
+    )
+    .bind(
+      input.folderId,
+      input.type,
+      input.favorite ? 1 : 0,
+      input.encryptedJson,
+      input.revisionDate,
+      input.revisionDate,
+      input.id,
+      input.userId,
+    )
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return null
+  }
+
+  return input
+}
+
+export async function softDeleteCipher(
+  database: CipherDatabase,
+  input: CipherDeleteInput,
+): Promise<CipherSoftDeleteResult> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE ciphers
+        SET
+          deleted_at = ?,
+          revision_date = ?,
+          updated_at = ?
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+      `,
+    )
+    .bind(
+      input.deletedAt,
+      input.deletedAt,
+      input.deletedAt,
+      input.id,
+      input.userId,
+    )
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  return {
+    status: 'deleted',
+    id: input.id,
+    revisionDate: input.deletedAt,
+    deletedAt: input.deletedAt,
+  }
+}
+
+export async function restoreCipher(
+  database: CipherDatabase,
+  input: CipherRestoreInput,
+): Promise<CipherRestoreResult> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE ciphers
+        SET
+          deleted_at = NULL,
+          revision_date = ?,
+          updated_at = ?
+        WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL
+      `,
+    )
+    .bind(input.revisionDate, input.revisionDate, input.id, input.userId)
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  return {
+    status: 'restored',
+    id: input.id,
+    revisionDate: input.revisionDate,
+  }
+}
+
+export async function permanentlyDeleteCipher(
+  database: CipherDatabase,
+  input: CipherPermanentDeleteInput,
+): Promise<CipherPermanentDeleteResult> {
+  const result = await database
+    .prepare(
+      `
+        DELETE FROM ciphers
+        WHERE id = ? AND user_id = ?
+      `,
+    )
+    .bind(input.id, input.userId)
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  return {
+    status: 'deleted',
+    id: input.id,
+    revisionDate: input.revisionDate,
+  }
 }
 
 function cipherFromRow(row: CipherRow): CipherRecord {

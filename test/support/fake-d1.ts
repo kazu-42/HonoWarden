@@ -11,6 +11,10 @@ const fakeMeta = {
 type FakeD1DatabaseOptions = {
   authUser?: Record<string, unknown> | null
   cipherInsertChanges?: number
+  cipherPermanentDeleteChanges?: number
+  cipherRestoreChanges?: number
+  cipherSoftDeleteChanges?: number
+  cipherUpdateChanges?: number
   ciphers?: Record<string, unknown>[]
   folder?: Record<string, unknown> | null
   folderDeleteChanges?: number
@@ -115,6 +119,36 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.cipherInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+ciphers/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.cipherPermanentDeleteChanges ?? 1,
+            },
+          }
+        }
+
+        if (/UPDATE\s+ciphers/.test(query)) {
+          let changes = options.cipherUpdateChanges ?? 1
+
+          if (query.includes('deleted_at = NULL')) {
+            changes = options.cipherRestoreChanges ?? 1
+          } else if (query.includes('deleted_at = ?')) {
+            changes = options.cipherSoftDeleteChanges ?? 1
+          }
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes,
             },
           }
         }
