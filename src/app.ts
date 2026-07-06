@@ -20,14 +20,16 @@ import {
   signAccessToken,
   tokenErrorResponse,
   tokenRequestError,
+  verifyAccessToken,
   verifyPresentedPasswordHash,
 } from './domain/tokens'
 import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
 import {
   createPasswordGrantSession,
-  findRefreshTokenSessionByHash,
   findAuthUserByEmail,
+  findAuthUserById,
+  findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
   rotateRefreshToken,
 } from './repositories/auth-repository'
@@ -494,6 +496,78 @@ app.post('/identity/connect/token', async (c) => {
   }
 })
 
+app.get('/api/sync', async (c) => {
+  const tokenSecret = c.env?.HONOWARDEN_TOKEN_SECRET
+  if (!tokenSecret) {
+    return c.json(
+      {
+        error: {
+          code: 'server_misconfigured',
+          message: 'Vault sync is not configured.',
+        },
+        requestId: c.get('requestId'),
+      },
+      503,
+    )
+  }
+
+  const accessToken = readBearerToken(c.req.header('Authorization'))
+  if (!accessToken) {
+    return c.json(
+      syncAuthError(
+        c.get('requestId'),
+        'missing_token',
+        'Bearer authorization is required.',
+      ),
+      401,
+    )
+  }
+
+  const verification = await verifyAccessToken(tokenSecret, accessToken)
+  if (!verification.ok) {
+    return c.json(
+      syncAuthError(
+        c.get('requestId'),
+        'invalid_token',
+        'The access token is invalid.',
+      ),
+      401,
+    )
+  }
+
+  try {
+    const user = await findAuthUserById(c.env.DB, verification.claims.sub)
+
+    if (
+      !user ||
+      user.disabledAt ||
+      user.securityStamp !== verification.claims.securityStamp
+    ) {
+      return c.json(
+        syncAuthError(
+          c.get('requestId'),
+          'invalid_token',
+          'The access token is invalid.',
+        ),
+        401,
+      )
+    }
+
+    return c.json(buildEmptySyncResponse(user))
+  } catch {
+    return c.json(
+      {
+        error: {
+          code: 'database_unavailable',
+          message: 'Vault sync failed.',
+        },
+        requestId: c.get('requestId'),
+      },
+      503,
+    )
+  }
+})
+
 app.notFound((c) => {
   return c.json(
     {
@@ -532,6 +606,60 @@ function buildTokenResponse(
   }
 }
 
+function buildEmptySyncResponse(user: AuthUserRecord) {
+  return {
+    object: 'sync',
+    Profile: {
+      Id: user.id,
+      Name: user.displayName ?? user.emailNormalized,
+      Email: user.emailNormalized,
+      EmailVerified: true,
+      Premium: false,
+      PremiumFromOrganization: false,
+      Culture: 'en-US',
+      TwoFactorEnabled: false,
+      Key: user.userKey,
+      AccountKeys: null,
+      AvatarColor: '#3366cc',
+      CreationDate: user.createdAt,
+      PrivateKey: user.privateKey,
+      SecurityStamp: user.securityStamp,
+      ForcePasswordReset: false,
+      UsesKeyConnector: false,
+      VerifyDevices: false,
+      Organizations: [],
+      OrganizationsNew: [],
+      Providers: [],
+      ProviderOrganizations: [],
+    },
+    Folders: [],
+    Collections: [],
+    Ciphers: [],
+    Domains: {
+      EquivalentDomains: [],
+      GlobalEquivalentDomains: [],
+    },
+    Policies: [],
+    PoliciesNew: [],
+    Sends: [],
+    UserDecryption: null,
+  }
+}
+
+function syncAuthError(
+  requestIdValue: string,
+  code: 'invalid_token' | 'missing_token',
+  message: string,
+) {
+  return {
+    error: {
+      code,
+      message,
+    },
+    requestId: requestIdValue,
+  }
+}
+
 async function readJsonBody(request: Request): Promise<unknown> {
   try {
     return await request.json()
@@ -542,6 +670,16 @@ async function readJsonBody(request: Request): Promise<unknown> {
 
 async function readFormBody(request: Request): Promise<URLSearchParams> {
   return new URLSearchParams(await request.text())
+}
+
+function readBearerToken(authorization: string | undefined): string | null {
+  const [scheme, token, extra] = (authorization ?? '').trim().split(/\s+/)
+
+  if (scheme !== 'Bearer' || !token || extra) {
+    return null
+  }
+
+  return token
 }
 
 function readDeviceInfo(headers: Headers): {

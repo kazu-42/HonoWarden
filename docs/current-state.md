@@ -89,11 +89,23 @@ Implemented:
 - invalid grant handling for unknown, expired, disabled-user, and revoked-device refresh tokens
 - refresh grant compatibility fixture
 
+## Week 8 Increment
+
+Implemented:
+
+- access-token verification for signed compact tokens
+- user lookup by ID for authenticated API reads
+- authenticated `GET /api/sync`
+- fail-closed `503` response when token signing is not configured
+- stable `401` responses for missing, invalid, expired, disabled-user, and security-stamp-mismatch sync requests
+- empty personal vault sync response with profile metadata and empty folders, collections, ciphers, domains, policies, and sends
+- HTTP tests for successful empty sync and auth failure cases
+
 Not implemented:
 
-- access token verification middleware
 - refresh token reuse alerting
-- vault sync
+- folder CRUD
+- cipher CRUD
 - any storage of real password-vault data
 
 The project remains pre-alpha and must not be used to store real secrets.

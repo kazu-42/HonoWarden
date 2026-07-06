@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import app from '../src/app'
+import { signAccessToken } from '../src/domain/tokens'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 
 describe('HonoWarden app', () => {
@@ -528,6 +529,184 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('returns 503 for sync when token secret is missing', async () => {
+    const response = await app.request('/api/sync', {
+      headers: {
+        Authorization: 'Bearer synthetic-access-token',
+        'X-Request-Id': 'sync-missing-secret-request',
+      },
+    })
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+      },
+      requestId: 'sync-missing-secret-request',
+    })
+  })
+
+  it('requires bearer authorization for sync', async () => {
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          'X-Request-Id': 'sync-missing-token-request',
+        },
+      },
+      {
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'missing_token',
+      },
+      requestId: 'sync-missing-token-request',
+    })
+  })
+
+  it('rejects invalid access tokens for sync', async () => {
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: 'Bearer invalid-token',
+          'X-Request-Id': 'sync-invalid-token-request',
+        },
+      },
+      {
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_token',
+      },
+      requestId: 'sync-invalid-token-request',
+    })
+  })
+
+  it('returns an empty personal vault sync for a valid access token', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'sync',
+      Profile: {
+        Id: 'user-id',
+        Name: 'Person',
+        Email: 'person@example.test',
+        EmailVerified: true,
+        Premium: false,
+        PremiumFromOrganization: false,
+        Culture: 'en-US',
+        TwoFactorEnabled: false,
+        Key: '2.synthetic-user-key',
+        AccountKeys: null,
+        AvatarColor: '#3366cc',
+        CreationDate: '2026-07-06T00:00:00.000Z',
+        PrivateKey: null,
+        SecurityStamp: 'security-stamp',
+        ForcePasswordReset: false,
+        UsesKeyConnector: false,
+        VerifyDevices: false,
+        Organizations: [],
+        OrganizationsNew: [],
+        Providers: [],
+        ProviderOrganizations: [],
+      },
+      Folders: [],
+      Collections: [],
+      Ciphers: [],
+      Domains: {
+        EquivalentDomains: [],
+        GlobalEquivalentDomains: [],
+      },
+      Policies: [],
+      PoliciesNew: [],
+      Sends: [],
+      UserDecryption: null,
+    })
+  })
+
+  it('rejects sync for disabled users', async () => {
+    const user = {
+      ...authUserRecord(),
+      disabledAt: '2026-07-06T00:00:00.000Z',
+    }
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_token',
+      },
+    })
+  })
+
+  it('rejects sync when the user security stamp changed after token issue', async () => {
+    const tokenUser = authUserRecord()
+    const accessToken = await accessTokenFor(tokenUser)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: {
+            ...tokenUser,
+            securityStamp: 'rotated-security-stamp',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_token',
+      },
+    })
+  })
+
   it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 
@@ -581,6 +760,7 @@ function authUserRecord() {
     userKey: '2.synthetic-user-key',
     privateKey: null,
     securityStamp: 'security-stamp',
+    createdAt: '2026-07-06T00:00:00.000Z',
     disabledAt: null,
   }
 }
@@ -605,6 +785,23 @@ function refreshTokenSessionRecord() {
     userKey: '2.synthetic-user-key',
     privateKey: null,
     securityStamp: 'security-stamp',
+    createdAt: '2026-07-06T00:00:00.000Z',
     disabledAt: null,
   }
+}
+
+async function accessTokenFor(
+  user: Pick<
+    ReturnType<typeof authUserRecord>,
+    'emailNormalized' | 'id' | 'securityStamp'
+  >,
+) {
+  return signAccessToken('test-token-secret', {
+    sub: user.id,
+    email: user.emailNormalized,
+    device: 'fixture-device',
+    securityStamp: user.securityStamp,
+    iat: 1,
+    exp: 4_102_444_800,
+  })
 }

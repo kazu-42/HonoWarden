@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDeviceId,
   createPasswordGrantSession,
-  findRefreshTokenSessionByHash,
   findAuthUserByEmail,
+  findAuthUserById,
+  findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
   rotateRefreshToken,
 } from '../../src/repositories/auth-repository'
@@ -34,6 +35,7 @@ describe('auth repository', () => {
       userKey: '2.synthetic-user-key',
       privateKey: null,
       securityStamp: 'security-stamp',
+      createdAt: '2026-07-06T00:00:00.000Z',
       disabledAt: null,
     })
 
@@ -52,9 +54,36 @@ describe('auth repository', () => {
       userKey: '2.synthetic-user-key',
       privateKey: null,
       securityStamp: 'security-stamp',
+      createdAt: '2026-07-06T00:00:00.000Z',
       disabledAt: null,
     })
     expect(database.boundValues).toContain('person@example.test')
+  })
+
+  it('looks up auth users by ID for authenticated API reads', async () => {
+    const database = new RecordingAuthD1Database({
+      id: 'user-id',
+      email: 'Person@Example.Test',
+      emailNormalized: 'person@example.test',
+      displayName: 'Person',
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+      masterPasswordHash: 'synthetic-master-password-hash',
+      userKey: '2.synthetic-user-key',
+      privateKey: null,
+      securityStamp: 'security-stamp',
+      createdAt: '2026-07-06T00:00:00.000Z',
+      disabledAt: null,
+    })
+
+    await expect(findAuthUserById(database, 'user-id')).resolves.toMatchObject({
+      id: 'user-id',
+      emailNormalized: 'person@example.test',
+      createdAt: '2026-07-06T00:00:00.000Z',
+    })
+    expect(database.boundValues).toContain('user-id')
   })
 
   it('upserts a device and stores only the refresh token hash', async () => {
@@ -99,6 +128,7 @@ describe('auth repository', () => {
       userKey: '2.synthetic-user-key',
       privateKey: null,
       securityStamp: 'security-stamp',
+      createdAt: '2026-07-06T00:00:00.000Z',
       disabledAt: null,
     })
 

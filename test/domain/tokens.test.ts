@@ -7,6 +7,7 @@ import {
   parseRefreshTokenGrantForm,
   signAccessToken,
   tokenErrorResponse,
+  verifyAccessToken,
   verifyPresentedPasswordHash,
 } from '../../src/domain/tokens'
 
@@ -105,6 +106,61 @@ describe('token domain', () => {
     })
 
     expect(token.split('.')).toHaveLength(3)
+  })
+
+  it('verifies signed access tokens', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+    })
+
+    await expect(verifyAccessToken('secret', token, 2)).resolves.toEqual({
+      ok: true,
+      claims: {
+        sub: 'user-id',
+        email: 'person@example.test',
+        device: 'device-id',
+        securityStamp: 'security-stamp',
+        iat: 1,
+        exp: 100,
+      },
+    })
+  })
+
+  it('rejects access tokens with invalid signatures', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+    })
+
+    await expect(verifyAccessToken('wrong-secret', token, 2)).resolves.toEqual({
+      ok: false,
+      code: 'invalid',
+    })
+  })
+
+  it('rejects expired access tokens', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 2,
+    })
+
+    await expect(verifyAccessToken('secret', token, 2)).resolves.toEqual({
+      ok: false,
+      code: 'expired',
+    })
   })
 
   it('generates refresh tokens and hashes them without storing plaintext', async () => {

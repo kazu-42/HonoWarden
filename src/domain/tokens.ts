@@ -41,6 +41,16 @@ export type AccessTokenClaims = {
   exp: number
 }
 
+export type AccessTokenVerification =
+  | {
+      ok: true
+      claims: AccessTokenClaims
+    }
+  | {
+      ok: false
+      code: 'expired' | 'invalid'
+    }
+
 export function parsePasswordGrantForm(
   form: URLSearchParams,
 ): PasswordGrantParseResult {
@@ -140,6 +150,45 @@ export async function signAccessToken(
   return `${signingInput}.${base64UrlEncodeBytes(signature)}`
 }
 
+export async function verifyAccessToken(
+  secret: string,
+  token: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<AccessTokenVerification> {
+  const parts = token.split('.')
+  if (parts.length !== 3) {
+    return { ok: false, code: 'invalid' }
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = parts
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    return { ok: false, code: 'invalid' }
+  }
+
+  const signingInput = `${encodedHeader}.${encodedPayload}`
+  const expectedSignature = base64UrlEncodeBytes(
+    await hmacSha256(secret, signingInput),
+  )
+
+  if (!constantTimeEqual(expectedSignature, encodedSignature)) {
+    return { ok: false, code: 'invalid' }
+  }
+
+  const claims = decodeJson<AccessTokenClaims>(encodedPayload)
+  if (!isAccessTokenClaims(claims)) {
+    return { ok: false, code: 'invalid' }
+  }
+
+  if (claims.exp <= nowSeconds) {
+    return { ok: false, code: 'expired' }
+  }
+
+  return {
+    ok: true,
+    claims,
+  }
+}
+
 export function generateRefreshToken(): string {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
@@ -185,6 +234,33 @@ function encodeJson(value: unknown): string {
   return base64UrlEncodeBytes(new TextEncoder().encode(JSON.stringify(value)))
 }
 
+function decodeJson<T>(value: string): T | null {
+  try {
+    return JSON.parse(
+      new TextDecoder().decode(base64UrlDecodeBytes(value)),
+    ) as T
+  } catch {
+    return null
+  }
+}
+
+function isAccessTokenClaims(value: unknown): value is AccessTokenClaims {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const claims = value as Record<string, unknown>
+
+  return (
+    typeof claims.sub === 'string' &&
+    typeof claims.email === 'string' &&
+    typeof claims.device === 'string' &&
+    typeof claims.securityStamp === 'string' &&
+    typeof claims.iat === 'number' &&
+    typeof claims.exp === 'number'
+  )
+}
+
 async function hmacSha256(secret: string, value: string): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -213,6 +289,21 @@ function base64UrlEncodeBytes(bytes: Uint8Array): string {
   }
 
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function base64UrlDecodeBytes(value: string): Uint8Array {
+  const padded = value
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(value.length / 4) * 4, '=')
+  const binary = atob(padded)
+  const bytes = new Uint8Array(binary.length)
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+
+  return bytes
 }
 
 function constantTimeEqual(left: string, right: string): boolean {

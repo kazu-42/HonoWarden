@@ -11,6 +11,7 @@ export type AuthUserRecord = {
   userKey: string | null
   privateKey: string | null
   securityStamp: string
+  createdAt: string
   disabledAt: string | null
 }
 
@@ -73,6 +74,7 @@ type AuthUserRow = {
   userKey: string | null
   privateKey: string | null
   securityStamp: string
+  createdAt: string
   disabledAt: string | null
 }
 
@@ -95,6 +97,7 @@ type RefreshTokenSessionRow = {
   userKey: string | null
   privateKey: string | null
   securityStamp: string
+  createdAt: string
   disabledAt: string | null
 }
 
@@ -118,6 +121,7 @@ export async function findAuthUserByEmail(
           user_key as userKey,
           private_key as privateKey,
           security_stamp as securityStamp,
+          created_at as createdAt,
           disabled_at as disabledAt
         FROM users
         WHERE email_normalized = ?
@@ -127,7 +131,40 @@ export async function findAuthUserByEmail(
     .bind(emailNormalized)
     .first<AuthUserRow>()
 
-  return row ?? null
+  return row ? authUserFromRow(row) : null
+}
+
+export async function findAuthUserById(
+  database: AuthLookupDatabase,
+  userId: string,
+): Promise<AuthUserRecord | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          email,
+          email_normalized as emailNormalized,
+          display_name as displayName,
+          kdf_algorithm as kdfAlgorithm,
+          kdf_iterations as kdfIterations,
+          kdf_memory as kdfMemory,
+          kdf_parallelism as kdfParallelism,
+          master_password_hash as masterPasswordHash,
+          user_key as userKey,
+          private_key as privateKey,
+          security_stamp as securityStamp,
+          created_at as createdAt,
+          disabled_at as disabledAt
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `,
+    )
+    .bind(userId)
+    .first<AuthUserRow>()
+
+  return row ? authUserFromRow(row) : null
 }
 
 export async function createPasswordGrantSession(
@@ -229,6 +266,7 @@ export async function findRefreshTokenSessionByHash(
           u.user_key as userKey,
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
+          u.created_at as createdAt,
           u.disabled_at as disabledAt
         FROM refresh_tokens rt
         INNER JOIN users u ON u.id = rt.user_id
@@ -265,6 +303,7 @@ export async function findRefreshTokenSessionByHash(
       userKey: row.userKey,
       privateKey: row.privateKey,
       securityStamp: row.securityStamp,
+      createdAt: row.createdAt,
       disabledAt: row.disabledAt,
     },
   }
@@ -383,4 +422,23 @@ export function buildDeviceId(
   deviceIdentifier: string,
 ): string {
   return `${userId}:${deviceIdentifier}`
+}
+
+function authUserFromRow(row: AuthUserRow): AuthUserRecord {
+  return {
+    id: row.id,
+    email: row.email,
+    emailNormalized: row.emailNormalized,
+    displayName: row.displayName,
+    kdfAlgorithm: row.kdfAlgorithm,
+    kdfIterations: row.kdfIterations,
+    kdfMemory: row.kdfMemory,
+    kdfParallelism: row.kdfParallelism,
+    masterPasswordHash: row.masterPasswordHash,
+    userKey: row.userKey,
+    privateKey: row.privateKey,
+    securityStamp: row.securityStamp,
+    createdAt: row.createdAt,
+    disabledAt: row.disabledAt,
+  }
 }
