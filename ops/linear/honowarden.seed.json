@@ -451,7 +451,7 @@
     "firstUpdate": {
       "projectKey": "alpha-api",
       "health": "atRisk",
-      "body": "Local implementation is ahead of the written roadmap through Week 19, and Week 20 backup/restore tooling is in progress. The alpha remains at risk until live Cloudflare resources, live official-client compatibility evidence, backup/restore drill evidence, and security review materials are recorded. Next focus: finish Week 20, then add secret-safe auditability and broaden compatibility fixtures."
+      "body": "Local implementation is complete through Week 25 on commit 4c13485, with GitHub Actions CI run 28798502815 passing. The alpha remains at risk until live Cloudflare resources, live official-client compatibility evidence, backup/restore drill evidence, honowarden.com routing/email evidence, and final release tagging are recorded. Next focus: Week 26 release gate, live-client evidence, staging/prod Cloudflare resources, and the HonoWarden-website launch."
     }
   },
   "documents": [

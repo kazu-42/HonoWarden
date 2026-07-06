@@ -1,8 +1,10 @@
 # Linear Tracking Setup
 
-This document describes the intended HonoWarden Linear setup. The current local
-browser account cannot access `linear.app/honowarden`, and the available Linear
-MCP connection points at a different workspace. Do not create HonoWarden issues
+This document describes the intended HonoWarden Linear setup.
+
+As of 2026-07-06 JST, the local DevTools browser opens
+`linear.app/honowarden` at the login screen, and the available Linear MCP
+connection returns teams from another workspace. Do not create HonoWarden issues
 through that MCP connection until it resolves to `linear.app/honowarden`.
 
 ## Source Of Truth
@@ -11,7 +13,7 @@ The seed file is [ops/linear/honowarden.seed.json](../../ops/linear/honowarden.s
 Validate it with:
 
 ```sh
-node scripts/honowarden-linear-seed.mjs
+pnpm linear:seed
 ```
 
 The seed defines:
@@ -27,6 +29,15 @@ The seed defines:
 - custom view definitions
 - Pulse cadence and the first status-update body
 
+Current validated counts:
+
+- 15 labels
+- 3 projects
+- 7 milestones
+- 17 issues
+- 6 shared view definitions
+- 1 tracking overview document
+
 ## Access Prerequisites
 
 Before applying the seed, make sure the active Linear account has access to the
@@ -39,8 +50,8 @@ Safe verification steps:
 1. Open `https://linear.app/honowarden/`.
 2. Confirm the URL stays under `/honowarden/` and does not show an
    authentication error.
-3. Confirm the Linear MCP `list_teams` result also returns HonoWarden teams and
-   URLs under `linear.app/honowarden`.
+3. Confirm the Linear MCP `list_teams` result returns the HonoWarden team and
+   does not return only unrelated workspace teams.
 4. Only then create issues, projects, and documents through MCP or API tooling.
 
 ## Recommended Apply Order

@@ -29,6 +29,7 @@
     "dev": "wrangler dev",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
+    "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest"

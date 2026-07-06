@@ -106,6 +106,8 @@ The project roadmap is tracked in [ROADMAP.md](ROADMAP.md). The development appr
 
 Release readiness materials live in [docs/release/index.md](docs/release/index.md).
 
+Linear tracking setup is documented in [docs/operations/linear-tracking.md](docs/operations/linear-tracking.md).
+
 HonoWarden is an independent project and is not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.
 
 ## Security

@@ -1,0 +1,40 @@
+{
+  "title": "Week 26 Linear Tracking Setup",
+  "slug": "week-26-linear-tracking-setup",
+  "created_at": "2026-07-06T14:26:33Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local docs, seed updates, tests, git push, and CI are within the sustained repo-development request. Live Linear workspace mutation requires a confirmed honowarden workspace session or connector."
+  },
+  "packets": [
+    {
+      "id": "01-seed-status",
+      "status": "completed"
+    },
+    {
+      "id": "02-access-guard",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "pending_ci",
+    "checks": [
+      "pnpm linear:seed",
+      "pnpm test -- test/ops/linear-seed.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-linear-tracking-setup"
+    ]
+  }
+}

@@ -429,3 +429,25 @@ Not implemented:
 - live official-client matrix promotion
 
 The project remains pre-alpha and must not be used to store real secrets.
+
+## Linear Tracking Setup
+
+Implemented:
+
+- Linear seed validation script exposed as `pnpm linear:seed`
+- HonoWarden Linear seed updated with the current Week 25 completion status
+- README link to `docs/operations/linear-tracking.md`
+- access guard documented to prevent writing HonoWarden issues into an unrelated
+  Linear workspace
+- dynamic workflow artifacts for the Linear tracking update
+
+Not implemented:
+
+- live Linear issue/project/view creation, because the available Linear MCP
+  connection currently resolves to another workspace and the DevTools browser is
+  not authenticated to `linear.app/honowarden`
+- Pulse workspace settings mutation
+- Linear custom view creation through UI automation
+
+The Linear seed remains the source of truth until a connector or browser session
+is authenticated to the `honowarden` workspace.
