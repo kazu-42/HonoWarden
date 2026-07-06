@@ -18,6 +18,8 @@ Durable evidence recording:
   blocked.
 - `pnpm test -- test/ops/release-gate.test.ts test/release-docs.test.ts test/ops/staging-dry-run.test.ts`
   passed.
-
-Brand scans, full test suite, workflow verification, push, and CI are still
-pending for final publication.
+- Full local gates passed: `pnpm check`, `pnpm lint`, `pnpm test`,
+  `pnpm compat:test`, and `pnpm format`.
+- Repository brand content and path scans passed.
+- Workflow verifier passed.
+- GitHub Actions CI run `28801240561` passed.

@@ -39,9 +39,13 @@ now use `path.relative`, and ESLint explicitly ignores `test/.tmp`.
 - `pnpm check`
 - `pnpm lint`
 - `pnpm format`
+- repository brand scan: no content hits
+- repository path brand scan: no path hits
+- workflow verifier: passed
+- GitHub Actions CI run `28801240561`: passed
 
-Full local gates, brand scans, workflow verification, and CI are recorded in
-the final commit status after publication.
+The CI run included typecheck, lint, full tests, compatibility fixture tests,
+release gate preflight, and format check.
 
 ## Remaining Risks
 

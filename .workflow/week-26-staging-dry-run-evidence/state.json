@@ -31,7 +31,11 @@
       "pnpm format",
       "pnpm staging:dry-run --out test/.tmp/staging-dry-run-evidence-20260706T145200Z/bundle --json test/.tmp/staging-dry-run-evidence-20260706T145200Z/report.json --require-clean",
       "pnpm release:gate",
-      "pnpm test -- test/ops/release-gate.test.ts test/release-docs.test.ts test/ops/staging-dry-run.test.ts"
+      "pnpm test -- test/ops/release-gate.test.ts test/release-docs.test.ts test/ops/staging-dry-run.test.ts",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-staging-dry-run-evidence",
+      "GitHub Actions CI run 28801240561"
     ]
   }
 }
