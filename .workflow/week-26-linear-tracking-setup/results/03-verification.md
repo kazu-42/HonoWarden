@@ -8,7 +8,9 @@
   `pnpm compat:test`, and `pnpm format`.
 - Repository brand scans passed for content and paths.
 - Workflow verifier passed.
+- GitHub Actions CI run `28799036744` passed.
 
 ## Rejected
 
-- GitHub Actions CI is pending until the implementation commit is pushed.
+- Did not run live Linear mutation checks because the active connector is not
+  scoped to `linear.app/honowarden`.
