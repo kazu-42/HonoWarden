@@ -16,7 +16,8 @@ Verification:
 - `pnpm format`: passed.
 - Repository brand scan: passed with no hits.
 - Workflow verification: passed for `.workflow/week-17-login-defenses`.
+- GitHub Actions CI: passed for run `28792001261` on commit `82666e9e54d574bc11bbc2aaa4923459b46d4e1d`.
 
 Remaining risks:
 
-- GitHub Actions CI after push is still pending.
+- Live D1 migration, deploy, and live client verification remain pending.

@@ -34,13 +34,13 @@ Week 17 login defenses are implemented locally. Password grant now has account-b
 - Repository brand scan: passed with no hits.
 - Workflow verification: passed for `.workflow/week-17-login-defenses`.
 - Independent Spark review found stale read-then-write counter risk; the final implementation now uses D1 conflict updates for failed-attempt buckets.
+- GitHub Actions CI: passed for run `28792001261` on commit `82666e9e54d574bc11bbc2aaa4923459b46d4e1d`.
 
 ## Remaining Risks
 
 - Auth-attempt retention cleanup is still future work.
 - Live D1 migration and deployed behavior have not been verified.
 - Operator metrics/alerts for login defenses are not implemented yet.
-- GitHub Actions CI after push is still pending.
 
 ## Reusable Follow-up
 
