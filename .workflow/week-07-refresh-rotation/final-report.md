@@ -33,12 +33,14 @@ Refresh token grant support is implemented and locally verified. Refresh tokens 
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: missing token secret returns `503 server_misconfigured`.
+- GitHub Actions CI: passed for implementation commit `c1bead7`.
 
 ## Remaining Risks
 
 - Reuse alerting/audit logs are not implemented yet.
 - Access token verification middleware is still needed before protected API routes.
 - Live successful refresh requires local or deployed secrets plus seeded refresh token data.
+- Follow-up documentation-only workflow status commits still need normal CI after push.
 
 ## Reusable Follow-up
 
