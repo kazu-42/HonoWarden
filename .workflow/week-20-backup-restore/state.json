@@ -1,0 +1,39 @@
+{
+  "title": "Week 20 Backup Restore",
+  "slug": "week-20-backup-restore",
+  "created_at": "2026-07-06T13:08:55+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation, tests, docs, git push, and CI are within the sustained repo-development request. Live Cloudflare resources, remote backup/restore execution, production secrets, and live client attempts require a separate gate."
+  },
+  "packets": [
+    {
+      "id": "01-backup-cli",
+      "status": "completed"
+    },
+    {
+      "id": "02-restore-safety",
+      "status": "completed"
+    },
+    {
+      "id": "03-runbook-workflow",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed_local",
+    "checks": [
+      "pnpm test -- test/ops/backup-cli.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-20-backup-restore"
+    ]
+  }
+}

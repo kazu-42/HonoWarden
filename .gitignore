@@ -3,6 +3,7 @@ coverage/
 dist/
 .wrangler/
 test/.tmp/
+backups/
 .dev.vars
 .env
 .env.*

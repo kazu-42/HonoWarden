@@ -70,6 +70,15 @@ Password grant token exchange requires `HONOWARDEN_TOKEN_SECRET`. Set it through
 
 TOTP setup and login require `HONOWARDEN_TOTP_SECRET` to wrap authenticator secrets before they are stored in D1. Set it through local environment or Wrangler secrets; do not put it in `wrangler.jsonc` vars.
 
+Backup and restore planning commands are available for operator drills:
+
+```sh
+pnpm backup:export -- --out backups/example --database honowarden --bucket honowarden-vault-objects --mode local
+pnpm backup:restore -- --from backups/example --database honowarden-restore --bucket honowarden-restore-vault-objects --mode local
+```
+
+They are dry-run by default. See [docs/operations/backup-restore.md](docs/operations/backup-restore.md) before using `--execute`.
+
 Generate Cloudflare binding types after editing `wrangler.jsonc`:
 
 ```sh
