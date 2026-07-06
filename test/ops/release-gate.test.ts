@@ -41,8 +41,8 @@ describe('release gate preflight', () => {
     expect(statusById(report, 'workflow_evidence')).toBe('pass')
     expect(statusById(report, 'linear_tracking_seed')).toBe('pass')
     expect(statusById(report, 'backup_restore_drill_evidence')).toBe('pass')
+    expect(statusById(report, 'staging_deploy_evidence')).toBe('pass')
     expect(statusById(report, 'live_client_evidence')).toBe('block')
-    expect(statusById(report, 'staging_deploy_evidence')).toBe('block')
     expect(statusById(report, 'cloudflare_resource_evidence')).toBe('block')
   })
 

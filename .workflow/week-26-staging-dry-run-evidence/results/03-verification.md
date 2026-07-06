@@ -9,5 +9,15 @@ Initial verification before durable evidence recording:
   scope.
 - `pnpm format` passed.
 
-Final release evidence, brand scans, full test suite, workflow verification, and
-CI are still pending for the second commit in this slice.
+Durable evidence recording:
+
+- `pnpm staging:dry-run --out test/.tmp/staging-dry-run-evidence-20260706T145200Z/bundle --json test/.tmp/staging-dry-run-evidence-20260706T145200Z/report.json --require-clean`
+  passed on clean source commit `2905151b874d8d78cc564cd65862bffb28c8958b`.
+- `pnpm release:gate` reported `8 pass / 2 block`, with staging dry-run
+  evidence passing and live-client plus Cloudflare resource evidence still
+  blocked.
+- `pnpm test -- test/ops/release-gate.test.ts test/release-docs.test.ts test/ops/staging-dry-run.test.ts`
+  passed.
+
+Brand scans, full test suite, workflow verification, push, and CI are still
+pending for final publication.

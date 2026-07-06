@@ -14,6 +14,7 @@ const releaseDocs = [
   'migration-freeze.md',
   'release-gate-preflight.md',
   'backup-restore-drill-evidence.md',
+  'staging-deploy-evidence.md',
   'v0.1.0-alpha-release-notes.md',
 ] as const
 

@@ -466,7 +466,6 @@ Implemented:
 Current blockers reported by the preflight:
 
 - synthetic live-client evidence is still fixture-only
-- staging deploy smoke evidence is not recorded
 - Cloudflare resource evidence is not recorded
 
 The preflight is intentionally read-only and does not tag, deploy, call
@@ -486,5 +485,30 @@ Not implemented:
 
 - remote Cloudflare backup/restore drill
 - R2 object restore evidence with non-empty object list
-- staging deploy smoke evidence
 - production-like restore evidence
+
+## Week 26 Staging Dry Run Evidence
+
+Implemented:
+
+- local `pnpm staging:dry-run` wrapper around
+  `wrangler deploy --env staging --dry-run --outdir ...`
+- staging configuration checks for Worker name, D1 binding, R2 binding,
+  environment label, fail-closed bootstrap default, audit default, and
+  staging/production separation
+- generated Worker bundle size and SHA-256 recording
+- release evidence document under `docs/release/staging-deploy-evidence.md`
+- release gate validation for required staging dry-run evidence fields
+- tests covering the dry-run wrapper and updated release gate state
+
+Current blockers reported by the preflight:
+
+- synthetic live-client evidence is still fixture-only
+- Cloudflare resource evidence is not recorded
+
+Not implemented:
+
+- real Cloudflare staging deploy
+- Cloudflare D1/R2 resource creation or ID replacement
+- deployed Worker HTTP health smoke
+- live client evidence

@@ -31,6 +31,8 @@ The preflight proves repository-local facts:
 - required Week 20 through Week 26 workflow states are complete and include CI
   evidence
 - the compatibility matrix has not been promoted beyond fixture-only evidence
+- staging dry-run evidence includes command, bindings, bundle hash, and
+  explicit non-deploy limitations
 - the Linear seed is structurally ready to apply
 
 ## What It Does Not Prove
@@ -41,11 +43,11 @@ official clients. It does not tag a release and does not deploy.
 These remain release blockers until recorded as separate evidence:
 
 - synthetic live-client login and sync evidence
-- staging fresh deploy smoke evidence
 - Cloudflare D1, R2, Worker, route, and rollback evidence
 
 ## Expected Current Result
 
 At feature-freeze time the expected result is `not_ready`. That is intentional:
-the repository has the release process and local checks, but the alpha tag still
-requires live operational evidence.
+the repository has the release process, local checks, backup/restore drill
+evidence, and staging dry-run evidence, but the alpha tag still requires live
+operational evidence.
