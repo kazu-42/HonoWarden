@@ -405,4 +405,27 @@ Not implemented:
 - incident response runbook
 - secret rotation drill
 
+## Week 25 Increment
+
+Implemented:
+
+- release readiness index under `docs/release/index.md`
+- feature-freeze checklist with release hold conditions and local gates
+- fresh deploy guide for staging-first Cloudflare Workers, D1, and R2 setup
+- upgrade guide with backup-first and migration policy
+- rollback guide separating Worker rollback from fresh-target data restore
+- migration freeze document with SHA-256 hashes for all current migrations
+- draft `v0.1.0-alpha` release notes with scope, exclusions, operations links, and release gates
+- CI-backed release docs test under `test/release-docs.test.ts`
+- README link to release readiness materials
+- Week 25 dynamic workflow artifacts
+
+Not implemented:
+
+- `v0.1.0-alpha` tag
+- live staging deploy evidence
+- Cloudflare D1/R2 resource mutation
+- production backup/restore drill evidence
+- live official-client matrix promotion
+
 The project remains pre-alpha and must not be used to store real secrets.

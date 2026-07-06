@@ -1,0 +1,39 @@
+{
+  "title": "Week 25 Feature Freeze",
+  "slug": "week-25-feature-freeze",
+  "created_at": "2026-07-06T14:14:19Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local docs, tests, git push, and CI are within the sustained repo-development request. Tagging, deploying, or mutating Cloudflare resources requires a separate gate."
+  },
+  "packets": [
+    {
+      "id": "01-release-docs",
+      "status": "completed"
+    },
+    {
+      "id": "02-release-doc-tests",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "pending_ci",
+    "checks": [
+      "pnpm test -- test/release-docs.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-25-feature-freeze"
+    ]
+  }
+}

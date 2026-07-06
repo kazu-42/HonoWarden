@@ -104,6 +104,8 @@ Compatibility work is tracked in [docs/compatibility.md](docs/compatibility.md).
 
 The project roadmap is tracked in [ROADMAP.md](ROADMAP.md). The development approach is incremental: every week should end with a deployable build that is more useful than the week before.
 
+Release readiness materials live in [docs/release/index.md](docs/release/index.md).
+
 HonoWarden is an independent project and is not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.
 
 ## Security
