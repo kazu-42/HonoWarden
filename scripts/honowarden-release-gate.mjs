@@ -332,6 +332,38 @@ function checkStagingDeployEvidence() {
     }
   }
 
+  const evidenceDoc = readText(evidencePath)
+  const requiredEvidence = [
+    'Status: passed',
+    'Mode: staging deploy dry-run',
+    'Source commit:',
+    'Wrangler version:',
+    'Dry-run command:',
+    'Worker name: `honowarden-staging`',
+    'D1 binding: `DB -> honowarden-staging`',
+    'R2 binding: `VAULT_OBJECTS -> honowarden-staging-vault-objects`',
+    'Bundle SHA-256:',
+    'Local smoke checks:',
+    'Remote deploy: not performed',
+    'Cloudflare resource mutation: not performed',
+    'Placeholder database IDs: still present',
+  ]
+  const missingEvidence = requiredEvidence.filter(
+    (required) => !evidenceDoc.includes(required),
+  )
+
+  if (missingEvidence.length > 0) {
+    return {
+      id: 'staging_deploy_evidence',
+      status: 'block',
+      title: 'Staging fresh deploy smoke evidence exists',
+      evidence: [evidencePath],
+      details: { missingEvidence },
+      nextAction:
+        'Complete staging dry-run evidence with command, bindings, bundle hash, smoke checks, and explicit limitations.',
+    }
+  }
+
   return {
     id: 'staging_deploy_evidence',
     status: 'pass',

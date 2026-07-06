@@ -7,8 +7,8 @@ operator-driven in the alpha scope; there is no authenticated public backup API.
 The wrapper script plans and optionally executes Wrangler commands:
 
 ```sh
-pnpm backup:export -- --out backups/example --database honowarden --bucket honowarden-vault-objects --mode local
-pnpm backup:restore -- --from backups/example --database honowarden-restore --bucket honowarden-restore-vault-objects --mode local
+pnpm backup:export --out backups/example --database honowarden --bucket honowarden-vault-objects --mode local
+pnpm backup:restore --from backups/example --database honowarden-restore --bucket honowarden-restore-vault-objects --mode local
 ```
 
 Both commands are dry-run by default. They print the commands that would run and

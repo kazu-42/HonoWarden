@@ -32,6 +32,7 @@
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",
     "release:gate": "node scripts/honowarden-release-gate.mjs",
+    "staging:dry-run": "node scripts/honowarden-staging-dry-run.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -8,6 +8,7 @@ export default tseslint.config(
       'dist',
       'node_modules',
       '.wrangler',
+      'test/.tmp',
       'worker-configuration.d.ts',
     ],
   },
