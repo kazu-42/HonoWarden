@@ -33,7 +33,8 @@
       "pnpm format",
       "repository brand scan",
       "repository path brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-22-compat-regression-suite"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-22-compat-regression-suite",
+      "GitHub Actions CI run 28796632592"
     ]
   }
 }

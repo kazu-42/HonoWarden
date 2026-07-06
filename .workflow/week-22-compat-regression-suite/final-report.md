@@ -45,7 +45,8 @@ can validate alpha-critical nested response shapes.
 - repository brand scan: no content hits
 - repository path brand scan: no path hits
 - workflow verifier: passed
-- GitHub Actions CI: pending
+- GitHub Actions CI run `28796632592`: passed
+  - https://github.com/kazu-42/HonoWarden/actions/runs/28796632592
 
 ## Remaining Risks
 
