@@ -23,7 +23,7 @@
     }
   ],
   "verification": {
-    "status": "passed_local",
+    "status": "passed",
     "checks": [
       "pnpm test -- test/ops/backup-cli.test.ts",
       "pnpm check",
@@ -33,7 +33,8 @@
       "pnpm format",
       "repository brand scan",
       "repository path brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-20-backup-restore"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-20-backup-restore",
+      "GitHub Actions CI run 28795064903"
     ]
   }
 }
