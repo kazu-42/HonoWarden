@@ -975,6 +975,120 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('creates a secure-note cipher while preserving unknown encrypted fields', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 2,
+          favorite: false,
+          name: '2.encrypted-note-name',
+          secureNote: {
+            type: 0,
+          },
+          notes: '2.encrypted-note-body',
+          fields: [
+            {
+              name: '2.encrypted-field-name',
+              value: '2.encrypted-field-value',
+              type: 0,
+            },
+          ],
+          unknownEncryptedEnvelope: {
+            value: '2.encrypted-future-payload',
+          },
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: expect.any(String),
+      type: 2,
+      favorite: false,
+      name: '2.encrypted-note-name',
+      secureNote: {
+        type: 0,
+      },
+      notes: '2.encrypted-note-body',
+      fields: [
+        {
+          name: '2.encrypted-field-name',
+          value: '2.encrypted-field-value',
+          type: 0,
+        },
+      ],
+      unknownEncryptedEnvelope: {
+        value: '2.encrypted-future-payload',
+      },
+      revisionDate: expect.any(String),
+      creationDate: expect.any(String),
+      deletedDate: null,
+    })
+  })
+
+  it('keeps server-owned cipher metadata authoritative over request payload', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          id: 'client-supplied-id',
+          object: 'client-object',
+          organizationId: 'client-org-id',
+          revisionDate: '1999-01-01T00:00:00.000Z',
+          creationDate: '1999-01-01T00:00:00.000Z',
+          deletedDate: '1999-01-01T00:00:00.000Z',
+          futureEncryptedShape: {
+            value: '2.encrypted-future-field',
+          },
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folder: {
+            id: 'folder-id',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(201)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.id).not.toBe('client-supplied-id')
+    expect(body.object).toBe('cipher')
+    expect(body.organizationId).toBeNull()
+    expect(body.revisionDate).not.toBe('1999-01-01T00:00:00.000Z')
+    expect(body.creationDate).not.toBe('1999-01-01T00:00:00.000Z')
+    expect(body.deletedDate).toBeNull()
+    expect(body.futureEncryptedShape).toEqual({
+      value: '2.encrypted-future-field',
+    })
+  })
+
   it('includes active ciphers in sync', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -1021,6 +1135,99 @@ describe('HonoWarden app', () => {
           deletedDate: null,
         },
       ],
+    })
+  })
+
+  it('syncs 50 active ciphers while preserving favorites and unknown encrypted fields', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ciphers = Array.from({ length: 50 }, (_, index) => {
+      const ordinal = index + 1
+      const favorite = ordinal % 2 === 0
+
+      return {
+        id: `cipher-${ordinal}`,
+        userId: 'user-id',
+        folderId: ordinal % 3 === 0 ? 'folder-id' : null,
+        type: ordinal % 5 === 0 ? 2 : 1,
+        favorite: favorite ? 1 : 0,
+        encryptedJson: JSON.stringify({
+          type: ordinal % 5 === 0 ? 2 : 1,
+          favorite,
+          name: `2.encrypted-cipher-${ordinal}`,
+          notes: `2.encrypted-notes-${ordinal}`,
+          login:
+            ordinal % 5 === 0
+              ? undefined
+              : {
+                  username: `2.encrypted-username-${ordinal}`,
+                  password: `2.encrypted-password-${ordinal}`,
+                },
+          secureNote:
+            ordinal % 5 === 0
+              ? {
+                  type: 0,
+                }
+              : undefined,
+          unknownEncryptedEnvelope: {
+            value: `2.encrypted-future-${ordinal}`,
+          },
+        }),
+        revisionDate: `2026-07-06T00:${String(ordinal).padStart(2, '0')}:00.000Z`,
+        createdAt: '2026-07-06T00:00:00.000Z',
+      }
+    })
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      Ciphers: Array<Record<string, unknown>>
+    }
+    expect(body.Ciphers).toHaveLength(50)
+    expect(body.Ciphers[0]).toMatchObject({
+      object: 'cipher',
+      id: 'cipher-1',
+      type: 1,
+      favorite: false,
+      name: '2.encrypted-cipher-1',
+      unknownEncryptedEnvelope: {
+        value: '2.encrypted-future-1',
+      },
+    })
+    expect(body.Ciphers[1]).toMatchObject({
+      id: 'cipher-2',
+      favorite: true,
+    })
+    expect(body.Ciphers[4]).toMatchObject({
+      id: 'cipher-5',
+      type: 2,
+      secureNote: {
+        type: 0,
+      },
+      unknownEncryptedEnvelope: {
+        value: '2.encrypted-future-5',
+      },
+    })
+    expect(body.Ciphers[49]).toMatchObject({
+      id: 'cipher-50',
+      favorite: true,
+      unknownEncryptedEnvelope: {
+        value: '2.encrypted-future-50',
+      },
     })
   })
 
@@ -1125,6 +1332,48 @@ describe('HonoWarden app', () => {
       name: '2.updated-encrypted-cipher-name',
       revisionDate: expect.any(String),
       creationDate: expect.any(String),
+      deletedDate: null,
+    })
+  })
+
+  it('updates a cipher while preserving unknown encrypted fields', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          folderId: null,
+          name: '2.updated-encrypted-cipher-name',
+          futureEncryptedShape: {
+            value: '2.updated-encrypted-future-field',
+          },
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherUpdateChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'cipher-id',
+      folderId: null,
+      name: '2.updated-encrypted-cipher-name',
+      futureEncryptedShape: {
+        value: '2.updated-encrypted-future-field',
+      },
       deletedDate: null,
     })
   })

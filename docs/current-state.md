@@ -141,6 +141,18 @@ Implemented:
 - stable `400`, `401`, `404`, and `503` cipher lifecycle responses
 - HTTP tests for cipher update, trash, restore, permanent delete, invalid body, missing folder, and not found
 
+## Week 12 Increment
+
+Implemented:
+
+- secure-note cipher type support for create and update request validation
+- unknown encrypted payload field preservation in cipher create responses
+- unknown encrypted payload field preservation in cipher update responses
+- 50 active cipher sync coverage
+- favorite flag preservation across sync
+- tests that server-owned cipher metadata stays authoritative over request payload metadata
+- round-trip tests for future encrypted payload shapes without schema changes
+
 Not implemented:
 
 - refresh token reuse alerting

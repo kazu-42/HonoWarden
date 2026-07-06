@@ -1188,7 +1188,7 @@ function parseCipherCreateRequestBody(body: unknown):
         encryptedJson: string
         favorite: boolean
         folderId: string | null
-        type: 1
+        type: 1 | 2
       }
     }
   | { ok: false } {
@@ -1197,7 +1197,7 @@ function parseCipherCreateRequestBody(body: unknown):
   }
 
   const payload = body as Record<string, unknown>
-  if (payload.type !== 1) {
+  if (payload.type !== 1 && payload.type !== 2) {
     return { ok: false }
   }
 
@@ -1213,7 +1213,7 @@ function parseCipherCreateRequestBody(body: unknown):
       favorite:
         typeof payload.favorite === 'boolean' ? payload.favorite : false,
       folderId,
-      type: 1,
+      type: payload.type,
     },
   }
 }

@@ -1,0 +1,42 @@
+{
+  "title": "Week 12 Multi Item Round Trip",
+  "slug": "week-12-multi-item-round-trip",
+  "created_at": "2026-07-06T11:11:22+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation and tests are within the sustained repo-development request. Ask before real secrets, deploys, or remote resources."
+  },
+  "packets": [
+    {
+      "id": "01-cipher-validation",
+      "status": "completed"
+    },
+    {
+      "id": "02-round-trip-tests",
+      "status": "completed"
+    },
+    {
+      "id": "03-docs-fixtures",
+      "status": "completed"
+    },
+    {
+      "id": "04-verification",
+      "status": "local_verified"
+    }
+  ],
+  "verification": {
+    "status": "local_verified",
+    "checks": [
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "workflow verification",
+      "GitHub Actions CI"
+    ]
+  }
+}
