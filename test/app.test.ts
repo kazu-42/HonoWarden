@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import app from '../src/app'
+import { FakeD1Database, requiredTables } from './support/fake-d1'
 
 describe('HonoWarden app', () => {
   it('returns service metadata from the root route', async () => {
@@ -52,6 +53,51 @@ describe('HonoWarden app', () => {
       status: 'ok',
       service: 'honowarden',
       requestId: 'healthz-request',
+    })
+  })
+
+  it('returns database health for migrated D1 schema', async () => {
+    const response = await app.request(
+      '/health/db',
+      {
+        headers: {
+          'X-Request-Id': 'db-health-request',
+        },
+      },
+      {
+        DB: new FakeD1Database('0001', [...requiredTables]),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      status: 'ok',
+      service: 'honowarden',
+      database: {
+        schemaVersion: '0001',
+        requiredTables: [...requiredTables],
+      },
+      requestId: 'db-health-request',
+    })
+  })
+
+  it('returns 503 when D1 schema metadata is missing', async () => {
+    const response = await app.request(
+      '/health/db',
+      {},
+      {
+        DB: new FakeD1Database(null, [...requiredTables]),
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'error',
+      service: 'honowarden',
+      database: {
+        ok: false,
+        code: 'schema_version_missing',
+      },
     })
   })
 

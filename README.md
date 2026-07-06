@@ -46,6 +46,12 @@ pnpm lint
 pnpm test
 ```
 
+Apply local D1 migrations:
+
+```sh
+pnpm db:migrate:local
+```
+
 Run locally with Wrangler:
 
 ```sh
@@ -66,6 +72,8 @@ The repository includes placeholder D1 and R2 bindings in `wrangler.jsonc`. Befo
 pnpm wrangler d1 create honowarden
 pnpm wrangler r2 bucket create honowarden-vault-objects
 ```
+
+Local development uses Wrangler's local D1 store. After applying migrations, `GET /health/db` reports the active schema version and required table set.
 
 ## Compatibility
 

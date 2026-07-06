@@ -4,6 +4,7 @@ import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
+import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
 
 type Variables = {
@@ -100,6 +101,32 @@ app.get('/health', (c) => {
 
 app.get('/healthz', (c) => {
   return c.json(buildHealthResponse(c.get('requestId')))
+})
+
+app.get('/health/db', async (c) => {
+  const health = await getDatabaseHealth(c.env.DB)
+
+  if (!health.ok) {
+    return c.json(
+      {
+        status: 'error',
+        service: 'honowarden',
+        database: health,
+        requestId: c.get('requestId'),
+      },
+      503,
+    )
+  }
+
+  return c.json({
+    status: 'ok',
+    service: 'honowarden',
+    database: {
+      schemaVersion: health.schemaVersion,
+      requiredTables: health.requiredTables,
+    },
+    requestId: c.get('requestId'),
+  })
 })
 
 app.get('/api/config', (c) => {

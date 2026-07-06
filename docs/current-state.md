@@ -24,13 +24,23 @@ Implemented:
 - CORS for same-origin and official extension-style origins
 - basic security headers
 
+## Week 2 Increment
+
+Implemented:
+
+- initial D1 migration for users, devices, refresh tokens, folders, and ciphers
+- schema migration ledger
+- indexes for normalized user lookup, session lookup, revision scans, and deleted cipher scans
+- encrypted payload columns for vault records, with no plaintext vault fields in the schema
+- `GET /health/db` for D1 availability, schema version, and required-table checks
+- unit tests for migration shape, database health states, and the HTTP health route
+
 Not implemented:
 
-- D1 schema and migrations
 - upstream account bootstrap
 - `prelogin`
 - token exchange
 - vault sync
-- any storage of password-vault data
+- any storage of real password-vault data
 
 The project remains pre-alpha and must not be used to store real secrets.
