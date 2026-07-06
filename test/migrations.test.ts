@@ -53,6 +53,27 @@ describe('initial D1 migration', () => {
     expect(allMigrations).not.toContain('client_ip')
   })
 
+  it('adds TOTP persistence tables for setup and challenge flow', () => {
+    expect(allMigrations).toContain('CREATE TABLE IF NOT EXISTS user_totp')
+    expect(allMigrations).toContain(
+      'CREATE TABLE IF NOT EXISTS totp_challenges',
+    )
+    expect(allMigrations).toContain('encrypted_secret TEXT NOT NULL')
+    expect(allMigrations).toContain('enabled INTEGER NOT NULL DEFAULT 0')
+    expect(allMigrations).toContain('verified_at TEXT')
+    expect(allMigrations).toContain('last_accepted_step INTEGER')
+    expect(allMigrations).toContain('challenge_hash TEXT NOT NULL UNIQUE')
+    expect(allMigrations).toContain('device_identifier TEXT NOT NULL')
+    expect(allMigrations).toContain('consumed_at TEXT')
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_totp_challenges_user_expires',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_totp_challenges_hash',
+    )
+    expect(allMigrations).toContain("VALUES ('0003')")
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -64,4 +85,5 @@ describe('initial D1 migration', () => {
 const allMigrations = [
   readFileSync('migrations/0001_initial_schema.sql', 'utf8'),
   readFileSync('migrations/0002_login_defenses.sql', 'utf8'),
+  readFileSync('migrations/0003_totp_login.sql', 'utf8'),
 ].join('\n')

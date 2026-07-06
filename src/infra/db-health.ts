@@ -7,6 +7,8 @@ export const requiredSchemaTables = [
   'auth_failure_buckets',
   'folders',
   'ciphers',
+  'user_totp',
+  'totp_challenges',
 ] as const
 
 export type DatabaseHealth =

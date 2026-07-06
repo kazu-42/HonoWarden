@@ -18,6 +18,9 @@ describe('token domain', () => {
       username: ' Person@Example.Test ',
       password: ' synthetic-master-password-hash ',
       scope: 'api offline_access',
+      twoFactorProvider: ' authenticator ',
+      twoFactorToken: ' challenge-token ',
+      twoFactorCode: ' 123456 ',
     })
 
     expect(parsePasswordGrantForm(form)).toEqual({
@@ -27,6 +30,29 @@ describe('token domain', () => {
         usernameNormalized: 'person@example.test',
         password: 'synthetic-master-password-hash',
         scope: 'api offline_access',
+        twoFactorProvider: 'authenticator',
+        twoFactorToken: 'challenge-token',
+        twoFactorCode: '123456',
+      },
+    })
+  })
+
+  it('accepts alternate two-factor form field names', () => {
+    const form = new URLSearchParams({
+      grant_type: 'password',
+      username: 'person@example.test',
+      password: 'synthetic-master-password-hash',
+      two_factor_provider: '0',
+      two_factor_token: 'challenge-token',
+      two_factor_code: '654321',
+    })
+
+    expect(parsePasswordGrantForm(form)).toMatchObject({
+      ok: true,
+      grant: {
+        twoFactorProvider: '0',
+        twoFactorToken: 'challenge-token',
+        twoFactorCode: '654321',
       },
     })
   })

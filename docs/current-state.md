@@ -237,4 +237,30 @@ Not implemented:
 - live D1 migration application
 - live client verification under lockout/rate-limit conditions
 
+## Week 18 Increment
+
+Implemented:
+
+- RFC-compatible HOTP/TOTP helpers using Web Crypto
+- base32 TOTP secret generation without padding
+- D1 migration `0003_totp_login.sql`
+- `user_totp` persistence for encrypted setup secrets, enabled state, verified timestamp, and accepted timestep replay guard
+- `totp_challenges` persistence for hashed, device-bound, expiring, single-use login challenges
+- AES-GCM TOTP secret envelope using `HONOWARDEN_TOTP_SECRET`; plaintext TOTP secrets are only returned by the authenticated setup route
+- authenticated `POST /identity/accounts/totp/setup`
+- authenticated `POST /identity/accounts/totp/setup/verify`
+- password-grant TOTP challenge response after primary password success for TOTP-enabled users
+- password-grant TOTP challenge verification before token issuance
+- invalid code, consumed challenge, wrong device, and repeated timestep rejection through generic invalid-grant behavior
+- `GET /api/sync` profile `TwoFactorEnabled` derived from stored account state
+- tests for domain code generation, secret encryption, migrations, repository atomicity, setup routes, challenge login, replay rejection, and sync profile state
+- Week 18 dynamic workflow artifacts
+
+Not implemented:
+
+- live D1 migration application
+- live client verification for TOTP setup or login
+- challenge retention cleanup job
+- recent re-auth requirements for sensitive operations
+
 The project remains pre-alpha and must not be used to store real secrets.

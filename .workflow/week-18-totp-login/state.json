@@ -1,0 +1,41 @@
+{
+  "title": "Week 18 TOTP Login",
+  "slug": "week-18-totp-login",
+  "created_at": "2026-07-06T12:40:41+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation, tests, docs, git push, and CI are within the sustained repo-development request. Live migration, deploy, secrets, and live client attempts require a separate approval gate."
+  },
+  "packets": [
+    {
+      "id": "01-totp-domain",
+      "status": "completed"
+    },
+    {
+      "id": "02-schema-repository",
+      "status": "completed"
+    },
+    {
+      "id": "03-route-integration",
+      "status": "completed"
+    },
+    {
+      "id": "04-docs-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-18-totp-login"
+    ]
+  }
+}

@@ -5,7 +5,9 @@ import {
   buildAuthAttemptBucketKey,
   loginDefensePolicy,
 } from '../src/domain/login-defense'
+import { encryptTotpSecret } from '../src/domain/totp-secret'
 import { signAccessToken } from '../src/domain/tokens'
+import { hotp } from '../src/domain/totp'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 
 describe('HonoWarden app', () => {
@@ -386,6 +388,154 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('returns a TOTP challenge instead of tokens after primary password succeeds', async () => {
+    const encryptedSecret = await encryptTotpSecret(
+      'test-totp-secret',
+      'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+    )
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: {
+            ...authUserRecord(),
+            totpEnabled: true,
+            totpEncryptedSecret: encryptedSecret,
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body).toMatchObject({
+      error: 'invalid_grant',
+      TwoFactorToken: expect.any(String),
+      TwoFactorProviders: [
+        {
+          type: 'totp',
+        },
+      ],
+    })
+    expect(body).not.toHaveProperty('access_token')
+    expect(body).not.toHaveProperty('refresh_token')
+  })
+
+  it('exchanges a valid password grant with TOTP challenge for tokens', async () => {
+    const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const encryptedSecret = await encryptTotpSecret('test-totp-secret', secret)
+    const code = await currentTotpCode(secret)
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+          twoFactorProvider: 'totp',
+          twoFactorToken: 'totp-challenge-token',
+          twoFactorCode: code,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: {
+            ...authUserRecord(),
+            totpEnabled: true,
+            totpEncryptedSecret: encryptedSecret,
+          },
+          totpChallenge: {
+            id: 'totp-challenge-id',
+            userId: 'user-id',
+            challengeHash: 'hashed-challenge',
+            deviceIdentifier: 'fixture-device',
+            expiresAt: '2999-01-01T00:00:00.000Z',
+            consumedAt: null,
+            createdAt: '2026-07-06T00:00:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+      token_type: 'Bearer',
+      TwoFactorToken: null,
+    })
+  })
+
+  it('rejects replayed TOTP challenges before issuing tokens', async () => {
+    const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const encryptedSecret = await encryptTotpSecret('test-totp-secret', secret)
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+          twoFactorProvider: 'totp',
+          twoFactorToken: 'already-consumed-challenge-token',
+          twoFactorCode: await currentTotpCode(secret),
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: {
+            ...authUserRecord(),
+            totpEnabled: true,
+            totpEncryptedSecret: encryptedSecret,
+          },
+          totpChallenge: {
+            id: 'totp-challenge-id',
+            userId: 'user-id',
+            challengeHash: 'hashed-challenge',
+            deviceIdentifier: 'fixture-device',
+            expiresAt: '2999-01-01T00:00:00.000Z',
+            consumedAt: null,
+            createdAt: '2026-07-06T00:00:00.000Z',
+          },
+          totpChallengeUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+  })
+
   it('rejects password grant when token secret is missing', async () => {
     const response = await app.request('/identity/connect/token', {
       method: 'POST',
@@ -731,6 +881,104 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('sets up TOTP for an authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/setup',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'totpSetup',
+      enabled: false,
+      secret: expect.stringMatching(/^[A-Z2-7]{32}$/),
+      uri: expect.stringContaining('otpauth://totp/'),
+    })
+  })
+
+  it('fails closed when TOTP setup secret wrapping is not configured', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/setup',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+      },
+    })
+  })
+
+  it('verifies TOTP setup and enables the user flag', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const encryptedSecret = await encryptTotpSecret('test-totp-secret', secret)
+    const response = await app.request(
+      '/identity/accounts/totp/setup/verify',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: await currentTotpCode(secret),
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userTotp: {
+            userId: 'user-id',
+            encryptedSecret,
+            enabled: 0,
+            verifiedAt: null,
+            lastAcceptedStep: null,
+            createdAt: '2026-07-06T00:00:00.000Z',
+            updatedAt: '2026-07-06T00:00:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'totp',
+      enabled: true,
+    })
+  })
+
   it('returns an empty personal vault sync for a valid access token', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -786,6 +1034,35 @@ describe('HonoWarden app', () => {
       PoliciesNew: [],
       Sends: [],
       UserDecryption: null,
+    })
+  })
+
+  it('reports enabled TOTP state in sync profile', async () => {
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+    }
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      Profile: {
+        TwoFactorEnabled: true,
+      },
     })
   })
 
@@ -2036,6 +2313,9 @@ function authUserRecord() {
     loginFailedCount: 0,
     loginFailedAt: null,
     loginLockedUntil: null,
+    totpEnabled: false,
+    totpEncryptedSecret: null,
+    totpLastAcceptedStep: null,
   }
 }
 
@@ -2064,6 +2344,9 @@ function refreshTokenSessionRecord() {
     loginFailedCount: 0,
     loginFailedAt: null,
     loginLockedUntil: null,
+    totpEnabled: false,
+    totpEncryptedSecret: null,
+    totpLastAcceptedStep: null,
   }
 }
 
@@ -2100,4 +2383,8 @@ async function accessTokenFor(
     iat: 1,
     exp: 4_102_444_800,
   })
+}
+
+async function currentTotpCode(secret: string): Promise<string> {
+  return hotp(secret, Math.floor(Date.now() / 1000 / 30))
 }

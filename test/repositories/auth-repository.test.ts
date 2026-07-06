@@ -48,6 +48,9 @@ describe('auth repository', () => {
       loginFailedCount: 0,
       loginFailedAt: null,
       loginLockedUntil: null,
+      totpEnabled: false,
+      totpEncryptedSecret: null,
+      totpLastAcceptedStep: null,
     })
 
     await expect(
@@ -70,6 +73,9 @@ describe('auth repository', () => {
       loginFailedCount: 0,
       loginFailedAt: null,
       loginLockedUntil: null,
+      totpEnabled: false,
+      totpEncryptedSecret: null,
+      totpLastAcceptedStep: null,
     })
     expect(database.boundValues).toContain('person@example.test')
   })

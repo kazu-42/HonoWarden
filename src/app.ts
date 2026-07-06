@@ -30,6 +30,8 @@ import {
   verifyAccessToken,
   verifyPresentedPasswordHash,
 } from './domain/tokens'
+import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
+import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
 import { resolveRuntimeEnvironment } from './infra/environment'
 import { buildServerConfig } from './protocol/config'
@@ -67,6 +69,15 @@ import {
   rotateRefreshToken,
 } from './repositories/auth-repository'
 import type { AuthUserRecord } from './repositories/auth-repository'
+import {
+  consumeTotpChallenge,
+  createTotpChallenge,
+  enableTotpSetup,
+  findActiveTotpChallengeByHash,
+  findTotpSetupByUserId,
+  recordAcceptedTotpStep,
+  upsertPendingTotpSetup,
+} from './repositories/totp-repository'
 import { createBootstrapUser } from './repositories/user-repository'
 
 type Variables = {
@@ -92,6 +103,7 @@ const serviceDescription =
 const upstreamClientHeaderPrefix = ['Bit', 'warden'].join('')
 const accessTokenTtlSeconds = 3600
 const refreshTokenTtlSeconds = 60 * 60 * 24 * 30
+const totpChallengeTtlSeconds = 5 * 60
 
 const defaultCorsHeaders = [
   'Accept',
@@ -558,7 +570,6 @@ app.post('/identity/connect/token', async (c) => {
         ipFailureBucket,
       }
     }
-
     if (
       isAccountLocked({
         lockedUntil: accountBucket?.lockedUntil ?? null,
@@ -581,6 +592,24 @@ app.post('/identity/connect/token', async (c) => {
       return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
     }
 
+    const recordAccountFailure = async () => {
+      const failure = await recordFailedAttempt({ accountBucket: true })
+      const accountFailureBucket = failure.accountFailureBucket
+
+      if (!accountFailureBucket) {
+        throw new Error('Account failure bucket was not recorded.')
+      }
+
+      await recordFailedLogin(c.env.DB, {
+        userId: user.id,
+        failedCount: accountFailureBucket.failedCount,
+        failedAt: accountFailureBucket.updatedAt,
+        lockedUntil: accountFailureBucket.lockedUntil,
+      })
+
+      return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
+    }
+
     if (
       isAccountLocked({
         lockedUntil: user.loginLockedUntil,
@@ -598,21 +627,108 @@ app.post('/identity/connect/token', async (c) => {
         grantDecision.grant.password,
       )
     ) {
-      const failure = await recordFailedAttempt({ accountBucket: true })
-      const accountFailureBucket = failure.accountFailureBucket
+      return recordAccountFailure()
+    }
 
-      if (!accountFailureBucket) {
-        throw new Error('Account failure bucket was not recorded.')
+    if (user.totpEnabled) {
+      const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
+      if (!totpSecret || !user.totpEncryptedSecret) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'server_misconfigured',
+            'TOTP login is not configured.',
+          ),
+          503,
+        )
       }
 
-      await recordFailedLogin(c.env.DB, {
-        userId: user.id,
-        failedCount: accountFailureBucket.failedCount,
-        failedAt: accountFailureBucket.updatedAt,
-        lockedUntil: accountFailureBucket.lockedUntil,
+      if (
+        !grantDecision.grant.twoFactorToken &&
+        !grantDecision.grant.twoFactorCode
+      ) {
+        const challengeToken = await issueTotpChallenge(c.env.DB, {
+          tokenSecret,
+          userId: user.id,
+          deviceIdentifier: device.identifier,
+          issuedAt,
+          now,
+        })
+
+        return c.json(totpChallengeResponse(challengeToken), 400)
+      }
+
+      if (
+        !isTotpProvider(grantDecision.grant.twoFactorProvider) ||
+        !grantDecision.grant.twoFactorToken ||
+        !grantDecision.grant.twoFactorCode
+      ) {
+        return recordAccountFailure()
+      }
+
+      const challengeHash = await hashTotpChallengeToken(
+        tokenSecret,
+        grantDecision.grant.twoFactorToken,
+      )
+      const challenge = await findActiveTotpChallengeByHash(
+        c.env.DB,
+        challengeHash,
+        now,
+      )
+
+      if (
+        !challenge ||
+        challenge.userId !== user.id ||
+        challenge.deviceIdentifier !== device.identifier
+      ) {
+        return recordAccountFailure()
+      }
+
+      const challengeConsumed = await consumeTotpChallenge(c.env.DB, {
+        challengeId: challenge.id,
+        consumedAt: now,
       })
 
-      return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
+      if (!challengeConsumed) {
+        return recordAccountFailure()
+      }
+
+      const secretBase32 = await decryptTotpSecret(
+        totpSecret,
+        user.totpEncryptedSecret,
+      )
+
+      if (!secretBase32) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'server_misconfigured',
+            'TOTP login is not configured.',
+          ),
+          503,
+        )
+      }
+
+      const verification = await verifyTotpCode({
+        secretBase32,
+        code: grantDecision.grant.twoFactorCode,
+        nowUnixSeconds: issuedAt,
+        lastAcceptedStep: user.totpLastAcceptedStep,
+      })
+
+      if (!verification.ok) {
+        return recordAccountFailure()
+      }
+
+      const stepRecorded = await recordAcceptedTotpStep(c.env.DB, {
+        userId: user.id,
+        acceptedStep: verification.timeStep,
+        now,
+      })
+
+      if (!stepRecorded) {
+        return recordAccountFailure()
+      }
     }
 
     const expiresAt = issuedAt + accessTokenTtlSeconds
@@ -680,6 +796,166 @@ app.get('/api/sync', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Vault sync failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/identity/accounts/totp/setup', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
+  if (!totpSecret) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'TOTP setup is not configured.',
+      ),
+      503,
+    )
+  }
+
+  const secret = generateTotpSecret()
+  const now = new Date().toISOString()
+
+  try {
+    await upsertPendingTotpSetup(c.env.DB, {
+      userId: auth.user.id,
+      encryptedSecret: await encryptTotpSecret(totpSecret, secret),
+      now,
+    })
+
+    return c.json({
+      object: 'totpSetup',
+      secret,
+      uri: buildTotpUri(auth.user.emailNormalized, secret),
+      enabled: false,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'TOTP setup failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/identity/accounts/totp/setup/verify', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
+  if (!totpSecret) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'TOTP setup is not configured.',
+      ),
+      503,
+    )
+  }
+
+  const request = parseTotpVerifyRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'TOTP code is required.'),
+      400,
+    )
+  }
+
+  const verifiedAt = new Date()
+  const verifiedAtIso = verifiedAt.toISOString()
+
+  try {
+    const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
+    if (!setup) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP setup not found.',
+        ),
+        400,
+      )
+    }
+
+    const secretBase32 = await decryptTotpSecret(
+      totpSecret,
+      setup.encryptedSecret,
+    )
+    if (!secretBase32) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'TOTP setup is not configured.',
+        ),
+        503,
+      )
+    }
+
+    const verification = await verifyTotpCode({
+      secretBase32,
+      code: request.code,
+      nowUnixSeconds: Math.floor(verifiedAt.getTime() / 1000),
+      lastAcceptedStep: setup.lastAcceptedStep,
+    })
+
+    if (!verification.ok) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP code is invalid.',
+        ),
+        400,
+      )
+    }
+
+    const stepRecorded = await recordAcceptedTotpStep(c.env.DB, {
+      userId: auth.user.id,
+      acceptedStep: verification.timeStep,
+      now: verifiedAtIso,
+    })
+    const enabled = stepRecorded
+      ? await enableTotpSetup(c.env.DB, {
+          userId: auth.user.id,
+          verifiedAt: verifiedAtIso,
+        })
+      : false
+
+    if (!enabled) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP code is invalid.',
+        ),
+        400,
+      )
+    }
+
+    return c.json({
+      object: 'totp',
+      enabled: true,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'TOTP setup failed.',
       ),
       503,
     )
@@ -1179,6 +1455,82 @@ function buildTokenResponse(
   }
 }
 
+async function issueTotpChallenge(
+  database: Pick<D1Database, 'prepare'>,
+  input: {
+    tokenSecret: string
+    userId: string
+    deviceIdentifier: string
+    issuedAt: number
+    now: string
+  },
+): Promise<string> {
+  const challengeToken = generateRefreshToken()
+
+  await createTotpChallenge(database, {
+    id: crypto.randomUUID(),
+    userId: input.userId,
+    challengeHash: await hashTotpChallengeToken(
+      input.tokenSecret,
+      challengeToken,
+    ),
+    deviceIdentifier: input.deviceIdentifier,
+    expiresAt: new Date(
+      (input.issuedAt + totpChallengeTtlSeconds) * 1000,
+    ).toISOString(),
+    createdAt: input.now,
+  })
+
+  return challengeToken
+}
+
+async function hashTotpChallengeToken(
+  tokenSecret: string,
+  challengeToken: string,
+): Promise<string> {
+  return hashRefreshToken(tokenSecret, `totp:${challengeToken}`)
+}
+
+function totpChallengeResponse(challengeToken: string) {
+  return {
+    ...tokenErrorResponse({
+      error: 'invalid_grant',
+      errorModel: {
+        Message: 'TOTP verification is required.',
+        Object: 'error',
+      },
+    }),
+    TwoFactorToken: challengeToken,
+    TwoFactorProviders: [
+      {
+        type: 'totp',
+      },
+    ],
+  }
+}
+
+function isTotpProvider(provider: string | null): boolean {
+  return (
+    provider === null ||
+    provider === '0' ||
+    provider === 'totp' ||
+    provider === 'authenticator'
+  )
+}
+
+function buildTotpUri(emailNormalized: string, secret: string): string {
+  const label = encodeURIComponent(`HonoWarden:${emailNormalized}`)
+  const params = new URLSearchParams({
+    secret,
+    issuer: 'HonoWarden',
+    algorithm: 'SHA1',
+    digits: String(totpPolicy.digits),
+    period: String(totpPolicy.periodSeconds),
+  })
+
+  return `otpauth://totp/${label}?${params.toString()}`
+}
+
 function buildSyncResponse(
   user: AuthUserRecord,
   folders: readonly FolderRecord[] = [],
@@ -1194,7 +1546,7 @@ function buildSyncResponse(
       Premium: false,
       PremiumFromOrganization: false,
       Culture: 'en-US',
-      TwoFactorEnabled: false,
+      TwoFactorEnabled: user.totpEnabled,
       Key: user.userKey,
       AccountKeys: null,
       AvatarColor: '#3366cc',
@@ -1391,6 +1743,22 @@ function decodePathParam(value: string): string {
   } catch {
     return value
   }
+}
+
+function parseTotpVerifyRequestBody(
+  body: unknown,
+): { ok: true; code: string } | { ok: false } {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false }
+  }
+
+  const payload = body as Record<string, unknown>
+  const code =
+    parseRequiredString(payload.code) ??
+    parseRequiredString(payload.totpCode) ??
+    parseRequiredString(payload.twoFactorCode)
+
+  return code ? { ok: true, code } : { ok: false }
 }
 
 function parseFolderRequestBody(

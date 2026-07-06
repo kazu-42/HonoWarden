@@ -43,6 +43,7 @@ const requiredFlows = [
   'cipher_lifecycle',
   'revision_conflict',
   'device_revoke',
+  'totp_login',
 ] as const
 
 describe('client compatibility matrix', () => {

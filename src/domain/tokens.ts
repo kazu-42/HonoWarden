@@ -5,6 +5,9 @@ export type PasswordGrantRequest = {
   usernameNormalized: string
   password: string
   scope: string | null
+  twoFactorProvider: string | null
+  twoFactorToken: string | null
+  twoFactorCode: string | null
 }
 
 export type RefreshTokenGrantRequest = {
@@ -88,8 +91,38 @@ export function parsePasswordGrantForm(
       usernameNormalized,
       password,
       scope: form.get('scope')?.trim() || null,
+      twoFactorProvider: readFormValue(form, [
+        'twoFactorProvider',
+        'two_factor_provider',
+        'TwoFactorProvider',
+      ]),
+      twoFactorToken: readFormValue(form, [
+        'twoFactorToken',
+        'two_factor_token',
+        'TwoFactorToken',
+      ]),
+      twoFactorCode: readFormValue(form, [
+        'twoFactorCode',
+        'two_factor_code',
+        'TwoFactorCode',
+        'code',
+      ]),
     },
   }
+}
+
+function readFormValue(
+  form: URLSearchParams,
+  fieldNames: readonly string[],
+): string | null {
+  for (const fieldName of fieldNames) {
+    const value = form.get(fieldName)?.trim()
+    if (value) {
+      return value
+    }
+  }
+
+  return null
 }
 
 export function parseRefreshTokenGrantForm(

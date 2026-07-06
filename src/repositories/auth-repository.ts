@@ -16,6 +16,9 @@ export type AuthUserRecord = {
   loginFailedCount: number
   loginFailedAt: string | null
   loginLockedUntil: string | null
+  totpEnabled: boolean
+  totpEncryptedSecret: string | null
+  totpLastAcceptedStep: number | null
 }
 
 export type DeviceSessionInput = {
@@ -141,6 +144,9 @@ type AuthUserRow = {
   loginFailedCount: number
   loginFailedAt: string | null
   loginLockedUntil: string | null
+  totpEnabled: number | boolean | null
+  totpEncryptedSecret: string | null
+  totpLastAcceptedStep: number | null
 }
 
 type RefreshTokenSessionRow = {
@@ -167,6 +173,9 @@ type RefreshTokenSessionRow = {
   loginFailedCount: number
   loginFailedAt: string | null
   loginLockedUntil: string | null
+  totpEnabled: number | boolean | null
+  totpEncryptedSecret: string | null
+  totpLastAcceptedStep: number | null
 }
 
 type FailedAuthAttemptCountRow = {
@@ -189,25 +198,29 @@ export async function findAuthUserByEmail(
     .prepare(
       `
         SELECT
-          id,
-          email,
-          email_normalized as emailNormalized,
-          display_name as displayName,
-          kdf_algorithm as kdfAlgorithm,
-          kdf_iterations as kdfIterations,
-          kdf_memory as kdfMemory,
-          kdf_parallelism as kdfParallelism,
-          master_password_hash as masterPasswordHash,
-          user_key as userKey,
-          private_key as privateKey,
-          security_stamp as securityStamp,
-          created_at as createdAt,
-          disabled_at as disabledAt,
-          login_failed_count as loginFailedCount,
-          login_failed_at as loginFailedAt,
-          login_locked_until as loginLockedUntil
-        FROM users
-        WHERE email_normalized = ?
+          u.id,
+          u.email,
+          u.email_normalized as emailNormalized,
+          u.display_name as displayName,
+          u.kdf_algorithm as kdfAlgorithm,
+          u.kdf_iterations as kdfIterations,
+          u.kdf_memory as kdfMemory,
+          u.kdf_parallelism as kdfParallelism,
+          u.master_password_hash as masterPasswordHash,
+          u.user_key as userKey,
+          u.private_key as privateKey,
+          u.security_stamp as securityStamp,
+          u.created_at as createdAt,
+          u.disabled_at as disabledAt,
+          u.login_failed_count as loginFailedCount,
+          u.login_failed_at as loginFailedAt,
+          u.login_locked_until as loginLockedUntil,
+          COALESCE(ut.enabled, 0) as totpEnabled,
+          ut.encrypted_secret as totpEncryptedSecret,
+          ut.last_accepted_step as totpLastAcceptedStep
+        FROM users u
+        LEFT JOIN user_totp ut ON ut.user_id = u.id
+        WHERE u.email_normalized = ?
         LIMIT 1
       `,
     )
@@ -225,25 +238,29 @@ export async function findAuthUserById(
     .prepare(
       `
         SELECT
-          id,
-          email,
-          email_normalized as emailNormalized,
-          display_name as displayName,
-          kdf_algorithm as kdfAlgorithm,
-          kdf_iterations as kdfIterations,
-          kdf_memory as kdfMemory,
-          kdf_parallelism as kdfParallelism,
-          master_password_hash as masterPasswordHash,
-          user_key as userKey,
-          private_key as privateKey,
-          security_stamp as securityStamp,
-          created_at as createdAt,
-          disabled_at as disabledAt,
-          login_failed_count as loginFailedCount,
-          login_failed_at as loginFailedAt,
-          login_locked_until as loginLockedUntil
-        FROM users
-        WHERE id = ?
+          u.id,
+          u.email,
+          u.email_normalized as emailNormalized,
+          u.display_name as displayName,
+          u.kdf_algorithm as kdfAlgorithm,
+          u.kdf_iterations as kdfIterations,
+          u.kdf_memory as kdfMemory,
+          u.kdf_parallelism as kdfParallelism,
+          u.master_password_hash as masterPasswordHash,
+          u.user_key as userKey,
+          u.private_key as privateKey,
+          u.security_stamp as securityStamp,
+          u.created_at as createdAt,
+          u.disabled_at as disabledAt,
+          u.login_failed_count as loginFailedCount,
+          u.login_failed_at as loginFailedAt,
+          u.login_locked_until as loginLockedUntil,
+          COALESCE(ut.enabled, 0) as totpEnabled,
+          ut.encrypted_secret as totpEncryptedSecret,
+          ut.last_accepted_step as totpLastAcceptedStep
+        FROM users u
+        LEFT JOIN user_totp ut ON ut.user_id = u.id
+        WHERE u.id = ?
         LIMIT 1
       `,
     )
@@ -356,10 +373,14 @@ export async function findRefreshTokenSessionByHash(
           u.disabled_at as disabledAt,
           u.login_failed_count as loginFailedCount,
           u.login_failed_at as loginFailedAt,
-          u.login_locked_until as loginLockedUntil
+          u.login_locked_until as loginLockedUntil,
+          COALESCE(ut.enabled, 0) as totpEnabled,
+          ut.encrypted_secret as totpEncryptedSecret,
+          ut.last_accepted_step as totpLastAcceptedStep
         FROM refresh_tokens rt
         INNER JOIN users u ON u.id = rt.user_id
         INNER JOIN devices d ON d.id = rt.device_id
+        LEFT JOIN user_totp ut ON ut.user_id = u.id
         WHERE rt.token_hash = ?
         LIMIT 1
       `,
@@ -397,6 +418,9 @@ export async function findRefreshTokenSessionByHash(
       loginFailedCount: row.loginFailedCount,
       loginFailedAt: row.loginFailedAt,
       loginLockedUntil: row.loginLockedUntil,
+      totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
+      totpEncryptedSecret: row.totpEncryptedSecret ?? null,
+      totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
     },
   }
 }
@@ -774,6 +798,9 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     loginFailedCount: row.loginFailedCount,
     loginFailedAt: row.loginFailedAt,
     loginLockedUntil: row.loginLockedUntil,
+    totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
+    totpEncryptedSecret: row.totpEncryptedSecret ?? null,
+    totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
   }
 }
 

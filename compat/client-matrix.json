@@ -18,11 +18,12 @@
         "cipher_create",
         "cipher_lifecycle",
         "revision_conflict",
-        "device_revoke"
+        "device_revoke",
+        "totp_login"
       ],
       "knownIssues": [
         "No live client login or sync run is recorded for this exact version.",
-        "TOTP login is not implemented yet.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Device list and device metadata update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -42,11 +43,12 @@
         "cipher_create",
         "cipher_lifecycle",
         "revision_conflict",
-        "device_revoke"
+        "device_revoke",
+        "totp_login"
       ],
       "knownIssues": [
         "No live client login or sync run is recorded for this exact version.",
-        "TOTP login is not implemented yet.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Device list and device metadata update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -67,11 +69,12 @@
         "cipher_create",
         "cipher_lifecycle",
         "revision_conflict",
-        "device_revoke"
+        "device_revoke",
+        "totp_login"
       ],
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
-        "TOTP login is not implemented yet.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Device list and device metadata update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -92,11 +95,12 @@
         "cipher_create",
         "cipher_lifecycle",
         "revision_conflict",
-        "device_revoke"
+        "device_revoke",
+        "totp_login"
       ],
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
-        "TOTP login is not implemented yet.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Device list and device metadata update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -116,11 +120,12 @@
         "cipher_create",
         "cipher_lifecycle",
         "revision_conflict",
-        "device_revoke"
+        "device_revoke",
+        "totp_login"
       ],
       "knownIssues": [
         "No live CLI command run is recorded for this exact version.",
-        "TOTP login is not implemented yet.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Device list and device metadata update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]

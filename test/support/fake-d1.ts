@@ -13,6 +13,8 @@ type FakeD1DatabaseOptions = {
   lockedAccountFailureBucket?: boolean
   lockedIpFailureBucket?: boolean
   authUser?: Record<string, unknown> | null
+  userTotp?: Record<string, unknown> | null
+  totpChallenge?: Record<string, unknown> | null
   cipher?: Record<string, unknown> | null
   cipherInsertChanges?: number
   cipherPermanentDeleteChanges?: number
@@ -28,6 +30,10 @@ type FakeD1DatabaseOptions = {
   refreshSession?: Record<string, unknown> | null
   refreshRotationChanges?: number
   userInsertChanges?: number
+  userTotpInsertChanges?: number
+  userTotpUpdateChanges?: number
+  totpChallengeInsertChanges?: number
+  totpChallengeUpdateChanges?: number
 }
 
 export class FakeD1Database {
@@ -108,6 +114,14 @@ export class FakeD1Database {
           return (options.cipher ?? null) as T | null
         }
 
+        if (query.includes('FROM user_totp')) {
+          return (options.userTotp ?? null) as T | null
+        }
+
+        if (query.includes('FROM totp_challenges')) {
+          return (options.totpChallenge ?? null) as T | null
+        }
+
         if (query.includes('FROM users')) {
           return (options.authUser ?? null) as T | null
         }
@@ -177,6 +191,28 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.cipherInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO user_totp')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.userTotpInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO totp_challenges')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.totpChallengeInsertChanges ?? 1,
             },
           }
         }
@@ -253,6 +289,28 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: 1,
+            },
+          }
+        }
+
+        if (/UPDATE\s+user_totp/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.userTotpUpdateChanges ?? 1,
+            },
+          }
+        }
+
+        if (/UPDATE\s+totp_challenges/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.totpChallengeUpdateChanges ?? 1,
             },
           }
         }
@@ -367,4 +425,6 @@ export const requiredTables = [
   'auth_failure_buckets',
   'folders',
   'ciphers',
+  'user_totp',
+  'totp_challenges',
 ] as const

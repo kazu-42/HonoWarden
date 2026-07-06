@@ -68,6 +68,8 @@ Bootstrap account creation is disabled by default. For local operator testing, s
 
 Password grant token exchange requires `HONOWARDEN_TOKEN_SECRET`. Set it through local environment or Wrangler secrets; do not commit real token secrets.
 
+TOTP setup and login require `HONOWARDEN_TOTP_SECRET` to wrap authenticator secrets before they are stored in D1. Set it through local environment or Wrangler secrets; do not put it in `wrangler.jsonc` vars.
+
 Generate Cloudflare binding types after editing `wrangler.jsonc`:
 
 ```sh
