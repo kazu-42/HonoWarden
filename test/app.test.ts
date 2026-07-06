@@ -304,6 +304,135 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('exchanges a valid password grant for tokens', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+          'Device-Name': 'Fixture Device',
+          'Device-Type': '9',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'Person@Example.Test',
+          password: 'synthetic-master-password-hash',
+          scope: 'api offline_access',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+      token_type: 'Bearer',
+      expires_in: 3600,
+      Key: '2.synthetic-user-key',
+      PrivateKey: null,
+      Kdf: 0,
+      KdfIterations: 600000,
+      KdfMemory: null,
+      KdfParallelism: null,
+      AccountKeys: null,
+      ForcePasswordReset: false,
+      TwoFactorToken: null,
+      MasterPasswordPolicy: null,
+      UserDecryptionOptions: null,
+      KeyConnectorUrl: null,
+    })
+  })
+
+  it('rejects password grant when token secret is missing', async () => {
+    const response = await app.request('/identity/connect/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'password',
+        username: 'person@example.test',
+        password: 'synthetic-master-password-hash',
+      }),
+    })
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+      },
+    })
+  })
+
+  it('requires device information for password grant', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_request',
+      ErrorModel: {
+        Message: 'Device information is required.',
+      },
+    })
+  })
+
+  it('rejects invalid password grants without revealing user existence', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'wrong-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      ErrorModel: {
+        Message: 'Invalid username or password.',
+        Object: 'error',
+      },
+    })
+  })
+
   it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 
@@ -342,3 +471,21 @@ describe('HonoWarden app', () => {
     })
   })
 })
+
+function authUserRecord() {
+  return {
+    id: 'user-id',
+    email: 'Person@Example.Test',
+    emailNormalized: 'person@example.test',
+    displayName: 'Person',
+    kdfAlgorithm: 'pbkdf2-sha256',
+    kdfIterations: 600000,
+    kdfMemory: null,
+    kdfParallelism: null,
+    masterPasswordHash: 'synthetic-master-password-hash',
+    userKey: '2.synthetic-user-key',
+    privateKey: null,
+    securityStamp: 'security-stamp',
+    disabledAt: null,
+  }
+}

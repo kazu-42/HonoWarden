@@ -11,8 +11,22 @@ import {
   verifyBootstrapToken,
 } from './domain/bootstrap'
 import { resolvePrelogin } from './domain/prelogin'
+import {
+  generateRefreshToken,
+  hashRefreshToken,
+  invalidGrantError,
+  parsePasswordGrantForm,
+  signAccessToken,
+  tokenErrorResponse,
+  tokenRequestError,
+  verifyPresentedPasswordHash,
+} from './domain/tokens'
 import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
+import {
+  createPasswordGrantSession,
+  findAuthUserByEmail,
+} from './repositories/auth-repository'
 import { createBootstrapUser } from './repositories/user-repository'
 
 type Variables = {
@@ -23,6 +37,8 @@ const serviceDescription =
   'A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.'
 
 const upstreamClientHeaderPrefix = ['Bit', 'warden'].join('')
+const accessTokenTtlSeconds = 3600
+const refreshTokenTtlSeconds = 60 * 60 * 24 * 30
 
 const defaultCorsHeaders = [
   'Accept',
@@ -286,6 +302,113 @@ app.post('/api/accounts/bootstrap', async (c) => {
   }
 })
 
+app.post('/identity/connect/token', async (c) => {
+  const tokenSecret = c.env?.HONOWARDEN_TOKEN_SECRET
+  if (!tokenSecret) {
+    return c.json(
+      {
+        error: {
+          code: 'server_misconfigured',
+          message: 'Token exchange is not configured.',
+        },
+        requestId: c.get('requestId'),
+      },
+      503,
+    )
+  }
+
+  const grantDecision = parsePasswordGrantForm(await readFormBody(c.req.raw))
+  if (!grantDecision.ok) {
+    return c.json(tokenErrorResponse(grantDecision.error), grantDecision.status)
+  }
+
+  const device = readDeviceInfo(c.req.raw.headers)
+  if (!device) {
+    const error = tokenRequestError(
+      'invalid_request',
+      'Device information is required.',
+    )
+
+    return c.json(tokenErrorResponse(error.error), error.status)
+  }
+
+  try {
+    const user = await findAuthUserByEmail(
+      c.env.DB,
+      grantDecision.grant.usernameNormalized,
+    )
+
+    if (
+      !user ||
+      user.disabledAt ||
+      !verifyPresentedPasswordHash(
+        user.masterPasswordHash,
+        grantDecision.grant.password,
+      )
+    ) {
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
+
+    const issuedAt = Math.floor(Date.now() / 1000)
+    const expiresAt = issuedAt + accessTokenTtlSeconds
+    const refreshToken = generateRefreshToken()
+    const refreshTokenHash = await hashRefreshToken(tokenSecret, refreshToken)
+    const now = new Date(issuedAt * 1000).toISOString()
+
+    await createPasswordGrantSession(c.env.DB, {
+      userId: user.id,
+      deviceIdentifier: device.identifier,
+      deviceName: device.name,
+      deviceType: device.type,
+      refreshTokenId: crypto.randomUUID(),
+      refreshTokenHash,
+      refreshTokenExpiresAt: new Date(
+        (issuedAt + refreshTokenTtlSeconds) * 1000,
+      ).toISOString(),
+      now,
+    })
+
+    const accessToken = await signAccessToken(tokenSecret, {
+      sub: user.id,
+      email: user.emailNormalized,
+      device: device.identifier,
+      securityStamp: user.securityStamp,
+      iat: issuedAt,
+      exp: expiresAt,
+    })
+
+    return c.json({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: 'Bearer',
+      expires_in: accessTokenTtlSeconds,
+      Key: user.userKey,
+      PrivateKey: user.privateKey,
+      Kdf: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
+      KdfIterations: user.kdfIterations,
+      KdfMemory: user.kdfMemory,
+      KdfParallelism: user.kdfParallelism,
+      AccountKeys: null,
+      ForcePasswordReset: false,
+      TwoFactorToken: null,
+      MasterPasswordPolicy: null,
+      UserDecryptionOptions: null,
+      KeyConnectorUrl: null,
+    })
+  } catch {
+    return c.json(
+      {
+        error: {
+          code: 'database_unavailable',
+          message: 'Token exchange failed.',
+        },
+        requestId: c.get('requestId'),
+      },
+      503,
+    )
+  }
+})
+
 app.notFound((c) => {
   return c.json(
     {
@@ -304,6 +427,38 @@ async function readJsonBody(request: Request): Promise<unknown> {
     return await request.json()
   } catch {
     return null
+  }
+}
+
+async function readFormBody(request: Request): Promise<URLSearchParams> {
+  return new URLSearchParams(await request.text())
+}
+
+function readDeviceInfo(headers: Headers): {
+  identifier: string
+  name: string | null
+  type: number | null
+} | null {
+  const identifier = (
+    headers.get('Device-Identifier') ??
+    headers.get('X-Device-Identifier') ??
+    ''
+  ).trim()
+
+  if (!identifier) {
+    return null
+  }
+
+  const rawType = (headers.get('Device-Type') ?? '').trim()
+  const type = rawType ? Number.parseInt(rawType, 10) : null
+
+  return {
+    identifier,
+    name:
+      headers.get('Device-Name')?.trim() ||
+      headers.get('X-Device-Name')?.trim() ||
+      null,
+    type: Number.isFinite(type) ? type : null,
   }
 }
 

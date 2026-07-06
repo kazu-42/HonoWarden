@@ -5,4 +5,5 @@ export type Bindings = {
   HONOWARDEN_BOOTSTRAP_ENABLED?: string
   HONOWARDEN_BOOTSTRAP_TOKEN?: string
   HONOWARDEN_ENV?: string
+  HONOWARDEN_TOKEN_SECRET?: string
 }

@@ -65,9 +65,22 @@ Implemented:
 - D1 `INSERT OR IGNORE` account creation to handle duplicate parallel bootstrap attempts
 - stable `201`, `400`, `403`, `409`, and `503` bootstrap responses
 
+## Week 6 Increment
+
+Implemented:
+
+- `POST /identity/connect/token` password grant
+- `HONOWARDEN_TOKEN_SECRET` fail-closed token signing requirement
+- normalized user lookup for password grant
+- constant-time comparison for presented master password hash
+- HMAC-signed access tokens
+- random refresh token generation with secret-bound SHA-256 hash storage
+- device upsert before refresh token persistence
+- stable invalid grant, invalid request, misconfigured, and database unavailable responses
+
 Not implemented:
 
-- token exchange
+- refresh token grant and rotation
 - vault sync
 - any storage of real password-vault data
 

@@ -9,6 +9,7 @@ const fakeMeta = {
 } satisfies D1Meta & Record<string, unknown>
 
 type FakeD1DatabaseOptions = {
+  authUser?: Record<string, unknown> | null
   userInsertChanges?: number
 }
 
@@ -29,6 +30,10 @@ export class FakeD1Database {
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (query.includes('FROM users')) {
+          return (options.authUser ?? null) as T | null
+        }
+
         if (query.includes('FROM schema_migrations')) {
           if (!schemaVersion) {
             return null
@@ -79,6 +84,16 @@ export class FakeD1Database {
     } as D1PreparedStatement
 
     return statement
+  }
+
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
+    return statements.map(() => ({
+      success: true,
+      results: [],
+      meta: fakeMeta,
+    }))
   }
 }
 
