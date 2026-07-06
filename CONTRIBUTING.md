@@ -22,7 +22,7 @@ This project handles password-vault sync, so changes should be small, reviewable
 
 ## Compatibility Changes
 
-For Bitwarden client compatibility work, include:
+For upstream client compatibility work, include:
 
 - the client and version used for observation
 - the endpoint or flow being implemented

@@ -1,7 +1,7 @@
 {
   "name": "honowarden",
   "version": "0.0.0",
-  "description": "A minimal, API-only Bitwarden-compatible server for Cloudflare Workers, built with Hono, D1, and R2.",
+  "description": "A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "private": false,
@@ -11,7 +11,6 @@
     "pnpm": ">=11.0.0"
   },
   "keywords": [
-    "bitwarden",
     "cloudflare-workers",
     "d1",
     "hono",
@@ -35,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.0",
     "eslint": "^10.6.0",
     "prettier": "^3.9.4",
     "typescript": "^6.0.3",

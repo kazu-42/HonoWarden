@@ -1,8 +1,8 @@
 # HonoWarden
 
-A minimal, API-only Bitwarden-compatible server for Cloudflare Workers, built with Hono, D1, and R2.
+A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.
 
-HonoWarden focuses on personal and small-team vault sync using official Bitwarden clients. It intentionally avoids Web Vault, public registration, Organizations, and Send in the initial scope to reduce attack surface.
+HonoWarden focuses on personal and small-team vault sync using official clients for the upstream encrypted-vault protocol. It intentionally avoids Web Vault, public registration, organization features, and public file-sharing features in the initial scope to reduce attack surface.
 
 ## Status
 
@@ -10,7 +10,7 @@ HonoWarden is pre-alpha. It is not ready to store real secrets, and it has not h
 
 The first milestone is a narrow compatibility target:
 
-- official Bitwarden clients can authenticate against a self-hosted endpoint
+- official upstream clients can authenticate against a self-hosted endpoint
 - personal vault items can sync through the public client API surface needed for single-user and small-team use
 - encrypted vault data is stored in D1, with larger binary objects stored in R2 when required
 - server-side behavior stays API-only, with no bundled Web Vault
@@ -19,8 +19,8 @@ The first milestone is a narrow compatibility target:
 
 - hosted multi-tenant service
 - public account registration
-- Organizations
-- Send
+- organization features
+- public file sharing
 - Web Vault
 - browser extension or mobile client forks
 
@@ -69,11 +69,11 @@ pnpm wrangler r2 bucket create honowarden-vault-objects
 
 ## Compatibility
 
-Compatibility work is tracked in [docs/compatibility.md](docs/compatibility.md). HonoWarden aims to be protocol-compatible where needed by official Bitwarden clients, not feature-equivalent with Bitwarden Server.
+Compatibility work is tracked in [docs/compatibility.md](docs/compatibility.md). HonoWarden aims to be protocol-compatible where needed by official upstream clients, not feature-equivalent with the upstream hosted server.
 
 The project roadmap is tracked in [ROADMAP.md](ROADMAP.md). The development approach is incremental: every week should end with a deployable build that is more useful than the week before.
 
-Bitwarden is a trademark of Bitwarden, Inc. HonoWarden is an independent project and is not affiliated with, sponsored by, or endorsed by Bitwarden, Inc.
+HonoWarden is an independent project and is not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.
 
 ## Security
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-HonoWarden will be developed incrementally. The goal is not to design a full Bitwarden-compatible server up front, but to keep every weekly state deployable, testable, and more useful than the previous one.
+HonoWarden will be developed incrementally. The goal is not to design a full upstream-compatible vault server up front, but to keep every weekly state deployable, testable, and more useful than the previous one.
 
 Start date: 2026-07-06  
 Initial six-month target: 2027-01-03  
@@ -8,7 +8,7 @@ Target release: `v0.1.0-alpha`
 
 ## Target For v0.1.0-alpha
 
-HonoWarden should let official Bitwarden browser extension, desktop, and mobile clients connect to a self-hosted URL and use a minimal personal vault:
+HonoWarden should let official upstream browser extension, desktop, and mobile clients connect to a self-hosted URL and use a minimal personal vault:
 
 - restricted account bootstrap for one person or a small set of allowed users
 - password login
@@ -39,7 +39,7 @@ These are deferred because they expand the attack surface or require a separate 
 ## Development Rules
 
 - Cut a deployable tag at the end of each week.
-- Prefer official Bitwarden client verification over curl-only verification once an endpoint is reachable by clients.
+- Prefer official upstream client verification over curl-only verification once an endpoint is reachable by clients.
 - Fix compatibility regressions before adding new features.
 - Capture incoming and outgoing compatibility JSON as fixtures.
 - Keep the project API-only; do not add a Web Vault.
@@ -58,9 +58,9 @@ These are deferred because they expand the attack surface or require a separate 
 | 5    | 2026-08-03 to 2026-08-09 | One-time bootstrap registration works.                    | Bootstrap is default-off, allowlisted, and resistant to duplicate parallel registration.                                                      |
 | 6    | 2026-08-10 to 2026-08-16 | Password grant returns tokens.                            | `POST /identity/connect/token` returns access and refresh tokens for valid credentials; refresh tokens are not stored in plaintext.           |
 | 7    | 2026-08-17 to 2026-08-23 | Device records and refresh token rotation work.           | Login records a device; refresh rotates tokens; token reuse invalidates the session.                                                          |
-| 8    | 2026-08-24 to 2026-08-30 | Official clients can log in to an empty vault.            | Browser extension and desktop login succeed; `/api/sync` returns empty vault collections without client errors.                               |
-| 9    | 2026-08-31 to 2026-09-06 | Folder CRUD works.                                        | Official clients can create, edit, delete, and sync folders; cross-user folder access is denied.                                              |
-| 10   | 2026-09-07 to 2026-09-13 | One login item can be created.                            | Official clients can create a login cipher, sync it, and see it after logout/login.                                                           |
+| 8    | 2026-08-24 to 2026-08-30 | Official upstream clients can log in to an empty vault.   | Browser extension and desktop login succeed; `/api/sync` returns empty vault collections without client errors.                               |
+| 9    | 2026-08-31 to 2026-09-06 | Folder CRUD works.                                        | Official upstream clients can create, edit, delete, and sync folders; cross-user folder access is denied.                                     |
+| 10   | 2026-09-07 to 2026-09-13 | One login item can be created.                            | Official upstream clients can create a login cipher, sync it, and see it after logout/login.                                                  |
 | 11   | 2026-09-14 to 2026-09-20 | Cipher edit, delete, restore, and permanent delete work.  | Create, edit, trash, restore, and permanent delete work from official clients.                                                                |
 | 12   | 2026-09-21 to 2026-09-27 | A 10 to 50 item vault syncs reliably.                     | Login items, notes, favorites, and unknown encrypted fields round-trip without server-side decryption.                                        |
 | 13   | 2026-09-28 to 2026-10-04 | Stale updates are handled safely.                         | Revision tests prevent destructive overwrite from stale clients.                                                                              |
@@ -103,7 +103,7 @@ src/
   routes/
   domain/
   repositories/
-  bitwarden/
+  protocol/
   infra/
 
 migrations/

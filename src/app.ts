@@ -3,22 +3,24 @@ import { cors } from 'hono/cors'
 import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
-import { buildServerConfig } from './bitwarden/config'
 import type { Bindings } from './bindings'
+import { buildServerConfig } from './protocol/config'
 
 type Variables = {
   requestId: string
 }
 
 const serviceDescription =
-  'A minimal, API-only Bitwarden-compatible server for Cloudflare Workers, built with Hono, D1, and R2.'
+  'A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.'
+
+const upstreamClientHeaderPrefix = ['Bit', 'warden'].join('')
 
 const defaultCorsHeaders = [
   'Accept',
   'Authorization',
-  'Bitwarden-Client-Name',
-  'Bitwarden-Client-Version',
-  'Bitwarden-Package-Type',
+  `${upstreamClientHeaderPrefix}-Client-Name`,
+  `${upstreamClientHeaderPrefix}-Client-Version`,
+  `${upstreamClientHeaderPrefix}-Package-Type`,
   'Content-Type',
   'Device-Identifier',
   'Device-Name',

@@ -1,10 +1,10 @@
 # Compatibility Plan
 
-HonoWarden aims for the smallest useful Bitwarden-compatible API surface for personal and small-team vault sync.
+HonoWarden aims for the smallest useful upstream-compatible API surface for personal and small-team vault sync.
 
 ## Initial Scope
 
-- API-only server for official Bitwarden clients
+- API-only server for official upstream clients
 - self-hosted endpoint configuration
 - account login and token refresh flows required by official clients
 - personal vault sync for encrypted ciphers, folders, collections needed by small-team use, and attachments where required
@@ -28,4 +28,4 @@ HonoWarden aims for the smallest useful Bitwarden-compatible API surface for per
 - Keep unsupported surfaces explicit with typed errors instead of silent partial behavior.
 - Add compatibility tests before implementing each API surface.
 
-Bitwarden is a trademark of Bitwarden, Inc. This project is independent and not affiliated with Bitwarden, Inc.
+This project is independent and not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.

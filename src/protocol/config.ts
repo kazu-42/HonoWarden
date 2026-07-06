@@ -1,4 +1,4 @@
-export type BitwardenServerConfig = {
+export type UpstreamServerConfig = {
   version: string
   gitHash: string
   server: null
@@ -23,7 +23,7 @@ export type BitwardenServerConfig = {
   object: 'config'
 }
 
-export function buildServerConfig(origin: string): BitwardenServerConfig {
+export function buildServerConfig(origin: string): UpstreamServerConfig {
   const normalizedOrigin = origin.replace(/\/+$/, '')
 
   return {

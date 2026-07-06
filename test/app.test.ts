@@ -55,7 +55,7 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('returns a minimal Bitwarden-compatible server config', async () => {
+  it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 
     expect(response.status).toBe(200)

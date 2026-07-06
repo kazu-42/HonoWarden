@@ -27,7 +27,7 @@ Implemented:
 Not implemented:
 
 - D1 schema and migrations
-- Bitwarden account bootstrap
+- upstream account bootstrap
 - `prelogin`
 - token exchange
 - vault sync
