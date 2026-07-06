@@ -33,7 +33,7 @@ Authenticated cipher update, trash, restore, and permanent delete are implemente
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: cipher trash without token secret returns `503 server_misconfigured`.
-- GitHub Actions CI: pending push.
+- GitHub Actions CI: passed for implementation commit `bf8ba2c` in run `28787168460`.
 
 ## Remaining Risks
 

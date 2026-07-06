@@ -14,7 +14,8 @@ Verification:
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: cipher trash without token secret returns `503 server_misconfigured`.
+- GitHub Actions CI: passed for implementation commit `bf8ba2c` in run `28787168460`.
 
 Remaining risks:
 
-- GitHub Actions CI must still be completed before final Week11 closure.
+- Follow-up documentation-only workflow status commits still need normal CI after push.

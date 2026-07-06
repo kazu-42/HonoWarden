@@ -27,4 +27,4 @@
 
 ## Verification Still Needed
 
-- GitHub Actions CI after push.
+- None for implementation commit `bf8ba2c`; CI passed in run `28787168460`.
