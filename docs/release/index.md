@@ -11,6 +11,7 @@ Use this index as the feature-freeze entry point:
 - [Upgrade Guide](upgrade-guide.md)
 - [Rollback Guide](rollback-guide.md)
 - [Migration Freeze](migration-freeze.md)
+- [Release Gate Preflight](release-gate-preflight.md)
 - [Alpha Release Notes](v0.1.0-alpha-release-notes.md)
 
 ## Freeze Position
@@ -29,3 +30,4 @@ under time pressure.
 - Fresh deploy dry-run has been completed against staging configuration.
 - Backup export and fresh-target restore drill evidence exists.
 - Compatibility matrix remains conservative until live evidence is recorded.
+- `pnpm release:gate -- --strict` passes on the release commit.

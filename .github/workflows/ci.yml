@@ -42,5 +42,8 @@ jobs:
       - name: Compatibility fixture test
         run: pnpm compat:test
 
+      - name: Release gate preflight
+        run: pnpm release:gate
+
       - name: Format check
         run: pnpm format

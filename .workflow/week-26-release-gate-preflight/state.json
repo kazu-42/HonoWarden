@@ -1,0 +1,40 @@
+{
+  "title": "Week 26 Release Gate Preflight",
+  "slug": "week-26-release-gate-preflight",
+  "created_at": "2026-07-06T14:33:58Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local scripts, docs, tests, git push, and CI are within the sustained repo-development request. Tagging, deploying, or mutating external systems requires a separate gate."
+  },
+  "packets": [
+    {
+      "id": "01-preflight-script",
+      "status": "completed"
+    },
+    {
+      "id": "02-tests-docs",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "pending_ci",
+    "checks": [
+      "pnpm release:gate",
+      "pnpm test -- test/ops/release-gate.test.ts test/release-docs.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-preflight"
+    ]
+  }
+}

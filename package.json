@@ -31,6 +31,7 @@
     "format:write": "prettier --write .",
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",
+    "release:gate": "node scripts/honowarden-release-gate.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

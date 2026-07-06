@@ -451,3 +451,24 @@ Not implemented:
 
 The Linear seed remains the source of truth until a connector or browser session
 is authenticated to the `honowarden` workspace.
+
+## Week 26 Release Gate Preflight
+
+Implemented:
+
+- read-only release gate preflight script exposed as `pnpm release:gate`
+- strict mode for release automation through `pnpm release:gate -- --strict`
+- JSON report that separates passed repository evidence from alpha blockers
+- release docs link and usage guide for the preflight
+- tests covering current `not_ready` behavior and strict-mode failure
+- dynamic workflow artifacts for release gate preflight
+
+Current blockers reported by the preflight:
+
+- synthetic live-client evidence is still fixture-only
+- backup export and fresh-target restore drill evidence is not recorded
+- staging deploy smoke evidence is not recorded
+- Cloudflare resource evidence is not recorded
+
+The preflight is intentionally read-only and does not tag, deploy, call
+Cloudflare, call Linear, or contact external client services.

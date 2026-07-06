@@ -12,6 +12,7 @@ const releaseDocs = [
   'upgrade-guide.md',
   'rollback-guide.md',
   'migration-freeze.md',
+  'release-gate-preflight.md',
   'v0.1.0-alpha-release-notes.md',
 ] as const
 
