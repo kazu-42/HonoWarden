@@ -13,6 +13,9 @@ export type AuthUserRecord = {
   securityStamp: string
   createdAt: string
   disabledAt: string | null
+  loginFailedCount: number
+  loginFailedAt: string | null
+  loginLockedUntil: string | null
 }
 
 export type DeviceSessionInput = {
@@ -56,6 +59,47 @@ export type DeviceRevokeInput = {
   revokedAt: string
 }
 
+export type FailedLoginInput = {
+  userId: string
+  failedCount: number
+  failedAt: string
+  lockedUntil: string | null
+}
+
+export type LoginDefenseResetInput = {
+  userId: string
+  resetAt: string
+}
+
+export type AuthAttemptInput = {
+  id: string
+  bucketKey: string
+  subjectKey: string | null
+  successful: boolean
+  occurredAt: string
+}
+
+export type FailedAuthAttemptCountInput = {
+  bucketKey: string
+  occurredAfter: string
+}
+
+export type AuthFailureBucketRecord = {
+  bucketKey: string
+  failedCount: number
+  windowStartedAt: string
+  lockedUntil: string | null
+  updatedAt: string
+}
+
+export type FailedAuthBucketInput = {
+  bucketKey: string
+  failureLimit: number
+  failureWindowSeconds: number
+  lockoutSeconds: number
+  now: string
+}
+
 export type RotateRefreshTokenResult =
   | {
       status: 'rotated'
@@ -77,6 +121,7 @@ export type DeviceRevokeResult =
 type AuthLookupDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
+type LoginDefenseDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
   id: string
@@ -93,6 +138,9 @@ type AuthUserRow = {
   securityStamp: string
   createdAt: string
   disabledAt: string | null
+  loginFailedCount: number
+  loginFailedAt: string | null
+  loginLockedUntil: string | null
 }
 
 type RefreshTokenSessionRow = {
@@ -116,6 +164,21 @@ type RefreshTokenSessionRow = {
   securityStamp: string
   createdAt: string
   disabledAt: string | null
+  loginFailedCount: number
+  loginFailedAt: string | null
+  loginLockedUntil: string | null
+}
+
+type FailedAuthAttemptCountRow = {
+  count: number
+}
+
+type AuthFailureBucketRow = {
+  bucketKey: string
+  failedCount: number
+  windowStartedAt: string
+  lockedUntil: string | null
+  updatedAt: string
 }
 
 export async function findAuthUserByEmail(
@@ -139,7 +202,10 @@ export async function findAuthUserByEmail(
           private_key as privateKey,
           security_stamp as securityStamp,
           created_at as createdAt,
-          disabled_at as disabledAt
+          disabled_at as disabledAt,
+          login_failed_count as loginFailedCount,
+          login_failed_at as loginFailedAt,
+          login_locked_until as loginLockedUntil
         FROM users
         WHERE email_normalized = ?
         LIMIT 1
@@ -172,7 +238,10 @@ export async function findAuthUserById(
           private_key as privateKey,
           security_stamp as securityStamp,
           created_at as createdAt,
-          disabled_at as disabledAt
+          disabled_at as disabledAt,
+          login_failed_count as loginFailedCount,
+          login_failed_at as loginFailedAt,
+          login_locked_until as loginLockedUntil
         FROM users
         WHERE id = ?
         LIMIT 1
@@ -284,7 +353,10 @@ export async function findRefreshTokenSessionByHash(
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
           u.created_at as createdAt,
-          u.disabled_at as disabledAt
+          u.disabled_at as disabledAt,
+          u.login_failed_count as loginFailedCount,
+          u.login_failed_at as loginFailedAt,
+          u.login_locked_until as loginLockedUntil
         FROM refresh_tokens rt
         INNER JOIN users u ON u.id = rt.user_id
         INNER JOIN devices d ON d.id = rt.device_id
@@ -322,8 +394,211 @@ export async function findRefreshTokenSessionByHash(
       securityStamp: row.securityStamp,
       createdAt: row.createdAt,
       disabledAt: row.disabledAt,
+      loginFailedCount: row.loginFailedCount,
+      loginFailedAt: row.loginFailedAt,
+      loginLockedUntil: row.loginLockedUntil,
     },
   }
+}
+
+export async function recordFailedLogin(
+  database: LoginDefenseDatabase,
+  input: FailedLoginInput,
+): Promise<void> {
+  await database
+    .prepare(
+      `
+        UPDATE users
+        SET
+          login_failed_count = ?,
+          login_failed_at = ?,
+          login_locked_until = ?,
+          updated_at = ?
+        WHERE id = ?
+      `,
+    )
+    .bind(
+      input.failedCount,
+      input.failedAt,
+      input.lockedUntil,
+      input.failedAt,
+      input.userId,
+    )
+    .run()
+}
+
+export async function resetLoginDefenseState(
+  database: LoginDefenseDatabase,
+  input: LoginDefenseResetInput,
+): Promise<void> {
+  await database
+    .prepare(
+      `
+        UPDATE users
+        SET
+          login_failed_count = 0,
+          login_failed_at = NULL,
+          login_locked_until = NULL,
+          updated_at = ?
+        WHERE id = ?
+      `,
+    )
+    .bind(input.resetAt, input.userId)
+    .run()
+}
+
+export async function recordAuthAttempt(
+  database: LoginDefenseDatabase,
+  input: AuthAttemptInput,
+): Promise<void> {
+  await database
+    .prepare(
+      `
+        INSERT INTO auth_attempts (
+          id,
+          bucket_key,
+          subject_key,
+          successful,
+          occurred_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `,
+    )
+    .bind(
+      input.id,
+      input.bucketKey,
+      input.subjectKey,
+      input.successful ? 1 : 0,
+      input.occurredAt,
+    )
+    .run()
+}
+
+export async function countRecentFailedAuthAttempts(
+  database: LoginDefenseDatabase,
+  input: FailedAuthAttemptCountInput,
+): Promise<number> {
+  const row = await database
+    .prepare(
+      `
+        SELECT COUNT(*) as count
+        FROM auth_attempts
+        WHERE bucket_key = ? AND successful = 0 AND occurred_at >= ?
+      `,
+    )
+    .bind(input.bucketKey, input.occurredAfter)
+    .first<FailedAuthAttemptCountRow>()
+
+  return row?.count ?? 0
+}
+
+export async function findAuthFailureBucket(
+  database: LoginDefenseDatabase,
+  bucketKey: string,
+): Promise<AuthFailureBucketRecord | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT
+          bucket_key as bucketKey,
+          failed_count as failedCount,
+          window_started_at as windowStartedAt,
+          locked_until as lockedUntil,
+          updated_at as updatedAt
+        FROM auth_failure_buckets
+        WHERE bucket_key = ?
+        LIMIT 1
+      `,
+    )
+    .bind(bucketKey)
+    .first<AuthFailureBucketRow>()
+
+  return row ? authFailureBucketFromRow(row) : null
+}
+
+export async function recordFailedAuthBucket(
+  database: LoginDefenseDatabase,
+  input: FailedAuthBucketInput,
+): Promise<AuthFailureBucketRecord> {
+  const nowMs = Date.parse(input.now)
+  const windowThreshold = new Date(
+    nowMs - input.failureWindowSeconds * 1000,
+  ).toISOString()
+  const lockedUntil = new Date(
+    nowMs + input.lockoutSeconds * 1000,
+  ).toISOString()
+  const firstFailureLockedUntil = input.failureLimit <= 1 ? lockedUntil : null
+
+  await database
+    .prepare(
+      `
+        INSERT INTO auth_failure_buckets (
+          bucket_key,
+          failed_count,
+          window_started_at,
+          locked_until,
+          updated_at
+        )
+        VALUES (?, 1, ?, ?, ?)
+        ON CONFLICT(bucket_key) DO UPDATE SET
+          failed_count = CASE
+            WHEN auth_failure_buckets.window_started_at >= ?
+              THEN auth_failure_buckets.failed_count + 1
+            ELSE 1
+          END,
+          window_started_at = CASE
+            WHEN auth_failure_buckets.window_started_at >= ?
+              THEN auth_failure_buckets.window_started_at
+            ELSE excluded.window_started_at
+          END,
+          locked_until = CASE
+            WHEN (
+              CASE
+                WHEN auth_failure_buckets.window_started_at >= ?
+                  THEN auth_failure_buckets.failed_count + 1
+                ELSE 1
+              END
+            ) >= ? THEN ?
+            ELSE NULL
+          END,
+          updated_at = excluded.updated_at
+      `,
+    )
+    .bind(
+      input.bucketKey,
+      input.now,
+      firstFailureLockedUntil,
+      input.now,
+      windowThreshold,
+      windowThreshold,
+      windowThreshold,
+      input.failureLimit,
+      lockedUntil,
+    )
+    .run()
+
+  const bucket = await findAuthFailureBucket(database, input.bucketKey)
+
+  if (!bucket) {
+    throw new Error('Failed auth bucket was not persisted.')
+  }
+
+  return bucket
+}
+
+export async function resetAuthFailureBucket(
+  database: LoginDefenseDatabase,
+  bucketKey: string,
+): Promise<void> {
+  await database
+    .prepare(
+      `
+        DELETE FROM auth_failure_buckets
+        WHERE bucket_key = ?
+      `,
+    )
+    .bind(bucketKey)
+    .run()
 }
 
 export async function rotateRefreshToken(
@@ -496,5 +771,20 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     securityStamp: row.securityStamp,
     createdAt: row.createdAt,
     disabledAt: row.disabledAt,
+    loginFailedCount: row.loginFailedCount,
+    loginFailedAt: row.loginFailedAt,
+    loginLockedUntil: row.loginLockedUntil,
+  }
+}
+
+function authFailureBucketFromRow(
+  row: AuthFailureBucketRow,
+): AuthFailureBucketRecord {
+  return {
+    bucketKey: row.bucketKey,
+    failedCount: row.failedCount,
+    windowStartedAt: row.windowStartedAt,
+    lockedUntil: row.lockedUntil,
+    updatedAt: row.updatedAt,
   }
 }

@@ -215,4 +215,26 @@ Not implemented:
 - production deploy, production secrets, or real client-account setup
 - promotion of compatibility matrix rows beyond `fixture_only`
 
+## Week 17 Increment
+
+Implemented:
+
+- D1 migration `0002_login_defenses.sql`
+- account failed-login counters and temporary account lockout state
+- hashed auth-attempt buckets for client-address rate limiting without plaintext IP storage
+- hashed failure buckets advanced through D1 conflict updates to avoid stale read-then-write counters under concurrent failed attempts
+- client-address extraction from `CF-Connecting-IP`, first `X-Forwarded-For`, or `unknown`
+- password-grant IP failed-attempt rate limit with `429` and `Retry-After`
+- password-grant account lockout with generic `invalid_grant` wording
+- reset of account login-defense state after successful password grant
+- tests for domain policy, migration shape, repository persistence, and HTTP route behavior
+- Week 17 dynamic workflow artifacts
+
+Not implemented:
+
+- auth-attempt retention cleanup job
+- operator-facing rate-limit metrics or alerts
+- live D1 migration application
+- live client verification under lockout/rate-limit conditions
+
 The project remains pre-alpha and must not be used to store real secrets.

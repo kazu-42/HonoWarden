@@ -3,6 +3,8 @@ export const requiredSchemaTables = [
   'users',
   'devices',
   'refresh_tokens',
+  'auth_attempts',
+  'auth_failure_buckets',
   'folders',
   'ciphers',
 ] as const

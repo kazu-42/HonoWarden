@@ -13,8 +13,10 @@ describe('initial D1 migration', () => {
       'refresh_tokens',
       'folders',
       'ciphers',
+      'auth_attempts',
+      'auth_failure_buckets',
     ]) {
-      expect(migration).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`)
+      expect(allMigrations).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`)
     }
   })
 
@@ -32,15 +34,34 @@ describe('initial D1 migration', () => {
       'idx_folders_user_revision',
       'idx_ciphers_user_revision',
       'idx_ciphers_user_deleted',
+      'idx_auth_attempts_bucket_occurred',
+      'idx_auth_attempts_subject_occurred',
+      'idx_auth_failure_buckets_locked_until',
     ]) {
-      expect(migration).toContain(`CREATE INDEX IF NOT EXISTS ${indexName}`)
+      expect(allMigrations).toContain(`CREATE INDEX IF NOT EXISTS ${indexName}`)
     }
   })
 
+  it('adds login defense state without plaintext IP storage', () => {
+    expect(allMigrations).toContain('login_failed_count INTEGER NOT NULL')
+    expect(allMigrations).toContain('login_failed_at TEXT')
+    expect(allMigrations).toContain('login_locked_until TEXT')
+    expect(allMigrations).toContain('bucket_key TEXT NOT NULL')
+    expect(allMigrations).toContain('failed_count INTEGER NOT NULL')
+    expect(allMigrations).toContain('window_started_at TEXT NOT NULL')
+    expect(allMigrations).not.toContain('ip_address')
+    expect(allMigrations).not.toContain('client_ip')
+  })
+
   it('stores vault records as encrypted payloads', () => {
-    expect(migration).toContain('encrypted_name TEXT NOT NULL')
-    expect(migration).toContain('encrypted_json TEXT NOT NULL')
-    expect(migration).not.toContain('password TEXT')
-    expect(migration).not.toContain('uri TEXT')
+    expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
+    expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
+    expect(allMigrations).not.toContain('password TEXT')
+    expect(allMigrations).not.toContain('uri TEXT')
   })
 })
+
+const allMigrations = [
+  readFileSync('migrations/0001_initial_schema.sql', 'utf8'),
+  readFileSync('migrations/0002_login_defenses.sql', 'utf8'),
+].join('\n')

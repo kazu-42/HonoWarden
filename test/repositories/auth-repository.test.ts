@@ -3,10 +3,17 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDeviceId,
   createPasswordGrantSession,
+  countRecentFailedAuthAttempts,
+  findAuthFailureBucket,
   findAuthUserByEmail,
   findAuthUserById,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  recordAuthAttempt,
+  recordFailedAuthBucket,
+  recordFailedLogin,
+  resetAuthFailureBucket,
+  resetLoginDefenseState,
   revokeDeviceSession,
   rotateRefreshToken,
 } from '../../src/repositories/auth-repository'
@@ -38,6 +45,9 @@ describe('auth repository', () => {
       securityStamp: 'security-stamp',
       createdAt: '2026-07-06T00:00:00.000Z',
       disabledAt: null,
+      loginFailedCount: 0,
+      loginFailedAt: null,
+      loginLockedUntil: null,
     })
 
     await expect(
@@ -57,6 +67,9 @@ describe('auth repository', () => {
       securityStamp: 'security-stamp',
       createdAt: '2026-07-06T00:00:00.000Z',
       disabledAt: null,
+      loginFailedCount: 0,
+      loginFailedAt: null,
+      loginLockedUntil: null,
     })
     expect(database.boundValues).toContain('person@example.test')
   })
@@ -77,6 +90,9 @@ describe('auth repository', () => {
       securityStamp: 'security-stamp',
       createdAt: '2026-07-06T00:00:00.000Z',
       disabledAt: null,
+      loginFailedCount: 0,
+      loginFailedAt: null,
+      loginLockedUntil: null,
     })
 
     await expect(findAuthUserById(database, 'user-id')).resolves.toMatchObject({
@@ -131,6 +147,9 @@ describe('auth repository', () => {
       securityStamp: 'security-stamp',
       createdAt: '2026-07-06T00:00:00.000Z',
       disabledAt: null,
+      loginFailedCount: 0,
+      loginFailedAt: null,
+      loginLockedUntil: null,
     })
 
     await expect(
@@ -213,6 +232,126 @@ describe('auth repository', () => {
     expect(database.boundValues).toContain('device-id')
   })
 
+  it('records a failed login state for an existing user', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await recordFailedLogin(database, {
+      userId: 'user-id',
+      failedCount: 5,
+      failedAt: '2026-07-06T00:05:00.000Z',
+      lockedUntil: '2026-07-06T00:20:00.000Z',
+    })
+
+    expect(database.queries.join('\n')).toContain('UPDATE users')
+    expect(database.queries.join('\n')).toContain('login_failed_count')
+    expect(database.boundValues).toContain(5)
+    expect(database.boundValues).toContain('2026-07-06T00:20:00.000Z')
+  })
+
+  it('resets login defense state after a successful password grant', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await resetLoginDefenseState(database, {
+      userId: 'user-id',
+      resetAt: '2026-07-06T00:06:00.000Z',
+    })
+
+    expect(database.queries.join('\n')).toContain('UPDATE users')
+    expect(database.queries.join('\n')).toContain('login_failed_count = 0')
+    expect(database.queries.join('\n')).toContain('login_locked_until = NULL')
+    expect(database.boundValues).toContain('user-id')
+  })
+
+  it('records auth attempts without plaintext network source values', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await recordAuthAttempt(database, {
+      id: 'attempt-id',
+      bucketKey: 'ip:hashed-bucket',
+      subjectKey: 'account:hashed-subject',
+      successful: false,
+      occurredAt: '2026-07-06T00:05:00.000Z',
+    })
+
+    expect(database.queries.join('\n')).toContain('INSERT INTO auth_attempts')
+    expect(database.boundValues).toContain('ip:hashed-bucket')
+    expect(database.boundValues).not.toContain('203.0.113.10')
+  })
+
+  it('counts recent failed auth attempts for a bucket', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 12)
+
+    await expect(
+      countRecentFailedAuthAttempts(database, {
+        bucketKey: 'ip:hashed-bucket',
+        occurredAfter: '2026-07-06T00:00:00.000Z',
+      }),
+    ).resolves.toBe(12)
+
+    expect(database.queries.join('\n')).toContain('COUNT(*) as count')
+    expect(database.boundValues).toContain('ip:hashed-bucket')
+  })
+
+  it('looks up a failed auth bucket by hashed key', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 0, {
+      bucketKey: 'account:hashed-bucket',
+      failedCount: 4,
+      windowStartedAt: '2026-07-06T00:00:00.000Z',
+      lockedUntil: null,
+      updatedAt: '2026-07-06T00:04:00.000Z',
+    })
+
+    await expect(
+      findAuthFailureBucket(database, 'account:hashed-bucket'),
+    ).resolves.toEqual({
+      bucketKey: 'account:hashed-bucket',
+      failedCount: 4,
+      windowStartedAt: '2026-07-06T00:00:00.000Z',
+      lockedUntil: null,
+      updatedAt: '2026-07-06T00:04:00.000Z',
+    })
+    expect(database.queries.join('\n')).toContain('FROM auth_failure_buckets')
+    expect(database.boundValues).toContain('account:hashed-bucket')
+  })
+
+  it('atomically advances failed auth buckets in the database', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await expect(
+      recordFailedAuthBucket(database, {
+        bucketKey: 'ip:hashed-bucket',
+        failureLimit: 20,
+        failureWindowSeconds: 60,
+        lockoutSeconds: 60,
+        now: '2026-07-06T00:05:00.000Z',
+      }),
+    ).resolves.toEqual({
+      bucketKey: 'ip:hashed-bucket',
+      failedCount: 1,
+      windowStartedAt: '2026-07-06T00:05:00.000Z',
+      lockedUntil: null,
+      updatedAt: '2026-07-06T00:05:00.000Z',
+    })
+
+    const joinedQueries = database.queries.join('\n')
+    expect(joinedQueries).toContain('INSERT INTO auth_failure_buckets')
+    expect(joinedQueries).toContain('ON CONFLICT(bucket_key) DO UPDATE')
+    expect(joinedQueries).toContain('auth_failure_buckets.failed_count + 1')
+    expect(database.boundValues).toContain('ip:hashed-bucket')
+    expect(database.boundValues).toContain(20)
+  })
+
+  it('resets a failed auth bucket after successful authentication', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await resetAuthFailureBucket(database, 'account:hashed-bucket')
+
+    expect(database.queries.join('\n')).toContain(
+      'DELETE FROM auth_failure_buckets',
+    )
+    expect(database.boundValues).toContain('account:hashed-bucket')
+  })
+
   it('revokes an active owner-scoped device session', async () => {
     const database = new RecordingAuthD1Database(null, null, 1, 1)
 
@@ -257,23 +396,35 @@ class RecordingAuthD1Database {
   boundValues: unknown[] = []
   batchStatements: D1PreparedStatement[] = []
   queries: string[] = []
+  private authFailureBucketRow: unknown
 
   constructor(
     private readonly userRow: unknown,
     private readonly refreshSessionRow: unknown = null,
     private readonly updateChanges = 1,
     private readonly deviceUpdateChanges = 1,
-  ) {}
+    private readonly failedAttemptCount = 0,
+    authFailureBucketRow: unknown = null,
+  ) {
+    this.authFailureBucketRow = authFailureBucketRow
+  }
 
   prepare(query: string): D1PreparedStatement {
     this.queries.push(query)
+    let statementBoundValues: unknown[] = []
     const pushValues = (values: unknown[]) => {
       this.boundValues.push(...values)
+      statementBoundValues = values
     }
     const getUserRow = () => this.userRow
     const getRefreshSessionRow = () => this.refreshSessionRow
     const getUpdateChanges = () => this.updateChanges
     const getDeviceUpdateChanges = () => this.deviceUpdateChanges
+    const getFailedAttemptCount = () => this.failedAttemptCount
+    const getAuthFailureBucketRow = () => this.authFailureBucketRow
+    const setAuthFailureBucketRow = (row: unknown) => {
+      this.authFailureBucketRow = row
+    }
 
     const statement = {
       bind(...values: unknown[]) {
@@ -281,6 +432,16 @@ class RecordingAuthD1Database {
         return statement
       },
       async first<T = unknown>(): Promise<T | null> {
+        if (query.includes('FROM auth_failure_buckets')) {
+          return getAuthFailureBucketRow() as T | null
+        }
+
+        if (query.includes('COUNT(*) as count')) {
+          return {
+            count: getFailedAttemptCount(),
+          } as T
+        }
+
         if (query.includes('FROM refresh_tokens')) {
           return getRefreshSessionRow() as T | null
         }
@@ -299,6 +460,20 @@ class RecordingAuthD1Database {
         }
       },
       async run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+        if (query.includes('INSERT INTO auth_failure_buckets')) {
+          setAuthFailureBucketRow({
+            bucketKey: statementBoundValues[0],
+            failedCount: 1,
+            windowStartedAt: statementBoundValues[1],
+            lockedUntil: statementBoundValues[2],
+            updatedAt: statementBoundValues[3],
+          })
+        }
+
+        if (/DELETE\s+FROM\s+auth_failure_buckets/.test(query)) {
+          setAuthFailureBucketRow(null)
+        }
+
         const changes =
           /UPDATE\s+devices/.test(query) && query.includes('revoked_at = ?')
             ? getDeviceUpdateChanges()

@@ -13,6 +13,12 @@ import {
 } from './domain/bootstrap'
 import { resolvePrelogin } from './domain/prelogin'
 import {
+  buildAuthAttemptBucketKey,
+  extractClientAddress,
+  isAccountLocked,
+  loginDefensePolicy,
+} from './domain/login-defense'
+import {
   generateRefreshToken,
   hashRefreshToken,
   invalidGrantError,
@@ -47,10 +53,16 @@ import type { FolderRecord } from './repositories/folder-repository'
 import {
   buildDeviceId,
   createPasswordGrantSession,
+  findAuthFailureBucket,
   findAuthUserByEmail,
   findAuthUserById,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  recordAuthAttempt,
+  recordFailedAuthBucket,
+  recordFailedLogin,
+  resetAuthFailureBucket,
+  resetLoginDefenseState,
   revokeDeviceSession,
   rotateRefreshToken,
 } from './repositories/auth-repository'
@@ -472,28 +484,146 @@ app.post('/identity/connect/token', async (c) => {
   }
 
   try {
+    const issuedAt = Math.floor(Date.now() / 1000)
+    const now = new Date(issuedAt * 1000).toISOString()
+    const ipBucketKey = await buildAuthAttemptBucketKey(
+      'ip',
+      extractClientAddress(c.req.raw.headers),
+    )
+    const accountBucketKey = await buildAuthAttemptBucketKey(
+      'account',
+      grantDecision.grant.usernameNormalized,
+    )
+    const ipBucket = await findAuthFailureBucket(c.env.DB, ipBucketKey)
+    const accountBucket = await findAuthFailureBucket(
+      c.env.DB,
+      accountBucketKey,
+    )
+
+    if (
+      isAccountLocked({
+        lockedUntil: ipBucket?.lockedUntil ?? null,
+        now,
+      })
+    ) {
+      c.header('Retry-After', String(loginDefensePolicy.ipRetryAfterSeconds))
+
+      return c.json(tokenErrorResponse(invalidGrantError()), 429)
+    }
+
+    const rejectAfterFailedAttempt = (ipLockedUntil: string | null) => {
+      if (
+        isAccountLocked({
+          lockedUntil: ipLockedUntil,
+          now,
+        })
+      ) {
+        c.header('Retry-After', String(loginDefensePolicy.ipRetryAfterSeconds))
+
+        return c.json(tokenErrorResponse(invalidGrantError()), 429)
+      }
+
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
+
+    const recordFailedAttempt = async (options: { accountBucket: boolean }) => {
+      await recordAuthAttempt(c.env.DB, {
+        id: crypto.randomUUID(),
+        bucketKey: ipBucketKey,
+        subjectKey: accountBucketKey,
+        successful: false,
+        occurredAt: now,
+      })
+
+      const ipFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+        bucketKey: ipBucketKey,
+        failureLimit: loginDefensePolicy.ipFailureLimit,
+        failureWindowSeconds: loginDefensePolicy.ipFailureWindowSeconds,
+        lockoutSeconds: loginDefensePolicy.ipRetryAfterSeconds,
+        now,
+      })
+      const accountFailureBucket = options.accountBucket
+        ? await recordFailedAuthBucket(c.env.DB, {
+            bucketKey: accountBucketKey,
+            failureLimit: loginDefensePolicy.accountFailureLimit,
+            failureWindowSeconds:
+              loginDefensePolicy.accountFailureWindowSeconds,
+            lockoutSeconds: loginDefensePolicy.accountLockoutSeconds,
+            now,
+          })
+        : null
+
+      return {
+        accountFailureBucket,
+        ipFailureBucket,
+      }
+    }
+
+    if (
+      isAccountLocked({
+        lockedUntil: accountBucket?.lockedUntil ?? null,
+        now,
+      })
+    ) {
+      const failure = await recordFailedAttempt({ accountBucket: false })
+
+      return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
+    }
+
     const user = await findAuthUserByEmail(
       c.env.DB,
       grantDecision.grant.usernameNormalized,
     )
 
+    if (!user || user.disabledAt) {
+      const failure = await recordFailedAttempt({ accountBucket: true })
+
+      return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
+    }
+
     if (
-      !user ||
-      user.disabledAt ||
+      isAccountLocked({
+        lockedUntil: user.loginLockedUntil,
+        now,
+      })
+    ) {
+      const failure = await recordFailedAttempt({ accountBucket: false })
+
+      return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
+    }
+
+    if (
       !verifyPresentedPasswordHash(
         user.masterPasswordHash,
         grantDecision.grant.password,
       )
     ) {
-      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+      const failure = await recordFailedAttempt({ accountBucket: true })
+      const accountFailureBucket = failure.accountFailureBucket
+
+      if (!accountFailureBucket) {
+        throw new Error('Account failure bucket was not recorded.')
+      }
+
+      await recordFailedLogin(c.env.DB, {
+        userId: user.id,
+        failedCount: accountFailureBucket.failedCount,
+        failedAt: accountFailureBucket.updatedAt,
+        lockedUntil: accountFailureBucket.lockedUntil,
+      })
+
+      return rejectAfterFailedAttempt(failure.ipFailureBucket.lockedUntil)
     }
 
-    const issuedAt = Math.floor(Date.now() / 1000)
     const expiresAt = issuedAt + accessTokenTtlSeconds
     const refreshToken = generateRefreshToken()
     const refreshTokenHash = await hashRefreshToken(tokenSecret, refreshToken)
-    const now = new Date(issuedAt * 1000).toISOString()
 
+    await resetLoginDefenseState(c.env.DB, {
+      userId: user.id,
+      resetAt: now,
+    })
+    await resetAuthFailureBucket(c.env.DB, accountBucketKey)
     await createPasswordGrantSession(c.env.DB, {
       userId: user.id,
       deviceIdentifier: device.identifier,

@@ -9,6 +9,9 @@ const fakeMeta = {
 } satisfies D1Meta & Record<string, unknown>
 
 type FakeD1DatabaseOptions = {
+  authAttemptCount?: number
+  lockedAccountFailureBucket?: boolean
+  lockedIpFailureBucket?: boolean
   authUser?: Record<string, unknown> | null
   cipher?: Record<string, unknown> | null
   cipherInsertChanges?: number
@@ -28,6 +31,13 @@ type FakeD1DatabaseOptions = {
 }
 
 export class FakeD1Database {
+  readonly deletedAuthFailureBucketKeys: string[] = []
+
+  private readonly authFailureBuckets = new Map<
+    string,
+    Record<string, unknown>
+  >()
+
   constructor(
     private readonly schemaVersion: string | null,
     private readonly tables: readonly string[],
@@ -38,12 +48,54 @@ export class FakeD1Database {
     const schemaVersion = this.schemaVersion
     const tables = this.tables
     const options = this.options
+    const authFailureBuckets = this.authFailureBuckets
+    const deletedAuthFailureBucketKeys = this.deletedAuthFailureBucketKeys
+    let boundValues: unknown[] = []
 
     const statement = {
-      bind() {
+      bind(...values: unknown[]) {
+        boundValues = values
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (query.includes('FROM auth_failure_buckets')) {
+          const bucketKey = String(boundValues[0] ?? '')
+          const lockedUntil = '2999-01-01T00:00:00.000Z'
+
+          if (bucketKey.startsWith('ip:') && options.lockedIpFailureBucket) {
+            return {
+              bucketKey,
+              failedCount: 20,
+              windowStartedAt: '2026-07-06T00:00:00.000Z',
+              lockedUntil,
+              updatedAt: '2026-07-06T00:00:00.000Z',
+            } as T
+          }
+
+          if (
+            bucketKey.startsWith('account:') &&
+            options.lockedAccountFailureBucket
+          ) {
+            return {
+              bucketKey,
+              failedCount: 5,
+              windowStartedAt: '2026-07-06T00:00:00.000Z',
+              lockedUntil,
+              updatedAt: '2026-07-06T00:00:00.000Z',
+            } as T
+          }
+
+          return (authFailureBuckets.get(bucketKey) ?? null) as T | null
+        }
+
+        if (query.includes('COUNT(*) as count')) {
+          const row = {
+            count: options.authAttemptCount ?? 0,
+          }
+
+          return (column ? row[column as keyof typeof row] : row) as T
+        }
+
         if (query.includes('FROM refresh_tokens')) {
           return (options.refreshSession ?? null) as T | null
         }
@@ -194,6 +246,83 @@ export class FakeD1Database {
           }
         }
 
+        if (/UPDATE\s+users/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO auth_attempts')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO auth_failure_buckets')) {
+          const bucketKey = String(boundValues[0])
+          const now = String(boundValues[1])
+          const firstFailureLockedUntil = boundValues[2] as string | null
+          const windowThreshold = String(boundValues[4])
+          const failureLimit = Number(boundValues[7])
+          const lockedUntil = String(boundValues[8])
+          const existing = authFailureBuckets.get(bucketKey)
+          const existingWindowStartedAt =
+            typeof existing?.windowStartedAt === 'string'
+              ? existing.windowStartedAt
+              : null
+          const insideWindow =
+            existingWindowStartedAt !== null &&
+            existingWindowStartedAt >= windowThreshold
+          const failedCount = insideWindow
+            ? Number(existing?.failedCount ?? 0) + 1
+            : 1
+          const nextLockedUntil =
+            failedCount >= failureLimit ? lockedUntil : firstFailureLockedUntil
+
+          authFailureBuckets.set(bucketKey, {
+            bucketKey,
+            failedCount,
+            windowStartedAt: insideWindow ? existingWindowStartedAt : now,
+            lockedUntil: nextLockedUntil,
+            updatedAt: now,
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+auth_failure_buckets/.test(query)) {
+          const bucketKey = String(boundValues[0])
+
+          authFailureBuckets.delete(bucketKey)
+          deletedAuthFailureBucketKeys.push(bucketKey)
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
         if (
           /UPDATE\s+devices/.test(query) &&
           query.includes('revoked_at = ?')
@@ -234,6 +363,8 @@ export const requiredTables = [
   'users',
   'devices',
   'refresh_tokens',
+  'auth_attempts',
+  'auth_failure_buckets',
   'folders',
   'ciphers',
 ] as const

@@ -1,0 +1,43 @@
+{
+  "title": "Week 17 Login Defenses",
+  "slug": "week-17-login-defenses",
+  "created_at": "2026-07-06T12:12:21+00:00",
+  "status": "local_verified",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation, tests, docs, git push, and CI are within the sustained repo-development request. Live migration, deploy, secrets, and live login attempts require a separate approval gate."
+  },
+  "packets": [
+    {
+      "id": "01-defense-domain",
+      "status": "completed"
+    },
+    {
+      "id": "02-schema-repository",
+      "status": "completed"
+    },
+    {
+      "id": "03-route-integration",
+      "status": "completed"
+    },
+    {
+      "id": "04-docs-verification",
+      "status": "local_verified"
+    }
+  ],
+  "verification": {
+    "status": "local_verified",
+    "checks": [
+      "pnpm format:write",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "workflow verification"
+    ],
+    "verified_at": "2026-07-06T12:36:25Z"
+  }
+}

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import app from '../src/app'
+import {
+  buildAuthAttemptBucketKey,
+  loginDefensePolicy,
+} from '../src/domain/login-defense'
 import { signAccessToken } from '../src/domain/tokens'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 
@@ -330,6 +334,9 @@ describe('HonoWarden app', () => {
   })
 
   it('exchanges a valid password grant for tokens', async () => {
+    const database = new FakeD1Database(null, [], {
+      authUser: authUserRecord(),
+    })
     const response = await app.request(
       '/identity/connect/token',
       {
@@ -348,14 +355,17 @@ describe('HonoWarden app', () => {
         }),
       },
       {
-        DB: new FakeD1Database(null, [], {
-          authUser: authUserRecord(),
-        }),
+        DB: database,
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
+    const accountBucketKey = await buildAuthAttemptBucketKey(
+      'account',
+      'person@example.test',
+    )
 
     expect(response.status).toBe(200)
+    expect(database.deletedAuthFailureBucketKeys).toContain(accountBucketKey)
     await expect(response.json()).resolves.toMatchObject({
       access_token: expect.any(String),
       refresh_token: expect.any(String),
@@ -443,6 +453,82 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: authUserRecord(),
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      ErrorModel: {
+        Message: 'Invalid username or password.',
+        Object: 'error',
+      },
+    })
+  })
+
+  it('temporarily rate limits password grants from an over-limit client address', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'CF-Connecting-IP': '203.0.113.10',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+          lockedIpFailureBucket: true,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('Retry-After')).toBe(
+      String(loginDefensePolicy.ipRetryAfterSeconds),
+    )
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      ErrorModel: {
+        Message: 'Invalid username or password.',
+        Object: 'error',
+      },
+    })
+  })
+
+  it('rejects password grants for temporarily locked accounts without revealing lock state', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: {
+            ...authUserRecord(),
+            loginFailedCount: loginDefensePolicy.accountFailureLimit,
+            loginFailedAt: '2026-07-06T00:05:00.000Z',
+            loginLockedUntil: '2999-07-06T00:20:00.000Z',
+          },
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -1947,6 +2033,9 @@ function authUserRecord() {
     securityStamp: 'security-stamp',
     createdAt: '2026-07-06T00:00:00.000Z',
     disabledAt: null,
+    loginFailedCount: 0,
+    loginFailedAt: null,
+    loginLockedUntil: null,
   }
 }
 
@@ -1972,6 +2061,9 @@ function refreshTokenSessionRecord() {
     securityStamp: 'security-stamp',
     createdAt: '2026-07-06T00:00:00.000Z',
     disabledAt: null,
+    loginFailedCount: 0,
+    loginFailedAt: null,
+    loginLockedUntil: null,
   }
 }
 
