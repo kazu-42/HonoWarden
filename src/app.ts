@@ -27,8 +27,14 @@ import {
 import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
 import {
+  createCipher,
+  listCiphersByUser,
+} from './repositories/cipher-repository'
+import type { CipherRecord } from './repositories/cipher-repository'
+import {
   createFolder,
   deleteFolder,
+  folderBelongsToUser,
   listFoldersByUser,
   updateFolder,
 } from './repositories/folder-repository'
@@ -523,9 +529,12 @@ app.get('/api/sync', async (c) => {
   }
 
   try {
-    const folders = await listFoldersByUser(c.env.DB, auth.user.id)
+    const [folders, ciphers] = await Promise.all([
+      listFoldersByUser(c.env.DB, auth.user.id),
+      listCiphersByUser(c.env.DB, auth.user.id),
+    ])
 
-    return c.json(buildSyncResponse(auth.user, folders))
+    return c.json(buildSyncResponse(auth.user, folders, ciphers))
   } catch {
     return c.json(
       apiError(
@@ -674,6 +683,71 @@ app.delete('/api/folders/:id', async (c) => {
   }
 })
 
+app.post('/api/ciphers', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherRequest = parseCipherCreateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!cipherRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const now = new Date().toISOString()
+
+  try {
+    if (cipherRequest.cipher.folderId) {
+      const folderExists = await folderBelongsToUser(c.env.DB, {
+        folderId: cipherRequest.cipher.folderId,
+        userId: auth.user.id,
+      })
+
+      if (!folderExists) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'cipher_folder_not_found',
+            'Cipher folder was not found.',
+          ),
+          404,
+        )
+      }
+    }
+
+    const cipher = await createCipher(c.env.DB, {
+      id: crypto.randomUUID(),
+      userId: auth.user.id,
+      folderId: cipherRequest.cipher.folderId,
+      type: cipherRequest.cipher.type,
+      favorite: cipherRequest.cipher.favorite,
+      encryptedJson: cipherRequest.cipher.encryptedJson,
+      revisionDate: now,
+      createdAt: now,
+    })
+
+    return c.json(buildCipherResponse(cipher), 201)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher create failed.',
+      ),
+      503,
+    )
+  }
+})
+
 app.notFound((c) => {
   return c.json(
     {
@@ -715,6 +789,7 @@ function buildTokenResponse(
 function buildSyncResponse(
   user: AuthUserRecord,
   folders: readonly FolderRecord[] = [],
+  ciphers: readonly CipherRecord[] = [],
 ) {
   return {
     object: 'sync',
@@ -743,7 +818,7 @@ function buildSyncResponse(
     },
     Folders: folders.map(buildFolderResponse),
     Collections: [],
-    Ciphers: [],
+    Ciphers: ciphers.map(buildCipherResponse),
     Domains: {
       EquivalentDomains: [],
       GlobalEquivalentDomains: [],
@@ -752,6 +827,21 @@ function buildSyncResponse(
     PoliciesNew: [],
     Sends: [],
     UserDecryption: null,
+  }
+}
+
+function buildCipherResponse(cipher: CipherRecord) {
+  return {
+    ...parseStoredCipherPayload(cipher.encryptedJson),
+    object: 'cipher',
+    id: cipher.id,
+    organizationId: null,
+    folderId: cipher.folderId,
+    type: cipher.type,
+    favorite: cipher.favorite,
+    revisionDate: cipher.revisionDate,
+    creationDate: cipher.createdAt,
+    deletedDate: null,
   }
 }
 
@@ -767,6 +857,7 @@ function buildFolderResponse(folder: FolderRecord) {
 function apiError(
   requestIdValue: string,
   code:
+    | 'cipher_folder_not_found'
     | 'database_unavailable'
     | 'folder_not_found'
     | 'invalid_request'
@@ -900,6 +991,73 @@ function parseFolderRequestBody(
     ok: true,
     name,
   }
+}
+
+function parseCipherCreateRequestBody(body: unknown):
+  | {
+      ok: true
+      cipher: {
+        encryptedJson: string
+        favorite: boolean
+        folderId: string | null
+        type: 1
+      }
+    }
+  | { ok: false } {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false }
+  }
+
+  const payload = body as Record<string, unknown>
+  if (payload.type !== 1) {
+    return { ok: false }
+  }
+
+  const folderId = parseOptionalId(payload.folderId)
+  if (folderId === undefined) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    cipher: {
+      encryptedJson: JSON.stringify(payload),
+      favorite:
+        typeof payload.favorite === 'boolean' ? payload.favorite : false,
+      folderId,
+      type: 1,
+    },
+  }
+}
+
+function parseOptionalId(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) {
+    return null
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined
+  }
+
+  return value
+}
+
+function parseStoredCipherPayload(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown
+
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+    ) {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    return {}
+  }
+
+  return {}
 }
 
 function readBearerToken(authorization: string | undefined): string | null {

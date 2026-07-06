@@ -18,6 +18,11 @@ export type FolderDeleteInput = {
   revisionDate: string
 }
 
+export type FolderOwnershipInput = {
+  folderId: string
+  userId: string
+}
+
 export type FolderDeleteResult =
   | {
       status: 'deleted'
@@ -157,6 +162,25 @@ export async function deleteFolder(
     id: input.id,
     revisionDate: input.revisionDate,
   }
+}
+
+export async function folderBelongsToUser(
+  database: FolderDatabase,
+  input: FolderOwnershipInput,
+): Promise<boolean> {
+  const row = await database
+    .prepare(
+      `
+        SELECT id
+        FROM folders
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.folderId, input.userId)
+    .first<{ id: string }>()
+
+  return row !== null
 }
 
 function folderFromRow(row: FolderRow): FolderRecord {

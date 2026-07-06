@@ -114,10 +114,23 @@ Implemented:
 - stable `400`, `401`, `404`, and `503` folder-route responses
 - HTTP tests for folder create, update, delete, invalid body, not found, and sync-with-folders
 
+## Week 10 Increment
+
+Implemented:
+
+- owner-scoped cipher repository for active list and create
+- active folder ownership check for cipher create
+- `POST /api/ciphers` for login item creation
+- cipher inclusion in `GET /api/sync`
+- opaque encrypted JSON persistence in `ciphers.encrypted_json`
+- response merging that keeps stored server metadata authoritative over request payload fields
+- stable `400`, `401`, `404`, and `503` cipher-create responses
+- HTTP tests for cipher create, sync-with-ciphers, invalid body, and missing folder
+
 Not implemented:
 
 - refresh token reuse alerting
-- cipher CRUD
+- cipher update, delete, restore, and permanent delete
 - any storage of real password-vault data
 
 The project remains pre-alpha and must not be used to store real secrets.

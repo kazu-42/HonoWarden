@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createFolder,
   deleteFolder,
+  folderBelongsToUser,
   listFoldersByUser,
   updateFolder,
 } from '../../src/repositories/folder-repository'
@@ -135,6 +136,35 @@ describe('folder repository', () => {
     ).resolves.toEqual({
       status: 'not_found',
     })
+  })
+
+  it('checks whether an active folder belongs to the user', async () => {
+    const database = new RecordingFolderD1Database([
+      {
+        id: 'folder-id',
+      },
+    ])
+
+    await expect(
+      folderBelongsToUser(database, {
+        folderId: 'folder-id',
+        userId: 'user-id',
+      }),
+    ).resolves.toBe(true)
+    expect(database.boundValues).toContain('folder-id')
+    expect(database.boundValues).toContain('user-id')
+    expect(database.queries.join('\n')).toContain('deleted_at IS NULL')
+  })
+
+  it('returns false when the folder is missing, deleted, or cross-user', async () => {
+    const database = new RecordingFolderD1Database([])
+
+    await expect(
+      folderBelongsToUser(database, {
+        folderId: 'folder-id',
+        userId: 'user-id',
+      }),
+    ).resolves.toBe(false)
   })
 })
 

@@ -932,6 +932,161 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('creates a login cipher for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cipherCreateBody()),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folder: {
+            id: 'folder-id',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: expect.any(String),
+      organizationId: null,
+      folderId: 'folder-id',
+      type: 1,
+      favorite: true,
+      name: '2.encrypted-cipher-name',
+      login: {
+        username: '2.encrypted-username',
+        password: '2.encrypted-password',
+      },
+      revisionDate: expect.any(String),
+      creationDate: expect.any(String),
+      deletedDate: null,
+    })
+  })
+
+  it('includes active ciphers in sync', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [
+            {
+              id: 'cipher-id',
+              userId: 'user-id',
+              folderId: 'folder-id',
+              type: 1,
+              favorite: 1,
+              encryptedJson: JSON.stringify(cipherCreateBody()),
+              revisionDate: '2026-07-06T00:05:00.000Z',
+              createdAt: '2026-07-06T00:04:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      Ciphers: [
+        {
+          object: 'cipher',
+          id: 'cipher-id',
+          organizationId: null,
+          folderId: 'folder-id',
+          type: 1,
+          favorite: true,
+          name: '2.encrypted-cipher-name',
+          revisionDate: '2026-07-06T00:05:00.000Z',
+          creationDate: '2026-07-06T00:04:00.000Z',
+          deletedDate: null,
+        },
+      ],
+    })
+  })
+
+  it('rejects malformed cipher create requests', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'cipher-invalid-body-request',
+        },
+        body: JSON.stringify({
+          favorite: true,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'cipher-invalid-body-request',
+    })
+  })
+
+  it('rejects cipher create when folder does not belong to the user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cipherCreateBody()),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folder: null,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'cipher_folder_not_found',
+      },
+    })
+  })
+
   it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 
@@ -1012,6 +1167,21 @@ function refreshTokenSessionRecord() {
     securityStamp: 'security-stamp',
     createdAt: '2026-07-06T00:00:00.000Z',
     disabledAt: null,
+  }
+}
+
+function cipherCreateBody() {
+  return {
+    type: 1,
+    folderId: 'folder-id',
+    favorite: true,
+    name: '2.encrypted-cipher-name',
+    notes: null,
+    login: {
+      username: '2.encrypted-username',
+      password: '2.encrypted-password',
+      uris: [],
+    },
   }
 }
 

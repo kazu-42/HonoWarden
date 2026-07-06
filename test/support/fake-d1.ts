@@ -10,6 +10,9 @@ const fakeMeta = {
 
 type FakeD1DatabaseOptions = {
   authUser?: Record<string, unknown> | null
+  cipherInsertChanges?: number
+  ciphers?: Record<string, unknown>[]
+  folder?: Record<string, unknown> | null
   folderDeleteChanges?: number
   folders?: Record<string, unknown>[]
   folderUpdateChanges?: number
@@ -39,6 +42,10 @@ export class FakeD1Database {
           return (options.refreshSession ?? null) as T | null
         }
 
+        if (query.includes('FROM folders')) {
+          return (options.folder ?? null) as T | null
+        }
+
         if (query.includes('FROM users')) {
           return (options.authUser ?? null) as T | null
         }
@@ -59,6 +66,14 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (query.includes('FROM ciphers')) {
+          return {
+            success: true,
+            results: (options.ciphers ?? []) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('FROM folders')) {
           return {
             success: true,
@@ -89,6 +104,17 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.userInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO ciphers')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.cipherInsertChanges ?? 1,
             },
           }
         }
