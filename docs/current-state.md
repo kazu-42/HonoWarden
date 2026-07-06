@@ -381,4 +381,27 @@ Not implemented:
 - shared vault or Organization isolation
 - production admin tooling for disabling users
 
+## Week 24 Increment
+
+Implemented:
+
+- security review index under `docs/security/review-index.md`
+- threat model with assets, actors, trust boundaries, STRIDE summary, attack surface, and high-risk abuse paths
+- security data-flow document for bootstrap, auth, sync, TOTP, audit logs, and backup/restore
+- authentication state machine for account, password grant, refresh grant, access-token verification, and device revoke states
+- secrets inventory for runtime secrets, non-secret runtime config, sensitive stored data, and rotation notes
+- known limitations document preserving pre-alpha and no-independent-audit warnings
+- `SECURITY.md` link to the security review materials
+- CI-backed security docs test under `test/security-docs.test.ts`
+- dependency audit evidence with no known vulnerabilities found on 2026-07-06
+- Week 24 dynamic workflow artifacts
+
+Not implemented:
+
+- independent security audit
+- external penetration test
+- Cloudflare account access-control review
+- incident response runbook
+- secret rotation drill
+
 The project remains pre-alpha and must not be used to store real secrets.

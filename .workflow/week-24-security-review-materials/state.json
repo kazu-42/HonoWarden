@@ -1,0 +1,40 @@
+{
+  "title": "Week 24 Security Review Materials",
+  "slug": "week-24-security-review-materials",
+  "created_at": "2026-07-06T14:04:37Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local docs, tests, git push, and CI are within the sustained repo-development request. External security reviews or production control changes require a separate gate."
+  },
+  "packets": [
+    {
+      "id": "01-security-docs",
+      "status": "completed"
+    },
+    {
+      "id": "02-docs-ci",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm audit --audit-level low",
+      "pnpm test -- test/security-docs.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "repository path brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-24-security-review-materials"
+    ]
+  }
+}

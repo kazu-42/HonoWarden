@@ -2,6 +2,10 @@
 
 HonoWarden is pre-alpha and has not had an independent security audit. Do not use it to store real secrets yet.
 
+Security review materials for the current alpha scope live under
+[`docs/security`](docs/security/review-index.md). They are implementation notes,
+not a third-party audit result.
+
 ## Reporting a Vulnerability
 
 Please do not report vulnerabilities through public GitHub issues.

@@ -1,0 +1,55 @@
+# Security Known Limitations
+
+Last reviewed: 2026-07-06.
+
+HonoWarden remains pre-alpha. These limitations are release and operations
+inputs, not minor documentation notes.
+
+## Release Blockers Before Real Secrets
+
+- no independent security audit has been completed
+- no live client regression suite has been captured for the current matrix rows
+- no production backup restore drill has been recorded
+- no Cloudflare account access-control review is documented
+- no incident response runbook exists
+- no formal secret rotation drill has been run
+
+## Current Product Gaps
+
+- Web Vault is intentionally not implemented.
+- Public registration is disabled.
+- Organizations and shared vaults are not implemented.
+- Send is not implemented.
+- device list and device metadata update APIs are incomplete.
+- account disable/enable is represented in data and tests but lacks operator
+  tooling.
+
+## Security Control Gaps
+
+- Audit events are platform log lines only; they are not persisted with retention
+  controls in D1.
+- Audit event coverage does not include every vault CRUD route.
+- Backup/restore evidence is operator-runbook based; no scheduled job exists.
+- R2 object backup requires an explicit object list.
+- TOTP wrapping-secret rotation has no migration tool.
+- Access tokens use a symmetric HMAC secret; there is no key id or staged key
+  rotation support yet.
+- Rate limiting focuses on password grant, not all authenticated routes.
+- There is no global request quota or abuse monitoring dashboard.
+
+## Testing Gaps
+
+- Compatibility rows remain `fixture_only` until live client evidence exists.
+- Test support models selected D1 query shapes, not full SQLite behavior.
+- Security docs are CI-checked for presence and key content, but not formally
+  reviewed by an external auditor.
+
+## Operational Gaps
+
+- Production deployment remains blocked by placeholder D1 IDs and staging-first
+  evidence requirements.
+- Cloudflare log retention and access rules must be decided before enabling
+  audit logs in production.
+- Backup directories and manifests need an operator-owned retention policy.
+- Vulnerability disclosure depends on GitHub private vulnerability reporting or
+  a temporary private channel.
