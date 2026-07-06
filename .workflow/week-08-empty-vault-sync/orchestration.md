@@ -27,4 +27,4 @@
 - Packet 01: complete.
 - Packet 02: complete.
 - Packet 03: complete.
-- Packet 04: local checks complete, CI pending push.
+- Packet 04: complete, CI passed for implementation commit `f54bb67`.

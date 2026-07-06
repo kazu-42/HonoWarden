@@ -14,7 +14,8 @@ Verification:
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: missing token secret returns `503 server_misconfigured`.
+- GitHub Actions CI: passed for implementation commit `f54bb67` in run `28786039559`.
 
 Remaining risks:
 
-- GitHub Actions CI must be watched after push.
+- Follow-up documentation-only workflow status commits still need normal CI after push.

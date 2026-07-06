@@ -33,7 +33,7 @@ Authenticated empty vault sync is implemented and locally verified. A valid acce
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: missing token secret returns `503 server_misconfigured`.
-- GitHub Actions CI: pending push.
+- GitHub Actions CI: passed for implementation commit `f54bb67` in run `28786039559`.
 
 ## Remaining Risks
 
