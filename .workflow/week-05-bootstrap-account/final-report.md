@@ -37,11 +37,12 @@ Week 5 bootstrap account creation is implemented as a private operator endpoint 
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: `POST /api/accounts/bootstrap` returns `403 bootstrap_disabled` while disabled.
+- GitHub Actions CI: passed for implementation commit `6968595`.
 
 ## Remaining Risks
 
 - Bootstrap caller can still submit malformed cryptographic material that is syntactically non-empty. Later auth/token implementation must validate expected hash/key shapes and document operator inputs.
-- CI confirmation remains required after push.
+- Follow-up documentation-only workflow status commits still need normal CI after push.
 
 ## Reusable Follow-up
 

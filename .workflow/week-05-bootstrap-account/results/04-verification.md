@@ -11,6 +11,7 @@ Accepted:
 - Workflow verification passed.
 - Local bootstrap smoke confirmed disabled bootstrap returns `403 bootstrap_disabled`.
 - Local bootstrap smoke confirmed token presence does not bypass disabled bootstrap.
+- GitHub Actions CI passed for implementation commit `6968595`.
 
 Rejected:
 
@@ -24,4 +25,4 @@ Decision:
 
 Remaining risks:
 
-- CI still needs to confirm the pushed state.
+- Follow-up documentation-only workflow status commits still need normal CI after push.
