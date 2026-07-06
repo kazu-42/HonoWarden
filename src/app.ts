@@ -598,13 +598,15 @@ app.put('/api/folders/:id', async (c) => {
     return auth.response
   }
 
-  const folderRequest = parseFolderRequestBody(await readJsonBody(c.req.raw))
+  const folderRequest = parseFolderUpdateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
   if (!folderRequest.ok) {
     return c.json(
       apiError(
         c.get('requestId'),
         'invalid_request',
-        'Folder name is required.',
+        'Folder name and revision date are required.',
       ),
       400,
     )
@@ -617,10 +619,11 @@ app.put('/api/folders/:id', async (c) => {
       id: c.req.param('id'),
       userId: auth.user.id,
       name: folderRequest.name,
+      expectedRevisionDate: folderRequest.revisionDate,
       revisionDate,
     })
 
-    if (!folder) {
+    if (folder.status === 'not_found') {
       return c.json(
         apiError(
           c.get('requestId'),
@@ -631,7 +634,11 @@ app.put('/api/folders/:id', async (c) => {
       )
     }
 
-    return c.json(buildFolderResponse(folder))
+    if (folder.status === 'conflict') {
+      return c.json(revisionConflictError(c.get('requestId')), 409)
+    }
+
+    return c.json(buildFolderResponse(folder.folder))
   } catch {
     return c.json(
       apiError(
@@ -758,7 +765,7 @@ app.put('/api/ciphers/:id', async (c) => {
     return auth.response
   }
 
-  const cipherRequest = parseCipherCreateRequestBody(
+  const cipherRequest = parseCipherUpdateRequestBody(
     await readJsonBody(c.req.raw),
   )
   if (!cipherRequest.ok) {
@@ -800,15 +807,20 @@ app.put('/api/ciphers/:id', async (c) => {
       type: cipherRequest.cipher.type,
       favorite: cipherRequest.cipher.favorite,
       encryptedJson: cipherRequest.cipher.encryptedJson,
+      expectedRevisionDate: cipherRequest.cipher.revisionDate,
       revisionDate: now,
       createdAt: now,
     })
 
-    if (!cipher) {
+    if (cipher.status === 'not_found') {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
-    return c.json(buildCipherResponse(cipher))
+    if (cipher.status === 'conflict') {
+      return c.json(revisionConflictError(c.get('requestId')), 409)
+    }
+
+    return c.json(buildCipherResponse(cipher.cipher))
   } catch {
     return c.json(
       apiError(
@@ -1047,6 +1059,7 @@ function apiError(
     | 'invalid_request'
     | 'invalid_token'
     | 'missing_token'
+    | 'revision_conflict'
     | 'server_misconfigured',
   message: string,
 ) {
@@ -1061,6 +1074,14 @@ function apiError(
 
 function cipherNotFoundError(requestIdValue: string) {
   return apiError(requestIdValue, 'cipher_not_found', 'Cipher was not found.')
+}
+
+function revisionConflictError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'revision_conflict',
+    'The resource was modified by another client.',
+  )
 }
 
 async function authenticateVaultRequest(
@@ -1181,6 +1202,28 @@ function parseFolderRequestBody(
   }
 }
 
+function parseFolderUpdateRequestBody(
+  body: unknown,
+): { ok: true; name: string; revisionDate: string } | { ok: false } {
+  const folderRequest = parseFolderRequestBody(body)
+  if (!folderRequest.ok) {
+    return { ok: false }
+  }
+
+  const revisionDate = parseRequiredString(
+    (body as Record<string, unknown>).revisionDate,
+  )
+  if (!revisionDate) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    name: folderRequest.name,
+    revisionDate,
+  }
+}
+
 function parseCipherCreateRequestBody(body: unknown):
   | {
       ok: true
@@ -1216,6 +1259,47 @@ function parseCipherCreateRequestBody(body: unknown):
       type: payload.type,
     },
   }
+}
+
+function parseCipherUpdateRequestBody(body: unknown):
+  | {
+      ok: true
+      cipher: {
+        encryptedJson: string
+        favorite: boolean
+        folderId: string | null
+        revisionDate: string
+        type: 1 | 2
+      }
+    }
+  | { ok: false } {
+  const cipherRequest = parseCipherCreateRequestBody(body)
+  if (!cipherRequest.ok) {
+    return { ok: false }
+  }
+
+  const revisionDate = parseRequiredString(
+    (body as Record<string, unknown>).revisionDate,
+  )
+  if (!revisionDate) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    cipher: {
+      ...cipherRequest.cipher,
+      revisionDate,
+    },
+  }
+}
+
+function parseRequiredString(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined
+  }
+
+  return value
 }
 
 function parseOptionalId(value: unknown): string | null | undefined {

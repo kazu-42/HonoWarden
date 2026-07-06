@@ -153,10 +153,22 @@ Implemented:
 - tests that server-owned cipher metadata stays authoritative over request payload metadata
 - round-trip tests for future encrypted payload shapes without schema changes
 
+## Week 13 Increment
+
+Implemented:
+
+- required caller-observed `revisionDate` on folder update requests
+- required caller-observed `revisionDate` on cipher update requests
+- owner-scoped folder update guard using the active row revision
+- owner-scoped cipher update guard using the active row revision
+- `409 revision_conflict` responses for stale folder and cipher updates
+- preserved `404` behavior for missing, deleted, and cross-user update targets
+- repository tests for matching, stale, and missing-row update outcomes
+- HTTP tests for missing revision and stale revision update cases
+
 Not implemented:
 
 - refresh token reuse alerting
-- cipher revision conflict handling
 - any storage of real password-vault data
 
 The project remains pre-alpha and must not be used to store real secrets.

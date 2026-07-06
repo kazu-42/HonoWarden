@@ -824,6 +824,7 @@ describe('HonoWarden app', () => {
         },
         body: JSON.stringify({
           name: '2.updated-encrypted-folder-name',
+          revisionDate: '2026-07-06T00:00:00.000Z',
         }),
       },
       {
@@ -844,6 +845,39 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rejects folder update without a revision date', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'folder-update-missing-revision-request',
+        },
+        body: JSON.stringify({
+          name: '2.updated-encrypted-folder-name',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'folder-update-missing-revision-request',
+    })
+  })
+
   it('returns not found when updating a missing or cross-user folder', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -857,6 +891,7 @@ describe('HonoWarden app', () => {
         },
         body: JSON.stringify({
           name: '2.updated-encrypted-folder-name',
+          revisionDate: '2026-07-06T00:00:00.000Z',
         }),
       },
       {
@@ -873,6 +908,44 @@ describe('HonoWarden app', () => {
       error: {
         code: 'folder_not_found',
       },
+    })
+  })
+
+  it('returns conflict when updating a stale folder revision', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'folder-update-conflict-request',
+        },
+        body: JSON.stringify({
+          name: '2.updated-encrypted-folder-name',
+          revisionDate: '2026-07-06T00:00:00.000Z',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folder: {
+            revisionDate: '2026-07-06T00:00:30.000Z',
+          },
+          folderUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'revision_conflict',
+      },
+      requestId: 'folder-update-conflict-request',
     })
   })
 
@@ -1307,6 +1380,7 @@ describe('HonoWarden app', () => {
         },
         body: JSON.stringify({
           ...cipherCreateBody(),
+          revisionDate: '2026-07-06T00:04:00.000Z',
           name: '2.updated-encrypted-cipher-name',
         }),
       },
@@ -1350,6 +1424,7 @@ describe('HonoWarden app', () => {
         body: JSON.stringify({
           ...cipherCreateBody(),
           folderId: null,
+          revisionDate: '2026-07-06T00:04:00.000Z',
           name: '2.updated-encrypted-cipher-name',
           futureEncryptedShape: {
             value: '2.updated-encrypted-future-field',
@@ -1375,6 +1450,39 @@ describe('HonoWarden app', () => {
         value: '2.updated-encrypted-future-field',
       },
       deletedDate: null,
+    })
+  })
+
+  it('rejects cipher update without a revision date', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'cipher-update-missing-revision-request',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'cipher-update-missing-revision-request',
     })
   })
 
@@ -1422,7 +1530,10 @@ describe('HonoWarden app', () => {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(cipherCreateBody()),
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          revisionDate: '2026-07-06T00:04:00.000Z',
+        }),
       },
       {
         DB: new FakeD1Database(null, [], {
@@ -1455,6 +1566,7 @@ describe('HonoWarden app', () => {
         body: JSON.stringify({
           ...cipherCreateBody(),
           folderId: null,
+          revisionDate: '2026-07-06T00:04:00.000Z',
         }),
       },
       {
@@ -1471,6 +1583,45 @@ describe('HonoWarden app', () => {
       error: {
         code: 'cipher_not_found',
       },
+    })
+  })
+
+  it('returns conflict when updating a stale cipher revision', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'cipher-update-conflict-request',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          folderId: null,
+          revisionDate: '2026-07-06T00:04:00.000Z',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipher: {
+            revisionDate: '2026-07-06T00:05:00.000Z',
+          },
+          cipherUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'revision_conflict',
+      },
+      requestId: 'cipher-update-conflict-request',
     })
   })
 

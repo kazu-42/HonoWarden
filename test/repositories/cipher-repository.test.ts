@@ -93,25 +93,31 @@ describe('cipher repository', () => {
         type: 1,
         favorite: false,
         encryptedJson: '{"name":"2.updated-encrypted-name"}',
+        expectedRevisionDate: '2026-07-06T00:04:00.000Z',
         revisionDate: '2026-07-06T00:06:00.000Z',
         createdAt: '2026-07-06T00:04:00.000Z',
       }),
     ).resolves.toEqual({
-      id: 'cipher-id',
-      userId: 'user-id',
-      folderId: null,
-      type: 1,
-      favorite: false,
-      encryptedJson: '{"name":"2.updated-encrypted-name"}',
-      revisionDate: '2026-07-06T00:06:00.000Z',
-      createdAt: '2026-07-06T00:04:00.000Z',
+      status: 'updated',
+      cipher: {
+        id: 'cipher-id',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: false,
+        encryptedJson: '{"name":"2.updated-encrypted-name"}',
+        revisionDate: '2026-07-06T00:06:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+      },
     })
     expect(database.boundValues).toContain('cipher-id')
     expect(database.boundValues).toContain('user-id')
+    expect(database.boundValues).toContain('2026-07-06T00:04:00.000Z')
     expect(database.queries.join('\n')).toContain('deleted_at IS NULL')
+    expect(database.queries.join('\n')).toContain('AND revision_date = ?')
   })
 
-  it('returns null when updating a missing, deleted, or cross-user cipher', async () => {
+  it('returns not found when updating a missing, deleted, or cross-user cipher', async () => {
     const database = new RecordingCipherD1Database([], {
       updateChanges: 0,
     })
@@ -124,10 +130,43 @@ describe('cipher repository', () => {
         type: 1,
         favorite: false,
         encryptedJson: '{"name":"2.updated-encrypted-name"}',
+        expectedRevisionDate: '2026-07-06T00:04:00.000Z',
         revisionDate: '2026-07-06T00:06:00.000Z',
         createdAt: '2026-07-06T00:04:00.000Z',
       }),
-    ).resolves.toBeNull()
+    ).resolves.toEqual({ status: 'not_found' })
+  })
+
+  it('returns conflict when updating a stale active cipher', async () => {
+    const database = new RecordingCipherD1Database(
+      [
+        {
+          revisionDate: '2026-07-06T00:05:00.000Z',
+        },
+      ],
+      {
+        updateChanges: 0,
+      },
+    )
+
+    await expect(
+      updateCipher(database, {
+        id: 'cipher-id',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: false,
+        encryptedJson: '{"name":"2.updated-encrypted-name"}',
+        expectedRevisionDate: '2026-07-06T00:04:00.000Z',
+        revisionDate: '2026-07-06T00:06:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'conflict',
+      currentRevisionDate: '2026-07-06T00:05:00.000Z',
+    })
+    expect(database.queries.join('\n')).toContain('SELECT revision_date')
+    expect(database.queries.join('\n')).toContain('FROM ciphers')
   })
 
   it('soft-deletes an active cipher for one user', async () => {

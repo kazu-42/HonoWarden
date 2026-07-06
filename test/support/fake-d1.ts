@@ -10,6 +10,7 @@ const fakeMeta = {
 
 type FakeD1DatabaseOptions = {
   authUser?: Record<string, unknown> | null
+  cipher?: Record<string, unknown> | null
   cipherInsertChanges?: number
   cipherPermanentDeleteChanges?: number
   cipherRestoreChanges?: number
@@ -48,6 +49,10 @@ export class FakeD1Database {
 
         if (query.includes('FROM folders')) {
           return (options.folder ?? null) as T | null
+        }
+
+        if (query.includes('FROM ciphers')) {
+          return (options.cipher ?? null) as T | null
         }
 
         if (query.includes('FROM users')) {

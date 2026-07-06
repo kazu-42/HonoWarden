@@ -12,6 +12,10 @@ export type FolderWriteInput = {
   revisionDate: string
 }
 
+export type FolderUpdateInput = FolderWriteInput & {
+  expectedRevisionDate: string
+}
+
 export type FolderDeleteInput = {
   id: string
   userId: string
@@ -33,12 +37,29 @@ export type FolderDeleteResult =
       status: 'not_found'
     }
 
+export type FolderUpdateResult =
+  | {
+      status: 'updated'
+      folder: FolderRecord
+    }
+  | {
+      status: 'not_found'
+    }
+  | {
+      status: 'conflict'
+      currentRevisionDate: string
+    }
+
 type FolderDatabase = Pick<D1Database, 'prepare'>
 
 type FolderRow = {
   id: string
   userId: string
   name: string
+  revisionDate: string
+}
+
+type FolderRevisionRow = {
   revisionDate: string
 }
 
@@ -98,8 +119,8 @@ export async function createFolder(
 
 export async function updateFolder(
   database: FolderDatabase,
-  input: FolderWriteInput,
-): Promise<FolderRecord | null> {
+  input: FolderUpdateInput,
+): Promise<FolderUpdateResult> {
   const result = await database
     .prepare(
       `
@@ -108,7 +129,7 @@ export async function updateFolder(
           encrypted_name = ?,
           revision_date = ?,
           updated_at = ?
-        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL AND revision_date = ?
       `,
     )
     .bind(
@@ -117,14 +138,32 @@ export async function updateFolder(
       input.revisionDate,
       input.id,
       input.userId,
+      input.expectedRevisionDate,
     )
     .run()
 
   if (result.meta.changes !== 1) {
-    return null
+    const currentRevisionDate = await findActiveFolderRevision(database, {
+      id: input.id,
+      userId: input.userId,
+    })
+
+    if (!currentRevisionDate) {
+      return {
+        status: 'not_found',
+      }
+    }
+
+    return {
+      status: 'conflict',
+      currentRevisionDate,
+    }
   }
 
-  return input
+  return {
+    status: 'updated',
+    folder: folderFromUpdateInput(input),
+  }
 }
 
 export async function deleteFolder(
@@ -189,5 +228,33 @@ function folderFromRow(row: FolderRow): FolderRecord {
     userId: row.userId,
     name: row.name,
     revisionDate: row.revisionDate,
+  }
+}
+
+async function findActiveFolderRevision(
+  database: FolderDatabase,
+  input: Pick<FolderRecord, 'id' | 'userId'>,
+): Promise<string | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT revision_date as revisionDate
+        FROM folders
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.id, input.userId)
+    .first<FolderRevisionRow>()
+
+  return row?.revisionDate ?? null
+}
+
+function folderFromUpdateInput(input: FolderUpdateInput): FolderRecord {
+  return {
+    id: input.id,
+    userId: input.userId,
+    name: input.name,
+    revisionDate: input.revisionDate,
   }
 }

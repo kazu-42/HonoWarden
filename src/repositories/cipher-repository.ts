@@ -11,6 +11,10 @@ export type CipherRecord = {
 
 export type CipherCreateInput = CipherRecord
 
+export type CipherUpdateInput = CipherRecord & {
+  expectedRevisionDate: string
+}
+
 export type CipherDeleteInput = {
   id: string
   userId: string
@@ -38,6 +42,19 @@ export type CipherSoftDeleteResult =
     }
   | {
       status: 'not_found'
+    }
+
+export type CipherUpdateResult =
+  | {
+      status: 'updated'
+      cipher: CipherRecord
+    }
+  | {
+      status: 'not_found'
+    }
+  | {
+      status: 'conflict'
+      currentRevisionDate: string
     }
 
 export type CipherRestoreResult =
@@ -71,6 +88,10 @@ type CipherRow = {
   encryptedJson: string
   revisionDate: string
   createdAt: string
+}
+
+type CipherRevisionRow = {
+  revisionDate: string
 }
 
 export async function listCiphersByUser(
@@ -139,8 +160,8 @@ export async function createCipher(
 
 export async function updateCipher(
   database: CipherDatabase,
-  input: CipherCreateInput,
-): Promise<CipherRecord | null> {
+  input: CipherUpdateInput,
+): Promise<CipherUpdateResult> {
   const result = await database
     .prepare(
       `
@@ -152,7 +173,7 @@ export async function updateCipher(
           encrypted_json = ?,
           revision_date = ?,
           updated_at = ?
-        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL AND revision_date = ?
       `,
     )
     .bind(
@@ -164,14 +185,32 @@ export async function updateCipher(
       input.revisionDate,
       input.id,
       input.userId,
+      input.expectedRevisionDate,
     )
     .run()
 
   if (result.meta.changes !== 1) {
-    return null
+    const currentRevisionDate = await findActiveCipherRevision(database, {
+      id: input.id,
+      userId: input.userId,
+    })
+
+    if (!currentRevisionDate) {
+      return {
+        status: 'not_found',
+      }
+    }
+
+    return {
+      status: 'conflict',
+      currentRevisionDate,
+    }
   }
 
-  return input
+  return {
+    status: 'updated',
+    cipher: cipherFromUpdateInput(input),
+  }
 }
 
 export async function softDeleteCipher(
@@ -280,5 +319,37 @@ function cipherFromRow(row: CipherRow): CipherRecord {
     encryptedJson: row.encryptedJson,
     revisionDate: row.revisionDate,
     createdAt: row.createdAt,
+  }
+}
+
+async function findActiveCipherRevision(
+  database: CipherDatabase,
+  input: Pick<CipherRecord, 'id' | 'userId'>,
+): Promise<string | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT revision_date as revisionDate
+        FROM ciphers
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.id, input.userId)
+    .first<CipherRevisionRow>()
+
+  return row?.revisionDate ?? null
+}
+
+function cipherFromUpdateInput(input: CipherUpdateInput): CipherRecord {
+  return {
+    id: input.id,
+    userId: input.userId,
+    folderId: input.folderId,
+    type: input.type,
+    favorite: input.favorite,
+    encryptedJson: input.encryptedJson,
+    revisionDate: input.revisionDate,
+    createdAt: input.createdAt,
   }
 }

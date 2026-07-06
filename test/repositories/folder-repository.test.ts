@@ -71,21 +71,27 @@ describe('folder repository', () => {
         id: 'folder-id',
         userId: 'user-id',
         name: '2.updated-encrypted-folder-name',
+        expectedRevisionDate: '2026-07-06T00:00:00.000Z',
         revisionDate: '2026-07-06T00:01:00.000Z',
       }),
     ).resolves.toEqual({
-      id: 'folder-id',
-      userId: 'user-id',
-      name: '2.updated-encrypted-folder-name',
-      revisionDate: '2026-07-06T00:01:00.000Z',
+      status: 'updated',
+      folder: {
+        id: 'folder-id',
+        userId: 'user-id',
+        name: '2.updated-encrypted-folder-name',
+        revisionDate: '2026-07-06T00:01:00.000Z',
+      },
     })
     expect(database.boundValues).toContain('folder-id')
     expect(database.boundValues).toContain('user-id')
+    expect(database.boundValues).toContain('2026-07-06T00:00:00.000Z')
     expect(database.queries.join('\n')).toContain('user_id = ?')
     expect(database.queries.join('\n')).toContain('deleted_at IS NULL')
+    expect(database.queries.join('\n')).toContain('AND revision_date = ?')
   })
 
-  it('returns null when updating a missing or cross-user folder', async () => {
+  it('returns not found when updating a missing or cross-user folder', async () => {
     const database = new RecordingFolderD1Database([], {
       updateChanges: 0,
     })
@@ -95,9 +101,38 @@ describe('folder repository', () => {
         id: 'folder-id',
         userId: 'user-id',
         name: '2.updated-encrypted-folder-name',
+        expectedRevisionDate: '2026-07-06T00:00:00.000Z',
         revisionDate: '2026-07-06T00:01:00.000Z',
       }),
-    ).resolves.toBeNull()
+    ).resolves.toEqual({ status: 'not_found' })
+  })
+
+  it('returns conflict when updating a stale active folder', async () => {
+    const database = new RecordingFolderD1Database(
+      [
+        {
+          revisionDate: '2026-07-06T00:00:30.000Z',
+        },
+      ],
+      {
+        updateChanges: 0,
+      },
+    )
+
+    await expect(
+      updateFolder(database, {
+        id: 'folder-id',
+        userId: 'user-id',
+        name: '2.updated-encrypted-folder-name',
+        expectedRevisionDate: '2026-07-06T00:00:00.000Z',
+        revisionDate: '2026-07-06T00:01:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'conflict',
+      currentRevisionDate: '2026-07-06T00:00:30.000Z',
+    })
+    expect(database.queries.join('\n')).toContain('SELECT revision_date')
+    expect(database.queries.join('\n')).toContain('FROM folders')
   })
 
   it('soft-deletes a folder only when it belongs to the user and is active', async () => {
