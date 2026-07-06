@@ -33,7 +33,7 @@ Authenticated login cipher create is implemented and locally verified. Cipher pa
 - Repository brand scan: no hits.
 - Workflow verification: passed.
 - Local HTTP smoke: cipher create without token secret returns `503 server_misconfigured`.
-- GitHub Actions CI: pending push.
+- GitHub Actions CI: passed for implementation commit `e7dc786` in run `28786757668`.
 
 ## Remaining Risks
 
