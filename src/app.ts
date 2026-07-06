@@ -44,11 +44,13 @@ import {
 } from './repositories/folder-repository'
 import type { FolderRecord } from './repositories/folder-repository'
 import {
+  buildDeviceId,
   createPasswordGrantSession,
   findAuthUserByEmail,
   findAuthUserById,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  revokeDeviceSession,
   rotateRefreshToken,
 } from './repositories/auth-repository'
 import type { AuthUserRecord } from './repositories/auth-repository'
@@ -64,6 +66,7 @@ type AuthenticatedVaultRequest =
   | {
       ok: true
       user: AuthUserRecord
+      deviceIdentifier: string
     }
   | {
       ok: false
@@ -545,6 +548,69 @@ app.get('/api/sync', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Vault sync failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/devices/:id/revoke', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const targetDeviceId = decodePathParam(c.req.param('id')).trim()
+  if (!targetDeviceId) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'Device ID is required.'),
+      400,
+    )
+  }
+
+  const currentDeviceId = buildDeviceId(auth.user.id, auth.deviceIdentifier)
+  if (targetDeviceId === currentDeviceId) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'current_device_revoke_forbidden',
+        'The current device cannot be revoked by this route.',
+      ),
+      400,
+    )
+  }
+
+  const revokedAt = new Date().toISOString()
+
+  try {
+    const result = await revokeDeviceSession(c.env.DB, {
+      userId: auth.user.id,
+      deviceId: targetDeviceId,
+      revokedAt,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'device_not_found',
+          'Device was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json({
+      object: 'deviceRevoke',
+      id: result.deviceId,
+      revokedDate: result.revokedAt,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Device revoke failed.',
       ),
       503,
     )
@@ -1054,7 +1120,9 @@ function apiError(
   code:
     | 'cipher_folder_not_found'
     | 'cipher_not_found'
+    | 'current_device_revoke_forbidden'
     | 'database_unavailable'
+    | 'device_not_found'
     | 'folder_not_found'
     | 'invalid_request'
     | 'invalid_token'
@@ -1156,6 +1224,7 @@ async function authenticateVaultRequest(
     return {
       ok: true,
       user,
+      deviceIdentifier: verification.claims.device,
     }
   } catch {
     return {
@@ -1182,6 +1251,14 @@ async function readJsonBody(request: Request): Promise<unknown> {
 
 async function readFormBody(request: Request): Promise<URLSearchParams> {
   return new URLSearchParams(await request.text())
+}
+
+function decodePathParam(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
 }
 
 function parseFolderRequestBody(

@@ -17,6 +17,7 @@ type FakeD1DatabaseOptions = {
   cipherSoftDeleteChanges?: number
   cipherUpdateChanges?: number
   ciphers?: Record<string, unknown>[]
+  deviceRevokeChanges?: number
   folder?: Record<string, unknown> | null
   folderDeleteChanges?: number
   folders?: Record<string, unknown>[]
@@ -189,6 +190,20 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.refreshRotationChanges ?? 1,
+            },
+          }
+        }
+
+        if (
+          /UPDATE\s+devices/.test(query) &&
+          query.includes('revoked_at = ?')
+        ) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.deviceRevokeChanges ?? 1,
             },
           }
         }

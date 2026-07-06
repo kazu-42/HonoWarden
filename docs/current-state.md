@@ -166,9 +166,22 @@ Implemented:
 - repository tests for matching, stale, and missing-row update outcomes
 - HTTP tests for missing revision and stale revision update cases
 
+## Week 14 Increment
+
+Implemented:
+
+- owner-scoped active device revoke repository operation
+- active refresh token cleanup when a device is revoked
+- authenticated `POST /api/devices/:id/revoke`
+- current-device self-revoke rejection using the access token device claim
+- stable `400`, `404`, and `503` device-revoke route responses
+- refresh grant rejection coverage for revoked devices
+- repository and HTTP tests for successful revoke, missing target, and self-revoke behavior
+
 Not implemented:
 
 - refresh token reuse alerting
+- device list and device metadata update APIs
 - any storage of real password-vault data
 
 The project remains pre-alpha and must not be used to store real secrets.

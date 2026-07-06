@@ -7,6 +7,7 @@ import {
   findAuthUserById,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  revokeDeviceSession,
   rotateRefreshToken,
 } from '../../src/repositories/auth-repository'
 
@@ -211,25 +212,68 @@ describe('auth repository', () => {
     expect(database.boundValues).toContain('user-id')
     expect(database.boundValues).toContain('device-id')
   })
+
+  it('revokes an active owner-scoped device session', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1)
+
+    await expect(
+      revokeDeviceSession(database, {
+        userId: 'user-id',
+        deviceId: 'target-device-id',
+        revokedAt: '2026-07-06T00:10:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'revoked',
+      deviceId: 'target-device-id',
+      revokedAt: '2026-07-06T00:10:00.000Z',
+    })
+
+    expect(database.boundValues).toContain('user-id')
+    expect(database.boundValues).toContain('target-device-id')
+    expect(database.queries.join('\n')).toContain('UPDATE devices')
+    expect(database.queries.join('\n')).toContain('revoked_at = ?')
+    expect(database.queries.join('\n')).toContain('UPDATE refresh_tokens')
+  })
+
+  it('returns not found when revoking a missing, cross-user, or already revoked device', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 0)
+
+    await expect(
+      revokeDeviceSession(database, {
+        userId: 'user-id',
+        deviceId: 'target-device-id',
+        revokedAt: '2026-07-06T00:10:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'not_found',
+    })
+
+    expect(database.queries.join('\n')).toContain('UPDATE devices')
+    expect(database.queries.join('\n')).not.toContain('UPDATE refresh_tokens')
+  })
 })
 
 class RecordingAuthD1Database {
   boundValues: unknown[] = []
   batchStatements: D1PreparedStatement[] = []
+  queries: string[] = []
 
   constructor(
     private readonly userRow: unknown,
     private readonly refreshSessionRow: unknown = null,
     private readonly updateChanges = 1,
+    private readonly deviceUpdateChanges = 1,
   ) {}
 
   prepare(query: string): D1PreparedStatement {
+    this.queries.push(query)
     const pushValues = (values: unknown[]) => {
       this.boundValues.push(...values)
     }
     const getUserRow = () => this.userRow
     const getRefreshSessionRow = () => this.refreshSessionRow
     const getUpdateChanges = () => this.updateChanges
+    const getDeviceUpdateChanges = () => this.deviceUpdateChanges
 
     const statement = {
       bind(...values: unknown[]) {
@@ -255,14 +299,19 @@ class RecordingAuthD1Database {
         }
       },
       async run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+        const changes =
+          /UPDATE\s+devices/.test(query) && query.includes('revoked_at = ?')
+            ? getDeviceUpdateChanges()
+            : /UPDATE\s+refresh_tokens/.test(query)
+              ? getUpdateChanges()
+              : fakeMeta.changes
+
         return {
           success: true,
           results: [],
           meta: {
             ...fakeMeta,
-            changes: /UPDATE\s+refresh_tokens/.test(query)
-              ? getUpdateChanges()
-              : fakeMeta.changes,
+            changes,
           },
         }
       },

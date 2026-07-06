@@ -50,6 +50,12 @@ export type RotateRefreshTokenInput = {
   now: string
 }
 
+export type DeviceRevokeInput = {
+  userId: string
+  deviceId: string
+  revokedAt: string
+}
+
 export type RotateRefreshTokenResult =
   | {
       status: 'rotated'
@@ -58,8 +64,19 @@ export type RotateRefreshTokenResult =
       status: 'reuse_detected'
     }
 
+export type DeviceRevokeResult =
+  | {
+      status: 'revoked'
+      deviceId: string
+      revokedAt: string
+    }
+  | {
+      status: 'not_found'
+    }
+
 type AuthLookupDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
+type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
   id: string
@@ -415,6 +432,45 @@ export async function invalidateRefreshTokenSession(
       )
       .bind(now, now, deviceId, userId),
   ])
+}
+
+export async function revokeDeviceSession(
+  database: AuthDeviceRevokeDatabase,
+  input: DeviceRevokeInput,
+): Promise<DeviceRevokeResult> {
+  const deviceResult = await database
+    .prepare(
+      `
+        UPDATE devices
+        SET revoked_at = ?, updated_at = ?
+        WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+      `,
+    )
+    .bind(input.revokedAt, input.revokedAt, input.deviceId, input.userId)
+    .run()
+
+  if (deviceResult.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  await database
+    .prepare(
+      `
+        UPDATE refresh_tokens
+        SET revoked_at = ?
+        WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL
+      `,
+    )
+    .bind(input.revokedAt, input.userId, input.deviceId)
+    .run()
+
+  return {
+    status: 'revoked',
+    deviceId: input.deviceId,
+    revokedAt: input.revokedAt,
+  }
 }
 
 export function buildDeviceId(

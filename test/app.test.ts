@@ -502,6 +502,36 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rejects refresh grants for revoked devices', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          refreshSession: {
+            ...refreshTokenSessionRecord(),
+            deviceRevokedAt: '2026-07-06T00:00:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+  })
+
   it('rejects unknown refresh tokens without session changes', async () => {
     const response = await app.request(
       '/identity/connect/token',
@@ -743,6 +773,94 @@ describe('HonoWarden app', () => {
       error: {
         code: 'invalid_token',
       },
+    })
+  })
+
+  it('revokes another device for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const targetDeviceId = buildDevicePathId('other-device')
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(targetDeviceId)}/revoke`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          deviceRevokeChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'deviceRevoke',
+      id: targetDeviceId,
+      revokedDate: expect.any(String),
+    })
+  })
+
+  it('rejects revoking the current device', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(buildDevicePathId('fixture-device'))}/revoke`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'current-device-revoke-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'current_device_revoke_forbidden',
+      },
+      requestId: 'current-device-revoke-request',
+    })
+  })
+
+  it('returns not found when revoking a missing, revoked, or cross-user device', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(buildDevicePathId('missing-device'))}/revoke`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'missing-device-revoke-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          deviceRevokeChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'device_not_found',
+      },
+      requestId: 'missing-device-revoke-request',
     })
   })
 
@@ -1846,6 +1964,10 @@ function cipherCreateBody() {
       uris: [],
     },
   }
+}
+
+function buildDevicePathId(deviceIdentifier: string): string {
+  return `user-id:${deviceIdentifier}`
 }
 
 async function accessTokenFor(
