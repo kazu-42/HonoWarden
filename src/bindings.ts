@@ -2,5 +2,7 @@ export type Bindings = {
   DB: D1Database
   VAULT_OBJECTS: R2Bucket
   HONOWARDEN_ALLOWED_EMAILS?: string
+  HONOWARDEN_BOOTSTRAP_ENABLED?: string
+  HONOWARDEN_BOOTSTRAP_TOKEN?: string
   HONOWARDEN_ENV?: string
 }

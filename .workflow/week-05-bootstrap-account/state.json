@@ -1,0 +1,43 @@
+{
+  "title": "Week 5 Bootstrap Account",
+  "slug": "week-05-bootstrap-account",
+  "created_at": "2026-07-06T10:18:33+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local coding, tests, workflow artifacts, normal commits, and pushes are within the user's sustained repo-development request. Ask before real Cloudflare resources, secrets, deploys, or production data."
+  },
+  "packets": [
+    {
+      "id": "01-skill-install",
+      "status": "complete"
+    },
+    {
+      "id": "02-bootstrap-implementation",
+      "status": "complete"
+    },
+    {
+      "id": "03-security-review",
+      "status": "complete"
+    },
+    {
+      "id": "04-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "local_passed",
+    "checks": [
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm compat:test",
+      "pnpm format",
+      "repository brand scan",
+      "local bootstrap smoke",
+      "workflow verification",
+      "GitHub Actions CI"
+    ]
+  }
+}

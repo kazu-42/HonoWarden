@@ -195,6 +195,115 @@ describe('HonoWarden app', () => {
     }
   })
 
+  it('keeps account bootstrap disabled by default', async () => {
+    const response = await app.request('/api/accounts/bootstrap', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'person@example.test',
+        masterPasswordHash: 'synthetic-master-password-hash',
+      }),
+    })
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'bootstrap_disabled',
+      },
+    })
+  })
+
+  it('requires a bootstrap token when bootstrap is enabled', async () => {
+    const response = await app.request(
+      '/api/accounts/bootstrap',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'person@example.test',
+          masterPasswordHash: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        HONOWARDEN_BOOTSTRAP_ENABLED: 'true',
+        HONOWARDEN_BOOTSTRAP_TOKEN: 'expected-token',
+      },
+    )
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'bootstrap_forbidden',
+      },
+    })
+  })
+
+  it('creates an allowlisted bootstrap account', async () => {
+    const response = await app.request(
+      '/api/accounts/bootstrap',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-HonoWarden-Bootstrap-Token': 'expected-token',
+          'X-Request-Id': 'bootstrap-create-request',
+        },
+        body: JSON.stringify({
+          email: 'Person@Example.Test',
+          masterPasswordHash: 'synthetic-master-password-hash',
+          userKey: '2.synthetic-user-key',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { userInsertChanges: 1 }),
+        HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+        HONOWARDEN_BOOTSTRAP_ENABLED: 'true',
+        HONOWARDEN_BOOTSTRAP_TOKEN: 'expected-token',
+      },
+    )
+
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'user',
+      email: 'person@example.test',
+      requestId: 'bootstrap-create-request',
+    })
+  })
+
+  it('returns conflict for duplicate bootstrap accounts', async () => {
+    const response = await app.request(
+      '/api/accounts/bootstrap',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-HonoWarden-Bootstrap-Token': 'expected-token',
+        },
+        body: JSON.stringify({
+          email: 'person@example.test',
+          masterPasswordHash: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { userInsertChanges: 0 }),
+        HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+        HONOWARDEN_BOOTSTRAP_ENABLED: 'true',
+        HONOWARDEN_BOOTSTRAP_TOKEN: 'expected-token',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'account_exists',
+      },
+    })
+  })
+
   it('returns a minimal upstream-compatible server config', async () => {
     const response = await app.request('https://vault.example.test/api/config')
 

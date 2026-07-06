@@ -4,9 +4,16 @@ import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
+import {
+  buildBootstrapUserRecord,
+  isBootstrapEnabled,
+  resolveBootstrapAccount,
+  verifyBootstrapToken,
+} from './domain/bootstrap'
 import { resolvePrelogin } from './domain/prelogin'
 import { getDatabaseHealth } from './infra/db-health'
 import { buildServerConfig } from './protocol/config'
+import { createBootstrapUser } from './repositories/user-repository'
 
 type Variables = {
   requestId: string
@@ -183,6 +190,100 @@ app.post('/identity/accounts/register', (c) => {
     },
     403,
   )
+})
+
+app.post('/api/accounts/bootstrap', async (c) => {
+  if (!isBootstrapEnabled(c.env?.HONOWARDEN_BOOTSTRAP_ENABLED)) {
+    return c.json(
+      {
+        error: {
+          code: 'bootstrap_disabled',
+          message: 'Account bootstrap is disabled.',
+        },
+        requestId: c.get('requestId'),
+      },
+      403,
+    )
+  }
+
+  if (
+    !verifyBootstrapToken(
+      c.env?.HONOWARDEN_BOOTSTRAP_TOKEN,
+      c.req.header('X-HonoWarden-Bootstrap-Token'),
+    )
+  ) {
+    return c.json(
+      {
+        error: {
+          code: 'bootstrap_forbidden',
+          message: 'Account bootstrap is not authorized.',
+        },
+        requestId: c.get('requestId'),
+      },
+      403,
+    )
+  }
+
+  const body = await readJsonBody(c.req.raw)
+  const decision = resolveBootstrapAccount(
+    body,
+    c.env?.HONOWARDEN_ALLOWED_EMAILS,
+  )
+
+  if (!decision.ok) {
+    return c.json(
+      {
+        error: decision.error,
+        requestId: c.get('requestId'),
+      },
+      decision.status,
+    )
+  }
+
+  const now = new Date().toISOString()
+  const user = buildBootstrapUserRecord(decision.payload, {
+    id: crypto.randomUUID(),
+    revisionDate: now,
+    securityStamp: crypto.randomUUID(),
+  })
+
+  try {
+    const result = await createBootstrapUser(c.env.DB, user)
+
+    if (result.status === 'duplicate') {
+      return c.json(
+        {
+          error: {
+            code: 'account_exists',
+            message: 'An account already exists for this email.',
+          },
+          requestId: c.get('requestId'),
+        },
+        409,
+      )
+    }
+
+    return c.json(
+      {
+        object: 'user',
+        id: result.userId,
+        email: user.emailNormalized,
+        requestId: c.get('requestId'),
+      },
+      201,
+    )
+  } catch {
+    return c.json(
+      {
+        error: {
+          code: 'database_unavailable',
+          message: 'Account bootstrap failed.',
+        },
+        requestId: c.get('requestId'),
+      },
+      503,
+    )
+  }
 })
 
 app.notFound((c) => {

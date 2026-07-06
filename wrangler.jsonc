@@ -8,6 +8,7 @@
   },
   "vars": {
     "HONOWARDEN_ALLOWED_EMAILS": "",
+    "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
     "HONOWARDEN_ENV": "development",
   },
   // Replace database_id after running:
@@ -32,6 +33,7 @@
       "name": "honowarden-staging",
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",
+        "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "staging",
       },
       "d1_databases": [
@@ -52,6 +54,7 @@
       "name": "honowarden",
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",
+        "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "production",
       },
       "d1_databases": [

@@ -64,6 +64,8 @@ Configure local prelogin allowlist in `wrangler.jsonc` before testing login-rela
 "HONOWARDEN_ALLOWED_EMAILS": "person@example.test"
 ```
 
+Bootstrap account creation is disabled by default. For local operator testing, set `HONOWARDEN_BOOTSTRAP_ENABLED=true` and provide `HONOWARDEN_BOOTSTRAP_TOKEN` through local environment or Wrangler secrets. Do not commit real bootstrap tokens.
+
 Generate Cloudflare binding types after editing `wrangler.jsonc`:
 
 ```sh

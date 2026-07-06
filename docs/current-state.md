@@ -54,9 +54,19 @@ Implemented:
 - explicit `403` responses for public registration endpoints
 - regenerated Cloudflare binding types for the allowlist variable
 
+## Week 5 Increment
+
+Implemented:
+
+- private `POST /api/accounts/bootstrap` operator endpoint
+- default-off bootstrap flag
+- bootstrap token check via request header
+- allowlisted account creation using normalized email
+- D1 `INSERT OR IGNORE` account creation to handle duplicate parallel bootstrap attempts
+- stable `201`, `400`, `403`, `409`, and `503` bootstrap responses
+
 Not implemented:
 
-- upstream account bootstrap
 - token exchange
 - vault sync
 - any storage of real password-vault data

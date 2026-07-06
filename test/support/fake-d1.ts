@@ -8,15 +8,21 @@ const fakeMeta = {
   changes: 0,
 } satisfies D1Meta & Record<string, unknown>
 
+type FakeD1DatabaseOptions = {
+  userInsertChanges?: number
+}
+
 export class FakeD1Database {
   constructor(
     private readonly schemaVersion: string | null,
     private readonly tables: readonly string[],
+    private readonly options: FakeD1DatabaseOptions = {},
   ) {}
 
   prepare(query: string): D1PreparedStatement {
     const schemaVersion = this.schemaVersion
     const tables = this.tables
+    const options = this.options
 
     const statement = {
       bind() {
@@ -54,6 +60,17 @@ export class FakeD1Database {
         }
       },
       async run(): Promise<D1Result> {
+        if (query.includes('INSERT OR IGNORE INTO users')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.userInsertChanges ?? 1,
+            },
+          }
+        }
+
         return { success: true, results: [], meta: fakeMeta }
       },
       async raw<T = unknown>(): Promise<T[]> {
