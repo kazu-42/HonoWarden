@@ -823,3 +823,29 @@ Not implemented:
 - tag push
 - GitHub release draft creation or publication
 - deployment from a tag or release
+
+## Week 26 Post-Tag Release Packet
+
+Implemented:
+
+- read-only post-tag release packet exposed as
+  `pnpm release:post-tag:packet`
+- combined JSON summary of local tag context, remote tag context, tag
+  verification workflow evidence, GitHub release planning, and existing release
+  state
+- remote annotated-tag peeling support so remote tag checks compare the commit
+  SHA rather than only the tag object SHA
+- machine-generated approval text for creating the GitHub release draft after
+  tag verification passes, emitted only when required post-tag evidence is not
+  being allowed missing
+- focused tests that fake `git` and `gh` instead of creating real tags or
+  releases
+- tagging runbook step requiring the post-tag packet before release draft
+  creation
+
+Not implemented:
+
+- tag creation
+- tag push
+- GitHub release draft creation or publication
+- deployment from a tag or release

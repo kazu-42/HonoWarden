@@ -35,6 +35,7 @@
     "release:approval:packet": "node scripts/honowarden-release-approval-packet.mjs",
     "release:gate": "node scripts/honowarden-release-gate.mjs",
     "release:github:plan": "node scripts/honowarden-github-release-plan.mjs",
+    "release:post-tag:packet": "node scripts/honowarden-post-tag-release-packet.mjs",
     "release:tag:preflight": "node scripts/honowarden-alpha-tag-preflight.mjs",
     "staging:dry-run": "node scripts/honowarden-staging-dry-run.mjs",
     "test": "vitest run",
