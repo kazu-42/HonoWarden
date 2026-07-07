@@ -1422,6 +1422,25 @@ Not implemented:
 - Worker deploy, DNS mutation, Email Routing configuration, or test email send
 - live Worker smoke, website route, email routing, or rollback evidence
 
+## Week 26 Ops Evidence Templates
+
+Implemented:
+
+- post-alpha evidence placeholders for Worker live smoke, website live route,
+  Email Routing, and operations rollback
+- all new evidence files start with `Status: not_performed` so the ops readiness
+  packet remains blocked until real approved operations are recorded
+- release and website/email docs link the evidence files and explain when they
+  can be marked `passed`
+- ops readiness packet regression coverage proves placeholder files do not
+  satisfy live Worker, website, Email Routing, or rollback requirements
+
+Not implemented:
+
+- Worker deploy, DNS mutation, Email Routing configuration, or test email send
+- live Worker smoke, website route, email routing, or rollback evidence
+- automatic promotion from `not_performed` to `passed`
+
 ## Week 26 Release Published Packet
 
 Implemented:

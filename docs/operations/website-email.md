@@ -123,6 +123,16 @@ completion audit, local email preflight, and recorded evidence files so deploy,
 DNS, website, email, smoke-test, and rollback approvals remain separate from
 GitHub Release publication.
 
+The evidence files are:
+
+- `docs/release/website-live-evidence.md`
+- `docs/release/email-routing-evidence.md`
+- `docs/release/ops-rollback-evidence.md`
+
+They intentionally start as `Status: not_performed`; do not mark them `passed`
+until the approved operation, redacted smoke evidence, and rollback handle are
+recorded.
+
 ## Current Status
 
 Website:

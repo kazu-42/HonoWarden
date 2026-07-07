@@ -18,6 +18,10 @@ Use this index as the feature-freeze entry point:
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
 - [Staging Deploy Dry Run Evidence](staging-deploy-evidence.md)
 - [Cloudflare Resource Evidence](cloudflare-resource-evidence.md)
+- [Worker Live Smoke Evidence](worker-live-smoke-evidence.md)
+- [Website Live Evidence](website-live-evidence.md)
+- [Email Routing Evidence](email-routing-evidence.md)
+- [Operations Rollback Evidence](ops-rollback-evidence.md)
 - [Alpha Release Notes](v0.1.0-alpha-release-notes.md)
 
 ## Freeze Position
@@ -61,3 +65,7 @@ status and local email input presence as useful context, but not as live
 operational proof. Strict mode is reserved for the state after release
 publication, Worker smoke evidence, website domain evidence, Email Routing
 evidence, and rollback evidence have all been recorded.
+
+The post-alpha evidence files are committed as `Status: not_performed`
+placeholders. Leave them in that state until the corresponding approved
+operation has actually run and the redacted proof is recorded.

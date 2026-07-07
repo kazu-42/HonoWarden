@@ -1,0 +1,87 @@
+{
+  "title": "Week 26 Ops Evidence Templates",
+  "slug": "week-26-ops-evidence-templates",
+  "created_at": "2026-07-07T18:40:03+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local docs, tests, and workflow artifacts only. Release publication, deploy, DNS, Email Routing, email sends, and secret writes remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-evidence-docs",
+      "status": "completed"
+    },
+    {
+      "id": "02-docs-tests",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "focused ops readiness and release docs tests",
+        "command": "pnpm exec vitest run test/ops/ops-readiness-packet.test.ts test/release-docs.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "ops readiness readback",
+        "command": "pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported not_ready with release_publication_approval_required; live ops evidence requirements remain failed."
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-ops-evidence-templates",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "name": "format",
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "name": "brand scan",
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "name": "strict release gate",
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "name": "full test suite",
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "name": "compatibility tests",
+        "command": "pnpm compat:test",
+        "status": "passed"
+      },
+      {
+        "name": "release status readback",
+        "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported phase draft_ready_for_publication."
+      }
+    ]
+  }
+}

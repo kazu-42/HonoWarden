@@ -124,8 +124,40 @@ describe('release feature-freeze docs', () => {
     )
     expect(runbook).toContain('Do not deploy from this release')
   })
+
+  it('keeps post-alpha operations evidence placeholders conservative', () => {
+    const index = readReleaseDoc('index.md')
+    const workerEvidence = readReleaseDoc('worker-live-smoke-evidence.md')
+    const websiteEvidence = readReleaseDoc('website-live-evidence.md')
+    const emailEvidence = readReleaseDoc('email-routing-evidence.md')
+    const rollbackEvidence = readReleaseDoc('ops-rollback-evidence.md')
+
+    expect(index).toContain('worker-live-smoke-evidence.md')
+    expect(index).toContain('website-live-evidence.md')
+    expect(index).toContain('email-routing-evidence.md')
+    expect(index).toContain('ops-rollback-evidence.md')
+
+    for (const evidence of [
+      workerEvidence,
+      websiteEvidence,
+      emailEvidence,
+      rollbackEvidence,
+    ]) {
+      expect(evidence).toContain('Status: not_performed')
+      expect(evidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
+      expect(evidence).toContain('approval')
+      expect(evidence).toContain('rollback')
+    }
+  })
 })
 
-function readReleaseDoc(docPath: (typeof releaseDocs)[number]): string {
+function readReleaseDoc(
+  docPath:
+    | (typeof releaseDocs)[number]
+    | 'worker-live-smoke-evidence.md'
+    | 'website-live-evidence.md'
+    | 'email-routing-evidence.md'
+    | 'ops-rollback-evidence.md',
+): string {
   return readFileSync(join(releaseDocsRoot, docPath), 'utf8')
 }

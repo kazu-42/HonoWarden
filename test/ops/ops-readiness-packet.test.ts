@@ -93,6 +93,7 @@ describe('ops readiness packet', () => {
     expect(statusById(report, 'email_routing_live_evidence_recorded')).toBe(
       'fail',
     )
+    expect(statusById(report, 'ops_rollback_evidence_recorded')).toBe('fail')
     expect(report.limitations).toContain(
       'This packet does not deploy Workers, change DNS, configure Email Routing, or send email.',
     )
