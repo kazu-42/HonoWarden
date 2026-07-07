@@ -39,5 +39,7 @@ Verification:
 - Read-only release status remains `draft_ready_for_publication`.
 - Ops readiness remains `not_ready` with
   `release_publication_approval_required`.
+- GitHub Actions CI for implementation commit `115c2d7`: passed in run
+  `28889816578`.
 
 No external writes are part of this workflow.

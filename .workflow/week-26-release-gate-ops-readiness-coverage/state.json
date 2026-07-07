@@ -93,6 +93,14 @@
         "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
         "status": "passed",
         "notes": "Reported completion incomplete with blockingReason release_publication_approval_required."
+      },
+      {
+        "name": "implementation ci",
+        "command": "gh run view 28889816578 --repo kazu-42/HonoWarden --json databaseId,headSha,status,conclusion,url,workflowName,event",
+        "status": "passed",
+        "runId": 28889816578,
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28889816578",
+        "headSha": "115c2d7a7a32d60229f272d6cf158d2a41eaa79c"
       }
     ]
   }
