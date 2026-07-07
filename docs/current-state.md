@@ -718,3 +718,23 @@ Not implemented:
 - tag push
 - GitHub release publication
 - remote tag absence verification
+
+## Week 26 Tagging Runbook
+
+Implemented:
+
+- release tagging runbook under `docs/release/tagging-runbook.md`
+- explicit preconditions for clean working tree, local tag absence, release gate,
+  tag preflight, CI, and brand scan
+- optional read-only remote tag absence check
+- operator approval gate before creating or pushing `v0.1.0-alpha`
+- failure handling for local tag cleanup and pushed wrong-tag incident response
+- release docs test coverage that keeps tag creation approval-gated
+- release gate required-doc coverage for the tagging runbook
+
+Not implemented:
+
+- tag creation
+- tag push
+- remote tag deletion or retagging
+- GitHub release publication

@@ -33,6 +33,9 @@ the alpha target, the strict release gate passes, the working tree is clean, and
 the local tag does not already exist. It prints the exact local tag and push
 commands but does not run them.
 
+Use [Alpha Tagging Runbook](tagging-runbook.md) for the explicit approval gate,
+remote read-only check, tag commands, verification, and failure handling.
+
 ## What It Proves
 
 The preflight proves repository-local facts:

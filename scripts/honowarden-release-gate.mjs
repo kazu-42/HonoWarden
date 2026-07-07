@@ -19,6 +19,7 @@ const requiredReleaseDocs = [
   'rollback-guide.md',
   'migration-freeze.md',
   'release-gate-preflight.md',
+  'tagging-runbook.md',
   'live-client-evidence.md',
   'v0.1.0-alpha-release-notes.md',
 ]

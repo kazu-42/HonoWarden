@@ -12,6 +12,7 @@ Use this index as the feature-freeze entry point:
 - [Rollback Guide](rollback-guide.md)
 - [Migration Freeze](migration-freeze.md)
 - [Release Gate Preflight](release-gate-preflight.md)
+- [Alpha Tagging Runbook](tagging-runbook.md)
 - [Live Client Evidence](live-client-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
 - [Staging Deploy Dry Run Evidence](staging-deploy-evidence.md)
@@ -40,3 +41,5 @@ reviewed without inventing release process under time pressure.
 - `pnpm release:gate -- --strict` passes on the release commit.
 - `pnpm release:tag:preflight -- --strict` passes on the clean release commit
   before running the printed tag commands.
+- [Alpha Tagging Runbook](tagging-runbook.md) has been followed with explicit
+  operator approval before tag creation and push.

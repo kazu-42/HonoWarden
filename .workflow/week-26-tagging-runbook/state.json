@@ -1,0 +1,42 @@
+{
+  "title": "Week 26 Tagging Runbook",
+  "slug": "week-26-tagging-runbook",
+  "created_at": "2026-07-07T05:26:45+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Docs, tests, and release gate updates only. Tag creation and push remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "tests-gate",
+      "status": "completed"
+    },
+    {
+      "id": "runbook",
+      "status": "completed"
+    },
+    {
+      "id": "docs-integration",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/release-docs.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm format",
+      "pnpm release:gate -- --strict",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-tagging-runbook"
+    ]
+  }
+}
