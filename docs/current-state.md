@@ -686,6 +686,24 @@ Implemented:
 - returns only preflight result without device metadata mutation, trust updates,
   or key updates
 
+## Week 26 Account Profile API
+
+Implemented:
+
+- authenticated `GET /api/accounts/profile`
+- profile response reuses the same account key metadata, TOTP enabled state,
+  organization placeholders, and key-connector defaults as `/api/sync`
+- response includes master-password unlock metadata in `UserDecryptionOptions`
+  to match the token response contract
+- compatibility fixture flow `account_profile` under
+  `compat/fixtures/accounts/profile-success.json`
+
+Not implemented:
+
+- account profile mutation APIs
+- email change, password change, or account deletion flows
+- live client evidence for the account profile endpoint
+
 ## Week 26 Alpha Version Alignment
 
 Implemented:

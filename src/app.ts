@@ -395,6 +395,15 @@ app.get('/api/accounts/revision-date', async (c) => {
   }
 })
 
+app.get('/api/accounts/profile', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(buildAccountProfileResponse(auth.user))
+})
+
 app.post('/api/accounts/register', (c) => {
   return c.json(
     {
@@ -2061,34 +2070,11 @@ function buildSyncResponse(
   folders: readonly FolderRecord[] = [],
   ciphers: readonly CipherRecord[] = [],
 ) {
-  const accountKeys = buildAccountKeysResponse(user)
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
 
   return {
     object: 'sync',
-    Profile: {
-      Id: user.id,
-      Name: user.displayName ?? user.emailNormalized,
-      Email: user.emailNormalized,
-      EmailVerified: true,
-      Premium: false,
-      PremiumFromOrganization: false,
-      Culture: 'en-US',
-      TwoFactorEnabled: user.totpEnabled,
-      Key: user.userKey,
-      AccountKeys: accountKeys,
-      AvatarColor: '#3366cc',
-      CreationDate: user.createdAt,
-      PrivateKey: user.privateKey,
-      SecurityStamp: user.securityStamp,
-      ForcePasswordReset: false,
-      UsesKeyConnector: false,
-      VerifyDevices: false,
-      Organizations: [],
-      OrganizationsNew: [],
-      Providers: [],
-      ProviderOrganizations: [],
-    },
+    Profile: buildProfileResponse(user),
     Folders: folders.map(buildFolderResponse),
     Collections: [],
     Ciphers: ciphers.map(buildCipherResponse),
@@ -2104,6 +2090,48 @@ function buildSyncResponse(
           MasterPasswordUnlock: masterPasswordUnlock,
         }
       : null,
+  }
+}
+
+function buildAccountProfileResponse(user: AuthUserRecord) {
+  const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
+
+  return {
+    object: 'profile',
+    ...buildProfileResponse(user),
+    UserDecryptionOptions: masterPasswordUnlock
+      ? {
+          HasMasterPassword: true,
+          MasterPasswordUnlock: masterPasswordUnlock,
+        }
+      : null,
+    KeyConnectorUrl: null,
+  }
+}
+
+function buildProfileResponse(user: AuthUserRecord) {
+  return {
+    Id: user.id,
+    Name: user.displayName ?? user.emailNormalized,
+    Email: user.emailNormalized,
+    EmailVerified: true,
+    Premium: false,
+    PremiumFromOrganization: false,
+    Culture: 'en-US',
+    TwoFactorEnabled: user.totpEnabled,
+    Key: user.userKey,
+    AccountKeys: buildAccountKeysResponse(user),
+    AvatarColor: '#3366cc',
+    CreationDate: user.createdAt,
+    PrivateKey: user.privateKey,
+    SecurityStamp: user.securityStamp,
+    ForcePasswordReset: false,
+    UsesKeyConnector: false,
+    VerifyDevices: false,
+    Organizations: [],
+    OrganizationsNew: [],
+    Providers: [],
+    ProviderOrganizations: [],
   }
 }
 

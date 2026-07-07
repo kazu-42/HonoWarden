@@ -62,6 +62,7 @@ const requiredFlows = [
   'password_grant',
   'refresh_grant',
   'empty_sync',
+  'account_profile',
   'folder_crud',
   'cipher_create',
   'cipher_lifecycle',

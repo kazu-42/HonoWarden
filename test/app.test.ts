@@ -1777,6 +1777,71 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toBe('2026-07-06T00:05:00.000Z')
   })
 
+  it('returns account profile metadata for a valid access token', async () => {
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+    }
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/profile',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'profile',
+      Id: 'user-id',
+      Name: 'Person',
+      Email: 'person@example.test',
+      EmailVerified: true,
+      Premium: false,
+      PremiumFromOrganization: false,
+      Culture: 'en-US',
+      TwoFactorEnabled: true,
+      Key: '2.synthetic-user-key',
+      AccountKeys: {
+        publicKeyEncryptionKeyPair: {
+          publicKey: 'synthetic-public-key',
+          wrappedPrivateKey: '2.synthetic-private-key',
+        },
+      },
+      AvatarColor: '#3366cc',
+      CreationDate: '2026-07-06T00:00:00.000Z',
+      PrivateKey: '2.synthetic-private-key',
+      SecurityStamp: 'security-stamp',
+      ForcePasswordReset: false,
+      UsesKeyConnector: false,
+      VerifyDevices: false,
+      Organizations: [],
+      OrganizationsNew: [],
+      Providers: [],
+      ProviderOrganizations: [],
+      UserDecryptionOptions: {
+        HasMasterPassword: true,
+        MasterPasswordUnlock: {
+          Salt: 'person@example.test',
+          Kdf: {
+            KdfType: 0,
+            Iterations: 600000,
+          },
+          MasterKeyEncryptedUserKey: '2.synthetic-user-key',
+        },
+      },
+      KeyConnectorUrl: null,
+    })
+  })
+
   it('reports enabled TOTP state in sync profile', async () => {
     const user = {
       ...authUserRecord(),

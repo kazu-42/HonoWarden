@@ -18,6 +18,10 @@
       "fixtures": ["sync/empty-personal-vault.json"]
     },
     {
+      "id": "account_profile",
+      "fixtures": ["accounts/profile-success.json"]
+    },
+    {
       "id": "folder_crud",
       "fixtures": [
         "folders/create-success.json",
