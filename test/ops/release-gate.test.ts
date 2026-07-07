@@ -67,6 +67,9 @@ describe('release gate preflight', () => {
       '.workflow/week-26-release-tag-workflow/state.json',
     )
     expect(workflowEvidence).toContain(
+      '.workflow/week-26-release-tag-recovery/state.json',
+    )
+    expect(workflowEvidence).toContain(
       '.workflow/week-26-release-evidence-shared-brand-scan/state.json',
     )
     expect(workflowEvidence).toContain(

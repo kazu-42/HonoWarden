@@ -7,8 +7,8 @@ verification path. The packet emits lease-guarded tag movement commands and
 approval text only after validating local/remote tag state, latest main CI,
 failed tag workflow evidence, and absence of an existing GitHub release.
 
-No tag was moved, deleted, or pushed in this workflow. No GitHub release was
-created or modified.
+No tag was moved, deleted, or pushed by the packet implementation workflow. No
+GitHub release was created or modified by the packet implementation workflow.
 
 ## Accepted Results
 
@@ -42,15 +42,21 @@ created or modified.
 - `pnpm release:gate -- --strict`
 - repository brand scan
 - `python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-tag-recovery`
+- GitHub Actions CI run `28861219727` passed for commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- `Release Tag Verification` run `28863312935` passed for commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- Current `v0.1.0-alpha` tag readback resolves to
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- Current GitHub Release readback shows a draft prerelease targeting
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
 
 ## Remaining Risks
 
-- The pushed `v0.1.0-alpha` tag still points at the failed verification commit
-  until an operator approves a lease-guarded tag move.
-- If the remote tag object changes before approval, the emitted lease command
-  must be regenerated.
-- If a GitHub release is created before recovery, tag movement needs a separate
-  incident decision.
+- GitHub Release publication still requires explicit operator approval.
+- Deployment from the tag or release remains a separate approval gate.
+- Future pushed-tag recovery incidents must regenerate a fresh lease and stop if
+  a release already exists for the tag.
 
 ## Reusable Follow-up
 

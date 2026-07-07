@@ -2,11 +2,11 @@
   "title": "Week 26 Release Tag Recovery",
   "slug": "week-26-release-tag-recovery",
   "created_at": "2026-07-07T10:48:33+00:00",
-  "status": "in_progress",
+  "status": "completed",
   "approval": {
     "required": true,
     "granted": false,
-    "notes": "Tag movement, release draft creation, publication, deploys, DNS, and email changes remain approval-gated. This workflow only adds read-only recovery evidence."
+    "notes": "Tag movement and release draft creation were handled by separate approvals outside this read-only workflow. Publication, deploys, DNS, and email changes remain approval-gated. This workflow only adds read-only recovery evidence."
   },
   "packets": [
     {
@@ -26,12 +26,12 @@
     },
     {
       "id": "04-verification",
-      "status": "in_progress",
+      "status": "completed",
       "owner": "main"
     }
   ],
   "verification": {
-    "status": "local_passed",
+    "status": "passed",
     "checks": [
       {
         "command": "pnpm exec vitest run test/ops/release-tag-recovery-packet.test.ts test/release-docs.test.ts test/ops/release-evidence-bundle.test.ts",
@@ -66,6 +66,27 @@
       {
         "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-tag-recovery",
         "status": "passed"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28861219727",
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28861219727",
+        "headSha": "e7a3c5ea9e51030143736bb0e7a36cb7a8babfce",
+        "evidence": "CI passed for the recovery-packet implementation commit"
+      },
+      {
+        "name": "Release Tag Verification",
+        "status": "passed",
+        "run": "28863312935",
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "headSha": "e7a3c5ea9e51030143736bb0e7a36cb7a8babfce",
+        "evidence": "tag verification passed after the separately approved tag recovery"
+      },
+      {
+        "command": "gh release view v0.1.0-alpha --repo kazu-42/HonoWarden --json tagName,isDraft,isPrerelease,targetCommitish",
+        "status": "passed",
+        "evidence": "draft prerelease exists for e7a3c5ea9e51030143736bb0e7a36cb7a8babfce"
       }
     ]
   }

@@ -1,5 +1,5 @@
 Result ID: 04-verification
-Status: local_passed
+Status: completed
 
 Local verification completed:
 
@@ -12,9 +12,18 @@ Local verification completed:
 - repository brand scan
 - `python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-tag-recovery`
 
+External readback after the separately approved recovery:
+
+- GitHub Actions CI run `28861219727` passed for commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- `Release Tag Verification` run `28863312935` passed for commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- Local and remote `v0.1.0-alpha` now resolve to
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- The GitHub Release remains a draft prerelease targeting
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+
 Still required:
 
-- commit and push to main
-- GitHub Actions CI evidence for this recovery-packet commit
-- final recovery packet run on the clean, CI-backed commit
-- explicit operator approval before tag movement
+- GitHub Release publication approval.
+- Deployment, DNS, and email routing approvals before any live operations.

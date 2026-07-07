@@ -1305,6 +1305,23 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Gate Tag Recovery Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed tag recovery packet
+  workflow
+- `week-26-release-tag-recovery` records passed main CI run `28861219727`
+- `Release Tag Verification` run `28863312935` passed after the separately
+  approved tag recovery
+- release gate tests assert the tag recovery workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage change's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:

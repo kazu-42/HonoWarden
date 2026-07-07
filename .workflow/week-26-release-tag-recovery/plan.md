@@ -18,7 +18,7 @@ but does not mutate local or remote tags.
   failure.
 - Verification passes locally and in GitHub Actions before any tag move.
 
-## Current Context
+## Original Context
 
 - `v0.1.0-alpha` was pushed as an annotated tag for
   `edbdc58163556b0928e58d6485e53172c4c6169a`.
@@ -27,6 +27,15 @@ but does not mutate local or remote tags.
   test isolation and annotated tag packet parsing issues.
 - Main CI run `28851192055` passed for the recovery commit.
 - No GitHub Release exists for `v0.1.0-alpha`.
+
+## Current Readback
+
+- `v0.1.0-alpha` now resolves to
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- Release Tag Verification run `28863312935` passed for that commit.
+- The GitHub Release is a draft prerelease targeting
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`.
+- Publication and deployment remain separate approval gates.
 
 ## Constraints
 
