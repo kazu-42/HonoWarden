@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Status: in progress; local verification passed and CI is pending.
+Status: completed.
 
 This workflow makes the alpha release gate require the completed retention
 cleanup Cron Trigger workflow evidence.
@@ -40,11 +40,11 @@ Local checks passed:
 - full unit test suite and compat suite
 - read-only release status and completion audit packets
 
-GitHub Actions CI readback is pending for the implementation commit.
+GitHub Actions CI readback passed for follow-up commit
+`f7f2476b1fe6a36df3752c7414db5c71481843e6`.
 
 ## Remaining Risks
 
-- GitHub Actions CI still needs to pass.
 - Release publication and Cloudflare deploy remain approval-gated.
 
 ## Reusable Follow-up

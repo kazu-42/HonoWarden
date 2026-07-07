@@ -1,6 +1,6 @@
 # Result 02: Main Docs And Local Verification
 
-Status: local verification passed; CI pending.
+Status: completed.
 
 - Documented the release gate retention Cron coverage in
   `docs/current-state.md`.
@@ -13,6 +13,7 @@ Status: local verification passed; CI pending.
 - Completion audit remains expected-incomplete on
   `release_publication_approval_required`.
 
-Pending:
+CI readback:
 
-- GitHub Actions CI readback for the implementation commit.
+- GitHub Actions CI run `28887744291` passed for follow-up commit
+  `f7f2476b1fe6a36df3752c7414db5c71481843e6`.
