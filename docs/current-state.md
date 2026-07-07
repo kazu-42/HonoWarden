@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-06
+Last updated: 2026-07-07
 
 ## Week 1 Status
 
@@ -281,7 +281,6 @@ Implemented:
 Not implemented:
 
 - backup export route or backup-export re-auth guard
-- TOTP disable/change route
 - live client re-auth evidence
 
 The project remains pre-alpha and must not be used to store real secrets.
@@ -578,6 +577,17 @@ Not implemented:
 - Cloudflare Cron Trigger for cleanup when password-grant traffic is absent
 - cleanup metrics or alerting
 - dedicated cleanup-only indexes for larger production datasets
+
+## Week 26 TOTP Disable Route
+
+Implemented:
+
+- authenticated `POST /identity/accounts/totp/disable`
+- recent-password-auth requirement (`authMethod=password` within five minutes) for disable attempts
+- stable response object shape: `{ object: "totp", enabled: false }`
+- deletes the enabled TOTP setup row for the authenticated account
+- clears retained TOTP secret and replay state by removing that row
+- emits `totp.disable` audit events for route outcomes
 
 ## Week 26 Unsupported Surface Guards
 

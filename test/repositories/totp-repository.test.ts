@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   consumeTotpChallenge,
   createTotpChallenge,
+  disableTotpSetup,
   enableTotpSetup,
   cleanupExpiredTotpChallenges,
   findActiveTotpChallengeByHash,
@@ -76,6 +77,28 @@ describe('totp repository', () => {
       enableTotpSetup(new RecordingTotpD1Database(null, null, 0), {
         userId: 'missing-user-id',
         verifiedAt: '2026-07-06T00:01:00.000Z',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('disables setup by deleting retained secret and replay state', async () => {
+    const database = new RecordingTotpD1Database(null, null, 1)
+
+    await expect(
+      disableTotpSetup(database, {
+        userId: 'user-id',
+      }),
+    ).resolves.toBe(true)
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('DELETE FROM user_totp')
+    expect(query).toContain('WHERE user_id = ?')
+    expect(query).toContain('enabled = 1')
+    expect(database.boundValues).toEqual(['user-id'])
+
+    await expect(
+      disableTotpSetup(new RecordingTotpD1Database(null, null, 0), {
+        userId: 'missing-user-id',
       }),
     ).resolves.toBe(false)
   })

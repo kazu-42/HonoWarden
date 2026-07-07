@@ -49,6 +49,7 @@ Fields:
 - `auth.refresh_reuse`: refresh token reuse detection
 - `device.revoke`: successful and not-found device revoke attempts
 - `session.revoke_all`: successful revoke-all-other-sessions attempts
+- `totp.disable`: successful and not-enabled TOTP disable attempts
 
 ## Non-Goals In This Slice
 

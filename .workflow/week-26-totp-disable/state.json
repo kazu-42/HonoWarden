@@ -1,0 +1,69 @@
+{
+  "title": "Week 26 TOTP Disable",
+  "slug": "week-26-totp-disable",
+  "created_at": "2026-07-07T04:26:36+00:00",
+  "status": "complete",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, docs, and tests only. No external service writes."
+  },
+  "packets": [
+    {
+      "id": "repository",
+      "status": "completed"
+    },
+    {
+      "id": "route",
+      "status": "completed"
+    },
+    {
+      "id": "docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm test -- test/repositories/totp-repository.test.ts -t \"disables setup\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test -- test/app.test.ts -t \"disables TOTP|requires recent password authentication before disabling TOTP|missing TOTP setup|TOTP disable has no enabled setup|audit event when disabling TOTP\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "details": "26 files, 236 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "details": "overall ready"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed",
+        "details": "no hits outside excluded dependency/generated paths"
+      }
+    ]
+  }
+}

@@ -75,9 +75,26 @@ bearer token
 Recent-auth invariant:
 
 - sensitive TOTP setup routes require `authMethod=password`
+- TOTP disable requires `authMethod=password`
 - revoke-all-other-sessions requires `authMethod=password`
 - token age must be within the recent password-auth window
 - refresh-auth and legacy claimless tokens are rejected for recent-auth routes
+
+## TOTP Disable
+
+```text
+recent-password-authenticated user
+  -> user has TOTP enabled?
+  -> delete enabled TOTP setup row
+  -> left-joined account state reports TOTP disabled
+  -> return stable TOTP response
+```
+
+Failure invariants:
+
+- `reauth_required` for stale password-auth, refresh-auth, and claimless tokens
+- missing or already-disabled TOTP setup returns a stable invalid request
+- successful disable removes stored setup secret and replay marker state
 
 ## Device Revoke
 

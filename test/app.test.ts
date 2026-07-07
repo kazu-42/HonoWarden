@@ -1281,6 +1281,201 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('disables TOTP for a recent password-authenticated user', async () => {
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: 'v1.encrypted-totp-secret',
+      totpLastAcceptedStep: 59440320,
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/disable',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'totp',
+      enabled: false,
+    })
+  })
+
+  it('requires recent password authentication before disabling TOTP', async () => {
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: 'v1.encrypted-totp-secret',
+      totpLastAcceptedStep: 59440320,
+    }
+    const accessToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/disable',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'totp-disable-reauth-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'reauth_required',
+      },
+      requestId: 'totp-disable-reauth-request',
+    })
+  })
+
+  it('returns a stable error when disabling missing TOTP setup', async () => {
+    const user = authUserRecord()
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/disable',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'missing-totp-disable-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userTotpDeleteChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'missing-totp-disable-request',
+    })
+  })
+
+  it('emits a secret-safe audit event when TOTP disable has no enabled setup', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/disable',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-missing-totp-disable-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const event = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
+    expect(event).toMatchObject({
+      object: 'auditEvent',
+      schemaVersion: 1,
+      name: 'totp.disable',
+      outcome: 'failure',
+      requestId: 'audit-missing-totp-disable-request',
+      actor: {
+        userId: 'user-id',
+        deviceIdentifier: 'fixture-device',
+      },
+      target: {
+        type: 'account',
+        id: 'user-id',
+      },
+      context: {
+        reason: 'not_enabled',
+      },
+    })
+    expect(JSON.stringify(event)).not.toContain(accessToken)
+    expect(JSON.stringify(event)).not.toContain('test-token-secret')
+  })
+
+  it('emits a secret-safe audit event when disabling TOTP', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: 'v1.encrypted-totp-secret',
+      totpLastAcceptedStep: 59440320,
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/disable',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-totp-disable-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const event = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
+    expect(event).toMatchObject({
+      object: 'auditEvent',
+      schemaVersion: 1,
+      name: 'totp.disable',
+      outcome: 'success',
+      requestId: 'audit-totp-disable-request',
+      actor: {
+        userId: 'user-id',
+        deviceIdentifier: 'fixture-device',
+      },
+      target: {
+        type: 'account',
+        id: 'user-id',
+      },
+      context: {
+        enabled: false,
+      },
+    })
+    expect(JSON.stringify(event)).not.toContain(accessToken)
+    expect(JSON.stringify(event)).not.toContain('v1.encrypted-totp-secret')
+    expect(JSON.stringify(event)).not.toContain('test-token-secret')
+  })
+
   it('returns an empty personal vault sync for a valid access token', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)

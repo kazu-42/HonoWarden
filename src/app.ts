@@ -80,6 +80,7 @@ import type { AuthUserRecord } from './repositories/auth-repository'
 import {
   consumeTotpChallenge,
   createTotpChallenge,
+  disableTotpSetup,
   enableTotpSetup,
   cleanupExpiredTotpChallenges,
   findActiveTotpChallengeByHash,
@@ -1120,6 +1121,99 @@ app.post('/identity/accounts/totp/setup/verify', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'TOTP setup failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/identity/accounts/totp/disable', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  if (!auth.user.totpEnabled) {
+    emitAuditEvent(c, {
+      name: 'totp.disable',
+      outcome: 'failure',
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        reason: 'not_enabled',
+      },
+    })
+
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'TOTP setup not found.'),
+      400,
+    )
+  }
+
+  try {
+    const disabled = await disableTotpSetup(c.env.DB, {
+      userId: auth.user.id,
+    })
+
+    if (!disabled) {
+      emitAuditEvent(c, {
+        name: 'totp.disable',
+        outcome: 'failure',
+        actor: {
+          userId: auth.user.id,
+          deviceIdentifier: auth.deviceIdentifier,
+        },
+        target: {
+          type: 'account',
+          id: auth.user.id,
+        },
+        context: {
+          reason: 'not_found',
+        },
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP setup not found.',
+        ),
+        400,
+      )
+    }
+
+    emitAuditEvent(c, {
+      name: 'totp.disable',
+      outcome: 'success',
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        enabled: false,
+      },
+    })
+
+    return c.json({
+      object: 'totp',
+      enabled: false,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'TOTP disable failed.',
       ),
       503,
     )

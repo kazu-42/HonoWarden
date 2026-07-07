@@ -32,6 +32,7 @@ type FakeD1DatabaseOptions = {
   refreshRotationChanges?: number
   userInsertChanges?: number
   userTotpInsertChanges?: number
+  userTotpDeleteChanges?: number
   userTotpUpdateChanges?: number
   totpChallengeInsertChanges?: number
   totpChallengeUpdateChanges?: number
@@ -323,6 +324,17 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.userTotpUpdateChanges ?? 1,
+            },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+user_totp/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.userTotpDeleteChanges ?? 1,
             },
           }
         }

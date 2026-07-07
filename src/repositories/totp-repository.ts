@@ -19,6 +19,10 @@ export type EnableTotpSetupInput = {
   verifiedAt: string
 }
 
+export type DisableTotpSetupInput = {
+  userId: string
+}
+
 export type AcceptTotpStepInput = {
   userId: string
   acceptedStep: number
@@ -151,6 +155,24 @@ export async function enableTotpSetup(
       `,
     )
     .bind(input.verifiedAt, input.verifiedAt, input.userId)
+    .run()
+
+  return result.meta.changes === 1
+}
+
+export async function disableTotpSetup(
+  database: TotpDatabase,
+  input: DisableTotpSetupInput,
+): Promise<boolean> {
+  const result = await database
+    .prepare(
+      `
+        DELETE FROM user_totp
+        WHERE user_id = ?
+          AND enabled = 1
+      `,
+    )
+    .bind(input.userId)
     .run()
 
   return result.meta.changes === 1
