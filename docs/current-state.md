@@ -918,3 +918,43 @@ Not implemented:
 - remote tag force update
 - GitHub release draft creation or publication
 - deployment from a tag or release
+
+## Week 26 Release Draft Evidence
+
+Implemented:
+
+- `v0.1.0-alpha` pushed tag points at
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`
+- `Release Tag Verification` GitHub Actions run `28863312935` passed for the
+  pushed tag
+- GitHub release draft created for `v0.1.0-alpha`
+- draft release remains marked as a prerelease
+- draft release target commit is
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`
+- draft body contains the required alpha release-note sections
+- post-tag release packet reports `status: "ready"` against the created draft
+
+Not implemented:
+
+- GitHub release publication
+- deployment from a tag or release
+
+## Week 26 Release Publish Packet
+
+Implemented:
+
+- read-only release publication packet exposed as
+  `pnpm release:publish:packet`
+- checks for local tag context, remote tag context, tag verification workflow
+  evidence, release gate readiness, draft prerelease state, target commit, and
+  release-note body sections
+- machine-generated approval text for publishing the draft prerelease
+- focused tests covering ready output, non-draft blocking, and strict failure
+  when tag workflow evidence is absent
+- tagging runbook instructions requiring the publish packet before release
+  publication
+
+Not implemented:
+
+- automatic GitHub release publication
+- deployment from a tag or release

@@ -37,6 +37,7 @@
     "release:gate": "node scripts/honowarden-release-gate.mjs",
     "release:github:plan": "node scripts/honowarden-github-release-plan.mjs",
     "release:post-tag:packet": "node scripts/honowarden-post-tag-release-packet.mjs",
+    "release:publish:packet": "node scripts/honowarden-release-publish-packet.mjs",
     "release:tag:recovery": "node scripts/honowarden-release-tag-recovery-packet.mjs",
     "release:tag:preflight": "node scripts/honowarden-alpha-tag-preflight.mjs",
     "staging:dry-run": "node scripts/honowarden-staging-dry-run.mjs",

@@ -95,6 +95,18 @@ planning, and current release state. Use the printed `createDraft` command only
 after the packet prints `draftApprovalText` and the operator explicitly
 approves creating the draft.
 
+Before publishing a draft GitHub release, collect the publish packet:
+
+```sh
+pnpm release:publish:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>
+```
+
+Expected result: `status: "ready"`. The packet verifies local tag context,
+remote tag context, the tag verification workflow run, release gate readiness,
+draft prerelease state, target commit, and release-note body sections. Use the
+printed publish command only after the packet prints `publishApprovalText` and
+the operator explicitly approves publication.
+
 ## Failure Handling
 
 If local tag creation succeeds but push has not happened yet, delete only the
@@ -134,6 +146,8 @@ After the pushed tag is verified:
 - run
   `pnpm release:post-tag:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>`
 - run `pnpm release:github:plan -- --strict --check-remote`
+- run
+  `pnpm release:publish:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>`
 - create release notes from `docs/release/v0.1.0-alpha-release-notes.md`
 - keep pre-alpha safety language unless a separate readiness decision changes it
 - do not deploy production from the tag without a separate deployment approval
