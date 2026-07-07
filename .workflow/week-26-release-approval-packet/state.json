@@ -39,7 +39,7 @@
       "pnpm release:gate -- --strict",
       "repository brand scan",
       "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-approval-packet",
-      "GitHub Actions CI after push is reported outside this committed artifact to avoid a self-referential evidence loop"
+      "GitHub Actions CI run 28845655621"
     ]
   }
 }

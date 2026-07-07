@@ -17,5 +17,4 @@
 
 ## CI
 
-GitHub Actions CI is checked after pushing the final commit and reported in the
-operator-facing response, not committed back into this artifact.
+- GitHub Actions CI run `28846007803` passed after this workflow was pushed.

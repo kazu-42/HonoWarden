@@ -47,8 +47,7 @@ email, and deploy writes approval-gated.
 - Final tag creation still depends on explicit operator approval for the exact
   commit printed by the approval packet.
 - A GitHub release draft must wait until the pushed tag is verified by CI.
-- Push-time GitHub Actions CI is checked after this commit is pushed and is not
-  committed back into this artifact to avoid a self-referential evidence loop.
+- GitHub Actions CI run `28845655621` passed after this workflow was pushed.
 
 ## Reusable Follow-up
 

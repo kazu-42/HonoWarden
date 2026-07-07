@@ -849,3 +849,23 @@ Not implemented:
 - tag push
 - GitHub release draft creation or publication
 - deployment from a tag or release
+
+## Week 26 Release Gate Packet Coverage
+
+Implemented:
+
+- release gate workflow evidence now requires
+  `.workflow/week-26-release-approval-packet/state.json`
+- release gate workflow evidence now requires
+  `.workflow/week-26-post-tag-release-packet/state.json`
+- completed packet workflow states record their passed GitHub Actions CI run
+  IDs
+- release gate tests assert both packet workflow evidence paths
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- tag creation
+- tag push
+- GitHub release draft creation or publication
+- deployment from a tag or release

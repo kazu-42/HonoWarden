@@ -49,8 +49,7 @@ plan as the source for `createDraft` and adds post-tag evidence around it.
 - Release draft creation remains a separate external write approval gate.
 - The strict post-tag packet cannot report `ready` until the tag has been
   pushed and the tag workflow run has passed.
-- Push-time GitHub Actions CI is checked after this commit is pushed and is not
-  committed back into this artifact to avoid a self-referential evidence loop.
+- GitHub Actions CI run `28846007803` passed after this workflow was pushed.
 
 ## Reusable Follow-up
 
