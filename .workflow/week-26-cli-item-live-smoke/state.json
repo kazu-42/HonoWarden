@@ -2,7 +2,7 @@
   "title": "Week 26 CLI Item Live Smoke",
   "slug": "week-26-cli-item-live-smoke",
   "created_at": "2026-07-07T03:09:28+00:00",
-  "status": "in_progress",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -23,11 +23,11 @@
     },
     {
       "id": "04-evidence-verification",
-      "status": "in_progress"
+      "status": "completed"
     }
   ],
   "verification": {
-    "status": "in_progress",
+    "status": "completed",
     "checks": [
       {
         "name": "targeted app and cipher repository tests",
@@ -71,7 +71,8 @@
       },
       {
         "name": "GitHub Actions CI",
-        "status": "pending"
+        "status": "passed",
+        "run": "28839717441"
       }
     ]
   }

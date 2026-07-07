@@ -2,9 +2,10 @@
 
 ## Outcome
 
-In progress. The local synthetic CLI live smoke now passes login, initial sync,
-item create, forced sync/readback, item update, soft delete/trash sync, and
-permanent delete.
+Passed. The local synthetic CLI live smoke now passes login, initial sync, item
+create, forced sync/readback, item update, soft delete/trash sync, and
+permanent delete. The implementation commit passed GitHub Actions CI run
+`28839717441`.
 
 ## Accepted Results
 
@@ -41,6 +42,7 @@ permanent delete.
 - Local CLI smoke passed with synthetic data:
   create, sync/readback, update, soft delete, forced trash sync/list,
   permanent delete, forced empty trash sync/list.
+- GitHub Actions CI run `28839717441` passed for commit `b472b23`.
 
 ## Remaining Risks
 

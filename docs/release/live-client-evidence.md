@@ -8,9 +8,9 @@ Mode: local synthetic CLI live smoke
 
 Recorded at: `2026-07-07T03:34:25Z`
 
-Source commit: pending local commit
+Source commit: `b472b23`
 
-GitHub Actions CI run: pending
+GitHub Actions CI run: `28839717441`
 
 Client surface: `cli`
 
