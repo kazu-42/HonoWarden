@@ -379,6 +379,11 @@ app.post('/identity/accounts/register', (c) => {
   )
 })
 
+app.all('/api/organizations', unsupportedAlphaFeature)
+app.all('/api/organizations/*', unsupportedAlphaFeature)
+app.all('/api/sends', unsupportedAlphaFeature)
+app.all('/api/sends/*', unsupportedAlphaFeature)
+
 app.post('/api/accounts/bootstrap', async (c) => {
   if (!isBootstrapEnabled(c.env?.HONOWARDEN_BOOTSTRAP_ENABLED)) {
     return c.json(
@@ -1932,6 +1937,20 @@ function apiError(
     },
     requestId: requestIdValue,
   }
+}
+
+function unsupportedAlphaFeature(c: AppContext) {
+  return c.json(
+    {
+      error: {
+        code: 'unsupported_feature',
+        message:
+          'This feature is intentionally not implemented in the alpha scope.',
+      },
+      requestId: c.get('requestId'),
+    },
+    501,
+  )
 }
 
 function cipherNotFoundError(requestIdValue: string) {

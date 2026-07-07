@@ -30,4 +30,26 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - Keep executable JSON fixtures for client-facing response shapes under `compat/fixtures`.
 - Treat fixture regressions as compatibility regressions once a route has been implemented.
 
+## Explicit Unsupported Responses
+
+The alpha API returns typed `501` JSON errors for feature families that are
+intentionally outside the initial scope:
+
+- `/api/organizations`
+- `/api/organizations/*`
+- `/api/sends`
+- `/api/sends/*`
+
+Response shape:
+
+```json
+{
+  "error": {
+    "code": "unsupported_feature",
+    "message": "This feature is intentionally not implemented in the alpha scope."
+  },
+  "requestId": "request-id"
+}
+```
+
 This project is independent and not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.

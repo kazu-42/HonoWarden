@@ -579,3 +579,17 @@ Not implemented:
 - Cloudflare Cron Trigger for cleanup when password-grant traffic is absent
 - cleanup metrics or alerting
 - dedicated cleanup-only indexes for larger production datasets
+
+## Week 26 Unsupported Surface Guards
+
+Implemented:
+
+- explicit `501` JSON response for `/api/organizations` and child paths
+- explicit `501` JSON response for `/api/sends` and child paths
+- request ID preservation on unsupported feature responses
+- route test coverage proving these paths do not fall through to generic `404`
+
+Not implemented:
+
+- organization or shared-vault functionality
+- public file-sharing functionality

@@ -256,6 +256,32 @@ describe('HonoWarden app', () => {
     }
   })
 
+  it('returns explicit errors for unsupported organization and send surfaces', async () => {
+    for (const path of [
+      '/api/organizations',
+      '/api/organizations/org-id/collections',
+      '/api/sends',
+      '/api/sends/send-id',
+    ]) {
+      const response = await app.request(path, {
+        method: 'POST',
+        headers: {
+          'X-Request-Id': 'unsupported-surface-request',
+        },
+      })
+
+      expect(response.status).toBe(501)
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: 'unsupported_feature',
+          message:
+            'This feature is intentionally not implemented in the alpha scope.',
+        },
+        requestId: 'unsupported-surface-request',
+      })
+    }
+  })
+
   it('keeps account bootstrap disabled by default', async () => {
     const response = await app.request('/api/accounts/bootstrap', {
       method: 'POST',
