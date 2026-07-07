@@ -1,0 +1,56 @@
+{
+  "name": "folder-list-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/folders"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "object": "folder",
+          "id": "folder-id",
+          "name": "2.encrypted-folder-name",
+          "revisionDate": "2026-07-06T00:03:00.000Z"
+        }
+      ],
+      "continuationToken": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "list"
+    },
+    {
+      "path": "$.data",
+      "type": "array",
+      "minLength": 1
+    },
+    {
+      "path": "$.data.0.object",
+      "type": "string",
+      "value": "folder"
+    },
+    {
+      "path": "$.data.0.id",
+      "type": "string"
+    },
+    {
+      "path": "$.data.0.name",
+      "type": "string"
+    },
+    {
+      "path": "$.continuationToken",
+      "type": "null"
+    }
+  ]
+}

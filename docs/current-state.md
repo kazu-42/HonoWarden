@@ -704,6 +704,27 @@ Not implemented:
 - email change, password change, or account deletion flows
 - live client evidence for the account profile endpoint
 
+## Week 26 Direct Vault Read APIs
+
+Implemented:
+
+- authenticated `GET /api/folders`
+- authenticated `GET /api/folders/:id`
+- authenticated `GET /api/ciphers`
+- authenticated `GET /api/ciphers/:id`
+- folder reads are active-only and owner-scoped
+- cipher reads include active and trashed items, matching `/api/sync`
+- list responses use `object: "list"` with `data` and `continuationToken: null`
+- compatibility fixture flow `direct_read` for folder and cipher list/get
+  responses
+
+Not implemented:
+
+- paginated folder or cipher list responses
+- direct attachment read APIs
+- collection-scoped reads
+- live client evidence for direct folder or cipher read endpoints
+
 ## Week 26 Alpha Version Alignment
 
 Implemented:

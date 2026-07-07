@@ -43,6 +43,7 @@ import { resolveRuntimeEnvironment } from './infra/environment'
 import { buildServerConfig } from './protocol/config'
 import {
   createCipher,
+  findCipherById,
   listCiphersByUser,
   permanentlyDeleteCipher,
   restoreCipher,
@@ -53,6 +54,7 @@ import type { CipherRecord } from './repositories/cipher-repository'
 import {
   createFolder,
   deleteFolder,
+  findFolderById,
   folderBelongsToUser,
   listFoldersByUser,
   updateFolder,
@@ -1548,6 +1550,57 @@ app.post('/api/folders', async (c) => {
   }
 })
 
+app.get('/api/folders', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const folders = await listFoldersByUser(c.env.DB, auth.user.id)
+
+    return c.json(buildFolderListResponse(folders))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Folder list failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/folders/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const folder = await findFolderById(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+    })
+
+    if (!folder) {
+      return c.json(folderNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json(buildFolderResponse(folder))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Folder lookup failed.',
+      ),
+      503,
+    )
+  }
+})
+
 app.put('/api/folders/:id', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -1709,6 +1762,57 @@ app.post('/api/ciphers', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Cipher create failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/ciphers', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const ciphers = await listCiphersByUser(c.env.DB, auth.user.id)
+
+    return c.json(buildCipherListResponse(ciphers))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher list failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/ciphers/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const cipher = await findCipherById(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+    })
+
+    if (!cipher) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json(buildCipherResponse(cipher))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher lookup failed.',
       ),
       503,
     )
@@ -2143,6 +2247,22 @@ function buildDeviceListResponse(devices: readonly DeviceRecord[]) {
   }
 }
 
+function buildFolderListResponse(folders: readonly FolderRecord[]) {
+  return {
+    object: 'list',
+    data: folders.map(buildFolderResponse),
+    continuationToken: null,
+  }
+}
+
+function buildCipherListResponse(ciphers: readonly CipherRecord[]) {
+  return {
+    object: 'list',
+    data: ciphers.map(buildCipherResponse),
+    continuationToken: null,
+  }
+}
+
 function buildDeviceResponse(device: DeviceRecord) {
   return {
     object: 'device',
@@ -2290,6 +2410,10 @@ function unsupportedAlphaFeature(c: AppContext) {
 
 function cipherNotFoundError(requestIdValue: string) {
   return apiError(requestIdValue, 'cipher_not_found', 'Cipher was not found.')
+}
+
+function folderNotFoundError(requestIdValue: string) {
+  return apiError(requestIdValue, 'folder_not_found', 'Folder was not found.')
 }
 
 function revisionConflictError(requestIdValue: string) {

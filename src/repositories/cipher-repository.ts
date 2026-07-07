@@ -124,6 +124,34 @@ export async function listCiphersByUser(
   return result.results.map(cipherFromRow)
 }
 
+export async function findCipherById(
+  database: CipherDatabase,
+  input: Pick<CipherRecord, 'id' | 'userId'>,
+): Promise<CipherRecord | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          folder_id as folderId,
+          type,
+          favorite,
+          encrypted_json as encryptedJson,
+          revision_date as revisionDate,
+          created_at as createdAt,
+          deleted_at as deletedAt
+        FROM ciphers
+        WHERE id = ? AND user_id = ?
+        LIMIT 1
+      `,
+    )
+    .bind(input.id, input.userId)
+    .first<CipherRow>()
+
+  return row ? cipherFromRow(row) : null
+}
+
 export async function createCipher(
   database: CipherDatabase,
   input: CipherCreateInput,

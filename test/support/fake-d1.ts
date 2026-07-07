@@ -122,7 +122,11 @@ export class FakeD1Database {
             return (options.folder ?? null) as T | null
           }
 
-          return findScopedRow(options.folders ?? [], boundValues) as T | null
+          return findScopedRow(
+            options.folders ?? [],
+            boundValues,
+            query,
+          ) as T | null
         }
 
         if (query.includes('FROM ciphers')) {
@@ -130,7 +134,11 @@ export class FakeD1Database {
             return (options.cipher ?? null) as T | null
           }
 
-          return findScopedRow(options.ciphers ?? [], boundValues) as T | null
+          return findScopedRow(
+            options.ciphers ?? [],
+            boundValues,
+            query,
+          ) as T | null
         }
 
         if (
@@ -175,9 +183,10 @@ export class FakeD1Database {
         if (query.includes('FROM ciphers')) {
           return {
             success: true,
-            results: filterRowsByUserId(
+            results: filterRowsByQuery(
               options.ciphers ?? [],
               boundValues,
+              query,
             ) as T[],
             meta: fakeMeta,
           }
@@ -186,9 +195,10 @@ export class FakeD1Database {
         if (query.includes('FROM folders')) {
           return {
             success: true,
-            results: filterRowsByUserId(
+            results: filterRowsByQuery(
               options.folders ?? [],
               boundValues,
+              query,
             ) as T[],
             meta: fakeMeta,
           }
@@ -585,18 +595,51 @@ function filterRowsByUserId(
   return rows.filter((row) => row.userId === userId)
 }
 
+function filterRowsByQuery(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown>[] {
+  const scopedRows = applyDeletedFilter(
+    filterRowsByUserId(rows, boundValues),
+    query,
+  )
+
+  return scopedRows
+}
+
+function applyDeletedFilter(
+  rows: Record<string, unknown>[],
+  query: string,
+): Record<string, unknown>[] {
+  if (query.includes('deleted_at IS NULL')) {
+    return rows.filter((row) => row.deletedAt == null)
+  }
+
+  if (query.includes('deleted_at IS NOT NULL')) {
+    return rows.filter((row) => row.deletedAt != null)
+  }
+
+  return rows
+}
+
 function findScopedRow(
   rows: Record<string, unknown>[],
   boundValues: unknown[],
+  query: string,
 ): Record<string, unknown> | null {
+  const scopedRows = applyDeletedFilter(rows, query)
+
   if (boundValues.length >= 2) {
     const id = String(boundValues[0])
     const userId = String(boundValues[1])
 
-    return rows.find((row) => row.id === id && row.userId === userId) ?? null
+    return (
+      scopedRows.find((row) => row.id === id && row.userId === userId) ?? null
+    )
   }
 
-  return filterRowsByUserId(rows, boundValues)[0] ?? null
+  return scopedRows[0] ?? null
 }
 
 function findDeviceRow(

@@ -1,0 +1,68 @@
+{
+  "name": "cipher-list-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/ciphers"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "object": "cipher",
+          "id": "cipher-id",
+          "organizationId": null,
+          "folderId": "folder-id",
+          "type": 1,
+          "favorite": true,
+          "name": "2.encrypted-cipher-name",
+          "notes": null,
+          "login": {
+            "username": "2.encrypted-username",
+            "password": "2.encrypted-password",
+            "uris": []
+          },
+          "revisionDate": "2026-07-06T00:05:00.000Z",
+          "creationDate": "2026-07-06T00:05:00.000Z",
+          "deletedDate": null
+        }
+      ],
+      "continuationToken": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "list"
+    },
+    {
+      "path": "$.data",
+      "type": "array",
+      "minLength": 1
+    },
+    {
+      "path": "$.data.0.object",
+      "type": "string",
+      "value": "cipher"
+    },
+    {
+      "path": "$.data.0.id",
+      "type": "string"
+    },
+    {
+      "path": "$.data.0.login.username",
+      "type": "string"
+    },
+    {
+      "path": "$.continuationToken",
+      "type": "null"
+    }
+  ]
+}

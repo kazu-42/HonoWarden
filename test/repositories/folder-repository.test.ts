@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createFolder,
   deleteFolder,
+  findFolderById,
   folderBelongsToUser,
   listFoldersByUser,
   updateFolder,
@@ -39,6 +40,33 @@ describe('folder repository', () => {
     ])
     expect(database.boundValues).toContain('user-id')
     expect(database.queries.join('\n')).toContain('deleted_at IS NULL')
+  })
+
+  it('finds one active folder for a user', async () => {
+    const database = new RecordingFolderD1Database([
+      {
+        id: 'folder-id',
+        userId: 'user-id',
+        name: '2.encrypted-folder-name',
+        revisionDate: '2026-07-06T00:00:00.000Z',
+      },
+    ])
+
+    await expect(
+      findFolderById(database, {
+        id: 'folder-id',
+        userId: 'user-id',
+      }),
+    ).resolves.toEqual({
+      id: 'folder-id',
+      userId: 'user-id',
+      name: '2.encrypted-folder-name',
+      revisionDate: '2026-07-06T00:00:00.000Z',
+    })
+    expect(database.boundValues).toContain('folder-id')
+    expect(database.boundValues).toContain('user-id')
+    expect(database.queries.join('\n')).toContain('deleted_at IS NULL')
+    expect(database.queries.join('\n')).toContain('LIMIT 1')
   })
 
   it('creates a folder using the encrypted name as an opaque payload', async () => {

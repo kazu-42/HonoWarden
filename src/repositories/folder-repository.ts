@@ -86,6 +86,29 @@ export async function listFoldersByUser(
   return result.results.map(folderFromRow)
 }
 
+export async function findFolderById(
+  database: FolderDatabase,
+  input: Pick<FolderRecord, 'id' | 'userId'>,
+): Promise<FolderRecord | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          encrypted_name as name,
+          revision_date as revisionDate
+        FROM folders
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.id, input.userId)
+    .first<FolderRow>()
+
+  return row ? folderFromRow(row) : null
+}
+
 export async function createFolder(
   database: FolderDatabase,
   input: FolderWriteInput,

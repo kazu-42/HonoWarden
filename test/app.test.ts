@@ -2393,6 +2393,149 @@ describe('HonoWarden app', () => {
     expect(JSON.stringify(event)).not.toContain('test-token-secret')
   })
 
+  it('lists folders for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folders: [
+            {
+              id: 'folder-id',
+              userId: 'user-id',
+              name: '2.encrypted-folder-name',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+            {
+              id: 'deleted-folder-id',
+              userId: 'user-id',
+              name: '2.deleted-folder-name',
+              revisionDate: '2026-07-06T00:04:00.000Z',
+              deletedAt: '2026-07-06T00:04:00.000Z',
+            },
+            {
+              id: 'other-folder-id',
+              userId: 'other-user',
+              name: '2.other-folder-name',
+              revisionDate: '2026-07-06T00:05:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'list',
+      data: [
+        {
+          object: 'folder',
+          id: 'folder-id',
+          name: '2.encrypted-folder-name',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+      ],
+      continuationToken: null,
+    })
+  })
+
+  it('gets a folder by id for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/folders/folder-id',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folders: [
+            {
+              id: 'folder-id',
+              userId: 'user-id',
+              name: '2.encrypted-folder-name',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+            {
+              id: 'folder-id',
+              userId: 'other-user',
+              name: '2.other-folder-name',
+              revisionDate: '2026-07-06T00:04:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'folder',
+      id: 'folder-id',
+      name: '2.encrypted-folder-name',
+      revisionDate: '2026-07-06T00:03:00.000Z',
+    })
+  })
+
+  it('returns not found for missing, deleted, or cross-user folder reads', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const path of [
+      '/api/folders/missing-folder-id',
+      '/api/folders/deleted-folder-id',
+      '/api/folders/other-folder-id',
+    ]) {
+      const response = await app.request(
+        path,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            folders: [
+              {
+                id: 'deleted-folder-id',
+                userId: 'user-id',
+                name: '2.deleted-folder-name',
+                revisionDate: '2026-07-06T00:03:00.000Z',
+                deletedAt: '2026-07-06T00:04:00.000Z',
+              },
+              {
+                id: 'other-folder-id',
+                userId: 'other-user',
+                name: '2.other-folder-name',
+                revisionDate: '2026-07-06T00:05:00.000Z',
+              },
+            ],
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'folder_not_found',
+        },
+      })
+    }
+  })
+
   it('creates a folder for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -2650,6 +2793,246 @@ describe('HonoWarden app', () => {
         code: 'folder_not_found',
       },
     })
+  })
+
+  it('lists ciphers for the authenticated user including trashed ciphers', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [
+            {
+              id: 'cipher-id',
+              userId: 'user-id',
+              folderId: 'folder-id',
+              type: 1,
+              favorite: 1,
+              encryptedJson: JSON.stringify(cipherCreateBody()),
+              revisionDate: '2026-07-06T00:05:00.000Z',
+              createdAt: '2026-07-06T00:04:00.000Z',
+            },
+            {
+              id: 'trashed-cipher-id',
+              userId: 'user-id',
+              folderId: null,
+              type: 2,
+              favorite: 0,
+              encryptedJson: JSON.stringify({
+                type: 2,
+                favorite: false,
+                name: '2.trashed-encrypted-note',
+                secureNote: {
+                  type: 0,
+                },
+              }),
+              revisionDate: '2026-07-06T00:06:00.000Z',
+              createdAt: '2026-07-06T00:04:30.000Z',
+              deletedAt: '2026-07-06T00:06:00.000Z',
+            },
+            {
+              id: 'other-cipher-id',
+              userId: 'other-user',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: JSON.stringify(cipherCreateBody()),
+              revisionDate: '2026-07-06T00:07:00.000Z',
+              createdAt: '2026-07-06T00:05:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'list',
+      data: [
+        {
+          object: 'cipher',
+          id: 'cipher-id',
+          folderId: 'folder-id',
+          type: 1,
+          favorite: true,
+          name: '2.encrypted-cipher-name',
+          deletedDate: null,
+        },
+        {
+          object: 'cipher',
+          id: 'trashed-cipher-id',
+          folderId: null,
+          type: 2,
+          favorite: false,
+          name: '2.trashed-encrypted-note',
+          deletedDate: '2026-07-06T00:06:00.000Z',
+        },
+      ],
+      continuationToken: null,
+    })
+  })
+
+  it('gets a cipher by id for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [
+            {
+              id: 'cipher-id',
+              userId: 'user-id',
+              folderId: 'folder-id',
+              type: 1,
+              favorite: 1,
+              encryptedJson: JSON.stringify({
+                ...cipherCreateBody(),
+                futureEncryptedShape: {
+                  value: '2.encrypted-future-field',
+                },
+              }),
+              revisionDate: '2026-07-06T00:05:00.000Z',
+              createdAt: '2026-07-06T00:04:00.000Z',
+            },
+            {
+              id: 'cipher-id',
+              userId: 'other-user',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: JSON.stringify(cipherCreateBody()),
+              revisionDate: '2026-07-06T00:06:00.000Z',
+              createdAt: '2026-07-06T00:05:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'cipher-id',
+      organizationId: null,
+      folderId: 'folder-id',
+      type: 1,
+      favorite: true,
+      name: '2.encrypted-cipher-name',
+      futureEncryptedShape: {
+        value: '2.encrypted-future-field',
+      },
+      revisionDate: '2026-07-06T00:05:00.000Z',
+      creationDate: '2026-07-06T00:04:00.000Z',
+      deletedDate: null,
+    })
+  })
+
+  it('gets a trashed cipher by id for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/trashed-cipher-id',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [
+            {
+              id: 'trashed-cipher-id',
+              userId: 'user-id',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: JSON.stringify({
+                ...cipherCreateBody(),
+                folderId: null,
+                name: '2.trashed-encrypted-cipher-name',
+              }),
+              revisionDate: '2026-07-06T00:06:00.000Z',
+              createdAt: '2026-07-06T00:04:30.000Z',
+              deletedAt: '2026-07-06T00:06:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'trashed-cipher-id',
+      folderId: null,
+      favorite: false,
+      name: '2.trashed-encrypted-cipher-name',
+      revisionDate: '2026-07-06T00:06:00.000Z',
+      creationDate: '2026-07-06T00:04:30.000Z',
+      deletedDate: '2026-07-06T00:06:00.000Z',
+    })
+  })
+
+  it('returns not found for missing or cross-user cipher reads', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const path of [
+      '/api/ciphers/missing-cipher-id',
+      '/api/ciphers/other-cipher-id',
+    ]) {
+      const response = await app.request(
+        path,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers: [
+              {
+                id: 'other-cipher-id',
+                userId: 'other-user',
+                folderId: null,
+                type: 1,
+                favorite: 0,
+                encryptedJson: JSON.stringify(cipherCreateBody()),
+                revisionDate: '2026-07-06T00:07:00.000Z',
+                createdAt: '2026-07-06T00:05:00.000Z',
+              },
+            ],
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'cipher_not_found',
+        },
+      })
+    }
   })
 
   it('creates a login cipher for the authenticated user', async () => {

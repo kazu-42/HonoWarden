@@ -22,6 +22,15 @@
       "fixtures": ["accounts/profile-success.json"]
     },
     {
+      "id": "direct_read",
+      "fixtures": [
+        "folders/list-success.json",
+        "folders/get-success.json",
+        "ciphers/list-success.json",
+        "ciphers/get-login-success.json"
+      ]
+    },
+    {
       "id": "folder_crud",
       "fixtures": [
         "folders/create-success.json",

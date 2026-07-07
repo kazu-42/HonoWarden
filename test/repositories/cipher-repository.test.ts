@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createCipher,
+  findCipherById,
   permanentlyDeleteCipher,
   restoreCipher,
   softDeleteCipher,
@@ -70,6 +71,44 @@ describe('cipher repository', () => {
     ])
     expect(database.boundValues).toContain('user-id')
     expect(database.queries.join('\n')).toContain('WHERE user_id = ?')
+    expect(database.queries.join('\n')).not.toContain('deleted_at IS NULL')
+  })
+
+  it('finds one cipher for a user, including trashed rows', async () => {
+    const database = new RecordingCipherD1Database([
+      {
+        id: 'trashed-cipher-id',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: '{"name":"2.trashed-encrypted-name"}',
+        revisionDate: '2026-07-06T00:05:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+        deletedAt: '2026-07-06T00:05:00.000Z',
+      },
+    ])
+
+    await expect(
+      findCipherById(database, {
+        id: 'trashed-cipher-id',
+        userId: 'user-id',
+      }),
+    ).resolves.toEqual({
+      id: 'trashed-cipher-id',
+      userId: 'user-id',
+      folderId: null,
+      type: 1,
+      favorite: false,
+      encryptedJson: '{"name":"2.trashed-encrypted-name"}',
+      revisionDate: '2026-07-06T00:05:00.000Z',
+      createdAt: '2026-07-06T00:04:00.000Z',
+      deletedAt: '2026-07-06T00:05:00.000Z',
+    })
+    expect(database.boundValues).toContain('trashed-cipher-id')
+    expect(database.boundValues).toContain('user-id')
+    expect(database.queries.join('\n')).toContain('WHERE id = ?')
+    expect(database.queries.join('\n')).toContain('user_id = ?')
     expect(database.queries.join('\n')).not.toContain('deleted_at IS NULL')
   })
 
