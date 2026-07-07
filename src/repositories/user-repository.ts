@@ -11,6 +11,10 @@ export type CreateBootstrapUserResult =
 
 type UserRepositoryDatabase = Pick<D1Database, 'prepare'>
 
+type AccountRevisionRow = {
+  revisionDate: string | null
+}
+
 export async function createBootstrapUser(
   database: UserRepositoryDatabase,
   user: BootstrapUserRecord,
@@ -63,4 +67,33 @@ export async function createBootstrapUser(
     status: 'created',
     userId: user.id,
   }
+}
+
+export async function getAccountRevisionDate(
+  database: UserRepositoryDatabase,
+  userId: string,
+): Promise<string | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT MAX(revision_date) as revisionDate
+        FROM (
+          SELECT revision_date
+          FROM users
+          WHERE id = ?
+          UNION ALL
+          SELECT revision_date
+          FROM folders
+          WHERE user_id = ?
+          UNION ALL
+          SELECT revision_date
+          FROM ciphers
+          WHERE user_id = ?
+        )
+      `,
+    )
+    .bind(userId, userId, userId)
+    .first<AccountRevisionRow>()
+
+  return row?.revisionDate ?? null
 }

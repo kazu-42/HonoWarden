@@ -164,6 +164,32 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('keeps the password prelogin alias for current CLI clients', async () => {
+    const response = await app.request(
+      '/identity/accounts/prelogin/password',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'Person@Example.Test',
+        }),
+      },
+      {
+        HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      kdf: 0,
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+    })
+  })
+
   it('denies prelogin for emails outside the allowlist', async () => {
     const response = await app.request(
       '/identity/accounts/prelogin',
@@ -379,16 +405,31 @@ describe('HonoWarden app', () => {
       token_type: 'Bearer',
       expires_in: 3600,
       Key: '2.synthetic-user-key',
-      PrivateKey: null,
+      PrivateKey: '2.synthetic-private-key',
       Kdf: 0,
       KdfIterations: 600000,
       KdfMemory: null,
       KdfParallelism: null,
-      AccountKeys: null,
+      AccountKeys: {
+        publicKeyEncryptionKeyPair: {
+          publicKey: 'synthetic-public-key',
+          wrappedPrivateKey: '2.synthetic-private-key',
+        },
+      },
       ForcePasswordReset: false,
       TwoFactorToken: null,
       MasterPasswordPolicy: null,
-      UserDecryptionOptions: null,
+      UserDecryptionOptions: {
+        HasMasterPassword: true,
+        MasterPasswordUnlock: {
+          Salt: 'person@example.test',
+          Kdf: {
+            KdfType: 0,
+            Iterations: 600000,
+          },
+          MasterKeyEncryptedUserKey: '2.synthetic-user-key',
+        },
+      },
       KeyConnectorUrl: null,
     })
     await expect(
@@ -1245,10 +1286,15 @@ describe('HonoWarden app', () => {
         Culture: 'en-US',
         TwoFactorEnabled: false,
         Key: '2.synthetic-user-key',
-        AccountKeys: null,
+        AccountKeys: {
+          publicKeyEncryptionKeyPair: {
+            publicKey: 'synthetic-public-key',
+            wrappedPrivateKey: '2.synthetic-private-key',
+          },
+        },
         AvatarColor: '#3366cc',
         CreationDate: '2026-07-06T00:00:00.000Z',
-        PrivateKey: null,
+        PrivateKey: '2.synthetic-private-key',
         SecurityStamp: 'security-stamp',
         ForcePasswordReset: false,
         UsesKeyConnector: false,
@@ -1268,8 +1314,59 @@ describe('HonoWarden app', () => {
       Policies: [],
       PoliciesNew: [],
       Sends: [],
-      UserDecryption: null,
+      UserDecryption: {
+        MasterPasswordUnlock: {
+          Salt: 'person@example.test',
+          Kdf: {
+            KdfType: 0,
+            Iterations: 600000,
+          },
+          MasterKeyEncryptedUserKey: '2.synthetic-user-key',
+        },
+      },
     })
+  })
+
+  it('returns the latest account revision date for a valid access token', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/revision-date',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folders: [
+            {
+              id: 'folder-id',
+              userId: 'user-id',
+              name: '2.encrypted-folder',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+          ],
+          ciphers: [
+            {
+              id: 'cipher-id',
+              userId: 'user-id',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: '{}',
+              revisionDate: '2026-07-06T00:05:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toBe('2026-07-06T00:05:00.000Z')
   })
 
   it('reports enabled TOTP state in sync profile', async () => {
@@ -2736,8 +2833,10 @@ function authUserRecord() {
     kdfParallelism: null,
     masterPasswordHash: 'synthetic-master-password-hash',
     userKey: '2.synthetic-user-key',
-    privateKey: null,
+    publicKey: 'synthetic-public-key',
+    privateKey: '2.synthetic-private-key',
     securityStamp: 'security-stamp',
+    revisionDate: '2026-07-06T00:00:00.000Z',
     createdAt: '2026-07-06T00:00:00.000Z',
     disabledAt: null,
     loginFailedCount: 0,
@@ -2767,8 +2866,10 @@ function refreshTokenSessionRecord() {
     kdfParallelism: null,
     masterPasswordHash: 'synthetic-master-password-hash',
     userKey: '2.synthetic-user-key',
-    privateKey: null,
+    publicKey: 'synthetic-public-key',
+    privateKey: '2.synthetic-private-key',
     securityStamp: 'security-stamp',
+    revisionDate: '2026-07-06T00:00:00.000Z',
     createdAt: '2026-07-06T00:00:00.000Z',
     disabledAt: null,
     loginFailedCount: 0,

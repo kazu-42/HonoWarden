@@ -186,7 +186,7 @@ Implemented:
 - human-readable compatibility matrix under `docs/compatibility-matrix.md`
 - exact tracked versions for browser extension, desktop, mobile Android, mobile iOS, and CLI surfaces
 - mobile build number tracking for Android and iOS rows
-- conservative `fixture_only` verification level for all rows
+- conservative `fixture_only` verification level for all rows at matrix creation
 - explicit known issues per client surface
 - compatibility matrix validation in `pnpm compat:test`
 
@@ -194,7 +194,7 @@ Not implemented:
 
 - refresh token reuse alerting
 - device list and device metadata update APIs
-- live client compatibility evidence
+- live client compatibility evidence for the tracked versions
 - any storage of real password-vault data
 
 ## Week 16 Increment
@@ -358,9 +358,9 @@ Implemented:
 Not implemented:
 
 - route-executed fixture replay for every compatibility fixture
-- live client binary evidence for the tracked versions
+- broad live client binary evidence for all tracked versions
 - sync of trashed cipher tombstones in `/api/sync`
-- promotion beyond `fixture_only`
+- promotion beyond `fixture_only` for non-CLI surfaces
 
 ## Week 23 Increment
 
@@ -501,13 +501,13 @@ Implemented:
 
 Current blockers reported by the preflight:
 
-- synthetic live-client evidence is still fixture-only
+- none after CLI live-client evidence was recorded locally
 
 Not implemented:
 
 - real Cloudflare staging deploy
 - deployed Worker HTTP health smoke
-- live client evidence
+- non-CLI live client evidence
 
 ## Week 26 Cloudflare Resource Evidence
 
@@ -526,7 +526,7 @@ Implemented:
 
 Current blockers reported by the preflight:
 
-- synthetic live-client evidence is still fixture-only
+- none after CLI live-client evidence was recorded locally
 
 Not implemented:
 
@@ -535,4 +535,29 @@ Not implemented:
 - route writes
 - production migration apply
 - deployed Worker HTTP health smoke
-- live client evidence
+- non-CLI live client evidence
+
+## Week 26 Live Client Evidence
+
+Implemented:
+
+- local wrangler dev smoke using the tracked CLI `2026.6.0`
+- synthetic account seed through `POST /api/accounts/bootstrap`
+- generated synthetic account key material with the tracked CLI wasm primitives
+- `/identity/accounts/prelogin/password` alias for current CLI prelogin
+- account key metadata and master-password unlock data in token and sync responses
+- form-field device metadata support for password grant requests
+- authenticated `GET /api/accounts/revision-date`
+- CLI login success with session key length `88`
+- CLI sync success with `Syncing complete.`
+- `compat/client-matrix.json` CLI row promoted to `live_smoke`
+- release evidence document under `docs/release/live-client-evidence.md`
+- release gate update requiring linked live evidence for promoted matrix rows
+
+Not implemented:
+
+- browser extension live evidence
+- desktop live evidence
+- mobile live evidence
+- live TOTP login evidence
+- live item mutation evidence

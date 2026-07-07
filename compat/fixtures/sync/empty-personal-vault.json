@@ -23,10 +23,15 @@
         "Culture": "en-US",
         "TwoFactorEnabled": false,
         "Key": "2.c3ludGhldGljLXVzZXIta2V5",
-        "AccountKeys": null,
+        "AccountKeys": {
+          "publicKeyEncryptionKeyPair": {
+            "publicKey": "synthetic-public-key",
+            "wrappedPrivateKey": "2.synthetic-private-key"
+          }
+        },
         "AvatarColor": "#3366cc",
         "CreationDate": "2026-07-06T00:00:00.000Z",
-        "PrivateKey": null,
+        "PrivateKey": "2.synthetic-private-key",
         "SecurityStamp": "fixture-security-stamp",
         "ForcePasswordReset": false,
         "UsesKeyConnector": false,
@@ -46,7 +51,16 @@
       "Policies": [],
       "PoliciesNew": [],
       "Sends": [],
-      "UserDecryption": null
+      "UserDecryption": {
+        "MasterPasswordUnlock": {
+          "Salt": "person@example.test",
+          "Kdf": {
+            "KdfType": 0,
+            "Iterations": 600000
+          },
+          "MasterKeyEncryptedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
+        }
+      }
     }
   },
   "assertions": [
@@ -65,6 +79,14 @@
     },
     {
       "path": "$.Profile.Key",
+      "type": "string"
+    },
+    {
+      "path": "$.Profile.AccountKeys.publicKeyEncryptionKeyPair.publicKey",
+      "type": "string"
+    },
+    {
+      "path": "$.Profile.PrivateKey",
       "type": "string"
     },
     {
@@ -95,6 +117,11 @@
       "path": "$.Sends",
       "type": "array",
       "length": 0
+    },
+    {
+      "path": "$.UserDecryption.MasterPasswordUnlock.Kdf.Iterations",
+      "type": "number",
+      "value": 600000
     }
   ]
 }

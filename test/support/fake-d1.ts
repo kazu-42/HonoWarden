@@ -103,6 +103,14 @@ export class FakeD1Database {
           return (column ? row[column as keyof typeof row] : row) as T
         }
 
+        if (query.includes('MAX(revision_date) as revisionDate')) {
+          const row = {
+            revisionDate: findLatestRevisionDate(options, boundValues),
+          }
+
+          return (column ? row[column as keyof typeof row] : row) as T
+        }
+
         if (query.includes('FROM refresh_tokens')) {
           return (options.refreshSession ?? null) as T | null
         }
@@ -453,6 +461,30 @@ function findAuthUser(
   }
 
   return options.authUsers[0] ?? null
+}
+
+function findLatestRevisionDate(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): string | null {
+  const userId = String(boundValues[0] ?? '')
+  const revisions: string[] = []
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+
+  for (const user of users) {
+    if (user.id === userId && typeof user.revisionDate === 'string') {
+      revisions.push(user.revisionDate)
+    }
+  }
+
+  for (const row of [...(options.folders ?? []), ...(options.ciphers ?? [])]) {
+    if (row.userId === userId && typeof row.revisionDate === 'string') {
+      revisions.push(row.revisionDate)
+    }
+  }
+
+  return revisions.sort().at(-1) ?? null
 }
 
 function filterRowsByUserId(

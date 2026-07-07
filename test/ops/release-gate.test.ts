@@ -25,15 +25,15 @@ type ReleaseGateReport = {
 }
 
 describe('release gate preflight', () => {
-  it('reports current alpha blockers without mutating external systems', async () => {
+  it('reports current alpha readiness without mutating external systems', async () => {
     const result = await execFileAsync('node', [releaseGateScript])
     const report = JSON.parse(result.stdout) as ReleaseGateReport
 
     expect(report.schemaVersion).toBe(1)
     expect(report.target).toBe('v0.1.0-alpha')
-    expect(report.overall).toBe('not_ready')
+    expect(report.overall).toBe('ready')
     expect(report.summary.pass).toBeGreaterThan(0)
-    expect(report.summary.block).toBeGreaterThan(0)
+    expect(report.summary.block).toBe(0)
 
     expect(statusById(report, 'release_docs_present')).toBe('pass')
     expect(statusById(report, 'migration_freeze_hashes')).toBe('pass')
@@ -43,14 +43,14 @@ describe('release gate preflight', () => {
     expect(statusById(report, 'backup_restore_drill_evidence')).toBe('pass')
     expect(statusById(report, 'staging_deploy_evidence')).toBe('pass')
     expect(statusById(report, 'cloudflare_resource_evidence')).toBe('pass')
-    expect(statusById(report, 'live_client_evidence')).toBe('block')
+    expect(statusById(report, 'live_client_evidence')).toBe('pass')
   })
 
-  it('fails in strict mode while release blockers remain', async () => {
+  it('passes in strict mode when repository-local evidence is ready', async () => {
     await expect(
       execFileAsync('node', [releaseGateScript, '--strict']),
-    ).rejects.toMatchObject({
-      stderr: expect.stringContaining('release gate is not ready'),
+    ).resolves.toMatchObject({
+      stderr: '',
     })
   })
 })

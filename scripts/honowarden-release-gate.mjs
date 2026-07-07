@@ -19,6 +19,7 @@ const requiredReleaseDocs = [
   'rollback-guide.md',
   'migration-freeze.md',
   'release-gate-preflight.md',
+  'live-client-evidence.md',
   'v0.1.0-alpha-release-notes.md',
 ]
 
@@ -211,66 +212,145 @@ function checkWorkflowEvidence() {
 
 function checkCompatibilityMatrix() {
   const matrix = readJson('compat/client-matrix.json')
-  const nonFixtureRows = matrix.entries.filter(
+  const allowedVerificationLevels = new Set(['fixture_only', 'live_smoke'])
+  const invalidVerificationRows = matrix.entries.filter(
+    (entry) => !allowedVerificationLevels.has(entry.verificationLevel),
+  )
+  const promotedRows = matrix.entries.filter(
     (entry) => entry.verificationLevel !== 'fixture_only',
+  )
+  const promotedRowsWithoutEvidence = promotedRows.filter(
+    (entry) => !hasMatrixLiveEvidence(entry),
   )
   const rowsWithoutKnownIssues = matrix.entries.filter(
     (entry) =>
       !Array.isArray(entry.knownIssues) || entry.knownIssues.length < 1,
   )
 
-  if (nonFixtureRows.length > 0 || rowsWithoutKnownIssues.length > 0) {
+  if (
+    invalidVerificationRows.length > 0 ||
+    promotedRowsWithoutEvidence.length > 0 ||
+    rowsWithoutKnownIssues.length > 0
+  ) {
     return {
       id: 'compatibility_matrix_conservative',
       status: 'block',
-      title: 'Compatibility matrix remains conservative until live evidence',
+      title: 'Compatibility matrix promotions are backed by live evidence',
       evidence: ['compat/client-matrix.json'],
       details: {
-        nonFixtureRows: nonFixtureRows.map((entry) => entry.surface),
+        invalidVerificationRows: invalidVerificationRows.map(
+          (entry) => entry.surface,
+        ),
+        promotedRowsWithoutEvidence: promotedRowsWithoutEvidence.map(
+          (entry) => entry.surface,
+        ),
         rowsWithoutKnownIssues: rowsWithoutKnownIssues.map(
           (entry) => entry.surface,
         ),
       },
       nextAction:
-        'Do not promote matrix rows without linked synthetic live-client evidence.',
+        'Keep rows at fixture_only or attach complete liveEvidence before promotion.',
     }
   }
 
   return {
     id: 'compatibility_matrix_conservative',
     status: 'pass',
-    title: 'Compatibility matrix remains conservative until live evidence',
+    title: 'Compatibility matrix promotions are backed by live evidence',
     evidence: ['compat/client-matrix.json'],
-    details: { entries: matrix.entries.length },
+    details: {
+      entries: matrix.entries.length,
+      promotedRows: promotedRows.map((entry) => entry.surface),
+    },
   }
 }
 
 function checkLiveClientEvidence() {
   const matrix = readJson('compat/client-matrix.json')
-  const fixtureOnly = matrix.entries.filter(
-    (entry) => entry.verificationLevel === 'fixture_only',
-  )
+  const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
+  const evidencePath =
+    typeof cliEntry?.liveEvidence?.path === 'string'
+      ? cliEntry.liveEvidence.path
+      : 'docs/release/live-client-evidence.md'
 
-  if (fixtureOnly.length > 0) {
+  if (
+    !cliEntry ||
+    cliEntry.verificationLevel !== 'live_smoke' ||
+    !hasMatrixLiveEvidence(cliEntry)
+  ) {
     return {
       id: 'live_client_evidence',
       status: 'block',
-      title: 'Synthetic live-client evidence is recorded before alpha tagging',
-      evidence: ['compat/client-matrix.json'],
+      title:
+        'Synthetic CLI live-client evidence is recorded before alpha tagging',
+      evidence: ['compat/client-matrix.json', evidencePath],
       details: {
-        fixtureOnlySurfaces: fixtureOnly.map((entry) => entry.surface),
+        cliVerificationLevel: cliEntry?.verificationLevel ?? null,
+        liveEvidence: cliEntry?.liveEvidence ?? null,
       },
       nextAction:
-        'Run synthetic live-client login and sync checks, then link redacted evidence before tagging.',
+        'Run the synthetic CLI login and sync smoke, then link redacted evidence before tagging.',
+    }
+  }
+
+  const evidenceDoc = readText(evidencePath)
+  const requiredEvidence = [
+    'Status: passed',
+    'Mode: local synthetic CLI live smoke',
+    'Client surface: `cli`',
+    'Client version: `2026.6.0`',
+    'Server: local wrangler dev worker',
+    'Proxy: local HTTPS compression-stripping proxy',
+    'Flow: `/identity/accounts/prelogin/password`',
+    'Flow: `/identity/connect/token`',
+    'Flow: `/api/sync`',
+    'Flow: `/api/config`',
+    'Flow: `/api/accounts/revision-date`',
+    'Login result: session key length 88',
+    'Sync result: `Syncing complete.`',
+    'Non-TLS stderr lines: `0`',
+    'Real secrets: none',
+  ]
+  const missingEvidence = requiredEvidence.filter(
+    (required) => !evidenceDoc.includes(required),
+  )
+
+  if (missingEvidence.length > 0) {
+    return {
+      id: 'live_client_evidence',
+      status: 'block',
+      title:
+        'Synthetic CLI live-client evidence is recorded before alpha tagging',
+      evidence: ['compat/client-matrix.json', evidencePath],
+      details: { missingEvidence },
+      nextAction:
+        'Complete the live-client evidence with flow, client, server, redaction, and result fields.',
     }
   }
 
   return {
     id: 'live_client_evidence',
     status: 'pass',
-    title: 'Synthetic live-client evidence is recorded before alpha tagging',
-    evidence: ['compat/client-matrix.json'],
+    title:
+      'Synthetic CLI live-client evidence is recorded before alpha tagging',
+    evidence: ['compat/client-matrix.json', evidencePath],
   }
+}
+
+function hasMatrixLiveEvidence(entry) {
+  const evidence = entry.liveEvidence
+
+  return (
+    evidence &&
+    evidence.status === 'passed' &&
+    evidence.clientVersion === entry.version &&
+    typeof evidence.path === 'string' &&
+    existsSync(repoPath(evidence.path)) &&
+    typeof evidence.recordedAt === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(evidence.recordedAt) &&
+    Array.isArray(evidence.flows) &&
+    evidence.flows.length > 0
+  )
 }
 
 function checkBackupRestoreDrillEvidence() {

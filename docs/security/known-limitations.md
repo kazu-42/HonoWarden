@@ -8,7 +8,8 @@ inputs, not minor documentation notes.
 ## Release Blockers Before Real Secrets
 
 - no independent security audit has been completed
-- no live client regression suite has been captured for the current matrix rows
+- only a CLI live smoke has been captured; no full live client regression suite
+  exists yet
 - no production backup restore drill has been recorded
 - no Cloudflare account access-control review is documented
 - no incident response runbook exists
@@ -39,7 +40,7 @@ inputs, not minor documentation notes.
 
 ## Testing Gaps
 
-- Compatibility rows remain `fixture_only` until live client evidence exists.
+- Compatibility rows remain `fixture_only` unless linked live evidence exists.
 - Test support models selected D1 query shapes, not full SQLite behavior.
 - Security docs are CI-checked for presence and key content, but not formally
   reviewed by an external auditor.

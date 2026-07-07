@@ -84,7 +84,10 @@ import {
   recordAcceptedTotpStep,
   upsertPendingTotpSetup,
 } from './repositories/totp-repository'
-import { createBootstrapUser } from './repositories/user-repository'
+import {
+  createBootstrapUser,
+  getAccountRevisionDate,
+} from './repositories/user-repository'
 
 type Variables = {
   requestId: string
@@ -270,7 +273,7 @@ app.get('/config', (c) => {
   return c.json(buildServerConfig(origin))
 })
 
-app.post('/identity/accounts/prelogin', async (c) => {
+async function handlePrelogin(c: AppContext) {
   const body = await readJsonBody(c.req.raw)
   const decision = resolvePrelogin(body, c.env?.HONOWARDEN_ALLOWED_EMAILS)
 
@@ -285,6 +288,36 @@ app.post('/identity/accounts/prelogin', async (c) => {
   }
 
   return c.json(decision.response)
+}
+
+app.post('/identity/accounts/prelogin', handlePrelogin)
+
+app.post('/identity/accounts/prelogin/password', handlePrelogin)
+
+app.get('/api/accounts/revision-date', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const revisionDate =
+      (await getAccountRevisionDate(c.env.DB, auth.user.id)) ??
+      auth.user.revisionDate
+
+    return c.json(revisionDate)
+  } catch {
+    return c.json(
+      {
+        error: {
+          code: 'database_unavailable',
+          message: 'Account revision lookup failed.',
+        },
+        requestId: c.get('requestId'),
+      },
+      503,
+    )
+  }
 })
 
 app.post('/api/accounts/register', (c) => {
@@ -550,7 +583,7 @@ app.post('/identity/connect/token', async (c) => {
     return c.json(tokenErrorResponse(grantDecision.error), grantDecision.status)
   }
 
-  const device = readDeviceInfo(c.req.raw.headers)
+  const device = readDeviceInfo(c.req.raw.headers) ?? grantDecision.grant.device
   if (!device) {
     const error = tokenRequestError(
       'invalid_request',
@@ -1554,6 +1587,9 @@ function buildTokenResponse(
   accessToken: string,
   refreshToken: string,
 ) {
+  const accountKeys = buildAccountKeysResponse(user)
+  const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
+
   return {
     access_token: accessToken,
     refresh_token: refreshToken,
@@ -1565,12 +1601,45 @@ function buildTokenResponse(
     KdfIterations: user.kdfIterations,
     KdfMemory: user.kdfMemory,
     KdfParallelism: user.kdfParallelism,
-    AccountKeys: null,
+    AccountKeys: accountKeys,
     ForcePasswordReset: false,
     TwoFactorToken: null,
     MasterPasswordPolicy: null,
-    UserDecryptionOptions: null,
+    UserDecryptionOptions: masterPasswordUnlock
+      ? {
+          HasMasterPassword: true,
+          MasterPasswordUnlock: masterPasswordUnlock,
+        }
+      : null,
     KeyConnectorUrl: null,
+  }
+}
+
+function buildAccountKeysResponse(user: AuthUserRecord) {
+  if (!user.publicKey || !user.privateKey) {
+    return null
+  }
+
+  return {
+    publicKeyEncryptionKeyPair: {
+      publicKey: user.publicKey,
+      wrappedPrivateKey: user.privateKey,
+    },
+  }
+}
+
+function buildMasterPasswordUnlockResponse(user: AuthUserRecord) {
+  if (!user.userKey) {
+    return null
+  }
+
+  return {
+    Salt: user.emailNormalized,
+    Kdf: {
+      KdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
+      Iterations: user.kdfIterations,
+    },
+    MasterKeyEncryptedUserKey: user.userKey,
   }
 }
 
@@ -1655,6 +1724,9 @@ function buildSyncResponse(
   folders: readonly FolderRecord[] = [],
   ciphers: readonly CipherRecord[] = [],
 ) {
+  const accountKeys = buildAccountKeysResponse(user)
+  const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
+
   return {
     object: 'sync',
     Profile: {
@@ -1667,7 +1739,7 @@ function buildSyncResponse(
       Culture: 'en-US',
       TwoFactorEnabled: user.totpEnabled,
       Key: user.userKey,
-      AccountKeys: null,
+      AccountKeys: accountKeys,
       AvatarColor: '#3366cc',
       CreationDate: user.createdAt,
       PrivateKey: user.privateKey,
@@ -1690,7 +1762,11 @@ function buildSyncResponse(
     Policies: [],
     PoliciesNew: [],
     Sends: [],
-    UserDecryption: null,
+    UserDecryption: masterPasswordUnlock
+      ? {
+          MasterPasswordUnlock: masterPasswordUnlock,
+        }
+      : null,
   }
 }
 

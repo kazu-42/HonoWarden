@@ -25,8 +25,8 @@ Use these documents together when reviewing alpha readiness:
 
 ## Review Rules
 
-- Do not promote compatibility rows beyond `fixture_only` without live request
-  and response evidence.
+- Do not promote compatibility rows beyond `fixture_only` without linked live
+  request and response evidence.
 - Do not enable audit logs in production until log retention and access are
   explicitly approved.
 - Do not use real secrets or real personal vault data during alpha dogfood.

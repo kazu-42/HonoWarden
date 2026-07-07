@@ -13,6 +13,7 @@ const releaseDocs = [
   'rollback-guide.md',
   'migration-freeze.md',
   'release-gate-preflight.md',
+  'live-client-evidence.md',
   'backup-restore-drill-evidence.md',
   'staging-deploy-evidence.md',
   'cloudflare-resource-evidence.md',

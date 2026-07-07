@@ -1,0 +1,44 @@
+{
+  "title": "Week 26 Live Client Evidence",
+  "slug": "week-26-live-client-evidence",
+  "created_at": "2026-07-07T01:22:56Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "The user requested sustained implementation through Week 26. This slice uses local wrangler dev and synthetic client data only; no staging deploy, production deploy, or real vault data is involved."
+  },
+  "packets": [
+    {
+      "id": "01-local-worker-and-seed",
+      "status": "completed"
+    },
+    {
+      "id": "02-cli-login-sync-smoke",
+      "status": "completed"
+    },
+    {
+      "id": "03-compatibility-fixes",
+      "status": "completed"
+    },
+    {
+      "id": "04-gate-docs-matrix",
+      "status": "completed"
+    },
+    {
+      "id": "05-local-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "local CLI 2026.6.0 config server https://localhost:8791",
+      "local CLI 2026.6.0 login person@example.test --raw --nointeraction",
+      "local CLI 2026.6.0 sync",
+      "pnpm check",
+      "pnpm test test/domain/tokens.test.ts test/app.test.ts test/compat/client-matrix.test.ts test/compat/compat-fixtures.test.ts test/ops/release-gate.test.ts test/release-docs.test.ts test/security-docs.test.ts",
+      "pnpm release:gate"
+    ]
+  }
+}

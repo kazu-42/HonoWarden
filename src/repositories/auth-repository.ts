@@ -9,8 +9,10 @@ export type AuthUserRecord = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string | null
+  publicKey: string | null
   privateKey: string | null
   securityStamp: string
+  revisionDate: string
   createdAt: string
   disabledAt: string | null
   loginFailedCount: number
@@ -137,8 +139,10 @@ type AuthUserRow = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string | null
+  publicKey: string | null
   privateKey: string | null
   securityStamp: string
+  revisionDate: string
   createdAt: string
   disabledAt: string | null
   loginFailedCount: number
@@ -166,8 +170,10 @@ type RefreshTokenSessionRow = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string | null
+  publicKey: string | null
   privateKey: string | null
   securityStamp: string
+  revisionDate: string
   createdAt: string
   disabledAt: string | null
   loginFailedCount: number
@@ -208,8 +214,10 @@ export async function findAuthUserByEmail(
           u.kdf_parallelism as kdfParallelism,
           u.master_password_hash as masterPasswordHash,
           u.user_key as userKey,
+          u.public_key as publicKey,
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
+          u.revision_date as revisionDate,
           u.created_at as createdAt,
           u.disabled_at as disabledAt,
           u.login_failed_count as loginFailedCount,
@@ -248,8 +256,10 @@ export async function findAuthUserById(
           u.kdf_parallelism as kdfParallelism,
           u.master_password_hash as masterPasswordHash,
           u.user_key as userKey,
+          u.public_key as publicKey,
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
+          u.revision_date as revisionDate,
           u.created_at as createdAt,
           u.disabled_at as disabledAt,
           u.login_failed_count as loginFailedCount,
@@ -367,8 +377,10 @@ export async function findRefreshTokenSessionByHash(
           u.kdf_parallelism as kdfParallelism,
           u.master_password_hash as masterPasswordHash,
           u.user_key as userKey,
+          u.public_key as publicKey,
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
+          u.revision_date as revisionDate,
           u.created_at as createdAt,
           u.disabled_at as disabledAt,
           u.login_failed_count as loginFailedCount,
@@ -411,8 +423,10 @@ export async function findRefreshTokenSessionByHash(
       kdfParallelism: row.kdfParallelism,
       masterPasswordHash: row.masterPasswordHash,
       userKey: row.userKey,
+      publicKey: row.publicKey,
       privateKey: row.privateKey,
       securityStamp: row.securityStamp,
+      revisionDate: row.revisionDate,
       createdAt: row.createdAt,
       disabledAt: row.disabledAt,
       loginFailedCount: row.loginFailedCount,
@@ -791,8 +805,10 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     kdfParallelism: row.kdfParallelism,
     masterPasswordHash: row.masterPasswordHash,
     userKey: row.userKey,
+    publicKey: row.publicKey,
     privateKey: row.privateKey,
     securityStamp: row.securityStamp,
+    revisionDate: row.revisionDate,
     createdAt: row.createdAt,
     disabledAt: row.disabledAt,
     loginFailedCount: row.loginFailedCount,

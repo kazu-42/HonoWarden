@@ -30,7 +30,8 @@ The preflight proves repository-local facts:
 - dependency audit evidence matches the current lockfile hash
 - required Week 20 through Week 26 workflow states are complete and include CI
   evidence
-- the compatibility matrix has not been promoted beyond fixture-only evidence
+- compatibility matrix promotions are backed by linked live evidence
+- CLI live-client login and sync evidence is recorded
 - staging dry-run evidence includes command, bindings, bundle hash, and
   explicit non-deploy limitations
 - Cloudflare D1/R2 resource evidence is recorded and D1 IDs are no longer
@@ -42,13 +43,13 @@ The preflight proves repository-local facts:
 The preflight does not contact Cloudflare, GitHub, Linear, package registries, or
 official clients. It does not tag a release and does not deploy.
 
-These remain release blockers until recorded as separate evidence:
-
-- synthetic live-client login and sync evidence
+The preflight still does not prove full browser, desktop, Android, iOS, TOTP, or
+item-mutation behavior through real clients. Those remain compatibility limits
+until separate evidence is recorded.
 
 ## Expected Current Result
 
-At feature-freeze time the expected result is `not_ready`. That is intentional:
-the repository has the release process, local checks, backup/restore drill
-evidence, staging dry-run evidence, and Cloudflare D1/R2 resource evidence, but
-the alpha tag still requires live client evidence.
+After CLI live-client evidence is recorded, the expected repository-local result
+is `ready` when all other evidence files remain current. The alpha tag still
+requires GitHub Actions CI on the release commit and the repository brand scan
+before publishing.

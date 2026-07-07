@@ -5,9 +5,16 @@ export type PasswordGrantRequest = {
   usernameNormalized: string
   password: string
   scope: string | null
+  device: TokenDeviceInfo | null
   twoFactorProvider: string | null
   twoFactorToken: string | null
   twoFactorCode: string | null
+}
+
+export type TokenDeviceInfo = {
+  identifier: string
+  name: string | null
+  type: number | null
 }
 
 export type RefreshTokenGrantRequest = {
@@ -94,6 +101,7 @@ export function parsePasswordGrantForm(
       usernameNormalized,
       password,
       scope: form.get('scope')?.trim() || null,
+      device: parseDeviceInfo(form),
       twoFactorProvider: readFormValue(form, [
         'twoFactorProvider',
         'two_factor_provider',
@@ -111,6 +119,30 @@ export function parsePasswordGrantForm(
         'code',
       ]),
     },
+  }
+}
+
+function parseDeviceInfo(form: URLSearchParams): TokenDeviceInfo | null {
+  const identifier = readFormValue(form, [
+    'deviceIdentifier',
+    'device_identifier',
+    'DeviceIdentifier',
+  ])
+  if (!identifier) {
+    return null
+  }
+
+  const rawType = readFormValue(form, [
+    'deviceType',
+    'device_type',
+    'DeviceType',
+  ])
+  const type = rawType ? Number.parseInt(rawType, 10) : null
+
+  return {
+    identifier,
+    name: readFormValue(form, ['deviceName', 'device_name', 'DeviceName']),
+    type: Number.isFinite(type) ? type : null,
   }
 }
 

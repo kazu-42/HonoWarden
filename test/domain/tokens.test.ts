@@ -30,9 +30,32 @@ describe('token domain', () => {
         usernameNormalized: 'person@example.test',
         password: 'synthetic-master-password-hash',
         scope: 'api offline_access',
+        device: null,
         twoFactorProvider: 'authenticator',
         twoFactorToken: 'challenge-token',
         twoFactorCode: '123456',
+      },
+    })
+  })
+
+  it('parses device fields from current CLI password grant forms', () => {
+    const form = new URLSearchParams({
+      grant_type: 'password',
+      username: 'person@example.test',
+      password: 'synthetic-master-password-hash',
+      deviceType: '9',
+      deviceIdentifier: 'fixture-device-id',
+      deviceName: 'Fixture Device',
+    })
+
+    expect(parsePasswordGrantForm(form)).toMatchObject({
+      ok: true,
+      grant: {
+        device: {
+          identifier: 'fixture-device-id',
+          name: 'Fixture Device',
+          type: 9,
+        },
       },
     })
   })
