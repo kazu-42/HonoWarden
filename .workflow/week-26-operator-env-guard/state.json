@@ -1,0 +1,65 @@
+{
+  "title": "Week 26 Operator Env Guard",
+  "slug": "week-26-operator-env-guard",
+  "created_at": "2026-07-07T04:38:41+00:00",
+  "status": "complete",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local policy tests and docs only."
+  },
+  "packets": [
+    {
+      "id": "test",
+      "status": "completed"
+    },
+    {
+      "id": "config",
+      "status": "completed"
+    },
+    {
+      "id": "docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm test -- test/ops/operator-environment.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "details": "27 files, 240 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "details": "overall ready"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed",
+        "details": "no hits outside excluded dependency/generated paths"
+      }
+    ]
+  }
+}

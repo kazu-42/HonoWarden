@@ -54,6 +54,10 @@ Ignored local files may provide secrets:
 - `.env.local`
 - `.envrc.local`
 
+The tracked `.envrc` watches both ignored local files, so changing local API
+keys or forwarding destinations prompts direnv to reload after the next
+`direnv allow`.
+
 ## Required Local Secrets
 
 | Variable                            | Required for                              | Notes                                                                      |

@@ -450,6 +450,23 @@ Not implemented:
 The Linear seed remains the source of truth until a connector or browser session
 is authenticated to the `honowarden` workspace.
 
+## Operator Environment Setup
+
+Implemented:
+
+- tracked `.envrc` with non-secret project defaults for direnv
+- ignored `.env.local` and `.envrc.local` local secret sources
+- `.env.example` placeholders for Linear, GitHub, Cloudflare, email forwarding,
+  and local Worker smoke variables
+- direnv watch rules for local secret files
+- CI-covered operator environment policy tests under
+  `test/ops/operator-environment.test.ts`
+
+Not implemented:
+
+- live Linear API writes with a HonoWarden workspace key
+- Cloudflare DNS or Email Routing writes through API tokens
+
 ## Week 26 Release Gate Preflight
 
 Implemented:
