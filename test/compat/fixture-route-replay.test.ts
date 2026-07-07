@@ -34,6 +34,24 @@ const replayUser = {
   totpLastAcceptedStep: null,
 }
 
+const deviceReplayUser = {
+  ...replayUser,
+  id: 'user-id',
+}
+
+const deviceRows = [
+  {
+    id: 'user-id:fixture-device',
+    userId: deviceReplayUser.id,
+    identifier: 'fixture-device',
+    name: 'CLI',
+    type: 8,
+    lastSeenAt: '2026-07-06T00:10:00.000Z',
+    createdAt: '2026-07-06T00:00:00.000Z',
+    updatedAt: '2026-07-06T00:10:00.000Z',
+  },
+]
+
 const folderRows = [
   {
     id: 'folder-id',
@@ -105,6 +123,27 @@ const replayFixtures = [
   },
   {
     path: 'metadata/collection-get-not-found.json',
+  },
+  {
+    path: 'devices/list-success.json',
+    database: {
+      authUser: deviceReplayUser,
+      devices: deviceRows,
+    },
+  },
+  {
+    path: 'devices/identifier-success.json',
+    database: {
+      authUser: deviceReplayUser,
+      devices: deviceRows,
+    },
+  },
+  {
+    path: 'devices/known-device-success.json',
+    database: {
+      authUsers: [deviceReplayUser],
+      devices: deviceRows,
+    },
   },
   {
     path: 'folders/list-success.json',

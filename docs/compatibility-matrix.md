@@ -42,6 +42,8 @@ work.
 - `account_profile`
 - `direct_read`
 - `metadata_read`
+- `device_read`
+- `known_device_preflight`
 - `sync_with_items`
 - `folder_crud`
 - `cipher_create`

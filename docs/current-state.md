@@ -666,6 +666,8 @@ Implemented:
 - authenticated `GET /api/devices/identifier/:identifier`
 - owner-scoped read-only device metadata queries for user inventory and identifier
   lookup
+- compatibility fixture flow `device_read` for device list and identifier
+  lookup responses
 
 Not implemented:
 
@@ -685,6 +687,8 @@ Implemented:
 - missing or malformed header values return `invalid_request`
 - returns only preflight result without device metadata mutation, trust updates,
   or key updates
+- compatibility fixture flow `known_device_preflight` for the known-device
+  boolean response
 
 ## Week 26 Account Profile API
 
@@ -770,7 +774,7 @@ Implemented:
   fixtures
 - replay coverage for prelogin, empty sync, sync with one folder and cipher,
   account profile, direct folder and cipher reads, policy metadata, domain
-  metadata, and collection metadata
+  metadata, collection metadata, device reads, and known-device preflight
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads

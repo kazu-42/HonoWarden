@@ -1,0 +1,94 @@
+{
+  "name": "device-identifier-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/devices/identifier/fixture-device"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "device",
+      "id": "user-id:fixture-device",
+      "userId": "user-id",
+      "name": "CLI",
+      "identifier": "fixture-device",
+      "type": 8,
+      "creationDate": "2026-07-06T00:00:00.000Z",
+      "revisionDate": "2026-07-06T00:10:00.000Z",
+      "isTrusted": false,
+      "encryptedUserKey": null,
+      "encryptedPublicKey": null,
+      "devicePendingAuthRequest": null,
+      "lastActivityDate": "2026-07-06T00:10:00.000Z"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "device"
+    },
+    {
+      "path": "$.id",
+      "type": "string",
+      "value": "user-id:fixture-device"
+    },
+    {
+      "path": "$.userId",
+      "type": "string",
+      "value": "user-id"
+    },
+    {
+      "path": "$.name",
+      "type": "string",
+      "value": "CLI"
+    },
+    {
+      "path": "$.identifier",
+      "type": "string",
+      "value": "fixture-device"
+    },
+    {
+      "path": "$.type",
+      "type": "number",
+      "value": 8
+    },
+    {
+      "path": "$.creationDate",
+      "type": "string",
+      "value": "2026-07-06T00:00:00.000Z"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string",
+      "value": "2026-07-06T00:10:00.000Z"
+    },
+    {
+      "path": "$.isTrusted",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "path": "$.encryptedUserKey",
+      "type": "null"
+    },
+    {
+      "path": "$.encryptedPublicKey",
+      "type": "null"
+    },
+    {
+      "path": "$.devicePendingAuthRequest",
+      "type": "null"
+    },
+    {
+      "path": "$.lastActivityDate",
+      "type": "string",
+      "value": "2026-07-06T00:10:00.000Z"
+    }
+  ]
+}

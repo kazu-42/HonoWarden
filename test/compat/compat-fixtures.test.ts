@@ -132,13 +132,16 @@ function readJsonPath(
   value: JsonValue,
   path: string,
 ): { exists: true; value: JsonValue } | { exists: false } {
-  expect(path).toMatch(/^\$(\.[A-Za-z0-9_]+|\[\d+\])+$/)
+  expect(path).toMatch(/^\$(\.[A-Za-z0-9_]+|\[\d+\])*$/)
+  if (path === '$') {
+    return { exists: true, value }
+  }
 
   const parts = path
     .slice(1)
     .match(/(?:\.([A-Za-z0-9_]+)|\[(\d+)\])/g)
     ?.map((part) => (part.startsWith('.') ? part.slice(1) : part.slice(1, -1)))
-  expect(parts, `${path} should contain at least one path part`).toBeDefined()
+  expect(parts, `${path} should contain path parts`).toBeDefined()
   let current: JsonValue = value
 
   for (const part of parts ?? []) {

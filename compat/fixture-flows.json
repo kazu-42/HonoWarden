@@ -42,6 +42,17 @@
       ]
     },
     {
+      "id": "device_read",
+      "fixtures": [
+        "devices/list-success.json",
+        "devices/identifier-success.json"
+      ]
+    },
+    {
+      "id": "known_device_preflight",
+      "fixtures": ["devices/known-device-success.json"]
+    },
+    {
       "id": "folder_crud",
       "fixtures": [
         "folders/create-success.json",

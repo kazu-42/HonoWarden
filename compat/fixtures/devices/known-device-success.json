@@ -1,0 +1,24 @@
+{
+  "name": "device-known-device-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/devices/knowndevice"
+  },
+  "request": {
+    "headers": {
+      "X-Request-Email": "cGVyc29uQGV4YW1wbGUudGVzdA",
+      "X-Device-Identifier": "fixture-device"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": true
+  },
+  "assertions": [
+    {
+      "path": "$",
+      "type": "boolean",
+      "value": true
+    }
+  ]
+}

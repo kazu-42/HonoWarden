@@ -1,0 +1,114 @@
+{
+  "name": "device-list-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/devices"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "object": "device",
+          "id": "user-id:fixture-device",
+          "userId": "user-id",
+          "name": "CLI",
+          "identifier": "fixture-device",
+          "type": 8,
+          "creationDate": "2026-07-06T00:00:00.000Z",
+          "revisionDate": "2026-07-06T00:10:00.000Z",
+          "isTrusted": false,
+          "encryptedUserKey": null,
+          "encryptedPublicKey": null,
+          "devicePendingAuthRequest": null,
+          "lastActivityDate": "2026-07-06T00:10:00.000Z"
+        }
+      ],
+      "continuationToken": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "list"
+    },
+    {
+      "path": "$.data",
+      "type": "array",
+      "length": 1
+    },
+    {
+      "path": "$.data.0.object",
+      "type": "string",
+      "value": "device"
+    },
+    {
+      "path": "$.data.0.id",
+      "type": "string",
+      "value": "user-id:fixture-device"
+    },
+    {
+      "path": "$.data.0.userId",
+      "type": "string",
+      "value": "user-id"
+    },
+    {
+      "path": "$.data.0.name",
+      "type": "string",
+      "value": "CLI"
+    },
+    {
+      "path": "$.data.0.identifier",
+      "type": "string",
+      "value": "fixture-device"
+    },
+    {
+      "path": "$.data.0.type",
+      "type": "number",
+      "value": 8
+    },
+    {
+      "path": "$.data.0.creationDate",
+      "type": "string",
+      "value": "2026-07-06T00:00:00.000Z"
+    },
+    {
+      "path": "$.data.0.revisionDate",
+      "type": "string",
+      "value": "2026-07-06T00:10:00.000Z"
+    },
+    {
+      "path": "$.data.0.isTrusted",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "path": "$.data.0.encryptedUserKey",
+      "type": "null"
+    },
+    {
+      "path": "$.data.0.encryptedPublicKey",
+      "type": "null"
+    },
+    {
+      "path": "$.data.0.devicePendingAuthRequest",
+      "type": "null"
+    },
+    {
+      "path": "$.data.0.lastActivityDate",
+      "type": "string",
+      "value": "2026-07-06T00:10:00.000Z"
+    },
+    {
+      "path": "$.continuationToken",
+      "type": "null"
+    }
+  ]
+}

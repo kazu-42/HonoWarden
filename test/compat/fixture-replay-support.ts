@@ -406,12 +406,16 @@ function readJsonPath(
   value: JsonValue | null,
   path: string,
 ): { exists: true; value: JsonValue } | { exists: false } {
-  if (!path.match(/^\$(\.[A-Za-z0-9_]+|\[\d+\])+$/)) {
+  if (!path.match(/^\$(\.[A-Za-z0-9_]+|\[\d+\])*$/)) {
     throw new Error(`Invalid JSON fixture path: ${path}`)
   }
 
   if (value === null) {
     return { exists: false }
+  }
+
+  if (path === '$') {
+    return { exists: true, value }
   }
 
   const parts = path
