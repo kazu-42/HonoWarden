@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Status: in progress; local verification passed and CI is pending.
+Status: completed.
 
 This workflow implements metadata-only device updates for the alpha API.
 
@@ -33,9 +33,8 @@ Passed so far:
 - strict release gate
 - read-only release status and completion audit packets
 
-Pending:
-
-- final CI readback
+GitHub Actions CI readback passed for implementation commit
+`334de41e2fe2546c5098e5d4ddcbdefc30d3744e`.
 
 ## Remaining Risks
 

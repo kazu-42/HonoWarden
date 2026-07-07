@@ -2,8 +2,8 @@
   "title": "Week 26 device metadata update API",
   "slug": "week-26-device-metadata-update-api",
   "created_at": "2026-07-07T18:06:05+00:00",
-  "updated_at": "2026-07-07T18:14:05Z",
-  "status": "in_progress",
+  "updated_at": "2026-07-07T18:15:45Z",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": null,
@@ -37,7 +37,7 @@
     }
   ],
   "verification": {
-    "status": "local_passed",
+    "status": "passed",
     "checks": [
       {
         "command": "pnpm exec vitest run test/repositories/auth-repository.test.ts test/app.test.ts",
@@ -98,6 +98,13 @@
         "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
         "status": "expected_incomplete",
         "evidence": "blockingReason release_publication_approval_required"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28888487458",
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28888487458",
+        "headSha": "334de41e2fe2546c5098e5d4ddcbdefc30d3744e"
       }
     ]
   }

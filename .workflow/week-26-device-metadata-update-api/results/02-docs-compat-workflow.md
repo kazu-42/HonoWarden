@@ -8,6 +8,7 @@ Status: local compatibility evidence passed.
 - Added route replay coverage for the new fixture.
 - Updated current-state and compatibility matrix docs.
 
-Pending:
+CI readback:
 
-- GitHub Actions CI readback.
+- GitHub Actions CI run `28888487458` passed for implementation commit
+  `334de41e2fe2546c5098e5d4ddcbdefc30d3744e`.
