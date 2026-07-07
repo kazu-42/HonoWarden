@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { writePreTagGit } from '../support/release-git'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const evidenceBundleScript = join(
@@ -59,6 +61,7 @@ describe('release evidence bundle', () => {
       await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
     ).stdout.trim()
     await execFileAsync('git', ['init', '--bare', remote])
+    await writePreTagGit(fakeBin)
     await writeFakeGh(fakeBin)
 
     const result = await execFileAsync(
@@ -121,6 +124,7 @@ describe('release evidence bundle', () => {
       await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
     ).stdout.trim()
     await execFileAsync('git', ['init', '--bare', remote])
+    await writePreTagGit(fakeBin)
     await writeFakeGh(fakeBin)
 
     const result = await execFileAsync(
@@ -160,6 +164,7 @@ describe('release evidence bundle', () => {
       await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
     ).stdout.trim()
     await execFileAsync('git', ['init', '--bare', remote])
+    await writePreTagGit(fakeBin)
     await writeFakeGh(fakeBin)
 
     await expect(

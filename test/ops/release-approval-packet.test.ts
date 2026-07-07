@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { writePreTagGit } from '../support/release-git'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const approvalPacketScript = join(
@@ -51,15 +53,26 @@ type ReleaseApprovalPacketReport = {
 describe('release approval packet', () => {
   it('summarizes tag approval evidence without mutating external systems', async () => {
     const remote = await mkdtemp(join(tmpdir(), 'honowarden-approval-remote-'))
+    const fakeBin = await mkdtemp(join(tmpdir(), 'honowarden-approval-bin-'))
+    const headSha = (
+      await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
+    ).stdout.trim()
     await execFileAsync('git', ['init', '--bare', remote])
+    await writePreTagGit(fakeBin)
 
-    const result = await execFileAsync('node', [
-      approvalPacketScript,
-      '--remote',
-      remote,
-      '--allow-dirty',
-      '--allow-missing-ci',
-    ])
+    const result = await execFileAsync(
+      'node',
+      [
+        approvalPacketScript,
+        '--remote',
+        remote,
+        '--allow-dirty',
+        '--allow-missing-ci',
+      ],
+      {
+        env: fakeEnv(fakeBin, { headSha }),
+      },
+    )
     const report = JSON.parse(result.stdout) as ReleaseApprovalPacketReport
 
     expect(report.schemaVersion).toBe(1)
@@ -97,6 +110,7 @@ describe('release approval packet', () => {
       await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
     ).stdout.trim()
     await execFileAsync('git', ['init', '--bare', remote])
+    await writePreTagGit(fakeBin)
     await writeFile(
       join(fakeBin, 'gh'),
       `#!/usr/bin/env node
@@ -126,12 +140,7 @@ process.stdout.write(JSON.stringify({
         ciUrl,
       ],
       {
-        env: {
-          ...process.env,
-          HONOWARDEN_TEST_CI_URL: ciUrl,
-          HONOWARDEN_TEST_HEAD_SHA: headSha,
-          PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
-        },
+        env: fakeEnv(fakeBin, { ciUrl, headSha }),
       },
     )
     const report = JSON.parse(result.stdout) as ReleaseApprovalPacketReport
@@ -150,21 +159,38 @@ process.stdout.write(JSON.stringify({
 
   it('fails strict mode without CI evidence', async () => {
     const remote = await mkdtemp(join(tmpdir(), 'honowarden-approval-remote-'))
+    const fakeBin = await mkdtemp(join(tmpdir(), 'honowarden-approval-bin-'))
+    const headSha = (
+      await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
+    ).stdout.trim()
     await execFileAsync('git', ['init', '--bare', remote])
+    await writePreTagGit(fakeBin)
 
     await expect(
-      execFileAsync('node', [
-        approvalPacketScript,
-        '--remote',
-        remote,
-        '--allow-dirty',
-        '--strict',
-      ]),
+      execFileAsync(
+        'node',
+        [approvalPacketScript, '--remote', remote, '--allow-dirty', '--strict'],
+        {
+          env: fakeEnv(fakeBin, { headSha }),
+        },
+      ),
     ).rejects.toMatchObject({
       stdout: expect.stringContaining('"id": "ci_evidence"'),
     })
   })
 })
+
+function fakeEnv(
+  fakeBin: string,
+  options: { ciUrl?: string; headSha: string },
+) {
+  return {
+    ...process.env,
+    ...(options.ciUrl ? { HONOWARDEN_TEST_CI_URL: options.ciUrl } : {}),
+    HONOWARDEN_TEST_HEAD_SHA: options.headSha,
+    PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+  }
+}
 
 function statusById(report: ReleaseApprovalPacketReport, id: string) {
   return report.checks.find((check) => check.id === id)?.status
