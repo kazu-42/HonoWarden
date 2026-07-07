@@ -1955,16 +1955,32 @@ app.put('/api/ciphers/:id', async (c) => {
 })
 
 app.put('/api/ciphers/:id/delete', async (c) => {
+  return trashCipherById(c)
+})
+
+app.delete('/api/ciphers/:id', async (c) => {
+  return trashCipherById(c)
+})
+
+async function trashCipherById(c: AppContext) {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  if (!cipherId) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'Cipher id is required.'),
+      400,
+    )
   }
 
   const now = new Date().toISOString()
 
   try {
     const result = await softDeleteCipher(c.env.DB, {
-      id: c.req.param('id'),
+      id: cipherId,
       userId: auth.user.id,
       deletedAt: now,
     })
@@ -1989,11 +2005,7 @@ app.put('/api/ciphers/:id/delete', async (c) => {
       503,
     )
   }
-})
-
-app.delete('/api/ciphers/:id', async (c) => {
-  return permanentlyDeleteCipherById(c)
-})
+}
 
 app.put('/api/ciphers/:id/restore', async (c) => {
   const auth = await authenticateVaultRequest(c)

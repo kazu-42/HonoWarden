@@ -4085,9 +4085,9 @@ describe('HonoWarden app', () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
-      '/api/ciphers/cipher-id/delete',
+      '/api/ciphers/cipher-id',
       {
-        method: 'PUT',
+        method: 'DELETE',
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -4143,7 +4143,7 @@ describe('HonoWarden app', () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
-      '/api/ciphers/cipher-id',
+      '/api/ciphers/cipher-id/delete',
       {
         method: 'DELETE',
         headers: {
@@ -4173,8 +4173,8 @@ describe('HonoWarden app', () => {
 
     for (const [method, path, options] of [
       ['PUT', '/api/ciphers/cipher-id/delete', { cipherSoftDeleteChanges: 0 }],
+      ['DELETE', '/api/ciphers/cipher-id', { cipherSoftDeleteChanges: 0 }],
       ['PUT', '/api/ciphers/cipher-id/restore', { cipherRestoreChanges: 0 }],
-      ['DELETE', '/api/ciphers/cipher-id', { cipherPermanentDeleteChanges: 0 }],
       [
         'DELETE',
         '/api/ciphers/cipher-id/delete',

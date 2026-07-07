@@ -289,6 +289,52 @@ const replayFixtures = [
       ciphers: cipherRows,
     },
   },
+  {
+    path: 'ciphers/create-login-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      folders: folderRows,
+      cipherInsertChanges: 1,
+    },
+  },
+  {
+    path: 'ciphers/update-login-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      folders: folderRows,
+      ciphers: cipherRows,
+      cipherUpdateChanges: 1,
+    },
+  },
+  {
+    path: 'ciphers/trash-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      cipherSoftDeleteChanges: 1,
+    },
+  },
+  {
+    path: 'ciphers/restore-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      cipherRestoreChanges: 1,
+    },
+  },
+  {
+    path: 'ciphers/delete-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      cipherPermanentDeleteChanges: 1,
+    },
+  },
+  {
+    path: 'errors/revision-conflict.json',
+    allowMutatingFixtures: true,
+    database: {
+      ciphers: cipherRows,
+      cipherUpdateChanges: 0,
+    },
+  },
 ] as const
 
 describe('compatibility fixture route replay', () => {

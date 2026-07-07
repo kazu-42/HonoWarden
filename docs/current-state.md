@@ -803,8 +803,9 @@ Implemented:
 - replay coverage for server config, prelogin, password grant, refresh grant,
   TOTP challenge, TOTP login success, empty sync, sync with one folder and
   cipher, account profile, account revision, folder reads and mutations, direct
-  cipher reads, policy metadata, domain metadata, collection metadata, device
-  reads, known-device preflight, and device revoke
+  cipher reads and mutations, stale revision conflict, policy metadata, domain
+  metadata, collection metadata, device reads, known-device preflight, and device
+  revoke
 - password-grant replay uses fixture request headers/form data and explicitly
   opts into stateful replay while preserving the default mutating fixture guard
 - refresh-grant replay seeds a deterministic refresh-token session and verifies
@@ -821,6 +822,12 @@ Implemented:
   opt-in
 - folder mutation replay covers create, update, and delete fixtures through the
   real authenticated folder routes with explicit stateful replay opt-in
+- cipher mutation replay covers create, update, trash, restore, permanent
+  delete, and stale revision conflict fixtures through the real authenticated
+  cipher routes with explicit stateful replay opt-in
+- cipher trash route semantics now align with the compatibility fixture:
+  `DELETE /api/ciphers/:id` trashes and `DELETE /api/ciphers/:id/delete`
+  permanently deletes
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads
@@ -833,7 +840,7 @@ Not implemented:
 
 - route-executed replay for mutating fixtures that require ordered state
   transitions beyond the password-grant, refresh-grant, TOTP challenge, and
-  TOTP login, device revoke, and folder mutation fixtures
+  TOTP login, device revoke, folder mutation, and cipher mutation fixtures
 - route replay fixtures for revoke-all session flow
 - live client evidence for newly route-replayed fixtures
 
