@@ -2,7 +2,7 @@
   "title": "Week 26 Release Gate Command Scope Coverage",
   "slug": "week-26-release-gate-command-scope-coverage",
   "created_at": "2026-07-07T12:25:41+00:00",
-  "status": "planned",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -72,6 +72,14 @@
       {
         "command": "repository brand scan",
         "status": "passed"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28903844104",
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28903844104",
+        "headSha": "5ed282cc32656bd980796d961f901df83e1229a8",
+        "evidence": "latest main CI after the release gate command-scope coverage artifacts"
       }
     ]
   }
