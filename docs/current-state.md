@@ -948,6 +948,8 @@ Implemented:
 - checks for local tag context, remote tag context, tag verification workflow
   evidence, release gate readiness, draft prerelease state, target commit, and
   release-note body sections
+- target commit defaults to the local `v0.1.0-alpha` tag commit so the packet
+  remains valid after `main` advances
 - machine-generated approval text for publishing the draft prerelease
 - focused tests covering ready output, non-draft blocking, and strict failure
   when tag workflow evidence is absent

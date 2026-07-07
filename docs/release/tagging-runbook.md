@@ -107,6 +107,10 @@ draft prerelease state, target commit, and release-note body sections. Use the
 printed publish command only after the packet prints `publishApprovalText` and
 the operator explicitly approves publication.
 
+The publish packet defaults its target commit to the local tag commit, not the
+current branch `HEAD`, because `main` may advance after the release tag is
+pushed.
+
 ## Failure Handling
 
 If local tag creation succeeds but push has not happened yet, delete only the

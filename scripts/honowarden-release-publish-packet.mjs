@@ -37,7 +37,8 @@ function main(argv = process.argv.slice(2)) {
 
 function buildPublishPacket(options) {
   const targetCommit =
-    options.expectedCommit ?? commandText(['git', 'rev-parse', 'HEAD'])
+    options.expectedCommit ??
+    commandText(['git', 'rev-list', '-n', '1', targetTag])
   const releaseGate = runJson([
     process.execPath,
     repoPath('scripts/honowarden-release-gate.mjs'),

@@ -45,6 +45,7 @@ describe('release publish packet', () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
     const fakeBin = await createFakePublishBin({
+      headCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       isDraft: true,
       isPrerelease: true,
       targetCommit,
@@ -57,8 +58,6 @@ describe('release publish packet', () => {
         publishPacketScript,
         '--remote',
         'origin',
-        '--expected-commit',
-        targetCommit,
         '--tag-workflow-run-id',
         '54321',
         '--tag-workflow-url',
@@ -152,6 +151,7 @@ describe('release publish packet', () => {
 })
 
 async function createFakePublishBin(options: {
+  headCommit?: string
   isDraft: boolean
   isPrerelease: boolean
   targetCommit: string
@@ -167,7 +167,7 @@ const command = args.join('\\u0000')
 const targetCommit = process.env.HONOWARDEN_TEST_TARGET_COMMIT
 
 if (command === 'rev-parse\\u0000HEAD') {
-  process.stdout.write(targetCommit + '\\n')
+  process.stdout.write(process.env.HONOWARDEN_TEST_HEAD_COMMIT + '\\n')
   process.exit(0)
 }
 
@@ -244,11 +244,13 @@ process.exit(1)
 
   return {
     path: fakeBin,
+    headCommit: options.headCommit ?? options.targetCommit,
     ...options,
   }
 }
 
 function fakeEnv(fakeBin: {
+  headCommit: string
   isDraft: boolean
   isPrerelease: boolean
   path: string
@@ -257,6 +259,7 @@ function fakeEnv(fakeBin: {
 }) {
   return {
     ...process.env,
+    HONOWARDEN_TEST_HEAD_COMMIT: fakeBin.headCommit,
     HONOWARDEN_TEST_RELEASE_DRAFT: fakeBin.isDraft ? '1' : '0',
     HONOWARDEN_TEST_RELEASE_PRERELEASE: fakeBin.isPrerelease ? '1' : '0',
     HONOWARDEN_TEST_TAG_WORKFLOW_URL: fakeBin.tagWorkflowUrl,

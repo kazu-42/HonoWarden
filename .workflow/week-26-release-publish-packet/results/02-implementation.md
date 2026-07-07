@@ -6,6 +6,8 @@
 - Added `release:publish:packet` to `package.json`.
 - The script reads local Git tag state, remote tag state, GitHub Actions run
   evidence, release gate output, and GitHub Release metadata.
+- The script defaults the target commit to the local release tag commit so
+  later `main` commits do not change the publication target.
 - The script emits the publish command only when every check passes.
 
 ## Rejected

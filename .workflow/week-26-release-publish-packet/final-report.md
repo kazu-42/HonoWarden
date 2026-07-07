@@ -12,6 +12,8 @@ publication command and approval text.
 - `pnpm release:publish:packet` is available through `package.json`.
 - `scripts/honowarden-release-publish-packet.mjs` emits `ready` only when all
   checks pass.
+- The packet defaults to the release tag commit instead of current branch
+  `HEAD`, so it remains valid after `main` advances.
 - Unit tests cover ready output, non-draft blocking, and missing workflow
   evidence in strict mode.
 - Runbook and current-state docs now require the publish packet before release
