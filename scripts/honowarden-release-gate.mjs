@@ -53,6 +53,7 @@ const requiredWorkflowSlugs = [
   'week-26-remote-tag-preflight',
   'week-26-release-tag-workflow',
   'week-26-github-release-plan',
+  'week-26-retention-cleanup-cron-trigger',
   'week-26-release-approval-packet',
   'week-26-post-tag-release-packet',
   'week-26-release-publish-packet',

@@ -1334,6 +1334,22 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Gate Retention Cron Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed retention cleanup
+  Cron Trigger workflow
+- `week-26-retention-cleanup-cron-trigger` records passing CI run `28886935393`
+- release gate tests assert the retention Cron workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- live Cloudflare deploy applying the Cron Trigger
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Published Packet
 
 Implemented:

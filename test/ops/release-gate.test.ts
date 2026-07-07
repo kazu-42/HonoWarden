@@ -93,6 +93,9 @@ describe('release gate preflight', () => {
     expect(workflowEvidence).toContain(
       '.workflow/week-26-alpha-completion-audit/state.json',
     )
+    expect(workflowEvidence).toContain(
+      '.workflow/week-26-retention-cleanup-cron-trigger/state.json',
+    )
   })
 
   it('passes in strict mode when repository-local evidence is ready', async () => {
