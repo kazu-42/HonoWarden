@@ -1920,6 +1920,14 @@ describe('HonoWarden app', () => {
       folderId: 'folder-id',
       type: 1,
       favorite: true,
+      edit: true,
+      viewPassword: true,
+      organizationUseTotp: false,
+      collectionIds: [],
+      permissions: {
+        delete: true,
+        restore: true,
+      },
       name: '2.encrypted-cipher-name',
       login: {
         username: '2.encrypted-username',
@@ -1929,6 +1937,49 @@ describe('HonoWarden app', () => {
       creationDate: expect.any(String),
       deletedDate: null,
     })
+  })
+
+  it('normalizes CLI attachment maps in cipher responses without changing stored payloads', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          attachments: {},
+          attachments2: {},
+          permissions: {},
+          collectionIds: [42, 'collection-id'],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folder: {
+            id: 'folder-id',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(201)
+    const body = await response.json()
+    expect(body).toMatchObject({
+      attachments: [],
+      collectionIds: ['collection-id'],
+      permissions: {
+        delete: true,
+        restore: true,
+      },
+    })
+    expect(body).not.toHaveProperty('attachments2')
   })
 
   it('creates a secure-note cipher while preserving unknown encrypted fields', async () => {
@@ -2045,7 +2096,7 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('includes active ciphers in sync', async () => {
+  it('includes active and trashed ciphers in sync', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
@@ -2069,6 +2120,21 @@ describe('HonoWarden app', () => {
               revisionDate: '2026-07-06T00:05:00.000Z',
               createdAt: '2026-07-06T00:04:00.000Z',
             },
+            {
+              id: 'trashed-cipher-id',
+              userId: 'user-id',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: JSON.stringify({
+                ...cipherCreateBody(),
+                folderId: null,
+                name: '2.trashed-encrypted-cipher-name',
+              }),
+              revisionDate: '2026-07-06T00:06:00.000Z',
+              createdAt: '2026-07-06T00:04:30.000Z',
+              deletedAt: '2026-07-06T00:06:00.000Z',
+            },
           ],
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -2089,6 +2155,18 @@ describe('HonoWarden app', () => {
           revisionDate: '2026-07-06T00:05:00.000Z',
           creationDate: '2026-07-06T00:04:00.000Z',
           deletedDate: null,
+        },
+        {
+          object: 'cipher',
+          id: 'trashed-cipher-id',
+          organizationId: null,
+          folderId: null,
+          type: 1,
+          favorite: false,
+          name: '2.trashed-encrypted-cipher-name',
+          revisionDate: '2026-07-06T00:06:00.000Z',
+          creationDate: '2026-07-06T00:04:30.000Z',
+          deletedDate: '2026-07-06T00:06:00.000Z',
         },
       ],
     })
@@ -2419,6 +2497,9 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: {
+            createdAt: '2026-07-06T00:04:00.000Z',
+          },
           cipherUpdateChanges: 1,
           folder: {
             id: 'folder-id',
@@ -2437,7 +2518,7 @@ describe('HonoWarden app', () => {
       favorite: true,
       name: '2.updated-encrypted-cipher-name',
       revisionDate: expect.any(String),
-      creationDate: expect.any(String),
+      creationDate: '2026-07-06T00:04:00.000Z',
       deletedDate: null,
     })
   })
@@ -2481,6 +2562,44 @@ describe('HonoWarden app', () => {
       futureEncryptedShape: {
         value: '2.updated-encrypted-future-field',
       },
+      deletedDate: null,
+    })
+  })
+
+  it('accepts the live CLI revision alias when updating a cipher', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          folderId: null,
+          lastKnownRevisionDate: '2026-07-06T00:04:00.000Z',
+          name: '2.updated-encrypted-cipher-name',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherUpdateChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'cipher-id',
+      folderId: null,
+      name: '2.updated-encrypted-cipher-name',
+      revisionDate: expect.any(String),
       deletedDate: null,
     })
   })
@@ -2661,9 +2780,9 @@ describe('HonoWarden app', () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
-      '/api/ciphers/cipher-id',
+      '/api/ciphers/cipher-id/delete',
       {
-        method: 'DELETE',
+        method: 'PUT',
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -2719,7 +2838,7 @@ describe('HonoWarden app', () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
-      '/api/ciphers/cipher-id/delete',
+      '/api/ciphers/cipher-id',
       {
         method: 'DELETE',
         headers: {
@@ -2748,8 +2867,9 @@ describe('HonoWarden app', () => {
     const accessToken = await accessTokenFor(user)
 
     for (const [method, path, options] of [
-      ['DELETE', '/api/ciphers/cipher-id', { cipherSoftDeleteChanges: 0 }],
+      ['PUT', '/api/ciphers/cipher-id/delete', { cipherSoftDeleteChanges: 0 }],
       ['PUT', '/api/ciphers/cipher-id/restore', { cipherRestoreChanges: 0 }],
+      ['DELETE', '/api/ciphers/cipher-id', { cipherPermanentDeleteChanges: 0 }],
       [
         'DELETE',
         '/api/ciphers/cipher-id/delete',

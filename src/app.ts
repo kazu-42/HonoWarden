@@ -1459,7 +1459,7 @@ app.put('/api/ciphers/:id', async (c) => {
   }
 })
 
-app.delete('/api/ciphers/:id', async (c) => {
+app.put('/api/ciphers/:id/delete', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
@@ -1494,6 +1494,10 @@ app.delete('/api/ciphers/:id', async (c) => {
       503,
     )
   }
+})
+
+app.delete('/api/ciphers/:id', async (c) => {
+  return permanentlyDeleteCipherById(c)
 })
 
 app.put('/api/ciphers/:id/restore', async (c) => {
@@ -1534,16 +1538,28 @@ app.put('/api/ciphers/:id/restore', async (c) => {
 })
 
 app.delete('/api/ciphers/:id/delete', async (c) => {
+  return permanentlyDeleteCipherById(c)
+})
+
+async function permanentlyDeleteCipherById(c: AppContext) {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  if (!cipherId) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'Cipher id is required.'),
+      400,
+    )
   }
 
   const now = new Date().toISOString()
 
   try {
     const result = await permanentlyDeleteCipher(c.env.DB, {
-      id: c.req.param('id'),
+      id: cipherId,
       userId: auth.user.id,
       revisionDate: now,
     })
@@ -1567,7 +1583,7 @@ app.delete('/api/ciphers/:id/delete', async (c) => {
       503,
     )
   }
-})
+}
 
 app.notFound((c) => {
   return c.json(
@@ -1771,18 +1787,81 @@ function buildSyncResponse(
 }
 
 function buildCipherResponse(cipher: CipherRecord) {
+  const payload = normalizeCipherResponsePayload(
+    parseStoredCipherPayload(cipher.encryptedJson),
+  )
+
   return {
-    ...parseStoredCipherPayload(cipher.encryptedJson),
+    ...payload,
     object: 'cipher',
     id: cipher.id,
     organizationId: null,
     folderId: cipher.folderId,
     type: cipher.type,
     favorite: cipher.favorite,
+    edit: readBoolean(payload.edit, true),
+    viewPassword: readBoolean(payload.viewPassword, true),
+    organizationUseTotp: readBoolean(payload.organizationUseTotp, false),
+    collectionIds: readStringArray(payload.collectionIds),
+    permissions: normalizeCipherPermissions(payload.permissions),
     revisionDate: cipher.revisionDate,
     creationDate: cipher.createdAt,
-    deletedDate: null,
+    deletedDate: cipher.deletedAt ?? null,
   }
+}
+
+function normalizeCipherResponsePayload(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalized = { ...payload }
+
+  if (
+    Object.hasOwn(normalized, 'attachments') &&
+    !Array.isArray(normalized.attachments)
+  ) {
+    normalized.attachments = []
+  }
+  if (
+    Object.hasOwn(normalized, 'Attachments') &&
+    !Array.isArray(normalized.Attachments)
+  ) {
+    normalized.Attachments = []
+  }
+
+  delete normalized.attachments2
+  delete normalized.Attachments2
+
+  return normalized
+}
+
+function normalizeCipherPermissions(value: unknown) {
+  if (!isPlainObject(value)) {
+    return {
+      delete: true,
+      restore: true,
+    }
+  }
+
+  return {
+    delete: readBoolean(value.delete ?? value.Delete, true),
+    restore: readBoolean(value.restore ?? value.Restore, true),
+  }
+}
+
+function readBoolean(value: unknown, defaultValue: boolean): boolean {
+  return typeof value === 'boolean' ? value : defaultValue
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function buildFolderResponse(folder: FolderRecord) {
@@ -2085,8 +2164,9 @@ function parseCipherUpdateRequestBody(body: unknown):
     return { ok: false }
   }
 
+  const payload = body as Record<string, unknown>
   const revisionDate = parseRequiredString(
-    (body as Record<string, unknown>).revisionDate,
+    payload.revisionDate ?? payload.lastKnownRevisionDate,
   )
   if (!revisionDate) {
     return { ok: false }

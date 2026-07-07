@@ -1,0 +1,78 @@
+{
+  "title": "Week 26 CLI Item Live Smoke",
+  "slug": "week-26-cli-item-live-smoke",
+  "created_at": "2026-07-07T03:09:28+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "The user requested sustained local implementation. This workflow uses local synthetic data only; Cloudflare deploys, remote secrets, route changes, billing, and production data are out of scope."
+  },
+  "packets": [
+    {
+      "id": "01-local-smoke-setup",
+      "status": "completed"
+    },
+    {
+      "id": "02-cli-mutation-discovery",
+      "status": "completed"
+    },
+    {
+      "id": "03-compatibility-implementation",
+      "status": "completed"
+    },
+    {
+      "id": "04-evidence-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "in_progress",
+    "checks": [
+      {
+        "name": "targeted app and cipher repository tests",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed"
+      },
+      {
+        "name": "audit",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "status": "passed"
+      },
+      {
+        "name": "full test suite",
+        "status": "passed"
+      },
+      {
+        "name": "compat test suite",
+        "status": "passed"
+      },
+      {
+        "name": "format check",
+        "status": "passed"
+      },
+      {
+        "name": "strict release gate",
+        "status": "passed"
+      },
+      {
+        "name": "repository brand scans",
+        "status": "passed"
+      },
+      {
+        "name": "local CLI item create/update/trash/permanent-delete smoke",
+        "status": "passed"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "pending"
+      }
+    ]
+  }
+}

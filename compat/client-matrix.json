@@ -118,14 +118,20 @@
       "liveEvidence": {
         "path": "docs/release/live-client-evidence.md",
         "status": "passed",
-        "recordedAt": "2026-07-07T01:22:56Z",
+        "recordedAt": "2026-07-07T03:34:25Z",
         "clientVersion": "2026.6.0",
         "flows": [
           "config",
           "prelogin",
           "password_grant",
           "empty_sync",
-          "revision_date"
+          "revision_date",
+          "cipher_create",
+          "sync_with_items",
+          "cipher_update",
+          "cipher_soft_delete",
+          "trash_sync",
+          "cipher_permanent_delete"
         ]
       },
       "coveredFlows": [
@@ -142,7 +148,7 @@
         "totp_login"
       ],
       "knownIssues": [
-        "Live CLI smoke covers config, password login, empty sync, and account revision lookup only.",
+        "Live CLI smoke covers config, password login, sync, one synthetic login item create/update/trash/permanent-delete flow, and account revision lookup only.",
         "The live smoke used a local compression-stripping HTTPS proxy because wrangler dev returned gzip chunked responses that the tracked CLI HTTP stack rejected.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Device list and device metadata update APIs are not implemented yet.",

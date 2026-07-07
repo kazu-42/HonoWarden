@@ -20,7 +20,7 @@ const fakeMeta = {
 } satisfies D1Meta & Record<string, unknown>
 
 describe('cipher repository', () => {
-  it('lists active ciphers for one user', async () => {
+  it('lists user ciphers for sync, including trashed rows', async () => {
     const database = new RecordingCipherD1Database([
       {
         id: 'cipher-id',
@@ -31,6 +31,17 @@ describe('cipher repository', () => {
         encryptedJson: '{"name":"2.encrypted-name"}',
         revisionDate: '2026-07-06T00:04:00.000Z',
         createdAt: '2026-07-06T00:04:00.000Z',
+      },
+      {
+        id: 'trashed-cipher-id',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: '{"name":"2.trashed-encrypted-name"}',
+        revisionDate: '2026-07-06T00:05:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+        deletedAt: '2026-07-06T00:05:00.000Z',
       },
     ])
 
@@ -45,9 +56,21 @@ describe('cipher repository', () => {
         revisionDate: '2026-07-06T00:04:00.000Z',
         createdAt: '2026-07-06T00:04:00.000Z',
       },
+      {
+        id: 'trashed-cipher-id',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: false,
+        encryptedJson: '{"name":"2.trashed-encrypted-name"}',
+        revisionDate: '2026-07-06T00:05:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+        deletedAt: '2026-07-06T00:05:00.000Z',
+      },
     ])
     expect(database.boundValues).toContain('user-id')
-    expect(database.queries.join('\n')).toContain('deleted_at IS NULL')
+    expect(database.queries.join('\n')).toContain('WHERE user_id = ?')
+    expect(database.queries.join('\n')).not.toContain('deleted_at IS NULL')
   })
 
   it('creates a cipher with encrypted JSON as an opaque payload', async () => {
@@ -81,9 +104,16 @@ describe('cipher repository', () => {
   })
 
   it('updates an active cipher only when it belongs to the user', async () => {
-    const database = new RecordingCipherD1Database([], {
-      updateChanges: 1,
-    })
+    const database = new RecordingCipherD1Database(
+      [
+        {
+          createdAt: '2026-07-06T00:04:00.000Z',
+        },
+      ],
+      {
+        updateChanges: 1,
+      },
+    )
 
     await expect(
       updateCipher(database, {
@@ -95,7 +125,7 @@ describe('cipher repository', () => {
         encryptedJson: '{"name":"2.updated-encrypted-name"}',
         expectedRevisionDate: '2026-07-06T00:04:00.000Z',
         revisionDate: '2026-07-06T00:06:00.000Z',
-        createdAt: '2026-07-06T00:04:00.000Z',
+        createdAt: '2026-07-06T00:06:00.000Z',
       }),
     ).resolves.toEqual({
       status: 'updated',

@@ -7,6 +7,7 @@ export type CipherRecord = {
   encryptedJson: string
   revisionDate: string
   createdAt: string
+  deletedAt?: string | null
 }
 
 export type CipherCreateInput = CipherRecord
@@ -88,6 +89,7 @@ type CipherRow = {
   encryptedJson: string
   revisionDate: string
   createdAt: string
+  deletedAt?: string | null
 }
 
 type CipherRevisionRow = {
@@ -109,9 +111,10 @@ export async function listCiphersByUser(
           favorite,
           encrypted_json as encryptedJson,
           revision_date as revisionDate,
-          created_at as createdAt
+          created_at as createdAt,
+          deleted_at as deletedAt
         FROM ciphers
-        WHERE user_id = ? AND deleted_at IS NULL
+        WHERE user_id = ?
         ORDER BY revision_date ASC, id ASC
       `,
     )
@@ -162,6 +165,11 @@ export async function updateCipher(
   database: CipherDatabase,
   input: CipherUpdateInput,
 ): Promise<CipherUpdateResult> {
+  const existingCreatedAt = await findActiveCipherCreatedAt(database, {
+    id: input.id,
+    userId: input.userId,
+  })
+
   const result = await database
     .prepare(
       `
@@ -209,7 +217,10 @@ export async function updateCipher(
 
   return {
     status: 'updated',
-    cipher: cipherFromUpdateInput(input),
+    cipher: cipherFromUpdateInput({
+      ...input,
+      createdAt: existingCreatedAt ?? input.createdAt,
+    }),
   }
 }
 
@@ -310,7 +321,7 @@ export async function permanentlyDeleteCipher(
 }
 
 function cipherFromRow(row: CipherRow): CipherRecord {
-  return {
+  const cipher: CipherRecord = {
     id: row.id,
     userId: row.userId,
     folderId: row.folderId,
@@ -320,6 +331,12 @@ function cipherFromRow(row: CipherRow): CipherRecord {
     revisionDate: row.revisionDate,
     createdAt: row.createdAt,
   }
+
+  if (row.deletedAt != null) {
+    cipher.deletedAt = row.deletedAt
+  }
+
+  return cipher
 }
 
 async function findActiveCipherRevision(
@@ -339,6 +356,25 @@ async function findActiveCipherRevision(
     .first<CipherRevisionRow>()
 
   return row?.revisionDate ?? null
+}
+
+async function findActiveCipherCreatedAt(
+  database: CipherDatabase,
+  input: Pick<CipherRecord, 'id' | 'userId'>,
+): Promise<string | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT created_at as createdAt
+        FROM ciphers
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.id, input.userId)
+    .first<Pick<CipherRow, 'createdAt'>>()
+
+  return row?.createdAt ?? null
 }
 
 function cipherFromUpdateInput(input: CipherUpdateInput): CipherRecord {
