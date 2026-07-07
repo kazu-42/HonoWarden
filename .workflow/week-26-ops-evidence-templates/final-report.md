@@ -34,6 +34,8 @@ Verification:
 - Typecheck, lint, format, brand scan, strict release gate, full test suite, and
   compatibility tests: passed.
 - Release status remains `draft_ready_for_publication`.
+- GitHub Actions CI for implementation commit `b1474ef`: passed in run
+  `28890162723`.
 
 External writes not performed:
 
