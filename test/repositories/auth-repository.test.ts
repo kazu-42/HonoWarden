@@ -13,6 +13,7 @@ import {
   recordAuthAttempt,
   recordFailedAuthBucket,
   recordFailedLogin,
+  revokeOtherDeviceSessions,
   resetAuthFailureBucket,
   resetLoginDefenseState,
   revokeDeviceSession,
@@ -436,6 +437,31 @@ describe('auth repository', () => {
 
     expect(database.queries.join('\n')).toContain('UPDATE devices')
     expect(database.queries.join('\n')).not.toContain('UPDATE refresh_tokens')
+  })
+
+  it('revokes every other device session while preserving the current device', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await expect(
+      revokeOtherDeviceSessions(database, {
+        userId: 'user-id',
+        currentDeviceId: 'user-id:current-device',
+        revokedAt: '2026-07-06T00:15:00.000Z',
+      }),
+    ).resolves.toEqual({
+      currentDeviceId: 'user-id:current-device',
+      currentSessionRevoked: false,
+      revokedAt: '2026-07-06T00:15:00.000Z',
+    })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('UPDATE devices')
+    expect(query).toContain('UPDATE refresh_tokens')
+    expect(query).toContain('id <> ?')
+    expect(query).toContain('device_id <> ?')
+    expect(database.boundValues).toContain('user-id')
+    expect(database.boundValues).toContain('user-id:current-device')
+    expect(database.batchStatements).toHaveLength(2)
   })
 })
 

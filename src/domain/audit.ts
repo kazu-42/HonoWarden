@@ -4,6 +4,7 @@ export type AuditEventName =
   | 'auth.refresh_grant'
   | 'auth.refresh_reuse'
   | 'device.revoke'
+  | 'session.revoke_all'
 
 export type AuditEventOutcome = 'success' | 'failure'
 

@@ -64,6 +64,18 @@ export type DeviceRevokeInput = {
   revokedAt: string
 }
 
+export type RevokeOtherDeviceSessionsInput = {
+  userId: string
+  currentDeviceId: string
+  revokedAt: string
+}
+
+export type RevokeOtherDeviceSessionsResult = {
+  currentDeviceId: string
+  currentSessionRevoked: false
+  revokedAt: string
+}
+
 export type FailedLoginInput = {
   userId: string
   failedCount: number
@@ -138,6 +150,7 @@ export type AuthDefenseCleanupResult = {
 type AuthLookupDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
+type AuthSessionRevokeDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type LoginDefenseDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
@@ -867,6 +880,43 @@ export async function revokeDeviceSession(
   return {
     status: 'revoked',
     deviceId: input.deviceId,
+    revokedAt: input.revokedAt,
+  }
+}
+
+export async function revokeOtherDeviceSessions(
+  database: AuthSessionRevokeDatabase,
+  input: RevokeOtherDeviceSessionsInput,
+): Promise<RevokeOtherDeviceSessionsResult> {
+  await database.batch([
+    database
+      .prepare(
+        `
+          UPDATE devices
+          SET revoked_at = ?, updated_at = ?
+          WHERE user_id = ? AND id <> ? AND revoked_at IS NULL
+        `,
+      )
+      .bind(
+        input.revokedAt,
+        input.revokedAt,
+        input.userId,
+        input.currentDeviceId,
+      ),
+    database
+      .prepare(
+        `
+          UPDATE refresh_tokens
+          SET revoked_at = ?
+          WHERE user_id = ? AND device_id <> ? AND revoked_at IS NULL
+        `,
+      )
+      .bind(input.revokedAt, input.userId, input.currentDeviceId),
+  ])
+
+  return {
+    currentDeviceId: input.currentDeviceId,
+    currentSessionRevoked: false,
     revokedAt: input.revokedAt,
   }
 }

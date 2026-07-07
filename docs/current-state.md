@@ -281,7 +281,6 @@ Implemented:
 Not implemented:
 
 - backup export route or backup-export re-auth guard
-- revoke-all-sessions route or revoke-all re-auth guard
 - TOTP disable/change route
 - live client re-auth evidence
 
@@ -593,3 +592,21 @@ Not implemented:
 
 - organization or shared-vault functionality
 - public file-sharing functionality
+
+## Week 26 Revoke Other Sessions
+
+Implemented:
+
+- authenticated `POST /api/devices/revoke-all`
+- recent password authentication requirement for revoke-all-other-sessions
+- refresh-auth token rejection with `reauth_required`
+- D1 batch update that revokes other active devices and their refresh tokens
+- current device/session preservation in the response contract
+- `session.revoke_all` audit event
+- repository and HTTP tests for current-device preservation and recent-auth
+  enforcement
+
+Not implemented:
+
+- live client evidence for revoke-all-other-sessions
+- account management UI or admin tooling for session inventory

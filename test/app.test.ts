@@ -1655,6 +1655,112 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('revokes all other sessions after recent password authentication', async () => {
+    const user = authUserRecord()
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/revoke-all',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'revoke-all-sessions-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'sessionsRevoke',
+      currentDeviceId: buildDevicePathId('fixture-device'),
+      currentSessionRevoked: false,
+      revokedDate: expect.any(String),
+      requestId: 'revoke-all-sessions-request',
+    })
+  })
+
+  it('requires recent password authentication before revoking all other sessions', async () => {
+    const user = authUserRecord()
+    const accessToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/revoke-all',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'revoke-all-reauth-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'reauth_required',
+      },
+      requestId: 'revoke-all-reauth-request',
+    })
+  })
+
+  it('emits a secret-safe audit event when revoking all other sessions', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/revoke-all',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-revoke-all-sessions-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const event = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
+    expect(event).toMatchObject({
+      object: 'auditEvent',
+      schemaVersion: 1,
+      name: 'session.revoke_all',
+      outcome: 'success',
+      requestId: 'audit-revoke-all-sessions-request',
+      actor: {
+        userId: 'user-id',
+        deviceIdentifier: 'fixture-device',
+      },
+      target: {
+        type: 'session',
+        id: buildDevicePathId('fixture-device'),
+      },
+      context: {
+        currentSessionRevoked: false,
+      },
+    })
+    expect(JSON.stringify(event)).not.toContain(accessToken)
+    expect(JSON.stringify(event)).not.toContain('test-token-secret')
+  })
+
   it('creates a folder for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)

@@ -75,8 +75,9 @@ bearer token
 Recent-auth invariant:
 
 - sensitive TOTP setup routes require `authMethod=password`
+- revoke-all-other-sessions requires `authMethod=password`
 - token age must be within the recent password-auth window
-- refresh-auth and legacy claimless tokens are rejected for TOTP setup routes
+- refresh-auth and legacy claimless tokens are rejected for recent-auth routes
 
 ## Device Revoke
 
@@ -93,3 +94,20 @@ Failure invariants:
 - current-device revoke through this route is forbidden
 - missing, already revoked, or cross-user devices return not found
 - successful and not-found outcomes are auditable when audit logging is enabled
+
+## Revoke Other Sessions
+
+```text
+recent password-authenticated user
+  -> derive current device id from access token device claim
+  -> revoke other active devices for this user
+  -> revoke refresh tokens for other devices
+  -> keep current device and current session active
+```
+
+Failure invariants:
+
+- refresh-auth, stale password-auth, and legacy claimless tokens return
+  `reauth_required`
+- the current session is explicitly preserved
+- successful outcomes are auditable when audit logging is enabled

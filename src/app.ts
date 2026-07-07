@@ -70,6 +70,7 @@ import {
   recordAuthAttempt,
   recordFailedAuthBucket,
   recordFailedLogin,
+  revokeOtherDeviceSessions,
   resetAuthFailureBucket,
   resetLoginDefenseState,
   revokeDeviceSession,
@@ -1211,6 +1212,57 @@ app.post('/api/devices/:id/revoke', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Device revoke failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/devices/revoke-all', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const currentDeviceId = buildDeviceId(auth.user.id, auth.deviceIdentifier)
+  const revokedAt = new Date().toISOString()
+
+  try {
+    const result = await revokeOtherDeviceSessions(c.env.DB, {
+      userId: auth.user.id,
+      currentDeviceId,
+      revokedAt,
+    })
+
+    emitAuditEvent(c, {
+      name: 'session.revoke_all',
+      outcome: 'success',
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'session',
+        id: currentDeviceId,
+      },
+      context: {
+        currentSessionRevoked: false,
+      },
+    })
+
+    return c.json({
+      object: 'sessionsRevoke',
+      currentDeviceId: result.currentDeviceId,
+      currentSessionRevoked: result.currentSessionRevoked,
+      revokedDate: result.revokedAt,
+      requestId: c.get('requestId'),
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Session revoke failed.',
       ),
       503,
     )

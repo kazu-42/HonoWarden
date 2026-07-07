@@ -81,14 +81,14 @@ Out of scope for the initial product:
 
 ## STRIDE Summary
 
-| Threat                 | Current Controls                                                                                                    | Residual Risk                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow           | no asymmetric token keys; device metadata APIs are incomplete                |
-| Tampering              | D1 owner predicates, revision conflict checks, backup checksum validation                                           | no live restore drill evidence yet                                           |
-| Repudiation            | opt-in audit events for bootstrap, auth failures, refresh reuse, and device revoke                                  | audit events are not persisted in D1 and do not cover every vault CRUD route |
-| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, secret-safe audit filtering           | platform logs/backups remain sensitive operational data                      |
-| Denial of service      | password-grant IP and account lockouts, bounded fixture tests                                                       | no global request quota, queue, or abuse monitoring beyond login defenses    |
-| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for TOTP setup | no admin console or full account lifecycle tooling yet                       |
+| Threat                 | Current Controls                                                                                                           | Residual Risk                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                  | no asymmetric token keys; device metadata APIs are incomplete                |
+| Tampering              | D1 owner predicates, revision conflict checks, backup checksum validation                                                  | no live restore drill evidence yet                                           |
+| Repudiation            | opt-in audit events for bootstrap, auth failures, refresh reuse, device revoke, and revoke-all-other-sessions              | audit events are not persisted in D1 and do not cover every vault CRUD route |
+| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, secret-safe audit filtering                  | platform logs/backups remain sensitive operational data                      |
+| Denial of service      | password-grant IP and account lockouts, bounded fixture tests                                                              | no global request quota, queue, or abuse monitoring beyond login defenses    |
+| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions | no admin console or full account lifecycle tooling yet                       |
 
 ## High-Risk Abuse Paths
 

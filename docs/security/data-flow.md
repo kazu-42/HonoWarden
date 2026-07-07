@@ -104,6 +104,7 @@ Current event coverage:
 - password-grant failures that reach credential validation
 - refresh-token reuse
 - device revoke success and not-found outcomes
+- revoke-all-other-sessions success
 
 Events must not include passwords, token plaintext, token hashes, encrypted
 payloads, request bodies, or response bodies.
