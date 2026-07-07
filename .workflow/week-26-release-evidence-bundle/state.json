@@ -1,0 +1,45 @@
+{
+  "title": "Week 26 Release Evidence Bundle",
+  "slug": "week-26-release-evidence-bundle",
+  "created_at": "2026-07-07T06:29:54+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, docs, tests, workflow artifacts, and read-only checks only. Tag, release, DNS, email, and deploy writes remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "cli-contract",
+      "status": "completed"
+    },
+    {
+      "id": "tests",
+      "status": "completed"
+    },
+    {
+      "id": "docs-workflow",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/ops/release-evidence-bundle.test.ts",
+      "pnpm test -- test/release-docs.test.ts",
+      "pnpm release:evidence:bundle -- --allow-dirty --ci-run-id 28846213680 --ci-url https://github.com/kazu-42/HonoWarden/actions/runs/28846213680",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm format",
+      "pnpm release:gate -- --strict",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-evidence-bundle",
+      "GitHub Actions CI after push is reported outside this committed artifact to avoid a self-referential evidence loop"
+    ]
+  }
+}

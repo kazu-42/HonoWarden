@@ -869,3 +869,26 @@ Not implemented:
 - tag push
 - GitHub release draft creation or publication
 - deployment from a tag or release
+
+## Week 26 Release Evidence Bundle
+
+Implemented:
+
+- read-only pre-tag evidence bundle exposed as
+  `pnpm release:evidence:bundle`
+- combined JSON summary of strict release gate, remote tag preflight, release
+  approval packet, post-tag dry-run preview, and repository brand scan
+- optional local `--output` writer for saving the JSON evidence artifact without
+  touching external systems
+- exact tag approval text emitted only when strict evidence is ready for the
+  current commit
+- focused tests covering ready output, explicit local evidence output, and
+  strict failure when CI evidence is absent
+- tagging runbook step requiring the evidence bundle before tag approval
+
+Not implemented:
+
+- automatic tag creation
+- automatic tag push
+- GitHub release draft creation or publication
+- deployment from a tag or release

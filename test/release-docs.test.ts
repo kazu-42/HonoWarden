@@ -84,6 +84,7 @@ describe('release feature-freeze docs', () => {
     expect(runbook).toContain(
       'pnpm release:tag:preflight -- --strict --check-remote',
     )
+    expect(runbook).toContain('pnpm release:evidence:bundle -- --strict')
     expect(runbook).toContain('pnpm release:post-tag:packet -- --strict')
     expect(runbook).toContain('git tag -a v0.1.0-alpha')
     expect(runbook).toContain('git push origin v0.1.0-alpha')

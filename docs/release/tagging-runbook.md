@@ -38,12 +38,15 @@ URL, and the preflight output. Ask the operator to approve creating and pushing
 Use the approval packet to collect those values in one read-only report:
 
 ```sh
+pnpm release:evidence:bundle -- --strict --ci-run-id <run-id> --ci-url <ci-url> --output docs/release/evidence/v0.1.0-alpha-pre-tag.json
 pnpm release:approval:packet -- --ci-run-id <run-id> --ci-url <ci-url>
 ```
 
-Expected result: `status: "ready"`. The packet prints the exact approval text
-that must be copied before tag creation and push. It also verifies the CI run is
-completed successfully for the current commit SHA.
+Expected result: both commands report `status: "ready"`. The evidence bundle
+collects the release gate, tag preflight, approval packet, post-tag preview,
+and repository brand scan in one JSON artifact. The approval packet prints the
+exact approval text that must be copied before tag creation and push. It also
+verifies the CI run is completed successfully for the current commit SHA.
 
 Do not proceed if any of these are true:
 
@@ -51,6 +54,8 @@ Do not proceed if any of these are true:
 - the local tag already exists
 - the remote tag already exists
 - CI is pending, failed, skipped, or for a different commit
+- the evidence bundle is missing, was generated for a different commit, or
+  reports `not_ready`
 - the approval packet is missing or reports `not_ready`
 - preflight output was generated without `--check-remote`
 - preflight output was generated with `--allow-dirty` or `--allow-existing-tag`
