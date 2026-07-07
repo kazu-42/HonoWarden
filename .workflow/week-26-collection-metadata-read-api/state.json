@@ -1,0 +1,80 @@
+{
+  "title": "Week 26 Collection Metadata Read API",
+  "slug": "week-26-collection-metadata-read-api",
+  "created_at": "2026-07-07T13:21:30+00:00",
+  "updated_at": "2026-07-07T13:25:57Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, tests, docs, workflow artifacts, commit, push, and CI verification only. GitHub Release publication, deployment, tag mutation, DNS, email routing, secret writes, and Cloudflare resource writes remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-routes",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-tests-fixtures-docs",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec prettier --write src/app.ts test/app.test.ts compat/fixture-flows.json compat/fixtures/metadata/collections-list-success.json compat/fixtures/metadata/collection-get-not-found.json docs/current-state.md",
+        "status": "passed",
+        "evidence": "Prettier updated test/app.test.ts."
+      },
+      {
+        "command": "pnpm exec vitest run test/app.test.ts test/compat/client-matrix.test.ts test/compat/compat-fixtures.test.ts",
+        "status": "passed",
+        "evidence": "3 files, 147 tests"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-collection-metadata-read-api",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "39 files, 319 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed",
+        "evidence": "No forbidden external compatibility brand strings found outside allowed exclusions."
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready"
+      },
+      {
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "phase draft_ready_for_publication"
+      }
+    ]
+  }
+}

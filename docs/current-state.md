@@ -744,6 +744,24 @@ Not implemented:
 - custom equivalent-domain configuration
 - live client evidence for metadata read endpoints
 
+## Week 26 Collection Metadata Read API
+
+Implemented:
+
+- authenticated `GET /api/collections`
+- authenticated `GET /api/collections/:id`
+- collection list returns an empty list response for the alpha personal-vault
+  scope
+- collection lookup returns stable `collection_not_found`
+- collection mutation routes remain explicit `unsupported_feature` responses
+- compatibility fixture coverage under the `metadata_read` flow
+
+Not implemented:
+
+- collection creation, update, deletion, or assignment behavior
+- organization-scoped collections
+- live client evidence for collection metadata reads
+
 ## Week 26 Alpha Version Alignment
 
 Implemented:

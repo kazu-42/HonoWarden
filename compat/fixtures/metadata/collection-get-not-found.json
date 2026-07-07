@@ -1,0 +1,33 @@
+{
+  "name": "metadata-collection-get-not-found",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/collections/collection-id"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 404,
+    "body": {
+      "error": {
+        "code": "collection_not_found",
+        "message": "Collection was not found."
+      },
+      "requestId": "fixture-request-id"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.error.code",
+      "type": "string",
+      "value": "collection_not_found"
+    },
+    {
+      "path": "$.requestId",
+      "type": "string"
+    }
+  ]
+}

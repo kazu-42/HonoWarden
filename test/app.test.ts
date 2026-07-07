@@ -434,6 +434,83 @@ describe('HonoWarden app', () => {
     }
   })
 
+  it('returns empty collection metadata for authenticated users', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/collections',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'list',
+      data: [],
+      continuationToken: null,
+    })
+  })
+
+  it('returns not found for collection metadata lookups', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/collections/collection-id',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'collection-read-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'collection_not_found',
+        message: 'Collection was not found.',
+      },
+      requestId: 'collection-read-request',
+    })
+  })
+
+  it('requires bearer authorization for collection metadata reads', async () => {
+    const response = await app.request(
+      '/api/collections',
+      {
+        headers: {
+          'X-Request-Id': 'collection-missing-token-request',
+        },
+      },
+      {
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'missing_token',
+      },
+      requestId: 'collection-missing-token-request',
+    })
+  })
+
   it('keeps account bootstrap disabled by default', async () => {
     const response = await app.request('/api/accounts/bootstrap', {
       method: 'POST',

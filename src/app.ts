@@ -436,6 +436,31 @@ app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
 app.all('/api/sends', unsupportedAlphaFeature)
 app.all('/api/sends/*', unsupportedAlphaFeature)
+app.get('/api/collections', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(buildEmptyListResponse())
+})
+
+app.get('/api/collections/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'collection_not_found',
+      'Collection was not found.',
+    ),
+    404,
+  )
+})
+
 app.all('/api/collections', unsupportedAlphaFeature)
 app.all('/api/collections/*', unsupportedAlphaFeature)
 app.all('/api/emergency-access', unsupportedAlphaFeature)
@@ -1038,7 +1063,7 @@ app.get('/api/policies', async (c) => {
     return auth.response
   }
 
-  return c.json(buildPolicyListResponse())
+  return c.json(buildEmptyListResponse())
 })
 
 app.get('/api/policies/new', async (c) => {
@@ -1047,7 +1072,7 @@ app.get('/api/policies/new', async (c) => {
     return auth.response
   }
 
-  return c.json(buildPolicyListResponse())
+  return c.json(buildEmptyListResponse())
 })
 
 app.get('/api/domains', async (c) => {
@@ -2230,7 +2255,7 @@ function buildSyncResponse(
   }
 }
 
-function buildPolicyListResponse() {
+function buildEmptyListResponse() {
   return {
     object: 'list',
     data: [],
@@ -2421,6 +2446,7 @@ function apiError(
   code:
     | 'cipher_folder_not_found'
     | 'cipher_not_found'
+    | 'collection_not_found'
     | 'current_device_revoke_forbidden'
     | 'database_unavailable'
     | 'device_not_found'

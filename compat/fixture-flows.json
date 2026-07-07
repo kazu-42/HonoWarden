@@ -36,7 +36,9 @@
         "metadata/policies-list-success.json",
         "metadata/policies-new-list-success.json",
         "metadata/domains-success.json",
-        "metadata/settings-domains-success.json"
+        "metadata/settings-domains-success.json",
+        "metadata/collections-list-success.json",
+        "metadata/collection-get-not-found.json"
       ]
     },
     {
