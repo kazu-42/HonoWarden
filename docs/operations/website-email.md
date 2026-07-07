@@ -6,7 +6,7 @@ This document organizes the public website and email work around
 ## Known URLs And Repositories
 
 - API repository: `https://github.com/kazu-42/HonoWarden`
-- Website repository to create: `https://github.com/kazu-42/HonoWarden-website`
+- Website repository: `https://github.com/kazu-42/HonoWarden-website`
 - Linear workspace: `https://linear.app/honowarden/`
 - Public domain: `honowarden.com`
 
@@ -14,14 +14,18 @@ This document organizes the public website and email work around
 
 1. Prepare local operator env with direnv.
 2. Confirm GitHub and Cloudflare identity with read-only commands.
-3. Create `kazu-42/HonoWarden-website`.
-4. Scaffold a Hono Worker website in the separate repository.
-5. Add CI and a dry-run deploy check to the website repository.
-6. Deploy a staging or preview website Worker.
-7. Route `honowarden.com` and `www.honowarden.com` to the website Worker.
-8. Configure email routing for project contact addresses.
-9. Record DNS, email, deployment, and rollback evidence in this repository.
-10. Mirror the completed work into Linear issues and project updates.
+3. Keep `kazu-42/HonoWarden-website` as the separate public website
+   repository.
+4. Keep the Hono Worker website deployable from that separate repository.
+5. Keep CI, typecheck, lint, tests, and formatting green in the website
+   repository.
+6. Verify `honowarden.com` and `www.honowarden.com` after each website deploy.
+7. Configure email routing for project contact addresses after Cloudflare Email
+   Routing scopes are available.
+8. Record DNS, email, deployment, and rollback evidence in this repository and
+   the website repository.
+9. Mirror completed work into Linear issues and project updates once the Linear
+   API key is available.
 
 ## Website Shape
 
@@ -58,6 +62,7 @@ Recommended alpha setup:
 | `security@honowarden.com`   | vulnerability reports              | Forward to verified private destination; no auto-reply until tested. |
 | `support@honowarden.com`    | operational support                | Forward to verified private destination.                             |
 | `hello@honowarden.com`      | general project contact            | Forward to verified private destination.                             |
+| `admin@honowarden.com`      | domain and service operations      | Forward to verified private destination.                             |
 | `postmaster@honowarden.com` | required domain operations contact | Forward to verified private destination.                             |
 | `abuse@honowarden.com`      | required abuse contact             | Forward to verified private destination.                             |
 
@@ -96,9 +101,27 @@ Email:
 - Email Routing is enabled for `honowarden.com`.
 - MX and SPF records are present as Cloudflare expects.
 - Destination inboxes are verified.
-- Routes exist for `security`, `support`, `hello`, `postmaster`, and `abuse`.
+- Routes exist for `security`, `support`, `hello`, `admin`, `postmaster`, and
+  `abuse`.
 - A test message is sent to each route and received at the destination.
 - Evidence records message ids or timestamps without message content.
+
+## Current Status
+
+Website:
+
+- `HonoWarden-website` exists as a public GitHub repository.
+- `honowarden.com` and `www.honowarden.com` currently return the Hono Worker
+  website over HTTPS.
+- `/health` currently returns the website health JSON response.
+
+Email:
+
+- Cloudflare Email Routing is not yet enabled for `honowarden.com`.
+- The current Wrangler OAuth session can manage Workers but is missing
+  `email_routing:write`.
+- `security@honowarden.com` should not be advertised as an active disclosure
+  mailbox until the destination address is verified and an inbound test succeeds.
 
 ## Rollback
 

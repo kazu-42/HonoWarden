@@ -66,6 +66,9 @@ Ignored local files may provide secrets:
 | `HONOWARDEN_SECURITY_FORWARD_TO`    | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
 | `HONOWARDEN_SUPPORT_FORWARD_TO`     | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
 | `HONOWARDEN_GENERAL_FORWARD_TO`     | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_ADMIN_FORWARD_TO`       | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_POSTMASTER_FORWARD_TO`  | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_ABUSE_FORWARD_TO`       | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
 
 Local-only Worker smoke variables are also listed in `.env.example`, but
 staging and production must receive them through Wrangler secret commands:
@@ -107,6 +110,20 @@ Before applying external changes:
 6. Destination inboxes for email routing are verified in Cloudflare.
 7. The current worktree is clean or the pending diff is intentionally scoped.
 
+## Current Linear Access
+
+The intended workspace is `https://linear.app/honowarden/`, but the currently
+connected Linear MCP session resolves to an existing `interx` workspace. Do not
+create or update HonoWarden Linear projects, issues, documents, views, or Pulse
+updates through that session.
+
+Use one of these before Linear writes:
+
+- provide `LINEAR_API_KEY` for the `honowarden` workspace through `.env.local`;
+  or
+- reconnect the Linear MCP session so list/read calls return the HonoWarden
+  workspace instead of `interx`.
+
 ## Missing Inputs
 
 The agent can continue with local planning and repo changes without these
@@ -114,9 +131,9 @@ values. External writes need the following from the operator:
 
 - a Linear API key for the `honowarden` workspace, or a fixed Linear MCP session
   that returns the HonoWarden team
-- Cloudflare account id and `honowarden.com` zone id
 - a scoped Cloudflare API token that can manage Workers, DNS, and Email Routing
   for `honowarden.com`
-- verified forwarding destination addresses for security, support, and general
-  project mail
-- approval to create or update `kazu-42/HonoWarden-website`
+- verified forwarding destination addresses for security, support, general,
+  admin, postmaster, and abuse project mail
+- approval to deploy `kazu-42/HonoWarden-website` changes or mutate
+  Cloudflare DNS and Email Routing
