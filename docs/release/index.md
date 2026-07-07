@@ -39,7 +39,7 @@ reviewed without inventing release process under time pressure.
 - CLI live-client login/sync smoke evidence is recorded; remaining client
   surfaces stay conservative until their own live evidence is recorded.
 - `pnpm release:gate -- --strict` passes on the release commit.
-- `pnpm release:tag:preflight -- --strict` passes on the clean release commit
-  before running the printed tag commands.
+- `pnpm release:tag:preflight -- --strict --check-remote` passes on the clean
+  release commit before running the printed tag commands.
 - [Alpha Tagging Runbook](tagging-runbook.md) has been followed with explicit
   operator approval before tag creation and push.

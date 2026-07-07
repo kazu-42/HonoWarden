@@ -9,6 +9,7 @@ import process from 'node:process'
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const targetTag = 'v0.1.0-alpha'
 const defaultExpectedVersion = '0.1.0-alpha'
+const defaultRemote = 'origin'
 
 function main(argv = process.argv.slice(2)) {
   const options = parseOptions(argv)
@@ -32,6 +33,7 @@ function buildPreflightReport(options) {
     checkReleaseGate(),
     checkWorkingTree(options),
     checkLocalTag(options),
+    ...(options.checkRemote ? [checkRemoteTag(options)] : []),
   ]
   const ready = checks.every((check) => check.status === 'pass')
 
@@ -47,11 +49,7 @@ function buildPreflightReport(options) {
       createTag: `git tag -a ${targetTag} ${sourceCommit} -m "${targetTag}"`,
       pushTag: `git push origin ${targetTag}`,
     },
-    limitations: [
-      'This preflight does not create or push a Git tag.',
-      'Remote tag absence and GitHub release publication are not verified.',
-      'GitHub Actions CI must pass on the exact release commit before pushing the tag.',
-    ],
+    limitations: buildLimitations(options),
   }
 }
 
@@ -120,6 +118,33 @@ function checkLocalTag(options) {
   )
 }
 
+function checkRemoteTag(options) {
+  const remote = options.remote ?? defaultRemote
+  const result = runCommand(['git', 'ls-remote', '--tags', remote, targetTag])
+  const remoteTagAbsent =
+    result.status === 0 && result.stdout.trim().length === 0
+
+  return check(
+    'remote_tag_absent',
+    remoteTagAbsent,
+    result.status !== 0
+      ? firstOutputLine(result) || `remote tag check failed for ${remote}`
+      : remoteTagAbsent
+        ? `remote tag does not exist on ${remote}`
+        : `remote tag already exists on ${remote}`,
+  )
+}
+
+function buildLimitations(options) {
+  return [
+    'This preflight does not create or push a Git tag.',
+    options.checkRemote
+      ? 'GitHub release publication is not verified.'
+      : 'Remote tag absence and GitHub release publication are not verified.',
+    'GitHub Actions CI must pass on the exact release commit before pushing the tag.',
+  ]
+}
+
 function check(id, passed, detail) {
   return {
     id,
@@ -183,8 +208,10 @@ function parseOptions(args) {
   const options = {
     allowDirty: false,
     allowExistingTag: false,
+    checkRemote: false,
     strict: false,
     expectedVersion: defaultExpectedVersion,
+    remote: defaultRemote,
   }
 
   for (let index = 0; index < args.length; index += 1) {
@@ -199,6 +226,18 @@ function parseOptions(args) {
       case '--allow-existing-tag':
         options.allowExistingTag = true
         break
+      case '--check-remote':
+        options.checkRemote = true
+        break
+      case '--remote': {
+        const value = args[index + 1]
+        if (!value) {
+          throw new Error('--remote requires a value')
+        }
+        options.remote = value
+        index += 1
+        break
+      }
       case '--strict':
         options.strict = true
         break
@@ -225,7 +264,7 @@ function parseOptions(args) {
 
 function printUsage() {
   process.stderr.write(`Usage:
-  node scripts/honowarden-alpha-tag-preflight.mjs [--strict] [--allow-dirty] [--allow-existing-tag] [--expected-version <version>]
+  node scripts/honowarden-alpha-tag-preflight.mjs [--strict] [--allow-dirty] [--allow-existing-tag] [--check-remote] [--remote <remote>] [--expected-version <version>]
 `)
 }
 

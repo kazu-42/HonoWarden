@@ -81,7 +81,9 @@ describe('release feature-freeze docs', () => {
     const runbook = readReleaseDoc('tagging-runbook.md')
 
     expect(runbook).toContain('requires explicit operator approval')
-    expect(runbook).toContain('pnpm release:tag:preflight -- --strict')
+    expect(runbook).toContain(
+      'pnpm release:tag:preflight -- --strict --check-remote',
+    )
     expect(runbook).toContain('git tag -a v0.1.0-alpha')
     expect(runbook).toContain('git push origin v0.1.0-alpha')
     expect(runbook).toContain('Do not silently retag')

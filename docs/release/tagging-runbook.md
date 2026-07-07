@@ -15,7 +15,7 @@ git status --short
 git log -1 --oneline
 git tag --list 'v0.1.0-alpha*'
 pnpm release:gate -- --strict
-pnpm release:tag:preflight -- --strict
+pnpm release:tag:preflight -- --strict --check-remote
 ```
 
 Expected results:
@@ -23,18 +23,11 @@ Expected results:
 - `git status --short` prints no output.
 - `git tag --list 'v0.1.0-alpha*'` prints no output.
 - `pnpm release:gate -- --strict` reports `overall: "ready"`.
-- `pnpm release:tag:preflight -- --strict` reports `status: "ready"`.
+- `pnpm release:tag:preflight -- --strict --check-remote` reports
+  `status: "ready"`.
 - GitHub Actions CI is successful for the same commit SHA.
 - The repository brand scan has no content or path hits.
-
-Optional read-only remote check before asking for tag approval:
-
-```sh
-git ls-remote --tags origin v0.1.0-alpha
-```
-
-Expected result: no output. If the command prints a tag, stop and review the
-remote release state before continuing.
+- The tag preflight includes `remote_tag_absent` with `status: "pass"`.
 
 ## Approval Gate
 
@@ -48,13 +41,15 @@ Do not proceed if any of these are true:
 - the local tag already exists
 - the remote tag already exists
 - CI is pending, failed, skipped, or for a different commit
+- preflight output was generated without `--check-remote`
 - preflight output was generated with `--allow-dirty` or `--allow-existing-tag`
 - the operator has not explicitly approved tag creation and push
 
 ## Tag Commands
 
-Use the commands printed by `pnpm release:tag:preflight -- --strict`. They should
-have this shape:
+Use the commands printed by
+`pnpm release:tag:preflight -- --strict --check-remote`. They should have this
+shape:
 
 ```sh
 git tag -a v0.1.0-alpha <release-commit-sha> -m "v0.1.0-alpha"

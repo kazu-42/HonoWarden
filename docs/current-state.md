@@ -709,6 +709,7 @@ Implemented:
 - nested strict release gate check before tag commands are emitted
 - clean working tree check for normal strict operation
 - local `v0.1.0-alpha` tag absence check
+- optional read-only remote tag absence check through `--check-remote`
 - JSON report with source commit, checks, explicit limitations, and the tag
   commands an operator can run after CI passes
 
@@ -717,7 +718,6 @@ Not implemented:
 - `v0.1.0-alpha` Git tag creation
 - tag push
 - GitHub release publication
-- remote tag absence verification
 
 ## Week 26 Tagging Runbook
 
@@ -725,8 +725,7 @@ Implemented:
 
 - release tagging runbook under `docs/release/tagging-runbook.md`
 - explicit preconditions for clean working tree, local tag absence, release gate,
-  tag preflight, CI, and brand scan
-- optional read-only remote tag absence check
+  tag preflight with remote tag absence, CI, and brand scan
 - operator approval gate before creating or pushing `v0.1.0-alpha`
 - failure handling for local tag cleanup and pushed wrong-tag incident response
 - release docs test coverage that keeps tag creation approval-gated

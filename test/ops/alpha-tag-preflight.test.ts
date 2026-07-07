@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -81,6 +83,66 @@ describe('alpha tag preflight', () => {
     const report = JSON.parse(result.stdout) as AlphaTagPreflightReport
 
     expect(report.status).toBe('ready')
+  })
+
+  it('can verify remote tag absence through a read-only remote check', async () => {
+    const remote = await mkdtemp(join(tmpdir(), 'honowarden-remote-tag-'))
+    await execFileAsync('git', ['init', '--bare', remote])
+
+    const result = await execFileAsync('node', [
+      preflightScript,
+      '--allow-dirty',
+      '--allow-existing-tag',
+      '--check-remote',
+      '--remote',
+      remote,
+    ])
+    const report = JSON.parse(result.stdout) as AlphaTagPreflightReport
+
+    expect(report.status).toBe('ready')
+    expect(statusById(report, 'remote_tag_absent')).toBe('pass')
+    expect(report.limitations).toContain(
+      'GitHub release publication is not verified.',
+    )
+    expect(report.limitations).not.toContain(
+      'Remote tag absence and GitHub release publication are not verified.',
+    )
+  })
+
+  it('fails strict mode when the remote tag already exists', async () => {
+    const remote = await mkdtemp(join(tmpdir(), 'honowarden-remote-tag-'))
+    await execFileAsync('git', ['init', remote])
+    await execFileAsync('git', [
+      '-C',
+      remote,
+      'config',
+      'user.email',
+      'ci@example.invalid',
+    ])
+    await execFileAsync('git', ['-C', remote, 'config', 'user.name', 'CI'])
+    await execFileAsync('git', [
+      '-C',
+      remote,
+      'commit',
+      '--allow-empty',
+      '-m',
+      'init',
+    ])
+    await execFileAsync('git', ['-C', remote, 'tag', 'v0.1.0-alpha'])
+
+    await expect(
+      execFileAsync('node', [
+        preflightScript,
+        '--allow-dirty',
+        '--allow-existing-tag',
+        '--check-remote',
+        '--remote',
+        remote,
+        '--strict',
+      ]),
+    ).rejects.toMatchObject({
+      stdout: expect.stringContaining('"id": "remote_tag_absent"'),
+    })
   })
 })
 
