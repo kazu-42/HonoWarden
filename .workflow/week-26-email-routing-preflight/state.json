@@ -1,0 +1,70 @@
+{
+  "title": "Week 26 Email Routing Preflight",
+  "slug": "week-26-email-routing-preflight",
+  "created_at": "2026-07-07T04:42:25+00:00",
+  "status": "complete",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local read-only script, tests, and docs only."
+  },
+  "packets": [
+    {
+      "id": "script",
+      "status": "completed"
+    },
+    {
+      "id": "tests",
+      "status": "completed"
+    },
+    {
+      "id": "docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm test -- test/ops/email-preflight.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm email:preflight",
+        "status": "passed",
+        "details": "reported not_ready without external calls"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "details": "28 files, 243 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "details": "overall ready"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed",
+        "details": "no hits outside excluded dependency/generated paths"
+      }
+    ]
+  }
+}

@@ -106,6 +106,17 @@ Email:
 - A test message is sent to each route and received at the destination.
 - Evidence records message ids or timestamps without message content.
 
+Local preflight:
+
+```sh
+pnpm email:preflight
+pnpm email:preflight -- --strict
+```
+
+The preflight is offline. It checks whether the Cloudflare token/account/zone
+inputs and forwarding-destination variables are present, but it does not call
+Cloudflare, create routes, send messages, or print token/destination values.
+
 ## Current Status
 
 Website:

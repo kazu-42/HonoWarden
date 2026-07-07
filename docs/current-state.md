@@ -461,6 +461,9 @@ Implemented:
 - direnv watch rules for local secret files
 - CI-covered operator environment policy tests under
   `test/ops/operator-environment.test.ts`
+- read-only `pnpm email:preflight` for Email Routing readiness without printing
+  token or destination values
+- Email Routing preflight tests under `test/ops/email-preflight.test.ts`
 
 Not implemented:
 

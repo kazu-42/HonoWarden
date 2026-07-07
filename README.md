@@ -115,6 +115,7 @@ Linear tracking setup is documented in [docs/operations/linear-tracking.md](docs
 Local operator environment setup is documented in [docs/operations/operator-environment.md](docs/operations/operator-environment.md).
 
 Website and email operations are organized in [docs/operations/website-email.md](docs/operations/website-email.md).
+Email Routing preflight is available with `pnpm email:preflight`.
 
 HonoWarden is an independent project and is not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.
 

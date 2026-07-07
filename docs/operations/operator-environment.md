@@ -100,6 +100,7 @@ Read-only checks that are safe to run without approval:
 gh auth status
 pnpm wrangler whoami
 pnpm linear:seed
+pnpm email:preflight
 ```
 
 ## Validation Checklist
@@ -113,6 +114,15 @@ Before applying external changes:
 5. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
 6. Destination inboxes for email routing are verified in Cloudflare.
 7. The current worktree is clean or the pending diff is intentionally scoped.
+
+Use strict local preflight before requesting email-routing writes:
+
+```sh
+pnpm email:preflight -- --strict
+```
+
+The report prints only configured/missing status for API tokens and destination
+inboxes. It does not print token values or forwarding addresses.
 
 ## Current Linear Access
 

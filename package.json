@@ -27,6 +27,7 @@
     "db:migrate:local": "wrangler d1 migrations apply honowarden --local",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "email:preflight": "node scripts/honowarden-email-preflight.mjs",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
