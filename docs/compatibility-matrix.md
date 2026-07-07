@@ -5,6 +5,9 @@ Last release metadata check: 2026-07-06T11:35:37Z.
 This matrix records the exact client versions currently tracked by HonoWarden. It is intentionally conservative: rows stay at `fixture_only` until a live client run is captured with request and response evidence. The structured source of truth is [`compat/client-matrix.json`](../compat/client-matrix.json).
 
 Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compat/fixture-flows.json). CI verifies that every `coveredFlows` value in the matrix maps to at least one fixture file.
+Selected deterministic read-only fixtures are also replayed against the Hono app
+in CI so fixture assertions exercise real route behavior, not only static JSON
+shape. Stateful mutating fixture replay remains separate follow-up work.
 
 ## Current Matrix
 
@@ -35,6 +38,9 @@ Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compa
 - `password_grant`
 - `refresh_grant`
 - `empty_sync`
+- `account_profile`
+- `direct_read`
+- `metadata_read`
 - `sync_with_items`
 - `folder_crud`
 - `cipher_create`

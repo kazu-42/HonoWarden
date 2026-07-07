@@ -356,7 +356,7 @@ Implemented:
 
 Not implemented:
 
-- route-executed fixture replay for every compatibility fixture
+- stateful route-executed fixture replay for mutating compatibility fixtures
 - broad live client binary evidence for all tracked versions
 - sync of trashed cipher tombstones in `/api/sync`
 - promotion beyond `fixture_only` for non-CLI surfaces
@@ -761,6 +761,29 @@ Not implemented:
 - collection creation, update, deletion, or assignment behavior
 - organization-scoped collections
 - live client evidence for collection metadata reads
+
+## Week 26 Fixture Route Replay
+
+Implemented:
+
+- route-executed compatibility fixture replay for deterministic read-only
+  fixtures
+- replay coverage for empty sync, sync with one folder and cipher, account
+  profile, direct folder and cipher reads, policy metadata, domain metadata,
+  and collection metadata
+- deterministic synthetic access-token replacement for fixture requests that
+  use `Bearer synthetic-access-token`
+- `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads
+- assertion-driven replay that checks fixture status and declared fixture
+  assertions against actual Hono responses
+- explicit stateless replay guard that rejects mutating fixtures by default
+
+Not implemented:
+
+- route-executed replay for mutating fixtures that require ordered state
+  transitions
+- route replay for token grant, refresh, TOTP challenge, or revoke flows
+- live client evidence for newly route-replayed fixtures
 
 ## Week 26 Alpha Version Alignment
 
