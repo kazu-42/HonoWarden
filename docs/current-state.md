@@ -862,6 +862,8 @@ Implemented:
   `.workflow/week-26-release-publish-packet/state.json`
 - release gate workflow evidence now requires
   `.workflow/week-26-release-published-packet/state.json`
+- release gate workflow evidence now requires
+  `.workflow/week-26-release-status-packet/state.json`
 - completed packet workflow states record their passed GitHub Actions CI run
   IDs
 - release gate tests assert the packet workflow evidence paths
@@ -994,6 +996,21 @@ Implemented:
 - `week-26-release-publish-packet` records passing CI run `28864040079`
 - `week-26-release-published-packet` records passing CI run `28864381009`
 - release gate tests assert both publication packet workflow evidence paths
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
+## Week 26 Release Gate Status Packet Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed release status packet
+  workflow
+- `week-26-release-status-packet` records passing CI run `28865069916`
+- release gate tests assert the status packet workflow evidence path
 
 Not implemented:
 

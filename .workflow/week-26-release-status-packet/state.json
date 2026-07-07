@@ -75,7 +75,8 @@
       {
         "command": "repository brand scan",
         "status": "passed"
-      }
+      },
+      "GitHub Actions CI run 28865069916"
     ]
   }
 }

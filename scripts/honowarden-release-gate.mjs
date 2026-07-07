@@ -55,6 +55,7 @@ const requiredWorkflowSlugs = [
   'week-26-post-tag-release-packet',
   'week-26-release-publish-packet',
   'week-26-release-published-packet',
+  'week-26-release-status-packet',
 ]
 
 function buildReleaseGateReport() {
