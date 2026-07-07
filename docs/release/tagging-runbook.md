@@ -35,12 +35,23 @@ Before running tag commands, record the release commit SHA, the passing CI run
 URL, and the preflight output. Ask the operator to approve creating and pushing
 `v0.1.0-alpha` for that SHA.
 
+Use the approval packet to collect those values in one read-only report:
+
+```sh
+pnpm release:approval:packet -- --ci-run-id <run-id> --ci-url <ci-url>
+```
+
+Expected result: `status: "ready"`. The packet prints the exact approval text
+that must be copied before tag creation and push. It also verifies the CI run is
+completed successfully for the current commit SHA.
+
 Do not proceed if any of these are true:
 
 - the working tree is dirty
 - the local tag already exists
 - the remote tag already exists
 - CI is pending, failed, skipped, or for a different commit
+- the approval packet is missing or reports `not_ready`
 - preflight output was generated without `--check-remote`
 - preflight output was generated with `--allow-dirty` or `--allow-existing-tag`
 - the operator has not explicitly approved tag creation and push

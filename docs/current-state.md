@@ -801,3 +801,25 @@ Not implemented:
 - `v0.1.0-alpha` tag creation
 - tag push
 - GitHub release draft creation or publication
+
+## Week 26 Release Approval Packet
+
+Implemented:
+
+- read-only release approval packet exposed as `pnpm release:approval:packet`
+- combined JSON summary of strict release gate, remote tag preflight, GitHub
+  release planning, CI evidence, and commit alignment
+- CI evidence verification through `gh run view`, requiring successful
+  completion for the current commit SHA
+- machine-generated approval text for `v0.1.0-alpha` tag creation and push
+- package command and focused tests that prove the packet does not mutate Git or
+  GitHub release state
+- tagging runbook step requiring the approval packet to report ready before
+  requesting operator approval
+
+Not implemented:
+
+- tag creation
+- tag push
+- GitHub release draft creation or publication
+- deployment from a tag or release

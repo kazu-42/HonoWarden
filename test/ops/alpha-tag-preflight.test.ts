@@ -101,6 +101,7 @@ describe('alpha tag preflight', () => {
 
     expect(report.status).toBe('ready')
     expect(statusById(report, 'remote_tag_absent')).toBe('pass')
+    expect(report.commands.pushTag).toBe(`git push ${remote} v0.1.0-alpha`)
     expect(report.limitations).toContain(
       'GitHub release publication is not verified.',
     )

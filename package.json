@@ -32,6 +32,7 @@
     "format:write": "prettier --write .",
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",
+    "release:approval:packet": "node scripts/honowarden-release-approval-packet.mjs",
     "release:gate": "node scripts/honowarden-release-gate.mjs",
     "release:github:plan": "node scripts/honowarden-github-release-plan.mjs",
     "release:tag:preflight": "node scripts/honowarden-alpha-tag-preflight.mjs",

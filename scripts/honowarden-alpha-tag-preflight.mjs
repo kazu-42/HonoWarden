@@ -47,7 +47,7 @@ function buildPreflightReport(options) {
     checks,
     commands: {
       createTag: `git tag -a ${targetTag} ${sourceCommit} -m "${targetTag}"`,
-      pushTag: `git push origin ${targetTag}`,
+      pushTag: `git push ${options.remote ?? defaultRemote} ${targetTag}`,
     },
     limitations: buildLimitations(options),
   }
