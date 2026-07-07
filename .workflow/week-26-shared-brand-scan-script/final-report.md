@@ -1,6 +1,6 @@
 # Week 26 Shared Brand Scan Script
 
-Status: in progress.
+Status: completed.
 
 ## Summary
 
@@ -24,8 +24,10 @@ verification, and local verification use one package script.
 - Release status packet: ready, `draft_ready_for_publication`.
 - Completion audit: incomplete only because release publication approval is
   required.
+- GitHub Actions CI `28884616447`: passed for
+  `7ecc4ae42deb9f6ef0b677fce9c59b6fcdbca1a2`; the run included and passed
+  `Repository brand scan` via `pnpm brand:scan`.
 
 ## Remaining Risk
 
-- GitHub Actions CI still needs to pass on the pushed implementation commit.
 - The `v0.1.0-alpha` draft prerelease remains publication-approval gated.

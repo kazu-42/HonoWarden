@@ -2,8 +2,8 @@
   "title": "Week 26 shared brand scan script",
   "slug": "week-26-shared-brand-scan-script",
   "created_at": "2026-07-07T17:06:01+00:00",
-  "updated_at": "2026-07-07T17:08:42Z",
-  "status": "in_progress",
+  "updated_at": "2026-07-07T17:10:38Z",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": null,
@@ -24,7 +24,7 @@
     },
     {
       "id": "02-main-integration-evidence",
-      "status": "completed_local_ci_pending",
+      "status": "completed",
       "owner": "codex",
       "scope": [
         "docs/current-state.md",
@@ -33,7 +33,7 @@
     }
   ],
   "verification": {
-    "status": "passed_local_ci_pending",
+    "status": "passed",
     "checks": [
       {
         "command": "pnpm exec vitest run test/ops/brand-scan.test.ts test/ops/ci-workflow.test.ts test/ops/release-tag-workflow.test.ts",
@@ -94,6 +94,11 @@
         "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
         "status": "passed",
         "evidence": "completion incomplete only because release_publication_approval_required"
+      },
+      {
+        "command": "gh run view 28884616447 --repo kazu-42/HonoWarden",
+        "status": "passed",
+        "evidence": "CI run 28884616447 completed successfully for 7ecc4ae42deb9f6ef0b677fce9c59b6fcdbca1a2 with Repository brand scan included"
       }
     ]
   }
