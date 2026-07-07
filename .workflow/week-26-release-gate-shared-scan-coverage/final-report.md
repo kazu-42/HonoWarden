@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Status: in progress.
+Status: completed.
 
 This workflow makes the alpha release gate require the completed shared brand
 scan evidence workflow.
@@ -32,11 +32,11 @@ Local checks passed:
 - full unit test suite and compat suite
 - read-only release status and completion audit packets
 
-GitHub Actions CI readback is pending after push.
+GitHub Actions CI readback passed for implementation commit
+`3425c40557145b3a3589a9497e7d6b1a1e32461a`.
 
 ## Remaining Risks
 
-- Local checks and GitHub Actions CI still need to pass.
 - The `v0.1.0-alpha` draft prerelease remains publication-approval gated.
 
 ## Reusable Follow-up
