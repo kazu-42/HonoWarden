@@ -1,0 +1,42 @@
+{
+  "title": "Week 26 Release Gate Workflow Coverage",
+  "slug": "week-26-release-gate-workflow-coverage",
+  "created_at": "2026-07-07T05:56:28+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local gate, tests, docs, and committed state evidence updates only. Tag and release writes remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "gate-logic",
+      "status": "completed"
+    },
+    {
+      "id": "state-evidence",
+      "status": "completed"
+    },
+    {
+      "id": "tests-docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/ops/release-gate.test.ts",
+      "pnpm release:gate -- --strict",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm format",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-workflow-coverage"
+    ]
+  }
+}

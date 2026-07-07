@@ -781,3 +781,23 @@ Not implemented:
 - GitHub release publication
 - release asset upload
 - deployment from a release
+
+## Week 26 Release Gate Workflow Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers completed Week 26 live-client,
+  item-smoke, ops, TOTP, device, version, tag, tag-verification, and GitHub
+  release-planning workflows
+- release gate CI evidence detection supports both legacy string checks and
+  structured check objects
+- completed Week 26 workflow state files include passed GitHub Actions CI run
+  evidence where it had not been committed yet
+- release gate tests assert representative latest Week 26 workflow evidence
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- `v0.1.0-alpha` tag creation
+- tag push
+- GitHub release draft creation or publication

@@ -36,7 +36,8 @@
       "pnpm format",
       "pnpm release:gate -- --strict",
       "repository brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-tag-workflow"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-tag-workflow",
+      "GitHub Actions CI run 28844492856"
     ]
   }
 }

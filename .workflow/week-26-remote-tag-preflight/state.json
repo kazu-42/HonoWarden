@@ -38,7 +38,8 @@
       "pnpm format",
       "pnpm release:gate -- --strict",
       "repository brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-remote-tag-preflight"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-remote-tag-preflight",
+      "GitHub Actions CI run 28844277349"
     ]
   }
 }

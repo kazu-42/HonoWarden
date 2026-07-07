@@ -2,7 +2,7 @@
   "title": "Week 26 Known Device API",
   "slug": "week-26-known-device-api",
   "created_at": "2026-07-07T05:01:18+00:00",
-  "status": "in_progress",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -37,7 +37,8 @@
       "pnpm format",
       "pnpm release:gate -- --strict",
       "repository brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-known-device-api"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-known-device-api",
+      "GitHub Actions CI run 28843084113"
     ]
   }
 }

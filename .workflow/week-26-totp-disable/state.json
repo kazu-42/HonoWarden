@@ -2,7 +2,7 @@
   "title": "Week 26 TOTP Disable",
   "slug": "week-26-totp-disable",
   "created_at": "2026-07-07T04:26:36+00:00",
-  "status": "complete",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -63,6 +63,11 @@
         "command": "repository brand scan",
         "status": "passed",
         "details": "no hits outside excluded dependency/generated paths"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28841719869"
       }
     ]
   }

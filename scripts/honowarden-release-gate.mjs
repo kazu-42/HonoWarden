@@ -36,6 +36,21 @@ const requiredWorkflowSlugs = [
   'week-26-backup-restore-drill-evidence',
   'week-26-staging-dry-run-evidence',
   'week-26-cloudflare-resource-evidence',
+  'week-26-live-client-evidence',
+  'week-26-cli-item-live-smoke',
+  'week-26-ops-surface-plan',
+  'week-26-totp-disable',
+  'week-26-totp-setup-guard',
+  'week-26-operator-env-guard',
+  'week-26-email-routing-preflight',
+  'week-26-device-list-api',
+  'week-26-known-device-api',
+  'week-26-alpha-version-alignment',
+  'week-26-alpha-tag-preflight',
+  'week-26-tagging-runbook',
+  'week-26-remote-tag-preflight',
+  'week-26-release-tag-workflow',
+  'week-26-github-release-plan',
 ]
 
 function buildReleaseGateReport() {
@@ -206,9 +221,7 @@ function checkWorkflowEvidence() {
     if (
       state.status !== 'completed' ||
       state.verification?.status !== 'passed' ||
-      !state.verification?.checks?.some((check) =>
-        check.startsWith('GitHub Actions CI run '),
-      )
+      !hasCiEvidence(state.verification?.checks)
     ) {
       failed.push({
         slug,
@@ -239,6 +252,27 @@ function checkWorkflowEvidence() {
       (slug) => `.workflow/${slug}/state.json`,
     ),
   }
+}
+
+function hasCiEvidence(checks) {
+  if (!Array.isArray(checks)) {
+    return false
+  }
+
+  return checks.some((check) => {
+    if (typeof check === 'string') {
+      return check.startsWith('GitHub Actions CI run ')
+    }
+
+    return (
+      check &&
+      typeof check === 'object' &&
+      check.name === 'GitHub Actions CI' &&
+      check.status === 'passed' &&
+      typeof check.run === 'string' &&
+      check.run.length > 0
+    )
+  })
 }
 
 function checkCompatibilityMatrix() {

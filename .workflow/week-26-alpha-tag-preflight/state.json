@@ -36,7 +36,8 @@
       "pnpm test",
       "pnpm format",
       "pnpm release:gate -- --strict",
-      "repository brand scan"
+      "repository brand scan",
+      "GitHub Actions CI run 28843700306"
     ]
   }
 }

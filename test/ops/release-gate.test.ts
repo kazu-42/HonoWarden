@@ -20,6 +20,7 @@ type ReleaseGateReport = {
   checks: Array<{
     id: string
     status: 'pass' | 'block'
+    evidence?: string[]
     details?: Record<string, unknown>
   }>
 }
@@ -45,6 +46,26 @@ describe('release gate preflight', () => {
     expect(statusById(report, 'staging_deploy_evidence')).toBe('pass')
     expect(statusById(report, 'cloudflare_resource_evidence')).toBe('pass')
     expect(statusById(report, 'live_client_evidence')).toBe('pass')
+
+    const workflowEvidence = checkById(report, 'workflow_evidence')?.evidence
+    expect(workflowEvidence).toContain(
+      '.workflow/week-26-alpha-version-alignment/state.json',
+    )
+    expect(workflowEvidence).toContain(
+      '.workflow/week-26-device-list-api/state.json',
+    )
+    expect(workflowEvidence).toContain(
+      '.workflow/week-26-known-device-api/state.json',
+    )
+    expect(workflowEvidence).toContain(
+      '.workflow/week-26-alpha-tag-preflight/state.json',
+    )
+    expect(workflowEvidence).toContain(
+      '.workflow/week-26-release-tag-workflow/state.json',
+    )
+    expect(workflowEvidence).toContain(
+      '.workflow/week-26-github-release-plan/state.json',
+    )
   })
 
   it('passes in strict mode when repository-local evidence is ready', async () => {
@@ -57,5 +78,12 @@ describe('release gate preflight', () => {
 })
 
 function statusById(report: ReleaseGateReport, id: string): string | undefined {
-  return report.checks.find((check) => check.id === id)?.status
+  return checkById(report, id)?.status
+}
+
+function checkById(
+  report: ReleaseGateReport,
+  id: string,
+): ReleaseGateReport['checks'][number] | undefined {
+  return report.checks.find((check) => check.id === id)
 }

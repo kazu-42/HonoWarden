@@ -2,7 +2,7 @@
   "title": "Week 26 TOTP Setup Guard",
   "slug": "week-26-totp-setup-guard",
   "created_at": "2026-07-07T04:35:11+00:00",
-  "status": "complete",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -63,6 +63,11 @@
         "command": "repository brand scan",
         "status": "passed",
         "details": "no hits outside excluded dependency/generated paths"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28841896748"
       }
     ]
   }

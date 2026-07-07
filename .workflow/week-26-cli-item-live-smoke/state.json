@@ -27,7 +27,7 @@
     }
   ],
   "verification": {
-    "status": "completed",
+    "status": "passed",
     "checks": [
       {
         "name": "targeted app and cipher repository tests",

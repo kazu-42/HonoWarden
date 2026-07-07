@@ -27,7 +27,7 @@
     }
   ],
   "verification": {
-    "status": "completed",
+    "status": "passed",
     "checks": [
       {
         "name": "linear seed validation",
@@ -52,6 +52,11 @@
       {
         "name": "repository brand scans",
         "status": "passed"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28840212754"
       }
     ]
   }
