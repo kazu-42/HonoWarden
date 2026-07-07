@@ -758,3 +758,26 @@ Not implemented:
 - tag push
 - GitHub release publication
 - deployment from the tag
+
+## Week 26 GitHub Release Plan
+
+Implemented:
+
+- read-only GitHub release planning script exposed as
+  `pnpm release:github:plan`
+- release notes section validation for
+  `docs/release/v0.1.0-alpha-release-notes.md`
+- package version check against `0.1.0-alpha`
+- local tag context check for post-tag release planning
+- optional read-only remote tag context check through `--check-remote`
+- JSON report with draft release command, view command, checks, and explicit
+  limitations
+- release runbook step requiring the plan to report ready before using the
+  printed draft-release command
+
+Not implemented:
+
+- GitHub release draft creation
+- GitHub release publication
+- release asset upload
+- deployment from a release

@@ -67,6 +67,15 @@ The local and remote commit SHAs must match the approved release commit.
 The `Release Tag Verification` GitHub Actions workflow must pass for the pushed
 tag before a GitHub release is published or any deployment is approved.
 
+Before creating a GitHub release draft, run:
+
+```sh
+pnpm release:github:plan -- --strict --check-remote
+```
+
+Expected result: `status: "ready"`. Use the printed `createDraft` command only
+after confirming the pushed tag and tag verification workflow.
+
 ## Failure Handling
 
 If local tag creation succeeds but push has not happened yet, delete only the
@@ -94,6 +103,7 @@ automation may already have observed the pushed tag.
 After the pushed tag is verified:
 
 - confirm the `Release Tag Verification` workflow passed for the pushed tag
+- run `pnpm release:github:plan -- --strict --check-remote`
 - create release notes from `docs/release/v0.1.0-alpha-release-notes.md`
 - keep pre-alpha safety language unless a separate readiness decision changes it
 - do not deploy production from the tag without a separate deployment approval
