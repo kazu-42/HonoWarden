@@ -8,9 +8,9 @@ Mode: local synthetic CLI live smoke
 
 Recorded at: `2026-07-07T01:22:56Z`
 
-Source commit: `d2e16f0` plus the compatibility changes in this release-gate
-working tree. The final tag still requires GitHub Actions CI on the release
-commit.
+Source commit: `c4554e3`
+
+GitHub Actions CI run: `28835019688`
 
 Client surface: `cli`
 
@@ -102,10 +102,10 @@ wrangler dev logged these successful application routes during the final run:
 - `GET /api/sync 200`
 - `GET /api/accounts/revision-date 200`
 
-The CLI emitted only the expected Node warning caused by
-`NODE_TLS_REJECT_UNAUTHORIZED=0` for the local self-signed certificate. That
-warning is not a server compatibility failure and must not be used in production
-or staging evidence.
+The CLI emitted only the expected Node warning caused by local certificate
+verification being disabled for the local self-signed certificate. That warning
+is not a server compatibility failure and must not be used in production or
+staging evidence.
 
 ## Limits
 

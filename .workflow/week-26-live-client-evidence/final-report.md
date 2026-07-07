@@ -29,6 +29,7 @@ Completed local synthetic CLI live smoke for `2026.6.0`.
 - Non-TLS stderr lines: `0`
 - Local targeted tests passed.
 - `pnpm release:gate` passed.
+- GitHub Actions CI run `28835019688` passed.
 
 ## Remaining Limits
 

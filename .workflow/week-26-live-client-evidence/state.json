@@ -38,7 +38,8 @@
       "local CLI 2026.6.0 sync",
       "pnpm check",
       "pnpm test test/domain/tokens.test.ts test/app.test.ts test/compat/client-matrix.test.ts test/compat/compat-fixtures.test.ts test/ops/release-gate.test.ts test/release-docs.test.ts test/security-docs.test.ts",
-      "pnpm release:gate"
+      "pnpm release:gate",
+      "GitHub Actions CI run 28835019688"
     ]
   }
 }
