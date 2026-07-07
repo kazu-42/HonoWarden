@@ -12,17 +12,13 @@
     "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
     "HONOWARDEN_ENV": "development",
   },
-  // Replace database_id after running:
-  // pnpm wrangler d1 create honowarden
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "honowarden",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "21ef7fa8-f26d-4024-82cb-c7b88ee02433",
     },
   ],
-  // Create before deploying:
-  // pnpm wrangler r2 bucket create honowarden-vault-objects
   "r2_buckets": [
     {
       "binding": "VAULT_OBJECTS",
@@ -42,7 +38,7 @@
         {
           "binding": "DB",
           "database_name": "honowarden-staging",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "95cd44de-809f-473c-9972-f892fa32ceb8",
         },
       ],
       "r2_buckets": [
@@ -64,7 +60,7 @@
         {
           "binding": "DB",
           "database_name": "honowarden",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "21ef7fa8-f26d-4024-82cb-c7b88ee02433",
         },
       ],
       "r2_buckets": [

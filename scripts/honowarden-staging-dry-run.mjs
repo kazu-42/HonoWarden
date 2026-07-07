@@ -118,11 +118,16 @@ async function runStagingDryRun(options) {
     checks,
     limitations: [
       'Remote Cloudflare deploy was not performed.',
-      'Cloudflare D1 and R2 resources were not created or mutated.',
-      'Staging database_id remains a placeholder until resource evidence is recorded.',
+      reportResourceIdLimitation(config.env.staging.d1_databases[0]),
       'HTTP health routes were not exercised against a deployed Worker.',
     ],
   }
+}
+
+function reportResourceIdLimitation(stagingD1) {
+  return stagingD1?.database_id === placeholderDatabaseId
+    ? 'Staging database_id remains a placeholder until resource evidence is recorded.'
+    : 'Staging database_id is configured; resource creation evidence is recorded separately.'
 }
 
 async function prepareOutDir(outDir) {

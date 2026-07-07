@@ -33,6 +33,8 @@ The preflight proves repository-local facts:
 - the compatibility matrix has not been promoted beyond fixture-only evidence
 - staging dry-run evidence includes command, bindings, bundle hash, and
   explicit non-deploy limitations
+- Cloudflare D1/R2 resource evidence is recorded and D1 IDs are no longer
+  placeholders
 - the Linear seed is structurally ready to apply
 
 ## What It Does Not Prove
@@ -43,11 +45,10 @@ official clients. It does not tag a release and does not deploy.
 These remain release blockers until recorded as separate evidence:
 
 - synthetic live-client login and sync evidence
-- Cloudflare D1, R2, Worker, route, and rollback evidence
 
 ## Expected Current Result
 
 At feature-freeze time the expected result is `not_ready`. That is intentional:
 the repository has the release process, local checks, backup/restore drill
-evidence, and staging dry-run evidence, but the alpha tag still requires live
-operational evidence.
+evidence, staging dry-run evidence, and Cloudflare D1/R2 resource evidence, but
+the alpha tag still requires live client evidence.

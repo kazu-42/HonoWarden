@@ -11,8 +11,9 @@ Mode: staging deploy dry-run.
 This evidence records a local Wrangler staging deploy dry-run. It proves the
 staging Worker can be bundled with the expected staging bindings from
 `wrangler.jsonc`, and that the generated Worker bundle was written and hashed.
-It does not prove a live Cloudflare deployment, real D1/R2 resource existence,
-custom route readiness, or HTTP health behavior on a deployed Worker.
+It does not prove a live Cloudflare deployment, custom route readiness, or HTTP
+health behavior on a deployed Worker. D1/R2 resource creation is recorded
+separately in [Cloudflare Resource Evidence](cloudflare-resource-evidence.md).
 
 ## Run Identity
 
@@ -34,6 +35,7 @@ custom route readiness, or HTTP health behavior on a deployed Worker.
 - Audit log default: `HONOWARDEN_AUDIT_LOGS=false`
 - Staging and production Worker names: separated
 - Staging and production storage names: separated
+- Database ID placeholder: false
 
 ## Bundle
 
@@ -58,8 +60,7 @@ Local smoke checks:
 ## Limitations
 
 - Remote deploy: not performed.
-- Cloudflare resource mutation: not performed.
-- Placeholder database IDs: still present.
+- Cloudflare resource mutation in this dry-run command: not performed.
 - HTTP health smoke against a deployed Worker: not performed.
 
 This evidence resolves only the repository-local staging dry-run gate. It does

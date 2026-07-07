@@ -14,6 +14,7 @@ Use this index as the feature-freeze entry point:
 - [Release Gate Preflight](release-gate-preflight.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
 - [Staging Deploy Dry Run Evidence](staging-deploy-evidence.md)
+- [Cloudflare Resource Evidence](cloudflare-resource-evidence.md)
 - [Alpha Release Notes](v0.1.0-alpha-release-notes.md)
 
 ## Freeze Position

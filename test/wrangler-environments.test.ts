@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 type WranglerBinding = {
   binding: string
+  database_id?: string
   database_name?: string
   bucket_name?: string
 }
@@ -58,6 +59,20 @@ describe('wrangler deployment environments', () => {
 
     expect(stagingD1.database_name).not.toBe(productionD1.database_name)
     expect(stagingR2.bucket_name).not.toBe(productionR2.bucket_name)
+  })
+
+  it('uses real separated D1 database ids for deployable environments', () => {
+    const stagingD1 = config.env.staging.d1_databases[0]
+    const productionD1 = config.env.production.d1_databases[0]
+    const placeholder = '00000000-0000-0000-0000-000000000000'
+
+    if (!stagingD1 || !productionD1) {
+      throw new Error('Expected staging and production D1 bindings')
+    }
+
+    expect(stagingD1.database_id).not.toBe(placeholder)
+    expect(productionD1.database_id).not.toBe(placeholder)
+    expect(stagingD1.database_id).not.toBe(productionD1.database_id)
   })
 
   it('keeps deployable environment bootstrap defaults fail-closed', () => {

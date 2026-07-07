@@ -7,6 +7,8 @@ import { fileURLToPath, URL } from 'node:url'
 import { error as logError, log } from 'node:console'
 import process from 'node:process'
 
+import { parse } from 'jsonc-parser'
+
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 
 const requiredReleaseDocs = [
@@ -28,6 +30,9 @@ const requiredWorkflowSlugs = [
   'week-24-security-review-materials',
   'week-25-feature-freeze',
   'week-26-linear-tracking-setup',
+  'week-26-release-gate-preflight',
+  'week-26-backup-restore-drill-evidence',
+  'week-26-staging-dry-run-evidence',
 ]
 
 function buildReleaseGateReport() {
@@ -345,8 +350,7 @@ function checkStagingDeployEvidence() {
     'Bundle SHA-256:',
     'Local smoke checks:',
     'Remote deploy: not performed',
-    'Cloudflare resource mutation: not performed',
-    'Placeholder database IDs: still present',
+    'Database ID placeholder: false',
   ]
   const missingEvidence = requiredEvidence.filter(
     (required) => !evidenceDoc.includes(required),
@@ -374,6 +378,15 @@ function checkStagingDeployEvidence() {
 
 function checkCloudflareResourceEvidence() {
   const evidencePath = 'docs/release/cloudflare-resource-evidence.md'
+  const wranglerConfig = readJsonc('wrangler.jsonc')
+  const databaseIds = [
+    wranglerConfig.d1_databases?.[0]?.database_id,
+    wranglerConfig.env?.staging?.d1_databases?.[0]?.database_id,
+    wranglerConfig.env?.production?.d1_databases?.[0]?.database_id,
+  ].filter(Boolean)
+  const placeholderDatabaseIds = databaseIds.filter(
+    (id) => id === '00000000-0000-0000-0000-000000000000',
+  )
 
   if (!existsSync(repoPath(evidencePath))) {
     return {
@@ -384,6 +397,40 @@ function checkCloudflareResourceEvidence() {
       details: { expectedEvidencePath: evidencePath },
       nextAction:
         'Create or verify Cloudflare D1/R2/Worker resources and record non-secret names, ids, and rollback notes.',
+    }
+  }
+
+  const evidenceDoc = readText(evidencePath)
+  const requiredEvidence = [
+    'Status: passed',
+    'Mode: Cloudflare resource creation and verification',
+    'Account name: `gHive`',
+    'Account ID: `7e31a4cfe4ffd2cfff49c04236261de8`',
+    'Staging D1: `honowarden-staging`',
+    'Staging D1 ID: `95cd44de-809f-473c-9972-f892fa32ceb8`',
+    'Production D1: `honowarden`',
+    'Production D1 ID: `21ef7fa8-f26d-4024-82cb-c7b88ee02433`',
+    'Staging R2: `honowarden-staging-vault-objects`',
+    'Production R2: `honowarden-vault-objects`',
+    'Staging remote migrations: `0001`, `0002`, `0003`',
+    'Worker deploy: not performed',
+    'Secret writes: not performed',
+    'Route writes: not performed',
+    'Rollback:',
+  ]
+  const missingEvidence = requiredEvidence.filter(
+    (required) => !evidenceDoc.includes(required),
+  )
+
+  if (placeholderDatabaseIds.length > 0 || missingEvidence.length > 0) {
+    return {
+      id: 'cloudflare_resource_evidence',
+      status: 'block',
+      title: 'Cloudflare staging and production resource evidence exists',
+      evidence: [evidencePath, 'wrangler.jsonc'],
+      details: { placeholderDatabaseIds, missingEvidence },
+      nextAction:
+        'Complete Cloudflare resource evidence and replace placeholder D1 database IDs.',
     }
   }
 
@@ -436,6 +483,10 @@ function summarize(checks) {
 
 function readJson(path) {
   return JSON.parse(readText(path))
+}
+
+function readJsonc(path) {
+  return parse(readText(path))
 }
 
 function readText(...parts) {

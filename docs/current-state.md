@@ -424,7 +424,6 @@ Not implemented:
 
 - `v0.1.0-alpha` tag
 - live staging deploy evidence
-- Cloudflare D1/R2 resource mutation
 - production backup/restore drill evidence
 - live official-client matrix promotion
 
@@ -466,7 +465,6 @@ Implemented:
 Current blockers reported by the preflight:
 
 - synthetic live-client evidence is still fixture-only
-- Cloudflare resource evidence is not recorded
 
 The preflight is intentionally read-only and does not tag, deploy, call
 Cloudflare, call Linear, or contact external client services.
@@ -504,11 +502,37 @@ Implemented:
 Current blockers reported by the preflight:
 
 - synthetic live-client evidence is still fixture-only
-- Cloudflare resource evidence is not recorded
 
 Not implemented:
 
 - real Cloudflare staging deploy
-- Cloudflare D1/R2 resource creation or ID replacement
+- deployed Worker HTTP health smoke
+- live client evidence
+
+## Week 26 Cloudflare Resource Evidence
+
+Implemented:
+
+- created Cloudflare D1 databases for staging and production in the gHive
+  account
+- created Cloudflare R2 buckets for staging and production in the gHive account
+- replaced D1 placeholder IDs in `wrangler.jsonc` with the created D1 IDs
+- applied remote staging D1 migrations through `0001`, `0002`, and `0003`
+- verified remote staging `schema_migrations` and schema tables
+- release evidence document under
+  `docs/release/cloudflare-resource-evidence.md`
+- release gate validation for required Cloudflare resource evidence fields and
+  non-placeholder D1 IDs
+
+Current blockers reported by the preflight:
+
+- synthetic live-client evidence is still fixture-only
+
+Not implemented:
+
+- Worker deploy
+- secret writes
+- route writes
+- production migration apply
 - deployed Worker HTTP health smoke
 - live client evidence

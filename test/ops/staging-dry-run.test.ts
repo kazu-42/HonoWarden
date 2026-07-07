@@ -64,7 +64,7 @@ describe('staging deploy dry run', () => {
     expect(fileReport.worker).toEqual({
       name: 'honowarden-staging',
       environment: 'staging',
-      databaseIdPlaceholder: true,
+      databaseIdPlaceholder: false,
     })
     expect(fileReport.bindings.d1).toEqual({
       binding: 'DB',
@@ -80,5 +80,8 @@ describe('staging deploy dry run', () => {
     expect(fileReport.limitations).toContain(
       'Remote Cloudflare deploy was not performed.',
     )
-  })
+    expect(fileReport.limitations).toContain(
+      'Staging database_id is configured; resource creation evidence is recorded separately.',
+    )
+  }, 15_000)
 })
