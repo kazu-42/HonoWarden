@@ -1312,6 +1312,22 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Gate Shared Scan Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed release evidence
+  shared brand scan workflow
+- `week-26-release-evidence-shared-brand-scan` records passing CI run
+  `28885961455`
+- release gate tests assert the shared-scan workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Published Packet
 
 Implemented:

@@ -43,6 +43,7 @@ const requiredWorkflowSlugs = [
   'week-26-totp-disable',
   'week-26-totp-setup-guard',
   'week-26-operator-env-guard',
+  'week-26-release-evidence-shared-brand-scan',
   'week-26-email-routing-preflight',
   'week-26-device-list-api',
   'week-26-known-device-api',

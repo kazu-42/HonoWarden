@@ -1,51 +1,56 @@
 {
-  "title": "Week 26 release evidence shared brand scan",
-  "slug": "week-26-release-evidence-shared-brand-scan",
-  "created_at": "2026-07-07T17:13:11+00:00",
-  "updated_at": "2026-07-07T17:34:30Z",
-  "status": "completed",
+  "title": "Week 26 release gate shared scan coverage",
+  "slug": "week-26-release-gate-shared-scan-coverage",
+  "created_at": "2026-07-07T17:33:07+00:00",
+  "updated_at": "2026-07-07T17:36:17Z",
+  "status": "in_progress",
   "approval": {
     "required": false,
     "granted": null,
-    "notes": "Local release tooling, tests, docs, workflow artifact, commit/push, and CI readback only. Release publication and external infrastructure remain approval-gated."
+    "notes": "Local release gate, tests, docs, workflow artifacts, git push, and CI only. GitHub Release publication, deployment, tag mutation, DNS, email routing, secret writes, and Cloudflare resource writes remain separately approval-gated."
   },
   "packets": [
     {
-      "id": "01-spark-implementation",
+      "id": "01-spark-gate-implementation",
       "status": "completed",
       "owner": "spark",
       "scope": [
-        "scripts/honowarden-release-evidence-bundle.mjs",
-        "test/ops/release-evidence-bundle.test.ts"
+        "scripts/honowarden-release-gate.mjs",
+        "test/ops/release-gate.test.ts"
       ]
     },
     {
-      "id": "02-main-integration-evidence",
-      "status": "completed",
+      "id": "02-main-docs-verification",
+      "status": "in_progress",
       "owner": "codex",
       "scope": [
         "docs/current-state.md",
-        ".workflow/week-26-release-evidence-shared-brand-scan"
+        ".workflow/week-26-release-gate-shared-scan-coverage"
       ]
     }
   ],
   "verification": {
-    "status": "passed",
+    "status": "local_passed",
     "checks": [
       {
-        "command": "pnpm exec vitest run test/ops/release-evidence-bundle.test.ts",
+        "command": "pnpm exec vitest run test/ops/release-gate.test.ts",
         "status": "pass",
-        "evidence": "4 tests passed"
+        "evidence": "1 file and 2 tests passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "pass",
+        "evidence": "release gate overall ready with shared-scan workflow evidence"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-shared-scan-coverage",
+        "status": "pass",
+        "evidence": "workflow verification passed"
       },
       {
         "command": "pnpm brand:scan",
         "status": "pass",
-        "evidence": "shared scanner returned clean"
-      },
-      {
-        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-evidence-shared-brand-scan",
-        "status": "pass",
-        "evidence": "workflow verification passed"
+        "evidence": "repository brand scan returned clean"
       },
       {
         "command": "pnpm check",
@@ -73,11 +78,6 @@
         "evidence": "3 files and 78 tests passed"
       },
       {
-        "command": "pnpm release:gate -- --strict",
-        "status": "pass",
-        "evidence": "release gate overall ready"
-      },
-      {
         "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
         "status": "pass",
         "evidence": "phase draft_ready_for_publication"
@@ -86,18 +86,6 @@
         "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
         "status": "expected_incomplete",
         "evidence": "blockingReason release_publication_approval_required"
-      },
-      {
-        "command": "gh run watch 28885872130 --repo kazu-42/HonoWarden --exit-status",
-        "status": "pass",
-        "evidence": "CI passed for 1a51f9e9383e0fa601123c671b8c42db64f0d099"
-      },
-      {
-        "name": "GitHub Actions CI",
-        "status": "passed",
-        "run": "28885961455",
-        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28885961455",
-        "headSha": "adb7f3970f18d3c908cae93364df060186c4047a"
       }
     ]
   }
