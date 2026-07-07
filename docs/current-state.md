@@ -934,11 +934,17 @@ Implemented:
 
 - normal GitHub Actions CI now runs the repository brand scan on pull requests
   and pushes to `main`
-- main CI brand scan uses the same split-pattern construction and file
-  exclusions as release tag verification
+- repository brand scan is exposed as `pnpm brand:scan` through
+  `scripts/honowarden-brand-scan.mjs`
+- main CI and release tag verification call the shared scan script instead of
+  embedding separate workflow shell snippets
+- shared scan script uses split-pattern construction, standard-library
+  recursive traversal, and the existing generated/dependency exclusions
 - focused workflow test under `test/ops/ci-workflow.test.ts` asserts the main CI
   check list, brand scan step, scan ordering before format, read-only
   permissions, and absence of destructive tag/push commands
+- focused brand-scan tests assert clean content passes, constructed blocked
+  content fails, and excluded paths stay ignored
 
 Not implemented:
 

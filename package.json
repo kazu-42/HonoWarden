@@ -24,6 +24,7 @@
     "backup:restore": "node scripts/honowarden-backup.mjs restore",
     "cf:typegen": "wrangler types",
     "compat:test": "vitest run test/compat",
+    "brand:scan": "node scripts/honowarden-brand-scan.mjs",
     "db:migrate:local": "wrangler d1 migrations apply honowarden --local",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",

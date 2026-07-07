@@ -29,7 +29,9 @@ describe('release tag workflow', () => {
     expect(workflow).toContain(
       'pnpm release:tag:preflight -- --strict --allow-existing-tag',
     )
-    expect(workflow).toContain('BLOCKED_PATTERN')
+    expect(workflow).toContain('pnpm brand:scan')
+    expect(workflow).not.toContain('BLOCKED_PATTERN')
+    expect(workflow).not.toContain('rg -n')
     expect(workflow).toContain('pnpm format')
     expect(workflow).not.toContain('git tag -a')
     expect(workflow).not.toContain('git push origin')
