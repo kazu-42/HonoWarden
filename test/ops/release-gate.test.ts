@@ -36,6 +36,7 @@ describe('release gate preflight', () => {
     expect(report.summary.block).toBe(0)
 
     expect(statusById(report, 'release_docs_present')).toBe('pass')
+    expect(statusById(report, 'package_version')).toBe('pass')
     expect(statusById(report, 'migration_freeze_hashes')).toBe('pass')
     expect(statusById(report, 'dependency_audit_evidence')).toBe('pass')
     expect(statusById(report, 'workflow_evidence')).toBe('pass')

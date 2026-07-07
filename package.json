@@ -1,6 +1,6 @@
 {
   "name": "honowarden",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha",
   "description": "A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.",
   "type": "module",
   "license": "AGPL-3.0-or-later",

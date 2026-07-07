@@ -680,3 +680,20 @@ Implemented:
 - missing or malformed header values return `invalid_request`
 - returns only preflight result without device metadata mutation, trust updates,
   or key updates
+
+## Week 26 Alpha Version Alignment
+
+Implemented:
+
+- `package.json` version set to `0.1.0-alpha`
+- runtime health metadata reports `0.1.0-alpha`
+- server config metadata reports `0.1.0-alpha`
+- root service metadata includes the same version while retaining explicit
+  pre-alpha safety status until a release tag is cut
+- release gate checks package version alignment before reporting alpha readiness
+
+Not implemented:
+
+- `v0.1.0-alpha` Git tag
+- package publishing
+- deployment tied to the version update

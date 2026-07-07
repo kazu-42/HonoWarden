@@ -1,3 +1,5 @@
+import { serviceVersion } from '../version'
+
 export type UpstreamServerConfig = {
   version: string
   gitHash: string
@@ -27,7 +29,7 @@ export function buildServerConfig(origin: string): UpstreamServerConfig {
   const normalizedOrigin = origin.replace(/\/+$/, '')
 
   return {
-    version: '0.0.0-alpha',
+    version: serviceVersion,
     gitHash: 'honowarden',
     server: null,
     environment: {

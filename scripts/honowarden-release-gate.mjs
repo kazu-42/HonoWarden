@@ -40,6 +40,7 @@ const requiredWorkflowSlugs = [
 function buildReleaseGateReport() {
   const checks = [
     checkReleaseDocs(),
+    checkPackageVersion(),
     checkMigrationFreeze(),
     checkDependencyAuditEvidence(),
     checkWorkflowEvidence(),
@@ -95,6 +96,35 @@ function checkReleaseDocs() {
     status: 'pass',
     title: 'Release documents are present and substantive',
     evidence: requiredReleaseDocs.map((docPath) => `docs/release/${docPath}`),
+  }
+}
+
+function checkPackageVersion() {
+  const packageJson = readJson('package.json')
+  const expectedVersion = '0.1.0-alpha'
+
+  if (packageJson.version !== expectedVersion) {
+    return {
+      id: 'package_version',
+      status: 'block',
+      title: 'Package version matches the alpha release target',
+      evidence: ['package.json'],
+      details: {
+        expectedVersion,
+        actualVersion: packageJson.version ?? null,
+      },
+      nextAction: 'Set package.json version to 0.1.0-alpha before tagging.',
+    }
+  }
+
+  return {
+    id: 'package_version',
+    status: 'pass',
+    title: 'Package version matches the alpha release target',
+    evidence: ['package.json'],
+    details: {
+      version: packageJson.version,
+    },
   }
 }
 

@@ -98,6 +98,7 @@ import {
   createBootstrapUser,
   getAccountRevisionDate,
 } from './repositories/user-repository'
+import { serviceVersion } from './version'
 
 type Variables = {
   requestId: string
@@ -226,7 +227,7 @@ function buildHealthResponse(requestIdValue: string, environment?: string) {
   return {
     status: 'ok',
     service: 'honowarden',
-    version: '0.0.0-alpha',
+    version: serviceVersion,
     environment: resolveRuntimeEnvironment(environment),
     requestId: requestIdValue,
   }
@@ -260,6 +261,7 @@ app.get('/', (c) => {
     name: 'HonoWarden',
     description: serviceDescription,
     status: 'pre-alpha',
+    version: serviceVersion,
     links: {
       config: '/api/config',
       health: '/health',

@@ -28,6 +28,7 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toMatchObject({
       name: 'HonoWarden',
       status: 'pre-alpha',
+      version: '0.1.0-alpha',
       requestId: 'root-request',
       links: {
         config: '/api/config',
@@ -47,7 +48,7 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toEqual({
       status: 'ok',
       service: 'honowarden',
-      version: '0.0.0-alpha',
+      version: '0.1.0-alpha',
       environment: 'development',
       requestId: 'health-request',
     })
@@ -3591,7 +3592,7 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
-      version: '0.0.0-alpha',
+      version: '0.1.0-alpha',
       server: null,
       environment: {
         cloudRegion: 'self-hosted',

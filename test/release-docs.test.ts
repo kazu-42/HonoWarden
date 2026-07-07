@@ -26,6 +26,9 @@ const releaseDocsRoot = fileURLToPath(
 const migrationsRoot = fileURLToPath(
   new URL('../migrations', import.meta.url).toString(),
 )
+const packageJsonPath = fileURLToPath(
+  new URL('../package.json', import.meta.url).toString(),
+)
 
 describe('release feature-freeze docs', () => {
   it('keeps the required release documents present', () => {
@@ -63,6 +66,14 @@ describe('release feature-freeze docs', () => {
     expect(releaseNotes).toContain('public registration')
     expect(releaseNotes).toContain('independent security audit')
     expect(releaseNotes).toContain('fixture_only')
+  })
+
+  it('aligns the package version with the alpha target', () => {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      version?: string
+    }
+
+    expect(packageJson.version).toBe('0.1.0-alpha')
   })
 })
 

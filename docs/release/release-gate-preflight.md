@@ -26,6 +26,7 @@ Strict mode exits non-zero while any blocking check remains.
 The preflight proves repository-local facts:
 
 - release docs exist
+- package version matches `0.1.0-alpha`
 - migration freeze hashes match migration files
 - dependency audit evidence matches the current lockfile hash
 - required Week 20 through Week 26 workflow states are complete and include CI

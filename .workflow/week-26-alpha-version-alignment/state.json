@@ -1,0 +1,43 @@
+{
+  "title": "Week 26 Alpha Version Alignment",
+  "slug": "week-26-alpha-version-alignment",
+  "created_at": "2026-07-07T05:12:11+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local metadata, tests, and docs only. Tagging/publishing remains gated."
+  },
+  "packets": [
+    {
+      "id": "version-source",
+      "status": "completed"
+    },
+    {
+      "id": "runtime-metadata",
+      "status": "completed"
+    },
+    {
+      "id": "tests-docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/app.test.ts -t \"service metadata|health response|server config\"",
+      "pnpm test -- test/release-docs.test.ts test/ops/release-gate.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm format",
+      "pnpm release:gate -- --strict",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-alpha-version-alignment"
+    ]
+  }
+}

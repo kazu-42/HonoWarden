@@ -20,13 +20,15 @@ Use this index as the feature-freeze entry point:
 
 ## Freeze Position
 
-The current repository state is still pre-alpha. The feature-freeze materials
-exist so the final alpha cut can be reviewed without inventing release process
-under time pressure.
+The repository-local alpha gate is expected to be ready before tagging, while
+the project still carries pre-alpha safety warnings until the tag is created and
+reviewed. The feature-freeze materials exist so the final alpha cut can be
+reviewed without inventing release process under time pressure.
 
 ## Required Evidence Before Tagging
 
 - GitHub Actions CI passes on the release commit.
+- Package and runtime metadata report `0.1.0-alpha`.
 - Repository brand scan has no content or path hits.
 - `pnpm audit --audit-level low` has no unresolved production dependency risk.
 - `docs/security/review-index.md` has been reviewed for stale statements.
