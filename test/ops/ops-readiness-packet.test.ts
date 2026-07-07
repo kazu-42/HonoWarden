@@ -47,6 +47,9 @@ type OpsReadinessPacket = {
     status: 'pass' | 'fail'
     blocker: string | null
   }>
+  commands: {
+    publishedVerification: string
+  }
   limitations: string[]
 }
 
@@ -94,8 +97,31 @@ describe('ops readiness packet', () => {
       'fail',
     )
     expect(statusById(report, 'ops_rollback_evidence_recorded')).toBe('fail')
+    expect(report.commands.publishedVerification).toBe(
+      'pnpm release:published:packet -- --strict --tag-workflow-run-id 54321 --tag-workflow-url https://example.invalid/actions/runs/54321',
+    )
+    expect(report.commands.publishedVerification).not.toContain('28863312935')
     expect(report.limitations).toContain(
       'This packet does not deploy Workers, change DNS, configure Email Routing, or send email.',
+    )
+  })
+
+  it('keeps required tag workflow placeholders in the published verification command', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const fakeBin = await createFakeReleaseBin({
+      isDraft: true,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl: 'https://example.invalid/actions/runs/54321',
+    })
+
+    const result = await execFileAsync('node', [readinessPacketScript], {
+      env: fakeEnv(fakeBin),
+    })
+    const report = JSON.parse(result.stdout) as OpsReadinessPacket
+
+    expect(report.commands.publishedVerification).toBe(
+      'pnpm release:published:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>',
     )
   })
 

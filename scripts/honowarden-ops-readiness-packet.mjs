@@ -94,8 +94,7 @@ function buildOpsReadinessPacket(options) {
           : []),
       ].join(' '),
       emailPreflight: 'pnpm email:preflight -- --strict',
-      publishedVerification:
-        'pnpm release:published:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935',
+      publishedVerification: buildPublishedVerificationCommand(options),
     },
     limitations: [
       'This packet does not publish, update, or delete a GitHub release.',
@@ -105,6 +104,21 @@ function buildOpsReadinessPacket(options) {
       'Email local preflight proves required inputs are present but not that Cloudflare Email Routing is enabled.',
     ],
   }
+}
+
+function buildPublishedVerificationCommand(options) {
+  return [
+    'pnpm release:published:packet',
+    '--',
+    '--strict',
+    ...(options.expectedCommit
+      ? ['--expected-commit', options.expectedCommit]
+      : []),
+    '--tag-workflow-run-id',
+    options.tagWorkflowRunId ?? '<run-id>',
+    '--tag-workflow-url',
+    options.tagWorkflowUrl ?? '<run-url>',
+  ].join(' ')
 }
 
 function buildRequirements({ releaseAudit, emailPreflight, evidence }) {
