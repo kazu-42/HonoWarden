@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import process from 'node:process'
 
@@ -153,33 +153,12 @@ function buildEvidenceBundle(options) {
 }
 
 function runBrandScan() {
-  const pattern = [
-    '[Bb]it',
-    'warden|BIT',
-    'WARDEN|Bit',
-    'warden|bit',
-    'warden',
-  ].join('')
-  const result = runCommand([
-    'rg',
-    '-n',
-    pattern,
-    '--glob',
-    '!node_modules/**',
-    '--glob',
-    '!pnpm-lock.yaml',
-    '--glob',
-    '!LICENSE',
-    '--glob',
-    '!dist/**',
-    '--glob',
-    '!coverage/**',
-    '--glob',
-    '!test/.tmp/**',
-    '.',
-  ])
+  const pattern = new RegExp(
+    ['[Bb]it', 'warden|BIT', 'WARDEN|Bit', 'warden|bit', 'warden'].join(''),
+  )
+  const matches = scanForBlockedPattern(repoRoot, pattern)
 
-  if (result.status === 1 && result.stdout.trim().length === 0) {
+  if (matches.length === 0) {
     return {
       status: 'pass',
       detail: 'repository brand scan returned no content or path hits',
@@ -187,22 +166,90 @@ function runBrandScan() {
     }
   }
 
-  if (result.status === 0) {
-    return {
-      status: 'fail',
-      detail: 'repository brand scan found blocked content or path hits',
-      matches: result.stdout
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean),
-    }
-  }
-
   return {
     status: 'fail',
-    detail: firstOutputLine(result) || 'repository brand scan failed',
-    matches: [],
+    detail: 'repository brand scan found blocked content or path hits',
+    matches,
   }
+}
+
+function scanForBlockedPattern(root, pattern) {
+  const matches = []
+
+  visitDirectory(root, pattern, matches)
+
+  return matches
+}
+
+function visitDirectory(directory, pattern, matches) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const fullPath = join(directory, entry.name)
+    const repoPath = toRepoPath(fullPath)
+
+    if (shouldIgnoreRepoPath(repoPath, entry.isDirectory())) {
+      continue
+    }
+
+    if (pattern.test(repoPath)) {
+      matches.push(`${repoPath}:path`)
+    }
+
+    if (entry.isDirectory()) {
+      visitDirectory(fullPath, pattern, matches)
+      continue
+    }
+
+    if (!entry.isFile()) {
+      continue
+    }
+
+    let content
+    try {
+      content = readFileSync(fullPath, 'utf8')
+    } catch {
+      continue
+    }
+
+    const lines = content.split('\n')
+    for (let index = 0; index < lines.length; index += 1) {
+      pattern.lastIndex = 0
+      if (pattern.test(lines[index])) {
+        matches.push(`${repoPath}:${index + 1}`)
+      }
+    }
+  }
+}
+
+function toRepoPath(fullPath) {
+  return relative(repoRoot, fullPath).split(sep).join('/')
+}
+
+function shouldIgnoreRepoPath(repoPath, isDirectory) {
+  if (repoPath === '') {
+    return false
+  }
+
+  const ignoredDirectories = new Set([
+    '.git',
+    'coverage',
+    'dist',
+    'node_modules',
+  ])
+  const ignoredFiles = new Set(['LICENSE', 'pnpm-lock.yaml'])
+
+  if (ignoredFiles.has(repoPath)) {
+    return true
+  }
+
+  if (repoPath === 'test/.tmp' || repoPath.startsWith('test/.tmp/')) {
+    return true
+  }
+
+  if (!isDirectory) {
+    return false
+  }
+
+  return ignoredDirectories.has(repoPath.split('/')[0])
 }
 
 function writeOutput(options, serialized) {
