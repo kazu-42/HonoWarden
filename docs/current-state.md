@@ -802,9 +802,9 @@ Implemented:
   fixtures and selected explicitly opted-in stateful fixtures
 - replay coverage for server config, prelogin, password grant, refresh grant,
   TOTP challenge, TOTP login success, empty sync, sync with one folder and
-  cipher, account profile, account revision, direct folder and cipher reads,
-  policy metadata, domain metadata, collection metadata, device reads, and
-  known-device preflight, and device revoke
+  cipher, account profile, account revision, folder reads and mutations, direct
+  cipher reads, policy metadata, domain metadata, collection metadata, device
+  reads, known-device preflight, and device revoke
 - password-grant replay uses fixture request headers/form data and explicitly
   opts into stateful replay while preserving the default mutating fixture guard
 - refresh-grant replay seeds a deterministic refresh-token session and verifies
@@ -819,6 +819,8 @@ Implemented:
 - device revoke replay signs the synthetic access token for the fixture owner
   and verifies the real authenticated revoke route with explicit stateful replay
   opt-in
+- folder mutation replay covers create, update, and delete fixtures through the
+  real authenticated folder routes with explicit stateful replay opt-in
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads
@@ -831,7 +833,7 @@ Not implemented:
 
 - route-executed replay for mutating fixtures that require ordered state
   transitions beyond the password-grant, refresh-grant, TOTP challenge, and
-  TOTP login, and device revoke fixtures
+  TOTP login, device revoke, and folder mutation fixtures
 - route replay fixtures for revoke-all session flow
 - live client evidence for newly route-replayed fixtures
 

@@ -1,0 +1,39 @@
+# Orchestration: Week 26 Folder Mutation Fixture Replay
+
+## Execution Rules
+
+- Keep the objective to route replay and docs evidence.
+- Ask for approval before risky, expensive, external, or destructive actions.
+- Keep immediate blocking work local.
+- Delegate only bounded, disjoint, materially useful packets.
+- Integrate packet results before final verification.
+
+## Branching Rules
+
+- If create replay returns `503`, inspect folder insert handling before changing
+  fixture assertions.
+- If update replay returns `404` or `409`, inspect `folderUpdateChanges` seed.
+- If delete replay returns `404`, inspect `folderDeleteChanges` seed.
+
+## Packet Prompts
+
+### 01-route-replay
+
+Objective: add folder create/update/delete fixtures to route replay with
+explicit stateful opt-in and narrow seed support.
+Ownership: `test/compat/fixture-route-replay.test.ts` and
+`test/compat/fixture-replay-support.ts`.
+Expected output: targeted route replay passes.
+
+### 02-docs-evidence
+
+Objective: update current-state documentation and workflow evidence.
+Ownership: `docs/current-state.md` and this workflow directory.
+Expected output: final report with verification commands.
+
+## Completion Audit
+
+- Confirm folder create, update, and delete fixtures are route replayed.
+- Confirm default mutating fixture guard still rejects a stateful fixture when
+  not opted in.
+- Confirm local checks and CI pass.

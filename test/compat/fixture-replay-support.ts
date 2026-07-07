@@ -69,6 +69,8 @@ type CompatFixtureDatabaseSeed = {
   authUsers?: readonly CompatAuthUserRecord[]
   ciphers?: Record<string, JsonValue>[]
   folders?: Record<string, JsonValue>[]
+  folderDeleteChanges?: number
+  folderUpdateChanges?: number
   devices?: Record<string, JsonValue>[]
   deviceRevokeChanges?: number
   refreshSession?: Record<string, JsonValue> | null
@@ -337,6 +339,8 @@ function buildDatabaseSeed(
     authUser: seed.authUser ?? authUsers[0] ?? defaultAuthUser,
     ciphers: seed.ciphers ?? [],
     folders: seed.folders ?? [],
+    folderDeleteChanges: seed.folderDeleteChanges ?? 1,
+    folderUpdateChanges: seed.folderUpdateChanges ?? 1,
     devices: seed.devices ?? [],
     deviceRevokeChanges: seed.deviceRevokeChanges ?? 1,
     refreshSession: seed.refreshSession ?? null,

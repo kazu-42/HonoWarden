@@ -260,6 +260,24 @@ const replayFixtures = [
     },
   },
   {
+    path: 'folders/create-success.json',
+    allowMutatingFixtures: true,
+  },
+  {
+    path: 'folders/update-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      folderUpdateChanges: 1,
+    },
+  },
+  {
+    path: 'folders/delete-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      folderDeleteChanges: 1,
+    },
+  },
+  {
     path: 'ciphers/list-success.json',
     database: {
       ciphers: cipherRows,
