@@ -63,6 +63,18 @@ If any field differs, stop and inspect the failing publish or published packet.
 Do not repair by editing the release directly unless a separate corrective plan
 has been reviewed.
 
+Run the completion audit before asking to mark the alpha objective complete:
+
+```sh
+pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
+```
+
+Before publication, the audit is expected to report
+`completion: "incomplete"` with
+`blockingReason: "release_publication_approval_required"`. Strict mode is
+reserved for the final post-publication proof and fails until the published
+prerelease verification passes.
+
 ## Approval Text
 
 Publication requires this exact operator approval text:
@@ -103,10 +115,17 @@ Then run the aggregate status packet again:
 pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
 ```
 
+Finally, run the completion audit in strict mode:
+
+```sh
+pnpm release:completion:audit -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
+```
+
 Expected post-publication state:
 
 - published packet `status: "ready"`
 - status packet `phase: "published_verified"`
+- completion audit `completion: "complete"`
 - release remains marked as prerelease
 - release target commit is still
   `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`

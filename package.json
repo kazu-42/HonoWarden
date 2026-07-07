@@ -33,6 +33,7 @@
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",
     "release:approval:packet": "node scripts/honowarden-release-approval-packet.mjs",
+    "release:completion:audit": "node scripts/honowarden-alpha-completion-audit.mjs",
     "release:evidence:bundle": "node scripts/honowarden-release-evidence-bundle.mjs",
     "release:gate": "node scripts/honowarden-release-gate.mjs",
     "release:github:plan": "node scripts/honowarden-github-release-plan.mjs",

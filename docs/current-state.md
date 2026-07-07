@@ -1048,6 +1048,28 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Alpha Completion Audit
+
+Implemented:
+
+- read-only alpha completion audit exposed as
+  `pnpm release:completion:audit`
+- completion audit aggregates strict release gate and release status packet
+  output
+- non-strict audit reports draft-ready alpha state as incomplete:
+  `completion: "incomplete"` and
+  `blockingReason: "release_publication_approval_required"`
+- strict audit only succeeds after published prerelease verification passes
+- focused tests cover draft-ready incomplete, strict draft failure, published
+  verified completion, and published verification failure
+- publication gate runbook includes pre-publication and post-publication
+  completion audit usage
+
+Not implemented:
+
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:
