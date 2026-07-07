@@ -53,6 +53,9 @@ payloads.
 - `pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935`
   - returned `completion: incomplete`
   - blocking reason remains `release_publication_approval_required`
+- GitHub Actions CI run `28882496201`
+  - head SHA `8a9fe0dde45eebe039320c8468cdf0ed48a17220`
+  - conclusion `success`
 
 ## Remaining Risks
 
