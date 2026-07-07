@@ -1,6 +1,6 @@
 # Week 26 Main CI Brand Scan
 
-Status: in progress.
+Status: completed.
 
 ## Summary
 
@@ -24,8 +24,10 @@ instead of only during release tag verification.
 - Release status packet: ready, `draft_ready_for_publication`.
 - Completion audit: incomplete only because release publication approval is
   required.
+- GitHub Actions CI `28884179226`: passed for
+  `9a8cf2087c6196b54cb634b7fe58bdcbbc75c447`; the run included and passed
+  `Repository brand scan`.
 
 ## Remaining Risk
 
-- GitHub Actions CI still needs to pass on the pushed implementation commit.
 - The `v0.1.0-alpha` draft prerelease remains publication-approval gated.
