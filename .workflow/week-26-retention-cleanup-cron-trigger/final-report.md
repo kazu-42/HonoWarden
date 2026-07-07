@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Status: in progress.
+Status: completed.
 
 This workflow adds scheduled Worker maintenance for transient auth cleanup
 without deploying or mutating Cloudflare resources.
@@ -34,11 +34,11 @@ Local checks passed:
 - strict release gate
 - read-only release status and completion audit packets
 
-GitHub Actions CI readback is pending after push.
+GitHub Actions CI readback passed for implementation commit
+`1d7b7bfe324ccb2a09ea1b0cd3e79ce8a5d53704`.
 
 ## Remaining Risks
 
-- Local checks and GitHub Actions CI still need to pass.
 - Live Cloudflare Cron Trigger activation requires a later deploy approval.
 
 ## Reusable Follow-up
