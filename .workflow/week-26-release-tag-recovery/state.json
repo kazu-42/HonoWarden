@@ -1,0 +1,72 @@
+{
+  "title": "Week 26 Release Tag Recovery",
+  "slug": "week-26-release-tag-recovery",
+  "created_at": "2026-07-07T10:48:33+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": true,
+    "granted": false,
+    "notes": "Tag movement, release draft creation, publication, deploys, DNS, and email changes remain approval-gated. This workflow only adds read-only recovery evidence."
+  },
+  "packets": [
+    {
+      "id": "01-cli-contract",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-implementation",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-docs-workflow",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "04-verification",
+      "status": "in_progress",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "local_passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/ops/release-tag-recovery-packet.test.ts test/release-docs.test.ts test/ops/release-evidence-bundle.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "summary": "35 files, 277 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "summary": "overall ready; pass 11, manual 0, block 0"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-tag-recovery",
+        "status": "passed"
+      }
+    ]
+  }
+}

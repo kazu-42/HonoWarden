@@ -106,8 +106,18 @@ git tag -d v0.1.0-alpha
 
 If the tag was pushed to the wrong commit, treat that as a release incident.
 Do not silently retag. Record the wrong tag SHA, the intended SHA, the commands
-that were run, and the time of discovery. Deleting or replacing a pushed tag is
-a separate operator-approved corrective action:
+that were run, and the time of discovery. Before replacing a pushed tag, collect
+the read-only recovery packet:
+
+```sh
+pnpm release:tag:recovery -- --strict --expected-current-commit <wrong-commit-sha> --recovery-commit <intended-commit-sha> --expected-remote-tag-object <remote-tag-object-sha> --main-ci-run-id <main-ci-run-id> --main-ci-url <main-ci-url> --failed-tag-workflow-run-id <failed-tag-workflow-run-id> --failed-tag-workflow-url <failed-tag-workflow-url>
+```
+
+Expected result: `status: "ready"`. The packet verifies the local tag, remote
+tag object, peeled remote commit, latest main CI, failed tag workflow, and
+absence of an existing GitHub release. It prints an exact approval text and a
+`--force-with-lease` push command. Deleting or replacing a pushed tag is still a
+separate operator-approved corrective action:
 
 ```sh
 git push origin :refs/tags/v0.1.0-alpha

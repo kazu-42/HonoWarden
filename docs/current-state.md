@@ -892,3 +892,29 @@ Not implemented:
 - automatic tag push
 - GitHub release draft creation or publication
 - deployment from a tag or release
+
+## Week 26 Release Tag Recovery Packet
+
+Implemented:
+
+- read-only release tag recovery packet exposed as
+  `pnpm release:tag:recovery`
+- lease-guarded recovery command generation for a pushed alpha tag that failed
+  verification
+- checks for clean working tree, remote main alignment, local tag context,
+  remote tag object and peeled commit, latest main CI evidence, failed tag
+  workflow evidence, and absence of an existing GitHub release
+- machine-generated approval text for moving `v0.1.0-alpha` from the failed
+  commit to the verified recovery commit
+- focused tests covering ready output, existing-release blocking, and strict
+  failure when main CI evidence is absent
+- tagging runbook instructions requiring the recovery packet before replacing a
+  pushed tag
+
+Not implemented:
+
+- automatic pushed-tag replacement
+- remote tag deletion
+- remote tag force update
+- GitHub release draft creation or publication
+- deployment from a tag or release
