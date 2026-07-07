@@ -960,3 +960,24 @@ Not implemented:
 
 - automatic GitHub release publication
 - deployment from a tag or release
+
+## Week 26 Release Published Packet
+
+Implemented:
+
+- read-only post-publication verification packet exposed as
+  `pnpm release:published:packet`
+- checks for local tag context, remote tag context, tag verification workflow
+  evidence, release gate readiness, published prerelease state, target commit,
+  and release-note body sections
+- target commit defaults to the local `v0.1.0-alpha` tag commit so the packet
+  remains valid after `main` advances
+- focused tests covering published prerelease success, draft-state blocking,
+  and strict failure when tag workflow evidence is absent
+- tagging runbook instructions requiring the published packet after release
+  publication
+
+Not implemented:
+
+- automatic GitHub release publication
+- deployment from a tag or release

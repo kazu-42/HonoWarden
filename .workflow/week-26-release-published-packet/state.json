@@ -1,0 +1,81 @@
+{
+  "title": "Week 26 Release Published Packet",
+  "slug": "week-26-release-published-packet",
+  "created_at": "2026-07-07T12:00:00+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": false,
+    "notes": "This workflow only adds read-only post-publication verification. Release publication remains separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-contract",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-implementation",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-docs-workflow",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "04-verification",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec prettier --check scripts/honowarden-release-published-packet.mjs test/ops/release-published-packet.test.ts docs/release/tagging-runbook.md docs/current-state.md test/release-docs.test.ts package.json .workflow/week-26-release-published-packet/**/*.md .workflow/week-26-release-published-packet/state.json",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/release-published-packet.test.ts test/release-docs.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-published-packet",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:published:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "failed closed as expected against current draft: release_state isDraft=true; expected false"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "37 files, 283 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed"
+      }
+    ]
+  }
+}

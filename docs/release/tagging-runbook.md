@@ -111,6 +111,17 @@ The publish packet defaults its target commit to the local tag commit, not the
 current branch `HEAD`, because `main` may advance after the release tag is
 pushed.
 
+After publishing the GitHub release, collect the published packet:
+
+```sh
+pnpm release:published:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>
+```
+
+Expected result: `status: "ready"`. The packet verifies the same local tag,
+remote tag, tag verification workflow, release gate, target commit, and
+release-note body sections, but requires the GitHub release to be no longer a
+draft while remaining marked as a prerelease.
+
 ## Failure Handling
 
 If local tag creation succeeds but push has not happened yet, delete only the
@@ -152,6 +163,8 @@ After the pushed tag is verified:
 - run `pnpm release:github:plan -- --strict --check-remote`
 - run
   `pnpm release:publish:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>`
+- after publication, run
+  `pnpm release:published:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>`
 - create release notes from `docs/release/v0.1.0-alpha-release-notes.md`
 - keep pre-alpha safety language unless a separate readiness decision changes it
 - do not deploy production from the tag without a separate deployment approval
