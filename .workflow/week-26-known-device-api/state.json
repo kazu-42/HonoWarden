@@ -1,0 +1,43 @@
+{
+  "title": "Week 26 Known Device API",
+  "slug": "week-26-known-device-api",
+  "created_at": "2026-07-07T05:01:18+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, docs, and tests only."
+  },
+  "packets": [
+    {
+      "id": "repository",
+      "status": "completed"
+    },
+    {
+      "id": "route",
+      "status": "completed"
+    },
+    {
+      "id": "docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/repositories/auth-repository.test.ts -t \"known device|active known device\"",
+      "pnpm test -- test/app.test.ts -t \"known active device|known-device\"",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm format",
+      "pnpm release:gate -- --strict",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-known-device-api"
+    ]
+  }
+}

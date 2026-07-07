@@ -193,7 +193,7 @@ Implemented:
 Not implemented:
 
 - refresh token reuse alerting
-- device metadata mutation and trust/key update APIs (read-only list and identifier lookup now implemented)
+- device metadata mutation and trust/key update APIs (read-only list, identifier lookup, and known-device preflight are now implemented)
 - live client compatibility evidence for the tracked versions
 - any storage of real password-vault data
 
@@ -666,3 +666,17 @@ Not implemented:
 
 - device metadata mutation APIs
 - device trust/key update APIs
+
+## Week 26 Known-Device Preflight API
+
+Implemented:
+
+- anonymous `GET /api/devices/knowndevice`
+- header contract:
+  - `X-Request-Email`: base64url-encoded UTF-8 email for the candidate user
+  - `X-Device-Identifier`: client device identifier
+- response is boolean `true` when the device is known for the email and `false`
+  otherwise
+- missing or malformed header values return `invalid_request`
+- returns only preflight result without device metadata mutation, trust updates,
+  or key updates

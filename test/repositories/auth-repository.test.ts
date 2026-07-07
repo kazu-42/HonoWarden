@@ -11,6 +11,7 @@ import {
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
   listDevicesByUser,
+  knownActiveDeviceExists,
   cleanupAuthDefenseState,
   recordAuthAttempt,
   recordFailedAuthBucket,
@@ -241,6 +242,61 @@ describe('auth repository', () => {
     expect(query).toContain('revoked_at IS NULL')
     expect(database.boundValues).toContain('user-id')
     expect(database.boundValues).toContain('fixture-device')
+  })
+
+  it('checks whether an active user has an active known device', async () => {
+    const database = new RecordingAuthD1Database(
+      {
+        id: 'user-id',
+        emailNormalized: 'person@example.test',
+        disabledAt: null,
+      },
+      null,
+      1,
+      1,
+      0,
+      null,
+      [
+        {
+          id: 'user-id:fixture-device',
+          userId: 'user-id',
+          identifier: 'fixture-device',
+          name: 'CLI',
+          type: 8,
+          lastSeenAt: '2026-07-06T00:10:00.000Z',
+          createdAt: '2026-07-06T00:00:00.000Z',
+          updatedAt: '2026-07-06T00:10:00.000Z',
+        },
+      ],
+    )
+
+    await expect(
+      knownActiveDeviceExists(database, {
+        emailNormalized: 'person@example.test',
+        identifier: 'fixture-device',
+      }),
+    ).resolves.toBe(true)
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('FROM users u')
+    expect(query).toContain('JOIN devices d')
+    expect(query).toContain('u.email_normalized = ?')
+    expect(query).toContain('u.disabled_at IS NULL')
+    expect(query).toContain('d.identifier = ?')
+    expect(query).toContain('d.revoked_at IS NULL')
+    expect(database.boundValues).toContain('person@example.test')
+    expect(database.boundValues).toContain('fixture-device')
+  })
+
+  it('returns false when a known-device lookup misses', async () => {
+    const database = new RecordingAuthD1Database(null)
+
+    await expect(
+      knownActiveDeviceExists(database, {
+        emailNormalized: 'person@example.test',
+        identifier: 'missing-device',
+      }),
+    ).resolves.toBe(false)
   })
 
   it('finds refresh token sessions with user and device context', async () => {
@@ -696,6 +752,28 @@ class RecordingAuthD1Database {
 
         if (query.includes('FROM refresh_tokens')) {
           return getRefreshSessionRow() as T | null
+        }
+
+        if (
+          query.includes('FROM users u') &&
+          query.includes('JOIN devices d')
+        ) {
+          const emailNormalized = String(statementBoundValues[0] ?? '')
+          const identifier = String(statementBoundValues[1] ?? '')
+          const user = getUserRow()
+
+          if (
+            isRecord(user) &&
+            user.emailNormalized === emailNormalized &&
+            !user.disabledAt &&
+            filterRecordingDeviceRows(getDeviceRows(), [user.id]).some(
+              (row) => row.identifier === identifier,
+            )
+          ) {
+            return { found: 1 } as T
+          }
+
+          return null
         }
 
         if (query.includes('FROM devices')) {

@@ -17,7 +17,7 @@ import {
   resolveBootstrapAccount,
   verifyBootstrapToken,
 } from './domain/bootstrap'
-import { resolvePrelogin } from './domain/prelogin'
+import { normalizeEmail, resolvePrelogin } from './domain/prelogin'
 import {
   buildAuthAttemptBucketKey,
   extractClientAddress,
@@ -68,6 +68,7 @@ import {
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
   listDevicesByUser,
+  knownActiveDeviceExists,
   cleanupAuthDefenseState,
   recordAuthAttempt,
   recordFailedAuthBucket,
@@ -333,6 +334,38 @@ async function handlePrelogin(c: AppContext) {
 app.post('/identity/accounts/prelogin', handlePrelogin)
 
 app.post('/identity/accounts/prelogin/password', handlePrelogin)
+
+app.get('/api/devices/knowndevice', async (c) => {
+  const request = parseKnownDeviceRequest(c)
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Known-device headers are required.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const known = await knownActiveDeviceExists(c.env.DB, {
+      emailNormalized: request.emailNormalized,
+      identifier: request.identifier,
+    })
+
+    return c.json(known)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Known-device lookup failed.',
+      ),
+      503,
+    )
+  }
+})
 
 app.get('/api/accounts/revision-date', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -2363,6 +2396,56 @@ function decodePathParam(value: string): string {
     return decodeURIComponent(value)
   } catch {
     return value
+  }
+}
+
+function parseKnownDeviceRequest(
+  c: AppContext,
+): { ok: true; emailNormalized: string; identifier: string } | { ok: false } {
+  const encodedEmail = c.req.header('X-Request-Email')
+  const identifier = c.req.header('X-Device-Identifier')?.trim()
+
+  if (!encodedEmail || !identifier) {
+    return { ok: false }
+  }
+
+  const email = decodeBase64UrlUtf8(encodedEmail)
+  if (!email) {
+    return { ok: false }
+  }
+
+  const emailNormalized = normalizeEmail(email)
+  if (!emailNormalized) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    emailNormalized,
+    identifier,
+  }
+}
+
+function decodeBase64UrlUtf8(value: string): string | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) {
+    return null
+  }
+
+  try {
+    const padded = value
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(value.length / 4) * 4, '=')
+    const binary = atob(padded)
+    const bytes = new Uint8Array(binary.length)
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return null
   }
 }
 

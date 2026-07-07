@@ -90,6 +90,18 @@ Owner-scope invariant:
 4. The response is read-only device metadata; these routes do not persist or mutate
    server-side device state.
 
+## Known-Device Preflight
+
+1. Anonymous client sends `GET /api/devices/knowndevice`.
+2. Request must include:
+   - `X-Request-Email`: base64url-encoded UTF-8 email
+   - `X-Device-Identifier`: client device identifier
+3. Missing or malformed header values are rejected as `invalid_request`.
+4. Worker resolves the decoded email and device identifier to a known-device
+   boolean.
+5. Response body is a bare boolean: `true` when known, `false` otherwise.
+6. Route completes without mutating device metadata, trust relationships, or keys.
+
 ## TOTP
 
 1. Recent password authentication is required for TOTP setup, setup verify, and

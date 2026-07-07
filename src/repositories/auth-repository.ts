@@ -92,6 +92,11 @@ export type DeviceByIdentifierInput = {
   identifier: string
 }
 
+export type KnownDeviceInput = {
+  emailNormalized: string
+  identifier: string
+}
+
 export type FailedLoginInput = {
   userId: string
   failedCount: number
@@ -247,6 +252,10 @@ type DeviceRow = {
   lastSeenAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+type KnownDeviceRow = {
+  found: number
 }
 
 export async function findAuthUserByEmail(
@@ -464,6 +473,30 @@ export async function findDeviceByIdentifier(
     .first<DeviceRow>()
 
   return row ? deviceFromRow(row) : null
+}
+
+export async function knownActiveDeviceExists(
+  database: AuthDeviceReadDatabase,
+  input: KnownDeviceInput,
+): Promise<boolean> {
+  const row = await database
+    .prepare(
+      `
+        SELECT
+          1 as found
+        FROM users u
+        JOIN devices d ON d.user_id = u.id
+        WHERE u.email_normalized = ?
+          AND u.disabled_at IS NULL
+          AND d.identifier = ?
+          AND d.revoked_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.emailNormalized, input.identifier)
+    .first<KnownDeviceRow>()
+
+  return row?.found === 1
 }
 
 export async function findRefreshTokenSessionByHash(

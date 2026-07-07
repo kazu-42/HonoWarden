@@ -232,6 +232,143 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('returns true for a known active device during login preflight', async () => {
+    const response = await app.request(
+      '/api/devices/knowndevice',
+      {
+        headers: {
+          'X-Request-Email': base64UrlEncode('Person@Example.Test'),
+          'X-Device-Identifier': 'fixture-device',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUsers: [authUserRecord()],
+          devices: [
+            {
+              id: buildDevicePathId('fixture-device'),
+              userId: 'user-id',
+              identifier: 'fixture-device',
+              name: 'CLI',
+              type: 8,
+              lastSeenAt: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:10:00.000Z',
+            },
+          ],
+        }),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toBe(true)
+  })
+
+  it('returns false for unknown, cross-user, or revoked known-device lookups', async () => {
+    const database = new FakeD1Database(null, [], {
+      authUsers: [authUserRecord()],
+      devices: [
+        {
+          id: 'other-user:fixture-device',
+          userId: 'other-user',
+          identifier: 'fixture-device',
+          name: 'Other',
+          type: 8,
+          lastSeenAt: '2026-07-06T00:10:00.000Z',
+          createdAt: '2026-07-06T00:00:00.000Z',
+          updatedAt: '2026-07-06T00:10:00.000Z',
+        },
+        {
+          id: buildDevicePathId('fixture-device'),
+          userId: 'user-id',
+          identifier: 'fixture-device',
+          name: 'Revoked',
+          type: 8,
+          revokedAt: '2026-07-06T00:20:00.000Z',
+          lastSeenAt: '2026-07-06T00:10:00.000Z',
+          createdAt: '2026-07-06T00:00:00.000Z',
+          updatedAt: '2026-07-06T00:20:00.000Z',
+        },
+      ],
+    })
+    const crossUserOrRevokedResponse = await app.request(
+      '/api/devices/knowndevice',
+      {
+        headers: {
+          'X-Request-Email': base64UrlEncode('Person@Example.Test'),
+          'X-Device-Identifier': 'fixture-device',
+        },
+      },
+      {
+        DB: database,
+      },
+    )
+    const unknownUserResponse = await app.request(
+      '/api/devices/knowndevice',
+      {
+        headers: {
+          'X-Request-Email': base64UrlEncode('unknown@example.test'),
+          'X-Device-Identifier': 'fixture-device',
+        },
+      },
+      {
+        DB: database,
+      },
+    )
+
+    expect(crossUserOrRevokedResponse.status).toBe(200)
+    await expect(crossUserOrRevokedResponse.json()).resolves.toBe(false)
+    expect(unknownUserResponse.status).toBe(200)
+    await expect(unknownUserResponse.json()).resolves.toBe(false)
+  })
+
+  it('rejects missing or malformed known-device headers', async () => {
+    const missingHeaderResponse = await app.request(
+      '/api/devices/knowndevice',
+      {
+        headers: {
+          'X-Request-Email': base64UrlEncode('Person@Example.Test'),
+          'X-Request-Id': 'known-device-missing-header-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUsers: [authUserRecord()],
+        }),
+      },
+    )
+    const malformedHeaderResponse = await app.request(
+      '/api/devices/knowndevice',
+      {
+        headers: {
+          'X-Request-Email': 'not base64url',
+          'X-Device-Identifier': 'fixture-device',
+          'X-Request-Id': 'known-device-invalid-header-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUsers: [authUserRecord()],
+        }),
+      },
+    )
+
+    expect(missingHeaderResponse.status).toBe(400)
+    await expect(missingHeaderResponse.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'known-device-missing-header-request',
+    })
+    expect(malformedHeaderResponse.status).toBe(400)
+    await expect(malformedHeaderResponse.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'known-device-invalid-header-request',
+    })
+  })
+
   it('rejects public account registration', async () => {
     for (const path of [
       '/api/accounts/register',
@@ -3565,6 +3702,10 @@ function cipherCreateBody() {
 
 function buildDevicePathId(deviceIdentifier: string): string {
   return `user-id:${deviceIdentifier}`
+}
+
+function base64UrlEncode(value: string): string {
+  return Buffer.from(value, 'utf8').toString('base64url')
 }
 
 async function accessTokenFor(

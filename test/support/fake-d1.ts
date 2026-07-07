@@ -133,6 +133,13 @@ export class FakeD1Database {
           return findScopedRow(options.ciphers ?? [], boundValues) as T | null
         }
 
+        if (
+          query.includes('FROM users u') &&
+          query.includes('JOIN devices d')
+        ) {
+          return findKnownDeviceRow(options, boundValues) as T | null
+        }
+
         if (query.includes('FROM devices')) {
           return findDeviceRow(options.devices ?? [], boundValues) as T | null
         }
@@ -516,6 +523,30 @@ function findAuthUser(
   }
 
   return options.authUsers[0] ?? null
+}
+
+function findKnownDeviceRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  const emailNormalized = String(boundValues[0] ?? '')
+  const identifier = String(boundValues[1] ?? '')
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  const user = users.find(
+    (candidate) =>
+      candidate.emailNormalized === emailNormalized && !candidate.disabledAt,
+  )
+
+  if (!user) {
+    return null
+  }
+
+  const known = filterDeviceRows(options.devices ?? [], [user.id]).some(
+    (row) => row.identifier === identifier,
+  )
+
+  return known ? { found: 1 } : null
 }
 
 function findLatestRevisionDate(
