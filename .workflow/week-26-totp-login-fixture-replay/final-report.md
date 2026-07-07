@@ -53,6 +53,9 @@ where the declared one-time code is valid.
 - `pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935`
   - returned `completion: incomplete`
   - blocking reason remains `release_publication_approval_required`
+- GitHub Actions CI run `28881580408`
+  - head SHA `83a6bf78595110e2551b2b128c47616e828ce459`
+  - conclusion `success`
 
 ## Remaining Risks
 

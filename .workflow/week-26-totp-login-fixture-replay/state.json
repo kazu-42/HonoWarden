@@ -2,7 +2,8 @@
   "title": "Week 26 TOTP Login Fixture Replay",
   "slug": "week-26-totp-login-fixture-replay",
   "created_at": "2026-07-07T16:15:17+00:00",
-  "status": "in_progress",
+  "updated_at": "2026-07-07T16:21:24Z",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -76,6 +77,9 @@
     ]
   },
   "ci": {
-    "status": "pending_after_push"
+    "status": "passed",
+    "run": "28881580408",
+    "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28881580408",
+    "headSha": "83a6bf78595110e2551b2b128c47616e828ce459"
   }
 }
