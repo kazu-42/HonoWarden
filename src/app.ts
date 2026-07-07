@@ -973,6 +973,17 @@ app.post('/identity/accounts/totp/setup', async (c) => {
     return auth.response
   }
 
+  if (auth.user.totpEnabled) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'TOTP is already enabled.',
+      ),
+      400,
+    )
+  }
+
   const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
   if (!totpSecret) {
     return c.json(

@@ -83,15 +83,17 @@ Owner-scope invariant:
 
 1. Recent password authentication is required for TOTP setup, setup verify, and
    disable.
-2. Setup creates a generated base32 secret and stores an AES-GCM envelope in
-   D1.
-3. Verify checks the presented code and records the accepted timestep to prevent
+2. Setup rejects accounts that already have TOTP enabled; change remains a
+   separate unsupported route in alpha.
+3. Initial setup creates a generated base32 secret and stores an AES-GCM
+   envelope in D1.
+4. Verify checks the presented code and records the accepted timestep to prevent
    replay.
-4. Disable deletes the enabled TOTP setup row for the account, removing stored
+5. Disable deletes the enabled TOTP setup row for the account, removing stored
    setup secret material and replay metadata (for example, last accepted
    timestep). The account profile then reports TOTP as disabled through the
    auth lookup left join.
-5. Login challenge records a hashed, expiring, single-use challenge bound to the
+6. Login challenge records a hashed, expiring, single-use challenge bound to the
    device identifier.
 
 Secrets:

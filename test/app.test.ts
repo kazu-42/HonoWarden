@@ -1149,6 +1149,41 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rejects TOTP setup when TOTP is already enabled', async () => {
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: 'v1.encrypted-totp-secret',
+      totpLastAcceptedStep: 59440320,
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/setup',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'totp-setup-already-enabled-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+        message: 'TOTP is already enabled.',
+      },
+      requestId: 'totp-setup-already-enabled-request',
+    })
+  })
+
   it('verifies TOTP setup and enables the user flag', async () => {
     const user = authUserRecord()
     const accessToken = await recentPasswordAccessTokenFor(user)

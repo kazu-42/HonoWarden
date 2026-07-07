@@ -579,6 +579,17 @@ Not implemented:
 - cleanup metrics or alerting
 - dedicated cleanup-only indexes for larger production datasets
 
+## Week 26 TOTP Setup Guard
+
+Implemented:
+
+- `POST /identity/accounts/totp/setup` rejects accounts that already have TOTP
+  enabled
+- the enabled-state guard runs before TOTP wrapping-secret checks
+- active TOTP rows are not moved back to pending setup state by setup route
+  reuse
+- regression coverage for the already-enabled setup path
+
 ## Week 26 TOTP Disable Route
 
 Implemented:

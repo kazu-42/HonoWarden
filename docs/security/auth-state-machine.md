@@ -39,6 +39,22 @@ Failure invariants:
   invalid-grant wording
 - login defense failures are recorded without plaintext client address storage
 
+## TOTP Setup
+
+```text
+recent-password-authenticated user
+  -> TOTP already enabled?
+       yes -> reject setup reuse
+       no  -> generate pending setup secret
+  -> wrapping secret configured?
+  -> store encrypted pending setup
+```
+
+Failure invariants:
+
+- setup reuse is rejected while the TOTP change route is not implemented
+- enabled TOTP rows must not be overwritten into pending state by setup
+
 ## Refresh Grant
 
 ```text
