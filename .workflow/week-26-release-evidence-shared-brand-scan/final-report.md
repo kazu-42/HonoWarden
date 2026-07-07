@@ -1,6 +1,6 @@
 # Week 26 Release Evidence Shared Brand Scan
 
-Status: in progress.
+Status: completed.
 
 ## Summary
 
@@ -26,9 +26,9 @@ Local checks passed:
 - full unit test suite and compat suite
 - read-only release gate and status packets
 
-GitHub Actions CI readback is pending after push.
+GitHub Actions CI readback passed for implementation commit
+`1a51f9e9383e0fa601123c671b8c42db64f0d099`.
 
 ## Remaining Risk
 
-- GitHub Actions CI still needs to pass after push.
 - The `v0.1.0-alpha` draft prerelease remains publication-approval gated.
