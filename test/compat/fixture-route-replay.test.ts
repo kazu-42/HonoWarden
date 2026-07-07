@@ -1,4 +1,5 @@
-import { join } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it, vi } from 'vitest'
@@ -10,6 +11,17 @@ import { runCompatFixture } from './fixture-replay-support'
 const fixturesRoot = fileURLToPath(
   new URL('../../compat/fixtures', import.meta.url).toString(),
 )
+const fixtureFlowsPath = fileURLToPath(
+  new URL('../../compat/fixture-flows.json', import.meta.url).toString(),
+)
+
+type FixtureFlowManifest = {
+  schemaVersion: number
+  flows: {
+    id: string
+    fixtures: string[]
+  }[]
+}
 
 const replayUser = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -346,6 +358,28 @@ const replayFixtures = [
 ] as const
 
 describe('compatibility fixture route replay', () => {
+  it('covers every fixture file exactly once', () => {
+    const fixturePaths = listFixturePaths(fixturesRoot)
+    const replayPaths = replayFixturePaths()
+
+    expect(
+      duplicatePaths(replayPaths),
+      'duplicate replay fixture paths',
+    ).toEqual([])
+    expect(
+      replayPaths.filter((path) => !fixturePaths.includes(path)),
+      'replay entries without fixture files',
+    ).toEqual([])
+    expect(
+      fixturePaths.filter((path) => !replayPaths.includes(path)),
+      'fixture files without route replay',
+    ).toEqual([])
+  })
+
+  it('keeps route replay aligned with the fixture-flow manifest', () => {
+    expect(readFixtureFlowPaths()).toEqual(replayFixturePaths())
+  })
+
   for (const fixture of replayFixtures) {
     it(`replays ${fixture.path} against the app`, async () => {
       const replayOptions = {
@@ -380,6 +414,54 @@ describe('compatibility fixture route replay', () => {
 
 function fixturePath(path: string): string {
   return join(fixturesRoot, path)
+}
+
+function listFixturePaths(root: string, current = root): string[] {
+  const paths = readdirSync(current, { withFileTypes: true }).flatMap(
+    (entry) => {
+      const absolutePath = join(current, entry.name)
+
+      if (entry.isDirectory()) {
+        return listFixturePaths(root, absolutePath)
+      }
+
+      if (!entry.isFile() || !entry.name.endsWith('.json')) {
+        return []
+      }
+
+      return [relative(root, absolutePath).split(sep).join('/')]
+    },
+  )
+
+  return paths.sort()
+}
+
+function replayFixturePaths(): string[] {
+  return replayFixtures.map((fixture) => fixture.path).sort()
+}
+
+function readFixtureFlowPaths(): string[] {
+  const manifest = JSON.parse(
+    readFileSync(fixtureFlowsPath, 'utf8'),
+  ) as FixtureFlowManifest
+
+  return [...new Set(manifest.flows.flatMap((flow) => flow.fixtures))].sort()
+}
+
+function duplicatePaths(paths: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const duplicates = new Set<string>()
+
+  for (const path of paths) {
+    if (seen.has(path)) {
+      duplicates.add(path)
+      continue
+    }
+
+    seen.add(path)
+  }
+
+  return [...duplicates].sort()
 }
 
 async function withSystemTime<T>(

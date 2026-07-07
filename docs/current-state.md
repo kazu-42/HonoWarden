@@ -830,6 +830,12 @@ Implemented:
 - cipher trash route semantics now align with the compatibility fixture:
   `DELETE /api/ciphers/:id` trashes and `DELETE /api/ciphers/:id/delete`
   permanently deletes
+- route replay tests now enumerate `compat/fixtures/**/*.json` and fail when a
+  fixture file is missing a replay entry, a replay entry points to no file, or a
+  replay path is duplicated
+- route replay tests also compare the replay path set with
+  `compat/fixture-flows.json` so matrix flow coverage cannot drift away from
+  executable route replay coverage
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads
@@ -840,9 +846,8 @@ Implemented:
 
 Not implemented:
 
-- route-executed replay for mutating fixtures that require ordered state
-  transitions beyond the password-grant, refresh-grant, TOTP challenge, and
-  TOTP login, device revoke, folder mutation, and cipher mutation fixtures
+- route-executed replay for future multi-request fixture scenarios that require
+  ordered state transitions beyond a single fixture request
 - live client evidence for newly route-replayed fixtures
 
 ## Week 26 Alpha Version Alignment

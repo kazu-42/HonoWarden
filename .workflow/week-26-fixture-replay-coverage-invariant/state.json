@@ -1,0 +1,69 @@
+{
+  "title": "Week 26 fixture replay coverage invariant",
+  "slug": "week-26-fixture-replay-coverage-invariant",
+  "created_at": "2026-07-07T16:51:22+00:00",
+  "updated_at": "2026-07-07T16:54:00Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local test, docs, and workflow artifact edits only. Release publication remains separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-route-replay-invariant",
+      "status": "completed",
+      "owner": "codex",
+      "scope": ["test/compat/fixture-route-replay.test.ts"]
+    },
+    {
+      "id": "02-evidence-docs",
+      "status": "completed",
+      "owner": "codex",
+      "scope": [
+        "docs/current-state.md",
+        ".workflow/week-26-fixture-replay-coverage-invariant"
+      ]
+    }
+  ],
+  "verification": {
+    "status": "passed_local_ci_pending",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/compat/fixture-route-replay.test.ts",
+        "status": "passed",
+        "evidence": "1 file, 37 tests passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/compat",
+        "status": "passed",
+        "evidence": "3 files, 78 tests passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed",
+        "evidence": "tsc --noEmit"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed",
+        "evidence": "eslint ."
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "40 files, 362 tests passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed",
+        "evidence": "All matched files use Prettier code style"
+      },
+      {
+        "command": "brand scan",
+        "status": "passed",
+        "evidence": "no external compatibility brand references in repo-controlled files"
+      }
+    ]
+  }
+}
