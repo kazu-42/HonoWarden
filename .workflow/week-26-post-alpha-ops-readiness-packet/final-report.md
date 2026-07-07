@@ -56,6 +56,8 @@ Verification:
 - Compatibility fixture tests: passed.
 - Strict release gate: passed.
 - Workflow verifier: passed.
+- GitHub Actions CI for implementation commit `ccc7fe8`: passed in run
+  `28889474503`.
 
 Read-only release status:
 
