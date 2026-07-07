@@ -88,6 +88,9 @@ describe('release gate preflight', () => {
       '.workflow/week-26-release-status-packet/state.json',
     )
     expect(workflowEvidence).toContain(
+      '.workflow/week-26-post-alpha-ops-readiness-packet/state.json',
+    )
+    expect(workflowEvidence).toContain(
       '.workflow/week-26-release-command-repo-scope/state.json',
     )
     expect(workflowEvidence).toContain(

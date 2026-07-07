@@ -1,0 +1,99 @@
+{
+  "title": "Week 26 Release Gate Ops Readiness Coverage",
+  "slug": "week-26-release-gate-ops-readiness-coverage",
+  "created_at": "2026-07-07T18:34:16+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local release gate script/test/docs/workflow changes only. Release publication, deploy, DNS, Email Routing, email sends, and secret writes remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-spark-gate-edit",
+      "status": "completed",
+      "agent": "019f3ddc-3b1d-7c90-8a04-606fef180b92"
+    },
+    {
+      "id": "02-docs-workflow",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "spark focused release gate test",
+        "command": "pnpm exec vitest run test/ops/release-gate.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "focused release gate test",
+        "command": "pnpm exec vitest run test/ops/release-gate.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "strict release gate",
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-ops-readiness-coverage",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "name": "format",
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "name": "brand scan",
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "name": "full test suite",
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "name": "compatibility tests",
+        "command": "pnpm compat:test",
+        "status": "passed"
+      },
+      {
+        "name": "ops readiness readback",
+        "command": "pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported status not_ready with blockingReason release_publication_approval_required."
+      },
+      {
+        "name": "release status readback",
+        "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported phase draft_ready_for_publication."
+      },
+      {
+        "name": "completion audit readback",
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported completion incomplete with blockingReason release_publication_approval_required."
+      }
+    ]
+  }
+}

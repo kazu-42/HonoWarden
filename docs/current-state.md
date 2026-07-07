@@ -1405,6 +1405,23 @@ Not implemented:
 - live Worker smoke, website route, email routing, or rollback evidence
 - release gate coverage for this workflow's future CI run
 
+## Week 26 Release Gate Ops Readiness Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed post-alpha ops
+  readiness packet workflow
+- `week-26-post-alpha-ops-readiness-packet` records passed CI run
+  `28889474503`
+- release gate tests assert the ops readiness packet workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- GitHub release publication
+- Worker deploy, DNS mutation, Email Routing configuration, or test email send
+- live Worker smoke, website route, email routing, or rollback evidence
+
 ## Week 26 Release Published Packet
 
 Implemented:

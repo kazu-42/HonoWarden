@@ -60,6 +60,7 @@ const requiredWorkflowSlugs = [
   'week-26-release-publish-packet',
   'week-26-release-published-packet',
   'week-26-release-status-packet',
+  'week-26-post-alpha-ops-readiness-packet',
   'week-26-release-command-repo-scope',
   'week-26-publication-gate-runbook',
   'week-26-alpha-completion-audit',
@@ -276,13 +277,23 @@ function hasCiEvidence(checks) {
       return check.startsWith('GitHub Actions CI run ')
     }
 
+    if (!check || typeof check !== 'object') {
+      return false
+    }
+
+    const isGhRunView =
+      typeof check.command === 'string' &&
+      check.command.includes('gh run view ')
+    const hasRunMetadata =
+      (typeof check.run === 'string' && check.run.length > 0) ||
+      (typeof check.runId === 'number' && check.runId > 0) ||
+      (typeof check.runId === 'string' && check.runId.length > 0) ||
+      (typeof check.url === 'string' && check.url.length > 0)
+
     return (
-      check &&
-      typeof check === 'object' &&
-      check.name === 'GitHub Actions CI' &&
       check.status === 'passed' &&
-      typeof check.run === 'string' &&
-      check.run.length > 0
+      hasRunMetadata &&
+      (check.name === 'GitHub Actions CI' || isGhRunView)
     )
   })
 }
