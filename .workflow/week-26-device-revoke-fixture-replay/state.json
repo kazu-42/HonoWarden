@@ -2,7 +2,8 @@
   "title": "Week 26 Device Revoke Fixture Replay",
   "slug": "week-26-device-revoke-fixture-replay",
   "created_at": "2026-07-07T16:24:38+00:00",
-  "status": "in_progress",
+  "updated_at": "2026-07-07T16:28:47Z",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -81,6 +82,9 @@
     ]
   },
   "ci": {
-    "status": "pending_after_push"
+    "status": "passed",
+    "run": "28882063470",
+    "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28882063470",
+    "headSha": "57146f83afe1f09b3d06e19cc0572e62e918c46f"
   }
 }
