@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { encryptTotpSecret } from '../../src/domain/totp-secret'
 import { runCompatFixture } from './fixture-replay-support'
 
 const fixturesRoot = fileURLToPath(
@@ -37,6 +38,17 @@ const replayUser = {
 const deviceReplayUser = {
   ...replayUser,
   id: 'user-id',
+}
+
+const totpReplayEncryptedSecret = await encryptTotpSecret(
+  'fixture-token-secret',
+  'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+)
+
+const totpReplayUser = {
+  ...replayUser,
+  totpEnabled: true,
+  totpEncryptedSecret: totpReplayEncryptedSecret,
 }
 
 const deviceRows = [
@@ -133,6 +145,13 @@ const replayFixtures = [
     database: {
       refreshSession,
       refreshRotationChanges: 1,
+    },
+  },
+  {
+    path: 'token/totp-challenge.json',
+    allowMutatingFixtures: true,
+    database: {
+      authUser: totpReplayUser,
     },
   },
   {
