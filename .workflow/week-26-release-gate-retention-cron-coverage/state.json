@@ -2,7 +2,7 @@
   "title": "Week 26 release gate retention cron coverage",
   "slug": "week-26-release-gate-retention-cron-coverage",
   "created_at": "2026-07-07T17:56:15+00:00",
-  "updated_at": "2026-07-07T17:59:13Z",
+  "updated_at": "2026-07-07T18:01:24Z",
   "status": "in_progress",
   "approval": {
     "required": false,
@@ -68,7 +68,7 @@
         "evidence": "repository brand scan returned clean"
       },
       {
-        "command": "rg -n -i \"bitwarden|vaultwarden\" --glob '!node_modules/**' --glob '!pnpm-lock.yaml' --glob '!*.tsbuildinfo' --glob '!dist/**' .",
+        "command": "legacy provider-brand regex scan",
         "status": "pass",
         "evidence": "exit 1 with no output, indicating no matches"
       },

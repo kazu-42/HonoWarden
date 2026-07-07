@@ -20,6 +20,14 @@ None.
 
 None.
 
+## CI Follow-up
+
+The first pushed implementation commit failed CI because the workflow state
+recorded a literal provider-brand regex command. The command evidence was
+rewritten as a brand-free description, and the failed repository-policy and
+release-evidence-bundle checks were reproduced locally before the follow-up
+commit.
+
 ## Verification Evidence
 
 Local checks passed:
