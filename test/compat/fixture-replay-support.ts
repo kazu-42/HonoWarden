@@ -72,6 +72,8 @@ type CompatFixtureDatabaseSeed = {
   devices?: Record<string, JsonValue>[]
   refreshSession?: Record<string, JsonValue> | null
   refreshRotationChanges?: number
+  totpChallenge?: Record<string, JsonValue> | null
+  totpChallengeUpdateChanges?: number
   userTotp?: Record<string, JsonValue> | null
 }
 
@@ -337,6 +339,8 @@ function buildDatabaseSeed(
     devices: seed.devices ?? [],
     refreshSession: seed.refreshSession ?? null,
     refreshRotationChanges: seed.refreshRotationChanges ?? 1,
+    totpChallenge: seed.totpChallenge ?? null,
+    totpChallengeUpdateChanges: seed.totpChallengeUpdateChanges ?? 1,
     userTotp: seed.userTotp ?? null,
   }
 }

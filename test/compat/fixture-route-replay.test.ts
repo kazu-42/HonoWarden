@@ -1,8 +1,9 @@
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { hashRefreshToken } from '../../src/domain/tokens'
 import { encryptTotpSecret } from '../../src/domain/totp-secret'
 import { runCompatFixture } from './fixture-replay-support'
 
@@ -49,6 +50,21 @@ const totpReplayUser = {
   ...replayUser,
   totpEnabled: true,
   totpEncryptedSecret: totpReplayEncryptedSecret,
+}
+
+const totpLoginReplayTime = new Date('1970-05-06T05:26:30.000Z')
+const totpReplayChallengeHash = await hashRefreshToken(
+  'fixture-token-secret',
+  'totp:synthetic-two-factor-token',
+)
+const totpLoginChallenge = {
+  id: 'totp-challenge-id',
+  userId: replayUser.id,
+  challengeHash: totpReplayChallengeHash,
+  deviceIdentifier: 'fixture-device',
+  expiresAt: '1970-05-06T05:31:30.000Z',
+  consumedAt: null,
+  createdAt: '1970-05-06T05:21:30.000Z',
 }
 
 const deviceRows = [
@@ -155,6 +171,16 @@ const replayFixtures = [
     },
   },
   {
+    path: 'token/totp-login-success.json',
+    allowMutatingFixtures: true,
+    systemTime: totpLoginReplayTime,
+    database: {
+      authUser: totpReplayUser,
+      totpChallenge: totpLoginChallenge,
+      totpChallengeUpdateChanges: 1,
+    },
+  },
+  {
     path: 'sync/empty-personal-vault.json',
   },
   {
@@ -248,10 +274,12 @@ describe('compatibility fixture route replay', () => {
           ? { allowMutatingFixtures: fixture.allowMutatingFixtures }
           : {}),
       }
-      const result = await runCompatFixture(
-        fixturePath(fixture.path),
-        replayOptions,
-      )
+      const runFixture = () =>
+        runCompatFixture(fixturePath(fixture.path), replayOptions)
+      const result =
+        'systemTime' in fixture
+          ? await withSystemTime(fixture.systemTime, runFixture)
+          : await runFixture()
 
       expect(result.response.status).toBe(result.fixture.response.status)
     })
@@ -266,4 +294,18 @@ describe('compatibility fixture route replay', () => {
 
 function fixturePath(path: string): string {
   return join(fixturesRoot, path)
+}
+
+async function withSystemTime<T>(
+  systemTime: Date,
+  run: () => Promise<T>,
+): Promise<T> {
+  vi.useFakeTimers()
+  vi.setSystemTime(systemTime)
+
+  try {
+    return await run()
+  } finally {
+    vi.useRealTimers()
+  }
 }

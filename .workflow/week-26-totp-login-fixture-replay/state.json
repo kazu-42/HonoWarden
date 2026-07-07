@@ -1,0 +1,81 @@
+{
+  "title": "Week 26 TOTP Login Fixture Replay",
+  "slug": "week-26-totp-login-fixture-replay",
+  "created_at": "2026-07-07T16:15:17+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local test/docs workflow only. Release publication remains approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-route-replay",
+      "owner": "main",
+      "status": "completed"
+    },
+    {
+      "id": "02-docs-evidence",
+      "owner": "main",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "route replay targeted test",
+        "command": "pnpm exec vitest run test/compat/fixture-route-replay.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "compat fixture suite",
+        "command": "pnpm compat:test",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "name": "unit tests",
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "name": "format",
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "name": "repository policy external-brand scan",
+        "command": "repository policy scan",
+        "status": "passed"
+      },
+      {
+        "name": "strict release gate",
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "name": "release status packet",
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed"
+      },
+      {
+        "name": "completion audit",
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "expected_incomplete_release_publication_approval_required"
+      }
+    ]
+  },
+  "ci": {
+    "status": "pending_after_push"
+  }
+}
