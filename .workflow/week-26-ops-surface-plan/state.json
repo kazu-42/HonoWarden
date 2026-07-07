@@ -1,0 +1,58 @@
+{
+  "title": "Week 26 Ops Surface Plan",
+  "slug": "week-26-ops-surface-plan",
+  "created_at": "2026-07-07T03:48:32+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local docs and non-secret env scaffolding only. External GitHub, Linear, Cloudflare, DNS, email, deploy, and secret writes remain gated."
+  },
+  "packets": [
+    {
+      "id": "01-operator-environment",
+      "status": "completed"
+    },
+    {
+      "id": "02-ops-documentation",
+      "status": "completed"
+    },
+    {
+      "id": "03-website-email-plan",
+      "status": "completed"
+    },
+    {
+      "id": "04-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "completed",
+    "checks": [
+      {
+        "name": "linear seed validation",
+        "status": "passed"
+      },
+      {
+        "name": "ops and security docs tests",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed"
+      },
+      {
+        "name": "format check",
+        "status": "passed"
+      },
+      {
+        "name": "strict release gate",
+        "status": "passed"
+      },
+      {
+        "name": "repository brand scans",
+        "status": "passed"
+      }
+    ]
+  }
+}
