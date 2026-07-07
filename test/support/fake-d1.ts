@@ -23,6 +23,7 @@ type FakeD1DatabaseOptions = {
   cipherSoftDeleteChanges?: number
   cipherUpdateChanges?: number
   ciphers?: Record<string, unknown>[]
+  devices?: Record<string, unknown>[]
   deviceRevokeChanges?: number
   folder?: Record<string, unknown> | null
   folderDeleteChanges?: number
@@ -132,6 +133,10 @@ export class FakeD1Database {
           return findScopedRow(options.ciphers ?? [], boundValues) as T | null
         }
 
+        if (query.includes('FROM devices')) {
+          return findDeviceRow(options.devices ?? [], boundValues) as T | null
+        }
+
         if (query.includes('FROM user_totp')) {
           return (options.userTotp ?? null) as T | null
         }
@@ -176,6 +181,17 @@ export class FakeD1Database {
             success: true,
             results: filterRowsByUserId(
               options.folders ?? [],
+              boundValues,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
+        if (query.includes('FROM devices')) {
+          return {
+            success: true,
+            results: filterDeviceRows(
+              options.devices ?? [],
               boundValues,
             ) as T[],
             meta: fakeMeta,
@@ -550,6 +566,31 @@ function findScopedRow(
   }
 
   return filterRowsByUserId(rows, boundValues)[0] ?? null
+}
+
+function findDeviceRow(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  const identifier = String(boundValues[1] ?? '')
+  const scopedRows = filterDeviceRows(rows, boundValues)
+
+  if (identifier) {
+    return scopedRows.find((row) => row.identifier === identifier) ?? null
+  }
+
+  return scopedRows[0] ?? null
+}
+
+function filterDeviceRows(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  return filterRowsByUserId(rows, boundValues).filter((row) => {
+    const revokedAt = row.revokedAt ?? row.revoked_at
+
+    return revokedAt === null || revokedAt === undefined
+  })
 }
 
 export const requiredTables = [

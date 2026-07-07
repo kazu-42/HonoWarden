@@ -7,8 +7,10 @@ import {
   findAuthFailureBucket,
   findAuthUserByEmail,
   findAuthUserById,
+  findDeviceByIdentifier,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  listDevicesByUser,
   cleanupAuthDefenseState,
   recordAuthAttempt,
   recordFailedAuthBucket,
@@ -137,6 +139,108 @@ describe('auth repository', () => {
     )
     expect(database.boundValues).toContain('hashed-refresh-token')
     expect(database.boundValues).not.toContain('plaintext-refresh-token')
+  })
+
+  it('lists active devices for one user', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 0, null, [
+      {
+        id: 'user-id:desktop-device',
+        userId: 'user-id',
+        identifier: 'desktop-device',
+        name: 'Desktop',
+        type: 9,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+      {
+        id: 'other-user:desktop-device',
+        userId: 'other-user',
+        identifier: 'desktop-device',
+        name: 'Other Desktop',
+        type: 9,
+        lastSeenAt: '2026-07-06T00:20:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:20:00.000Z',
+      },
+      {
+        id: 'user-id:revoked-device',
+        userId: 'user-id',
+        identifier: 'revoked-device',
+        name: 'Revoked',
+        type: 9,
+        revokedAt: '2026-07-06T00:30:00.000Z',
+        lastSeenAt: '2026-07-06T00:15:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:30:00.000Z',
+      },
+    ])
+
+    await expect(listDevicesByUser(database, 'user-id')).resolves.toEqual([
+      {
+        id: 'user-id:desktop-device',
+        userId: 'user-id',
+        identifier: 'desktop-device',
+        name: 'Desktop',
+        type: 9,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+    ])
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('FROM devices')
+    expect(query).toContain('WHERE user_id = ?')
+    expect(query).toContain('revoked_at IS NULL')
+    expect(query).toContain('ORDER BY')
+    expect(database.boundValues).toContain('user-id')
+  })
+
+  it('finds an active device by owner and identifier', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 0, null, [
+      {
+        id: 'user-id:fixture-device',
+        userId: 'user-id',
+        identifier: 'fixture-device',
+        name: 'CLI',
+        type: 8,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+      {
+        id: 'other-user:fixture-device',
+        userId: 'other-user',
+        identifier: 'fixture-device',
+        name: 'Other CLI',
+        type: 8,
+        lastSeenAt: '2026-07-06T00:20:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:20:00.000Z',
+      },
+    ])
+
+    await expect(
+      findDeviceByIdentifier(database, {
+        userId: 'user-id',
+        identifier: 'fixture-device',
+      }),
+    ).resolves.toMatchObject({
+      id: 'user-id:fixture-device',
+      userId: 'user-id',
+      identifier: 'fixture-device',
+      name: 'CLI',
+      type: 8,
+    })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('FROM devices')
+    expect(query).toContain('WHERE user_id = ?')
+    expect(query).toContain('identifier = ?')
+    expect(query).toContain('revoked_at IS NULL')
+    expect(database.boundValues).toContain('user-id')
+    expect(database.boundValues).toContain('fixture-device')
   })
 
   it('finds refresh token sessions with user and device context', async () => {
@@ -551,6 +655,7 @@ class RecordingAuthD1Database {
     private readonly deviceUpdateChanges = 1,
     private readonly failedAttemptCount = 0,
     authFailureBucketRow: unknown = null,
+    private readonly deviceRows: unknown[] = [],
   ) {
     this.authFailureBucketRow = authFailureBucketRow
   }
@@ -568,6 +673,7 @@ class RecordingAuthD1Database {
     const getDeviceUpdateChanges = () => this.deviceUpdateChanges
     const getFailedAttemptCount = () => this.failedAttemptCount
     const getAuthFailureBucketRow = () => this.authFailureBucketRow
+    const getDeviceRows = () => this.deviceRows
     const setAuthFailureBucketRow = (row: unknown) => {
       this.authFailureBucketRow = row
     }
@@ -592,6 +698,17 @@ class RecordingAuthD1Database {
           return getRefreshSessionRow() as T | null
         }
 
+        if (query.includes('FROM devices')) {
+          const identifier = String(statementBoundValues[1] ?? '')
+          const rows = filterRecordingDeviceRows(
+            getDeviceRows(),
+            statementBoundValues,
+          )
+
+          return (rows.find((row) => row.identifier === identifier) ??
+            null) as T | null
+        }
+
         if (query.includes('FROM users')) {
           return getUserRow() as T | null
         }
@@ -599,6 +716,17 @@ class RecordingAuthD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (query.includes('FROM devices')) {
+          return {
+            success: true,
+            results: filterRecordingDeviceRows(
+              getDeviceRows(),
+              statementBoundValues,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         return {
           success: true,
           results: [],
@@ -655,4 +783,23 @@ class RecordingAuthD1Database {
       meta: fakeMeta,
     }))
   }
+}
+
+function filterRecordingDeviceRows(
+  rows: unknown[],
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  const userId = String(boundValues[0] ?? '')
+
+  return rows.filter(isRecord).filter((row) => {
+    const revokedAt = row.revokedAt ?? row.revoked_at
+
+    return (
+      row.userId === userId && (revokedAt === null || revokedAt === undefined)
+    )
+  })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

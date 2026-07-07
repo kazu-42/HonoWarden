@@ -7,7 +7,7 @@ This document describes where sensitive data enters, moves, and persists.
 ## Boundaries
 
 ```text
-official upstream clients
+client applications
   -> Cloudflare Worker / Hono routes
   -> D1 relational state
   -> R2 encrypted objects, when object storage is needed
@@ -78,6 +78,17 @@ Owner-scope invariant:
 - a caller can only list, update, delete, restore, or permanently delete rows
   whose `user_id` equals the authenticated user id
 - cipher create/update with a folder id first verifies folder ownership
+
+## Device List Read
+
+1. Client sends bearer access token to `GET /api/devices` or
+   `GET /api/devices/identifier/:identifier`.
+2. Worker verifies token signature, expiry, subject, device claim, and security
+   stamp.
+3. Worker loads the active user, reads the user-scoped device rows from D1, and
+   applies identifier filtering for the lookup-by-identifier route.
+4. The response is read-only device metadata; these routes do not persist or mutate
+   server-side device state.
 
 ## TOTP
 

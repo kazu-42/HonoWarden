@@ -21,7 +21,7 @@ Implemented:
 - `GET /api/config`
 - structured JSON 404 responses
 - request ID propagation
-- CORS for same-origin and official extension-style origins
+- CORS for same-origin and extension-style origins
 - basic security headers
 
 ## Week 2 Increment
@@ -193,7 +193,7 @@ Implemented:
 Not implemented:
 
 - refresh token reuse alerting
-- device list and device metadata update APIs
+- device metadata mutation and trust/key update APIs (read-only list and identifier lookup now implemented)
 - live client compatibility evidence for the tracked versions
 - any storage of real password-vault data
 
@@ -424,7 +424,7 @@ Not implemented:
 - `v0.1.0-alpha` tag
 - live staging deploy evidence
 - production backup/restore drill evidence
-- live official-client matrix promotion
+- live client matrix promotion
 
 The project remains pre-alpha and must not be used to store real secrets.
 
@@ -652,3 +652,17 @@ Not implemented:
 
 - live client evidence for revoke-all-other-sessions
 - account management UI or admin tooling for session inventory
+
+## Week 26 Device List API
+
+Implemented:
+
+- authenticated `GET /api/devices`
+- authenticated `GET /api/devices/identifier/:identifier`
+- owner-scoped read-only device metadata queries for user inventory and identifier
+  lookup
+
+Not implemented:
+
+- device metadata mutation APIs
+- device trust/key update APIs

@@ -76,6 +76,22 @@ export type RevokeOtherDeviceSessionsResult = {
   revokedAt: string
 }
 
+export type DeviceRecord = {
+  id: string
+  userId: string
+  identifier: string
+  name: string | null
+  type: number | null
+  lastSeenAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type DeviceByIdentifierInput = {
+  userId: string
+  identifier: string
+}
+
 export type FailedLoginInput = {
   userId: string
   failedCount: number
@@ -151,6 +167,7 @@ type AuthLookupDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionRevokeDatabase = Pick<D1Database, 'batch' | 'prepare'>
+type AuthDeviceReadDatabase = Pick<D1Database, 'prepare'>
 type LoginDefenseDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
@@ -218,6 +235,17 @@ type AuthFailureBucketRow = {
   failedCount: number
   windowStartedAt: string
   lockedUntil: string | null
+  updatedAt: string
+}
+
+type DeviceRow = {
+  id: string
+  userId: string
+  identifier: string
+  name: string | null
+  type: number | null
+  lastSeenAt: string | null
+  createdAt: string
   updatedAt: string
 }
 
@@ -376,6 +404,66 @@ export async function createPasswordGrantSession(
         input.refreshTokenExpiresAt,
       ),
   ])
+}
+
+export async function listDevicesByUser(
+  database: AuthDeviceReadDatabase,
+  userId: string,
+): Promise<DeviceRecord[]> {
+  const result = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          identifier,
+          name,
+          type,
+          last_seen_at as lastSeenAt,
+          created_at as createdAt,
+          updated_at as updatedAt
+        FROM devices
+        WHERE user_id = ?
+          AND revoked_at IS NULL
+        ORDER BY
+          COALESCE(last_seen_at, updated_at, created_at) DESC,
+          created_at DESC,
+          id ASC
+      `,
+    )
+    .bind(userId)
+    .all<DeviceRow>()
+
+  return result.results.map(deviceFromRow)
+}
+
+export async function findDeviceByIdentifier(
+  database: AuthDeviceReadDatabase,
+  input: DeviceByIdentifierInput,
+): Promise<DeviceRecord | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          identifier,
+          name,
+          type,
+          last_seen_at as lastSeenAt,
+          created_at as createdAt,
+          updated_at as updatedAt
+        FROM devices
+        WHERE user_id = ?
+          AND identifier = ?
+          AND revoked_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.userId, input.identifier)
+    .first<DeviceRow>()
+
+  return row ? deviceFromRow(row) : null
 }
 
 export async function findRefreshTokenSessionByHash(
@@ -952,6 +1040,19 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
     totpEncryptedSecret: row.totpEncryptedSecret ?? null,
     totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
+  }
+}
+
+function deviceFromRow(row: DeviceRow): DeviceRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    identifier: row.identifier,
+    name: row.name,
+    type: row.type,
+    lastSeenAt: row.lastSeenAt ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   }
 }
 

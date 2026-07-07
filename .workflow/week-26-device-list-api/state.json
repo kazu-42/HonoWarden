@@ -1,0 +1,43 @@
+{
+  "title": "Week 26 Device List API",
+  "slug": "week-26-device-list-api",
+  "created_at": "2026-07-07T04:49:10+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, docs, and tests only."
+  },
+  "packets": [
+    {
+      "id": "repository",
+      "status": "completed"
+    },
+    {
+      "id": "route",
+      "status": "completed"
+    },
+    {
+      "id": "docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/repositories/auth-repository.test.ts -t \"lists active devices|finds an active device\"",
+      "pnpm test -- test/app.test.ts -t \"device list|device by identifier|missing device identifier\"",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm format",
+      "pnpm release:gate -- --strict",
+      "repository brand scan",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-device-list-api"
+    ]
+  }
+}

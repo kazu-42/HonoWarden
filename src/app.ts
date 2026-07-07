@@ -64,8 +64,10 @@ import {
   findAuthFailureBucket,
   findAuthUserByEmail,
   findAuthUserById,
+  findDeviceByIdentifier,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  listDevicesByUser,
   cleanupAuthDefenseState,
   recordAuthAttempt,
   recordFailedAuthBucket,
@@ -76,7 +78,10 @@ import {
   revokeDeviceSession,
   rotateRefreshToken,
 } from './repositories/auth-repository'
-import type { AuthUserRecord } from './repositories/auth-repository'
+import type {
+  AuthUserRecord,
+  DeviceRecord,
+} from './repositories/auth-repository'
 import {
   consumeTotpChallenge,
   createTotpChallenge,
@@ -961,6 +966,76 @@ app.get('/api/sync', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Vault sync failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/devices', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const devices = await listDevicesByUser(c.env.DB, auth.user.id)
+
+    return c.json(buildDeviceListResponse(devices))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Device list failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/devices/identifier/:identifier', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const identifier = decodePathParam(c.req.param('identifier')).trim()
+  if (!identifier) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Device identifier is required.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const device = await findDeviceByIdentifier(c.env.DB, {
+      userId: auth.user.id,
+      identifier,
+    })
+
+    if (!device) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'device_not_found',
+          'Device was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json(buildDeviceResponse(device))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Device lookup failed.',
       ),
       503,
     )
@@ -1980,6 +2055,32 @@ function buildSyncResponse(
           MasterPasswordUnlock: masterPasswordUnlock,
         }
       : null,
+  }
+}
+
+function buildDeviceListResponse(devices: readonly DeviceRecord[]) {
+  return {
+    object: 'list',
+    data: devices.map(buildDeviceResponse),
+    continuationToken: null,
+  }
+}
+
+function buildDeviceResponse(device: DeviceRecord) {
+  return {
+    object: 'device',
+    id: device.id,
+    userId: device.userId,
+    name: device.name,
+    identifier: device.identifier,
+    type: device.type,
+    creationDate: device.createdAt,
+    revisionDate: device.updatedAt,
+    isTrusted: false,
+    encryptedUserKey: null,
+    encryptedPublicKey: null,
+    devicePendingAuthRequest: null,
+    lastActivityDate: device.lastSeenAt ?? device.updatedAt,
   }
 }
 

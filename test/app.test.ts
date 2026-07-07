@@ -1751,6 +1751,191 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('lists active devices for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'device-list-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          devices: [
+            {
+              id: buildDevicePathId('fixture-device'),
+              userId: 'user-id',
+              identifier: 'fixture-device',
+              name: 'CLI',
+              type: 8,
+              lastSeenAt: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:10:00.000Z',
+            },
+            {
+              id: 'other-user:fixture-device',
+              userId: 'other-user',
+              identifier: 'fixture-device',
+              name: 'Other User Device',
+              type: 8,
+              lastSeenAt: '2026-07-06T00:30:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:30:00.000Z',
+            },
+            {
+              id: buildDevicePathId('revoked-device'),
+              userId: 'user-id',
+              identifier: 'revoked-device',
+              name: 'Revoked',
+              type: 8,
+              revokedAt: '2026-07-06T00:20:00.000Z',
+              lastSeenAt: '2026-07-06T00:15:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:20:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'list',
+      data: [
+        {
+          object: 'device',
+          id: buildDevicePathId('fixture-device'),
+          userId: 'user-id',
+          name: 'CLI',
+          identifier: 'fixture-device',
+          type: 8,
+          creationDate: '2026-07-06T00:00:00.000Z',
+          revisionDate: '2026-07-06T00:10:00.000Z',
+          isTrusted: false,
+          encryptedUserKey: null,
+          encryptedPublicKey: null,
+          devicePendingAuthRequest: null,
+          lastActivityDate: '2026-07-06T00:10:00.000Z',
+        },
+      ],
+      continuationToken: null,
+    })
+  })
+
+  it('requires bearer authorization for device list', async () => {
+    const response = await app.request(
+      '/api/devices',
+      {
+        headers: {
+          'X-Request-Id': 'device-list-missing-token-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'missing_token',
+      },
+      requestId: 'device-list-missing-token-request',
+    })
+  })
+
+  it('gets a device by identifier for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/identifier/fixture-device',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          devices: [
+            {
+              id: buildDevicePathId('fixture-device'),
+              userId: 'user-id',
+              identifier: 'fixture-device',
+              name: 'CLI',
+              type: 8,
+              lastSeenAt: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:10:00.000Z',
+            },
+            {
+              id: 'other-user:fixture-device',
+              userId: 'other-user',
+              identifier: 'fixture-device',
+              name: 'Other User Device',
+              type: 8,
+              lastSeenAt: '2026-07-06T00:30:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:30:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'device',
+      id: buildDevicePathId('fixture-device'),
+      userId: 'user-id',
+      name: 'CLI',
+      identifier: 'fixture-device',
+      type: 8,
+      isTrusted: false,
+      encryptedUserKey: null,
+      encryptedPublicKey: null,
+      devicePendingAuthRequest: null,
+    })
+  })
+
+  it('returns not found for a missing device identifier', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/identifier/missing-device',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'missing-device-identifier-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          devices: [],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'device_not_found',
+      },
+      requestId: 'missing-device-identifier-request',
+    })
+  })
+
   it('revokes another device for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)

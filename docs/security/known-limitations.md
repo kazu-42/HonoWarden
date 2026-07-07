@@ -21,7 +21,7 @@ inputs, not minor documentation notes.
 - Public registration is disabled.
 - Organizations and shared vaults are not implemented.
 - Send is not implemented.
-- device list and device metadata update APIs are incomplete.
+- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`) are implemented; device metadata mutation and trust/key update APIs are not.
 - account disable/enable is represented in data and tests but lacks operator
   tooling.
 
