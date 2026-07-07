@@ -64,6 +64,8 @@ git ls-remote --tags origin v0.1.0-alpha
 ```
 
 The local and remote commit SHAs must match the approved release commit.
+The `Release Tag Verification` GitHub Actions workflow must pass for the pushed
+tag before a GitHub release is published or any deployment is approved.
 
 ## Failure Handling
 
@@ -91,6 +93,7 @@ automation may already have observed the pushed tag.
 
 After the pushed tag is verified:
 
+- confirm the `Release Tag Verification` workflow passed for the pushed tag
 - create release notes from `docs/release/v0.1.0-alpha-release-notes.md`
 - keep pre-alpha safety language unless a separate readiness decision changes it
 - do not deploy production from the tag without a separate deployment approval

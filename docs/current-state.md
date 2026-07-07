@@ -737,3 +737,24 @@ Not implemented:
 - tag push
 - remote tag deletion or retagging
 - GitHub release publication
+
+## Week 26 Release Tag Verification Workflow
+
+Implemented:
+
+- GitHub Actions workflow for `v0.1.0-alpha` tag pushes under
+  `.github/workflows/release-tag.yml`
+- read-only repository permissions for the tag verification job
+- full checkout with tags available for tag-context checks
+- typecheck, lint, unit tests, compatibility fixture tests, strict release gate,
+  release tag preflight, repository brand scan, and format check on the pushed
+  tag
+- release runbook requirement that the tag verification workflow passes before
+  GitHub release publication or deployment approval
+
+Not implemented:
+
+- tag creation
+- tag push
+- GitHub release publication
+- deployment from the tag
