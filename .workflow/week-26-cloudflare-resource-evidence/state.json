@@ -43,7 +43,8 @@
       "pnpm format",
       "repository brand scan",
       "repository path brand scan",
-      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-cloudflare-resource-evidence"
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-cloudflare-resource-evidence",
+      "GitHub Actions CI run 28833277441"
     ]
   }
 }

@@ -33,6 +33,7 @@ const requiredWorkflowSlugs = [
   'week-26-release-gate-preflight',
   'week-26-backup-restore-drill-evidence',
   'week-26-staging-dry-run-evidence',
+  'week-26-cloudflare-resource-evidence',
 ]
 
 function buildReleaseGateReport() {

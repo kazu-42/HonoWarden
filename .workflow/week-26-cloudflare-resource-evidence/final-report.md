@@ -47,6 +47,7 @@ rerun with `--remote` and verified against the remote staging database.
 - `pnpm format`
 - repository brand scans
 - workflow verifier
+- GitHub Actions CI run `28833277441`: passed
 
 ## Remaining Risks
 
