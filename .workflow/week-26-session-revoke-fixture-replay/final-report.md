@@ -54,6 +54,9 @@ fixture flow manifest and client matrix coverage.
 - `pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935`
   - returned `completion: incomplete`
   - blocking reason remains `release_publication_approval_required`
+- GitHub Actions CI run `28883309663`
+  - head SHA `7d0a151b4d9aaa14f3a4559600b7dfed9e08f3d1`
+  - conclusion `success`
 
 ## Remaining Risks
 
