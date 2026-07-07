@@ -1070,6 +1070,21 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Gate Completion Audit Coverage
+
+Implemented:
+
+- release gate workflow evidence now requires
+  `.workflow/week-26-alpha-completion-audit/state.json`
+- `week-26-alpha-completion-audit` records passing CI run `28867303505`
+- release gate tests assert the alpha completion audit workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:

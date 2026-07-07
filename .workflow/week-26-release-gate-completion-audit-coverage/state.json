@@ -1,0 +1,83 @@
+{
+  "title": "Week 26 Release Gate Completion Audit Coverage",
+  "slug": "week-26-release-gate-completion-audit-coverage",
+  "created_at": "2026-07-07T12:50:13+00:00",
+  "status": "planned",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local release gate, tests, docs, workflow artifacts, git push, and CI only. GitHub Release publication, deployment, tag mutation, DNS, email routing, secret writes, and Cloudflare resource writes remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-gate",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-state-docs",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec prettier --check scripts/honowarden-release-gate.mjs test/ops/release-gate.test.ts docs/current-state.md .workflow/week-26-alpha-completion-audit/state.json .workflow/week-26-release-gate-completion-audit-coverage/**/*.md .workflow/week-26-release-gate-completion-audit-coverage/state.json",
+        "status": "passed",
+        "evidence": "Initial run found three unformatted packet Markdown files; pnpm exec prettier --write corrected them."
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/release-gate.test.ts",
+        "status": "passed",
+        "evidence": "1 file, 2 tests"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready; workflow evidence includes .workflow/week-26-alpha-completion-audit/state.json"
+      },
+      {
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "completion incomplete; blockingReason release_publication_approval_required"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-completion-audit-coverage",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "39 files, 292 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "phase draft_ready_for_publication"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed"
+      }
+    ]
+  }
+}
