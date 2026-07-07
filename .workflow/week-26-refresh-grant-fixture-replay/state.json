@@ -1,0 +1,93 @@
+{
+  "title": "Week 26 Refresh Grant Fixture Replay",
+  "slug": "week-26-refresh-grant-fixture-replay",
+  "created_at": "2026-07-07T14:11:53+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local test/docs workflow only. Release publication remains approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-seed-type",
+      "owner": "main",
+      "status": "completed"
+    },
+    {
+      "id": "02-route-replay",
+      "owner": "main",
+      "status": "completed"
+    },
+    {
+      "id": "03-docs-evidence",
+      "owner": "main",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "targeted route replay",
+        "status": "passed",
+        "command": "pnpm exec vitest run test/compat/fixture-route-replay.test.ts",
+        "evidence": "1 file passed, 22 tests passed"
+      },
+      {
+        "name": "compat test",
+        "status": "passed",
+        "command": "pnpm compat:test",
+        "evidence": "3 files passed, 62 tests passed"
+      },
+      {
+        "name": "workflow verifier",
+        "status": "passed",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-refresh-grant-fixture-replay",
+        "evidence": "Workflow verification passed"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed",
+        "command": "pnpm check",
+        "evidence": "tsc --noEmit passed"
+      },
+      {
+        "name": "lint",
+        "status": "passed",
+        "command": "pnpm lint",
+        "evidence": "eslint . passed"
+      },
+      {
+        "name": "test",
+        "status": "passed",
+        "command": "pnpm test",
+        "evidence": "40 files passed, 346 tests passed"
+      },
+      {
+        "name": "format",
+        "status": "passed",
+        "command": "pnpm format",
+        "evidence": "All matched files use Prettier code style"
+      },
+      {
+        "name": "repository policy brand scan",
+        "status": "passed",
+        "command": "repository policy brand scan",
+        "evidence": "No matches"
+      },
+      {
+        "name": "release gate",
+        "status": "passed",
+        "command": "pnpm release:gate -- --strict",
+        "evidence": "overall ready"
+      },
+      {
+        "name": "release status packet",
+        "status": "passed",
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "evidence": "phase draft_ready_for_publication; publication approval required"
+      }
+    ]
+  }
+}

@@ -52,6 +52,37 @@ const deviceRows = [
   },
 ]
 
+const refreshSession = {
+  tokenId: 'refresh-token-id',
+  userId: replayUser.id,
+  deviceId: `${replayUser.id}:fixture-device`,
+  deviceIdentifier: 'fixture-device',
+  tokenExpiresAt: '2999-08-05T00:00:00.000Z',
+  tokenRevokedAt: null,
+  deviceRevokedAt: null,
+  email: replayUser.email,
+  emailNormalized: replayUser.emailNormalized,
+  displayName: replayUser.displayName,
+  kdfAlgorithm: replayUser.kdfAlgorithm,
+  kdfIterations: replayUser.kdfIterations,
+  kdfMemory: replayUser.kdfMemory,
+  kdfParallelism: replayUser.kdfParallelism,
+  masterPasswordHash: replayUser.masterPasswordHash,
+  userKey: replayUser.userKey,
+  publicKey: replayUser.publicKey,
+  privateKey: replayUser.privateKey,
+  securityStamp: replayUser.securityStamp,
+  revisionDate: replayUser.revisionDate,
+  createdAt: replayUser.createdAt,
+  disabledAt: replayUser.disabledAt,
+  loginFailedCount: replayUser.loginFailedCount,
+  loginFailedAt: replayUser.loginFailedAt,
+  loginLockedUntil: replayUser.loginLockedUntil,
+  totpEnabled: replayUser.totpEnabled,
+  totpEncryptedSecret: replayUser.totpEncryptedSecret,
+  totpLastAcceptedStep: replayUser.totpLastAcceptedStep,
+}
+
 const folderRows = [
   {
     id: 'folder-id',
@@ -95,6 +126,14 @@ const replayFixtures = [
   {
     path: 'token/password-grant-success.json',
     allowMutatingFixtures: true,
+  },
+  {
+    path: 'token/refresh-grant-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      refreshSession,
+      refreshRotationChanges: 1,
+    },
   },
   {
     path: 'sync/empty-personal-vault.json',

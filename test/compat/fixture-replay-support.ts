@@ -70,6 +70,8 @@ type CompatFixtureDatabaseSeed = {
   ciphers?: Record<string, JsonValue>[]
   folders?: Record<string, JsonValue>[]
   devices?: Record<string, JsonValue>[]
+  refreshSession?: Record<string, JsonValue> | null
+  refreshRotationChanges?: number
   userTotp?: Record<string, JsonValue> | null
 }
 
@@ -333,6 +335,8 @@ function buildDatabaseSeed(
     ciphers: seed.ciphers ?? [],
     folders: seed.folders ?? [],
     devices: seed.devices ?? [],
+    refreshSession: seed.refreshSession ?? null,
+    refreshRotationChanges: seed.refreshRotationChanges ?? 1,
     userTotp: seed.userTotp ?? null,
   }
 }
