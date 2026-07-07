@@ -1,0 +1,86 @@
+{
+  "title": "Week 26 main CI brand scan",
+  "slug": "week-26-main-ci-brand-scan",
+  "created_at": "2026-07-07T16:58:45+00:00",
+  "updated_at": "2026-07-07T17:01:28Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local CI workflow, focused test, docs, workflow artifact, commit/push, and CI readback only. Release publication and external infrastructure remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-spark-implementation",
+      "status": "completed",
+      "owner": "spark",
+      "scope": [".github/workflows/ci.yml", "test/ops/ci-workflow.test.ts"]
+    },
+    {
+      "id": "02-main-integration-evidence",
+      "status": "completed_local_ci_pending",
+      "owner": "codex",
+      "scope": ["docs/current-state.md", ".workflow/week-26-main-ci-brand-scan"]
+    }
+  ],
+  "verification": {
+    "status": "passed_local_ci_pending",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/ops/ci-workflow.test.ts",
+        "status": "passed",
+        "evidence": "1 file, 1 test passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-main-ci-brand-scan",
+        "status": "passed",
+        "evidence": "workflow verification passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed",
+        "evidence": "tsc --noEmit"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed",
+        "evidence": "eslint ."
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "41 files, 363 tests passed"
+      },
+      {
+        "command": "pnpm compat:test",
+        "status": "passed",
+        "evidence": "3 files, 78 tests passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed",
+        "evidence": "All matched files use Prettier code style"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed",
+        "evidence": "no blocked external compatibility-provider brand references in repo-controlled files"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready"
+      },
+      {
+        "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "phase draft_ready_for_publication"
+      },
+      {
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "completion incomplete only because release_publication_approval_required"
+      }
+    ]
+  }
+}

@@ -45,5 +45,20 @@ jobs:
       - name: Release gate preflight
         run: pnpm release:gate
 
+      - name: Repository brand scan
+        run: |
+          BLOCKED_PATTERN="$(printf '%s' '[Bb]it' 'warden|BIT' 'WARDEN|Bit' 'warden|bit' 'warden')"
+          if rg -n "$BLOCKED_PATTERN" \
+            --glob "!node_modules/**" \
+            --glob "!pnpm-lock.yaml" \
+            --glob "!LICENSE" \
+            --glob "!dist/**" \
+            --glob "!coverage/**" \
+            --glob "!test/.tmp/**" \
+            .
+          then
+            exit 1
+          fi
+
       - name: Format check
         run: pnpm format

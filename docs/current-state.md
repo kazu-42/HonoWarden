@@ -928,6 +928,24 @@ Not implemented:
 - GitHub release publication
 - deployment from the tag
 
+## Week 26 Main CI Brand Scan
+
+Implemented:
+
+- normal GitHub Actions CI now runs the repository brand scan on pull requests
+  and pushes to `main`
+- main CI brand scan uses the same split-pattern construction and file
+  exclusions as release tag verification
+- focused workflow test under `test/ops/ci-workflow.test.ts` asserts the main CI
+  check list, brand scan step, scan ordering before format, read-only
+  permissions, and absence of destructive tag/push commands
+
+Not implemented:
+
+- self-referential gating of this workflow's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 GitHub Release Plan
 
 Implemented:
