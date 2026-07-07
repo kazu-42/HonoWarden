@@ -412,7 +412,7 @@ describe('HonoWarden app', () => {
         method: 'DELETE',
         path: '/api/ciphers/cipher-id/attachment/attachment-id',
       },
-      { method: 'PUT', path: '/api/devices/device-id' },
+      { method: 'PATCH', path: '/api/devices/device-id' },
       { method: 'PATCH', path: '/api/devices/device-id/keys' },
       { method: 'PUT', path: '/api/devices/device-id/trust' },
     ]) {
@@ -2318,6 +2318,131 @@ describe('HonoWarden app', () => {
         code: 'device_not_found',
       },
       requestId: 'missing-device-identifier-request',
+    })
+  })
+
+  it('updates device metadata for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const deviceId = buildDevicePathId('fixture-device')
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(deviceId)}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          Name: 'Renamed CLI',
+          Type: 9,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          deviceUpdateChanges: 1,
+          devices: [
+            {
+              id: deviceId,
+              userId: 'user-id',
+              identifier: 'fixture-device',
+              name: 'CLI',
+              type: 8,
+              lastSeenAt: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:10:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'device',
+      id: deviceId,
+      userId: 'user-id',
+      name: 'Renamed CLI',
+      identifier: 'fixture-device',
+      type: 9,
+      creationDate: '2026-07-06T00:00:00.000Z',
+      revisionDate: expect.any(String),
+      isTrusted: false,
+      encryptedUserKey: null,
+      encryptedPublicKey: null,
+      devicePendingAuthRequest: null,
+      lastActivityDate: '2026-07-06T00:10:00.000Z',
+    })
+  })
+
+  it('rejects invalid device metadata update payloads', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(buildDevicePathId('fixture-device'))}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-device-update-request',
+        },
+        body: JSON.stringify({
+          Name: '',
+          Type: 'desktop',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'invalid-device-update-request',
+    })
+  })
+
+  it('returns not found when updating missing, revoked, or cross-user devices', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(buildDevicePathId('missing-device'))}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'missing-device-update-request',
+        },
+        body: JSON.stringify({
+          name: 'Renamed CLI',
+          type: 9,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          devices: [],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'device_not_found',
+      },
+      requestId: 'missing-device-update-request',
     })
   })
 

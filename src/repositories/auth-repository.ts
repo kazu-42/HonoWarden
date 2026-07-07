@@ -92,6 +92,28 @@ export type DeviceByIdentifierInput = {
   identifier: string
 }
 
+export type DeviceByIdInput = {
+  userId: string
+  deviceId: string
+}
+
+export type DeviceMetadataUpdateInput = {
+  userId: string
+  deviceId: string
+  name: string
+  type: number
+  updatedAt: string
+}
+
+export type DeviceMetadataUpdateResult =
+  | {
+      status: 'updated'
+      device: DeviceRecord
+    }
+  | {
+      status: 'not_found'
+    }
+
 export type KnownDeviceInput = {
   emailNormalized: string
   identifier: string
@@ -173,6 +195,7 @@ type AuthSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionRevokeDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceReadDatabase = Pick<D1Database, 'prepare'>
+type AuthDeviceMetadataDatabase = Pick<D1Database, 'prepare'>
 type LoginDefenseDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
@@ -473,6 +496,83 @@ export async function findDeviceByIdentifier(
     .first<DeviceRow>()
 
   return row ? deviceFromRow(row) : null
+}
+
+export async function findDeviceById(
+  database: AuthDeviceReadDatabase,
+  input: DeviceByIdInput,
+): Promise<DeviceRecord | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          identifier,
+          name,
+          type,
+          last_seen_at as lastSeenAt,
+          created_at as createdAt,
+          updated_at as updatedAt
+        FROM devices
+        WHERE user_id = ?
+          AND id = ?
+          AND revoked_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.userId, input.deviceId)
+    .first<DeviceRow>()
+
+  return row ? deviceFromRow(row) : null
+}
+
+export async function updateDeviceMetadata(
+  database: AuthDeviceMetadataDatabase,
+  input: DeviceMetadataUpdateInput,
+): Promise<DeviceMetadataUpdateResult> {
+  const existing = await findDeviceById(database, {
+    userId: input.userId,
+    deviceId: input.deviceId,
+  })
+
+  if (!existing) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  const result = await database
+    .prepare(
+      `
+        UPDATE devices
+        SET
+          name = ?,
+          type = ?,
+          updated_at = ?
+        WHERE user_id = ?
+          AND id = ?
+          AND revoked_at IS NULL
+      `,
+    )
+    .bind(input.name, input.type, input.updatedAt, input.userId, input.deviceId)
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  return {
+    status: 'updated',
+    device: {
+      ...existing,
+      name: input.name,
+      type: input.type,
+      updatedAt: input.updatedAt,
+    },
+  }
 }
 
 export async function knownActiveDeviceExists(

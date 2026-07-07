@@ -21,6 +21,7 @@ import {
   resetLoginDefenseState,
   revokeDeviceSession,
   rotateRefreshToken,
+  updateDeviceMetadata,
 } from '../../src/repositories/auth-repository'
 
 const fakeMeta = {
@@ -242,6 +243,92 @@ describe('auth repository', () => {
     expect(query).toContain('revoked_at IS NULL')
     expect(database.boundValues).toContain('user-id')
     expect(database.boundValues).toContain('fixture-device')
+  })
+
+  it('updates active owner-scoped device metadata', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 0, null, [
+      {
+        id: 'user-id:fixture-device',
+        userId: 'user-id',
+        identifier: 'fixture-device',
+        name: 'CLI',
+        type: 8,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+    ])
+
+    await expect(
+      updateDeviceMetadata(database, {
+        userId: 'user-id',
+        deviceId: 'user-id:fixture-device',
+        name: 'Renamed CLI',
+        type: 9,
+        updatedAt: '2026-07-07T18:06:30.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'updated',
+      device: {
+        id: 'user-id:fixture-device',
+        userId: 'user-id',
+        identifier: 'fixture-device',
+        name: 'Renamed CLI',
+        type: 9,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-07T18:06:30.000Z',
+      },
+    })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('FROM devices')
+    expect(query).toContain('UPDATE devices')
+    expect(query).toContain('revoked_at IS NULL')
+    expect(database.boundValues).toContain('Renamed CLI')
+    expect(database.boundValues).toContain(9)
+    expect(database.boundValues).toContain('user-id')
+    expect(database.boundValues).toContain('user-id:fixture-device')
+  })
+
+  it('does not update missing, cross-user, or revoked device metadata', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 0, 0, null, [
+      {
+        id: 'other-user:fixture-device',
+        userId: 'other-user',
+        identifier: 'fixture-device',
+        name: 'Other CLI',
+        type: 8,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+      {
+        id: 'user-id:revoked-device',
+        userId: 'user-id',
+        identifier: 'revoked-device',
+        name: 'Revoked',
+        type: 8,
+        revokedAt: '2026-07-06T00:15:00.000Z',
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:15:00.000Z',
+      },
+    ])
+
+    await expect(
+      updateDeviceMetadata(database, {
+        userId: 'user-id',
+        deviceId: 'user-id:missing-device',
+        name: 'Renamed CLI',
+        type: 9,
+        updatedAt: '2026-07-07T18:06:30.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'not_found',
+    })
+
+    expect(database.queries.join('\n')).not.toContain('UPDATE devices')
   })
 
   it('checks whether an active user has an active known device', async () => {
@@ -777,14 +864,15 @@ class RecordingAuthD1Database {
         }
 
         if (query.includes('FROM devices')) {
-          const identifier = String(statementBoundValues[1] ?? '')
+          const lookupValue = String(statementBoundValues[1] ?? '')
           const rows = filterRecordingDeviceRows(
             getDeviceRows(),
             statementBoundValues,
           )
 
-          return (rows.find((row) => row.identifier === identifier) ??
-            null) as T | null
+          return (rows.find(
+            (row) => row.identifier === lookupValue || row.id === lookupValue,
+          ) ?? null) as T | null
         }
 
         if (query.includes('FROM users')) {

@@ -79,6 +79,7 @@ import {
   resetLoginDefenseState,
   revokeDeviceSession,
   rotateRefreshToken,
+  updateDeviceMetadata,
 } from './repositories/auth-repository'
 import type {
   AuthUserRecord,
@@ -437,7 +438,66 @@ app.all('/api/attachments', unsupportedAlphaFeature)
 app.all('/api/attachments/*', unsupportedAlphaFeature)
 app.all('/api/ciphers/:id/attachment', unsupportedAlphaFeature)
 app.all('/api/ciphers/:id/attachment/*', unsupportedAlphaFeature)
-app.put('/api/devices/:id', unsupportedAlphaFeature)
+app.put('/api/devices/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const deviceId = decodePathParam(c.req.param('id')).trim()
+  if (!deviceId) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'Device ID is required.'),
+      400,
+    )
+  }
+
+  const deviceRequest = parseDeviceMetadataUpdateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!deviceRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Device payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const result = await updateDeviceMetadata(c.env.DB, {
+      userId: auth.user.id,
+      deviceId,
+      name: deviceRequest.name,
+      type: deviceRequest.type,
+      updatedAt: new Date().toISOString(),
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'device_not_found',
+          'Device was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json(buildDeviceResponse(result.device))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Device update failed.',
+      ),
+      503,
+    )
+  }
+})
 app.patch('/api/devices/:id', unsupportedAlphaFeature)
 app.put('/api/devices/:id/keys', unsupportedAlphaFeature)
 app.patch('/api/devices/:id/keys', unsupportedAlphaFeature)
@@ -2702,6 +2762,33 @@ function parseFolderRequestBody(
   return {
     ok: true,
     name,
+  }
+}
+
+function parseDeviceMetadataUpdateRequestBody(
+  body: unknown,
+): { ok: true; name: string; type: number } | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const name = parseRequiredString(body.name) ?? parseRequiredString(body.Name)
+  const typeValue = body.type ?? body.Type
+  const type =
+    typeof typeValue === 'number' &&
+    Number.isInteger(typeValue) &&
+    typeValue >= 0
+      ? typeValue
+      : null
+
+  if (!name || type === null) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    name,
+    type,
   }
 }
 

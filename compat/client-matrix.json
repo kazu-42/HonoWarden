@@ -20,6 +20,7 @@
         "direct_read",
         "metadata_read",
         "device_read",
+        "device_update",
         "known_device_preflight",
         "sync_with_items",
         "folder_crud",
@@ -33,7 +34,7 @@
       "knownIssues": [
         "No live client login or sync run is recorded for this exact version.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
-        "Device metadata update APIs are not implemented yet.",
+        "Device key and trust update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
     },
@@ -54,6 +55,7 @@
         "direct_read",
         "metadata_read",
         "device_read",
+        "device_update",
         "known_device_preflight",
         "sync_with_items",
         "folder_crud",
@@ -67,7 +69,7 @@
       "knownIssues": [
         "No live client login or sync run is recorded for this exact version.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
-        "Device metadata update APIs are not implemented yet.",
+        "Device key and trust update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
     },
@@ -89,6 +91,7 @@
         "direct_read",
         "metadata_read",
         "device_read",
+        "device_update",
         "known_device_preflight",
         "sync_with_items",
         "folder_crud",
@@ -102,7 +105,7 @@
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
-        "Device metadata update APIs are not implemented yet.",
+        "Device key and trust update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
     },
@@ -124,6 +127,7 @@
         "direct_read",
         "metadata_read",
         "device_read",
+        "device_update",
         "known_device_preflight",
         "sync_with_items",
         "folder_crud",
@@ -137,7 +141,7 @@
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
-        "Device metadata update APIs are not implemented yet.",
+        "Device key and trust update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
     },
@@ -177,6 +181,7 @@
         "direct_read",
         "metadata_read",
         "device_read",
+        "device_update",
         "known_device_preflight",
         "sync_with_items",
         "folder_crud",
@@ -191,7 +196,7 @@
         "Live CLI smoke covers config, password login, sync, one synthetic login item create/update/trash/permanent-delete flow, and account revision lookup only.",
         "The live smoke used a local compression-stripping HTTPS proxy because wrangler dev returned gzip chunked responses that the tracked CLI HTTP stack rejected.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
-        "Device metadata update APIs are not implemented yet.",
+        "Device key and trust update APIs are not implemented yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
     }

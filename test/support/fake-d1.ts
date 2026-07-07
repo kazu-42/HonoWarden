@@ -24,6 +24,7 @@ type FakeD1DatabaseOptions = {
   cipherUpdateChanges?: number
   ciphers?: Record<string, unknown>[]
   devices?: Record<string, unknown>[]
+  deviceUpdateChanges?: number
   deviceRevokeChanges?: number
   folder?: Record<string, unknown> | null
   folderDeleteChanges?: number
@@ -478,6 +479,21 @@ export class FakeD1Database {
 
         if (
           /UPDATE\s+devices/.test(query) &&
+          query.includes('name = ?') &&
+          query.includes('type = ?')
+        ) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.deviceUpdateChanges ?? 1,
+            },
+          }
+        }
+
+        if (
+          /UPDATE\s+devices/.test(query) &&
           query.includes('revoked_at = ?')
         ) {
           return {
@@ -646,11 +662,15 @@ function findDeviceRow(
   rows: Record<string, unknown>[],
   boundValues: unknown[],
 ): Record<string, unknown> | null {
-  const identifier = String(boundValues[1] ?? '')
+  const lookupValue = String(boundValues[1] ?? '')
   const scopedRows = filterDeviceRows(rows, boundValues)
 
-  if (identifier) {
-    return scopedRows.find((row) => row.identifier === identifier) ?? null
+  if (lookupValue) {
+    return (
+      scopedRows.find(
+        (row) => row.identifier === lookupValue || row.id === lookupValue,
+      ) ?? null
+    )
   }
 
   return scopedRows[0] ?? null

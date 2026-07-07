@@ -193,7 +193,8 @@ Implemented:
 Not implemented:
 
 - refresh token reuse alerting
-- device metadata mutation and trust/key update APIs (read-only list, identifier lookup, and known-device preflight are now implemented)
+- device trust/key update APIs (device read, metadata update, and known-device
+  preflight APIs are now implemented)
 - live client compatibility evidence for the tracked versions
 - any storage of real password-vault data
 
@@ -648,7 +649,7 @@ Implemented:
 - explicit `501` JSON response for `/api/organizations` and child paths
 - explicit `501` JSON response for `/api/sends` and child paths
 - explicit `501` JSON response for collection, emergency-access, attachment,
-  cipher-attachment, and device metadata/trust/key mutation paths
+  cipher-attachment, and device trust/key mutation paths
 - request ID preservation on unsupported feature responses
 - route test coverage proving these paths do not fall through to generic `404`
 
@@ -658,7 +659,7 @@ Not implemented:
 - public file-sharing functionality
 - collection or emergency-access functionality
 - attachment object storage, download, or mutation functionality
-- device metadata mutation or trust/key update functionality
+- device trust/key update functionality
 
 ## Week 26 Revoke Other Sessions
 
@@ -691,8 +692,25 @@ Implemented:
 
 Not implemented:
 
-- device metadata mutation APIs
 - device trust/key update APIs
+
+## Week 26 Device Metadata Update API
+
+Implemented:
+
+- authenticated `PUT /api/devices/:id`
+- owner-scoped active-device update by stable device ID and authenticated user ID
+- metadata-only updates for device `name` and `type`
+- `name`/`Name` and `type`/`Type` request payload aliases
+- stable `400`, `401`, `404`, and `503` JSON responses
+- compatibility fixture flow `device_update` under
+  `compat/fixtures/devices/update-success.json`
+
+Not implemented:
+
+- device identifier mutation
+- device trust/key update APIs
+- live client evidence for device metadata update
 
 ## Week 26 Known-Device Preflight API
 
@@ -810,8 +828,8 @@ Implemented:
   TOTP challenge, TOTP login success, empty sync, sync with one folder and
   cipher, account profile, account revision, folder reads and mutations, direct
   cipher reads and mutations, stale revision conflict, policy metadata, domain
-  metadata, collection metadata, device reads, known-device preflight, and device
-  revoke/session revoke
+  metadata, collection metadata, device reads, device metadata update,
+  known-device preflight, and device revoke/session revoke
 - password-grant replay uses fixture request headers/form data and explicitly
   opts into stateful replay while preserving the default mutating fixture guard
 - refresh-grant replay seeds a deterministic refresh-token session and verifies

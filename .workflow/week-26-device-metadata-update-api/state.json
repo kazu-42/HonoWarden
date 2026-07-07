@@ -1,0 +1,104 @@
+{
+  "title": "Week 26 device metadata update API",
+  "slug": "week-26-device-metadata-update-api",
+  "created_at": "2026-07-07T18:06:05+00:00",
+  "updated_at": "2026-07-07T18:14:05Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local code, tests, docs, workflow artifacts, commit/push, and CI readback only. Release publication, deployment, tag mutation, DNS/email, Cloudflare, Linear, secret writes, and production data remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-backend-tdd-implementation",
+      "status": "completed",
+      "owner": "codex",
+      "scope": [
+        "src/repositories/auth-repository.ts",
+        "src/app.ts",
+        "test/repositories/auth-repository.test.ts",
+        "test/app.test.ts",
+        "test/support/fake-d1.ts"
+      ]
+    },
+    {
+      "id": "02-docs-compat-workflow",
+      "status": "completed",
+      "owner": "codex",
+      "scope": [
+        "docs/current-state.md",
+        "docs/compatibility-matrix.md",
+        "compat/client-matrix.json",
+        "compat/fixture-flows.json",
+        "compat/fixtures/**",
+        ".workflow/week-26-device-metadata-update-api/**"
+      ]
+    }
+  ],
+  "verification": {
+    "status": "local_passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/repositories/auth-repository.test.ts test/app.test.ts",
+        "status": "pass",
+        "evidence": "2 files and 139 tests passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/repositories/auth-repository.test.ts test/app.test.ts test/compat/client-matrix.test.ts test/compat/compat-fixtures.test.ts test/compat/fixture-route-replay.test.ts",
+        "status": "pass",
+        "evidence": "5 files and 219 tests passed"
+      },
+      {
+        "command": "pnpm compat:test",
+        "status": "pass",
+        "evidence": "3 files and 80 tests passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "pass",
+        "evidence": "TypeScript noEmit passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "pass",
+        "evidence": "ESLint passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "pass",
+        "evidence": "Prettier check passed"
+      },
+      {
+        "command": "pnpm brand:scan",
+        "status": "pass",
+        "evidence": "repository brand scan returned clean"
+      },
+      {
+        "command": "pnpm test",
+        "status": "pass",
+        "evidence": "43 files and 378 tests passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "pass",
+        "evidence": "release gate overall ready"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-device-metadata-update-api",
+        "status": "pass",
+        "evidence": "workflow verification passed"
+      },
+      {
+        "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "pass",
+        "evidence": "phase draft_ready_for_publication"
+      },
+      {
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "expected_incomplete",
+        "evidence": "blockingReason release_publication_approval_required"
+      }
+    ]
+  }
+}

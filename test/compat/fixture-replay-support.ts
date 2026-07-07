@@ -77,6 +77,7 @@ type CompatFixtureDatabaseSeed = {
   folderDeleteChanges?: number
   folderUpdateChanges?: number
   devices?: Record<string, JsonValue>[]
+  deviceUpdateChanges?: number
   deviceRevokeChanges?: number
   refreshSession?: Record<string, JsonValue> | null
   refreshRotationChanges?: number
@@ -352,6 +353,7 @@ function buildDatabaseSeed(
     folderDeleteChanges: seed.folderDeleteChanges ?? 1,
     folderUpdateChanges: seed.folderUpdateChanges ?? 1,
     devices: seed.devices ?? [],
+    deviceUpdateChanges: seed.deviceUpdateChanges ?? 1,
     deviceRevokeChanges: seed.deviceRevokeChanges ?? 1,
     refreshSession: seed.refreshSession ?? null,
     refreshRotationChanges: seed.refreshRotationChanges ?? 1,

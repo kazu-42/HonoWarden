@@ -68,6 +68,7 @@ const requiredFlows = [
   'direct_read',
   'metadata_read',
   'device_read',
+  'device_update',
   'known_device_preflight',
   'folder_crud',
   'cipher_create',
