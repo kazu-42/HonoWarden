@@ -87,6 +87,9 @@ const cipherRows = [
 
 const replayFixtures = [
   {
+    path: 'config/server-config-success.json',
+  },
+  {
     path: 'prelogin/pbkdf2.json',
   },
   {

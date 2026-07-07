@@ -1,0 +1,122 @@
+{
+  "name": "server-config-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/config"
+  },
+  "request": {},
+  "response": {
+    "status": 200,
+    "body": {
+      "version": "0.1.0-alpha",
+      "gitHash": "honowarden",
+      "server": null,
+      "environment": {
+        "cloudRegion": "self-hosted",
+        "vault": "http://localhost",
+        "api": "http://localhost/api",
+        "identity": "http://localhost/identity",
+        "notifications": "http://localhost/notifications",
+        "icons": "",
+        "sso": ""
+      },
+      "push": {
+        "pushTechnology": 0,
+        "vapidPublicKey": null
+      },
+      "communication": null,
+      "settings": {
+        "disableUserRegistration": true
+      },
+      "featureStates": {
+        "cipher-key-encryption": false,
+        "duo-redirect": false,
+        "email-verification": false,
+        "send-enabled": false,
+        "web-push": false
+      },
+      "object": "config"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "config"
+    },
+    {
+      "path": "$.version",
+      "type": "string",
+      "value": "0.1.0-alpha"
+    },
+    {
+      "path": "$.gitHash",
+      "type": "string",
+      "value": "honowarden"
+    },
+    {
+      "path": "$.environment.cloudRegion",
+      "type": "string",
+      "value": "self-hosted"
+    },
+    {
+      "path": "$.environment.vault",
+      "type": "string",
+      "value": "http://localhost"
+    },
+    {
+      "path": "$.environment.api",
+      "type": "string",
+      "value": "http://localhost/api"
+    },
+    {
+      "path": "$.environment.identity",
+      "type": "string",
+      "value": "http://localhost/identity"
+    },
+    {
+      "path": "$.environment.notifications",
+      "type": "string",
+      "value": "http://localhost/notifications"
+    },
+    {
+      "path": "$.environment.icons",
+      "type": "string",
+      "value": ""
+    },
+    {
+      "path": "$.environment.sso",
+      "type": "string",
+      "value": ""
+    },
+    {
+      "path": "$.settings.disableUserRegistration",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "path": "$.push.pushTechnology",
+      "type": "number",
+      "value": 0
+    },
+    {
+      "path": "$.push.vapidPublicKey",
+      "type": "null"
+    },
+    {
+      "path": "$.communication",
+      "type": "null"
+    },
+    {
+      "path": "$.featureStates",
+      "type": "object",
+      "value": {
+        "cipher-key-encryption": false,
+        "duo-redirect": false,
+        "email-verification": false,
+        "send-enabled": false,
+        "web-push": false
+      }
+    }
+  ]
+}

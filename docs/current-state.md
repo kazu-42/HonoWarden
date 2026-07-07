@@ -581,6 +581,20 @@ Not implemented:
 - live TOTP login evidence
 - live item mutation evidence
 
+## Week 26 Server Config Fixture Coverage
+
+Implemented:
+
+- compatibility fixture flow `config` for anonymous `GET /api/config`
+- deterministic assertions for server config version, object type, replay
+  origin URLs, disabled registration, and push metadata
+- route replay coverage for the config fixture against the Hono app
+
+Not implemented:
+
+- live evidence for non-CLI clients reading server config
+- custom server config feature flags beyond the current alpha defaults
+
 ## Week 26 Retention Cleanup
 
 Implemented:
@@ -786,10 +800,10 @@ Implemented:
 
 - route-executed compatibility fixture replay for deterministic stateless
   fixtures
-- replay coverage for prelogin, empty sync, sync with one folder and cipher,
-  account profile, account revision, direct folder and cipher reads, policy
-  metadata, domain metadata, collection metadata, device reads, and
-  known-device preflight
+- replay coverage for server config, prelogin, empty sync, sync with one folder
+  and cipher, account profile, account revision, direct folder and cipher
+  reads, policy metadata, domain metadata, collection metadata, device reads,
+  and known-device preflight
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads

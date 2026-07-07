@@ -35,6 +35,7 @@ work.
 
 ## Fixture-Covered Flows
 
+- `config`
 - `prelogin`
 - `password_grant`
 - `refresh_grant`

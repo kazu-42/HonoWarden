@@ -58,6 +58,7 @@ const requiredSurfaces = [
 ] as const
 
 const requiredFlows = [
+  'config',
   'prelogin',
   'password_grant',
   'refresh_grant',

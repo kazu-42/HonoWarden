@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "flows": [
     {
+      "id": "config",
+      "fixtures": ["config/server-config-success.json"]
+    },
+    {
       "id": "prelogin",
       "fixtures": ["prelogin/pbkdf2.json"]
     },
