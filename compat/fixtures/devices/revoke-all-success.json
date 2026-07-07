@@ -1,0 +1,49 @@
+{
+  "name": "device-revoke-all-success",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/devices/revoke-all"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "x-request-id": "revoke-all-sessions-request"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "sessionsRevoke",
+      "currentDeviceId": "00000000-0000-4000-8000-000000000001:fixture-device",
+      "currentSessionRevoked": false,
+      "revokedDate": "1970-01-01T00:02:00.000Z",
+      "requestId": "revoke-all-sessions-request"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "sessionsRevoke"
+    },
+    {
+      "path": "$.currentDeviceId",
+      "type": "string",
+      "value": "00000000-0000-4000-8000-000000000001:fixture-device"
+    },
+    {
+      "path": "$.currentSessionRevoked",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "path": "$.revokedDate",
+      "type": "string"
+    },
+    {
+      "path": "$.requestId",
+      "type": "string",
+      "value": "revoke-all-sessions-request"
+    }
+  ]
+}

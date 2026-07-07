@@ -805,7 +805,7 @@ Implemented:
   cipher, account profile, account revision, folder reads and mutations, direct
   cipher reads and mutations, stale revision conflict, policy metadata, domain
   metadata, collection metadata, device reads, known-device preflight, and device
-  revoke
+  revoke/session revoke
 - password-grant replay uses fixture request headers/form data and explicitly
   opts into stateful replay while preserving the default mutating fixture guard
 - refresh-grant replay seeds a deterministic refresh-token session and verifies
@@ -820,6 +820,8 @@ Implemented:
 - device revoke replay signs the synthetic access token for the fixture owner
   and verifies the real authenticated revoke route with explicit stateful replay
   opt-in
+- session revoke replay covers revoke-all-other-sessions using a deterministic
+  recent password-authenticated token and fixed system time
 - folder mutation replay covers create, update, and delete fixtures through the
   real authenticated folder routes with explicit stateful replay opt-in
 - cipher mutation replay covers create, update, trash, restore, permanent
@@ -841,7 +843,6 @@ Not implemented:
 - route-executed replay for mutating fixtures that require ordered state
   transitions beyond the password-grant, refresh-grant, TOTP challenge, and
   TOTP login, device revoke, folder mutation, and cipher mutation fixtures
-- route replay fixtures for revoke-all session flow
 - live client evidence for newly route-replayed fixtures
 
 ## Week 26 Alpha Version Alignment

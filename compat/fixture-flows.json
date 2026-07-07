@@ -90,6 +90,10 @@
       "fixtures": ["devices/revoke-success.json"]
     },
     {
+      "id": "session_revoke",
+      "fixtures": ["devices/revoke-all-success.json"]
+    },
+    {
       "id": "totp_login",
       "fixtures": ["token/totp-challenge.json", "token/totp-login-success.json"]
     },

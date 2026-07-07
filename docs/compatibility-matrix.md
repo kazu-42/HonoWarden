@@ -52,6 +52,7 @@ work.
 - `cipher_lifecycle`
 - `revision_conflict`
 - `device_revoke`
+- `session_revoke`
 - `totp_login`
 
 ## Live Evidence

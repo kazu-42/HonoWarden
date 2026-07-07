@@ -74,6 +74,7 @@ const requiredFlows = [
   'cipher_lifecycle',
   'revision_conflict',
   'device_revoke',
+  'session_revoke',
   'totp_login',
   'sync_with_items',
 ] as const

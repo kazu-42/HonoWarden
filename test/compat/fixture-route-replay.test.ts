@@ -53,6 +53,7 @@ const totpReplayUser = {
 }
 
 const totpLoginReplayTime = new Date('1970-05-06T05:26:30.000Z')
+const sessionRevokeReplayTime = new Date('1970-01-01T00:02:00.000Z')
 const totpReplayChallengeHash = await hashRefreshToken(
   'fixture-token-secret',
   'totp:synthetic-two-factor-token',
@@ -248,6 +249,13 @@ const replayFixtures = [
     },
   },
   {
+    path: 'devices/revoke-all-success.json',
+    allowMutatingFixtures: true,
+    systemTime: sessionRevokeReplayTime,
+    tokenIssuedAt: 60,
+    tokenExpiresAt: 3600,
+  },
+  {
     path: 'folders/list-success.json',
     database: {
       folders: folderRows,
@@ -344,6 +352,12 @@ describe('compatibility fixture route replay', () => {
         ...('database' in fixture ? { database: fixture.database } : {}),
         ...('allowMutatingFixtures' in fixture
           ? { allowMutatingFixtures: fixture.allowMutatingFixtures }
+          : {}),
+        ...('tokenIssuedAt' in fixture
+          ? { tokenIssuedAt: fixture.tokenIssuedAt }
+          : {}),
+        ...('tokenExpiresAt' in fixture
+          ? { tokenExpiresAt: fixture.tokenExpiresAt }
           : {}),
       }
       const runFixture = () =>
