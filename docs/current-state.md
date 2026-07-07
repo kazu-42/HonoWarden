@@ -965,6 +965,26 @@ Not implemented:
 - automatic GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Status Packet
+
+Implemented:
+
+- read-only release status packet exposed as `pnpm release:status:packet`
+- aggregation of publish and published packet outputs into a single phase:
+  `draft_ready_for_publication`, `published_verified`,
+  `published_not_verified`, or `not_ready_for_publication`
+- machine-readable next action, approval text, publish command, published
+  verification command, and release view command
+- focused tests covering draft-ready, published-verified, and strict
+  not-ready states
+- tagging runbook instructions requiring the status packet before publication
+  and after publication checks
+
+Not implemented:
+
+- automatic GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:

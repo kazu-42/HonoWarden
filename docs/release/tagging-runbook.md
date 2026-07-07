@@ -99,6 +99,7 @@ Before publishing a draft GitHub release, collect the publish packet:
 
 ```sh
 pnpm release:publish:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>
+pnpm release:status:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>
 ```
 
 Expected result: `status: "ready"`. The packet verifies local tag context,
@@ -106,6 +107,11 @@ remote tag context, the tag verification workflow run, release gate readiness,
 draft prerelease state, target commit, and release-note body sections. Use the
 printed publish command only after the packet prints `publishApprovalText` and
 the operator explicitly approves publication.
+
+The status packet summarizes the current phase. Before publication it should
+report `phase: "draft_ready_for_publication"` and repeat the same approval
+text. After publication it should report `phase: "published_verified"` once the
+published packet passes.
 
 The publish packet defaults its target commit to the local tag commit, not the
 current branch `HEAD`, because `main` may advance after the release tag is
@@ -163,6 +169,8 @@ After the pushed tag is verified:
 - run `pnpm release:github:plan -- --strict --check-remote`
 - run
   `pnpm release:publish:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>`
+- run
+  `pnpm release:status:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>`
 - after publication, run
   `pnpm release:published:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>`
 - create release notes from `docs/release/v0.1.0-alpha-release-notes.md`

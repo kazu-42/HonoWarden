@@ -39,6 +39,7 @@
     "release:post-tag:packet": "node scripts/honowarden-post-tag-release-packet.mjs",
     "release:published:packet": "node scripts/honowarden-release-published-packet.mjs",
     "release:publish:packet": "node scripts/honowarden-release-publish-packet.mjs",
+    "release:status:packet": "node scripts/honowarden-release-status-packet.mjs",
     "release:tag:recovery": "node scripts/honowarden-release-tag-recovery-packet.mjs",
     "release:tag:preflight": "node scripts/honowarden-alpha-tag-preflight.mjs",
     "staging:dry-run": "node scripts/honowarden-staging-dry-run.mjs",

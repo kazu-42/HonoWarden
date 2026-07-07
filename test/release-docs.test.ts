@@ -88,6 +88,7 @@ describe('release feature-freeze docs', () => {
     expect(runbook).toContain('pnpm release:post-tag:packet -- --strict')
     expect(runbook).toContain('pnpm release:publish:packet -- --strict')
     expect(runbook).toContain('pnpm release:published:packet -- --strict')
+    expect(runbook).toContain('pnpm release:status:packet -- --strict')
     expect(runbook).toContain('pnpm release:tag:recovery -- --strict')
     expect(runbook).toContain('--force-with-lease')
     expect(runbook).toContain('git tag -a v0.1.0-alpha')
