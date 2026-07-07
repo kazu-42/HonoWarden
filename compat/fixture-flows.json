@@ -22,6 +22,10 @@
       "fixtures": ["accounts/profile-success.json"]
     },
     {
+      "id": "account_revision",
+      "fixtures": ["accounts/revision-date-success.json"]
+    },
+    {
       "id": "direct_read",
       "fixtures": [
         "folders/list-success.json",

@@ -708,6 +708,20 @@ Not implemented:
 - email change, password change, or account deletion flows
 - live client evidence for the account profile endpoint
 
+## Week 26 Account Revision API
+
+Implemented:
+
+- authenticated `GET /api/accounts/revision-date`
+- scalar JSON timestamp response using the account revision date
+- compatibility fixture flow `account_revision` under
+  `compat/fixtures/accounts/revision-date-success.json`
+
+Not implemented:
+
+- account revision mutation APIs
+- live client evidence beyond the CLI smoke revision lookup
+
 ## Week 26 Direct Vault Read APIs
 
 Implemented:
@@ -773,8 +787,9 @@ Implemented:
 - route-executed compatibility fixture replay for deterministic stateless
   fixtures
 - replay coverage for prelogin, empty sync, sync with one folder and cipher,
-  account profile, direct folder and cipher reads, policy metadata, domain
-  metadata, collection metadata, device reads, and known-device preflight
+  account profile, account revision, direct folder and cipher reads, policy
+  metadata, domain metadata, collection metadata, device reads, and
+  known-device preflight
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads

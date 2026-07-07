@@ -107,6 +107,9 @@ const replayFixtures = [
     path: 'accounts/profile-success.json',
   },
   {
+    path: 'accounts/revision-date-success.json',
+  },
+  {
     path: 'metadata/policies-list-success.json',
   },
   {
