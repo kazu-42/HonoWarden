@@ -129,6 +129,7 @@ function checkRemoteTag(options, targetCommit) {
     '--tags',
     options.remote,
     targetTag,
+    `${targetTag}^{}`,
   ])
 
   if (result.status !== 0) {

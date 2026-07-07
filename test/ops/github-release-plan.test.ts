@@ -1,9 +1,13 @@
 import { execFile } from 'node:child_process'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+
+import { writePreTagGit } from '../support/release-git'
 
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
@@ -33,12 +37,28 @@ type GithubReleasePlanReport = {
 
 describe('github release plan', () => {
   it('reports a draft release command without creating a release', async () => {
-    const result = await execFileAsync('node', [
-      releasePlanScript,
-      '--allow-missing-tag',
-      '--allow-missing-remote-tag',
-      '--check-remote',
-    ])
+    const fakeBin = await mkdtemp(join(tmpdir(), 'honowarden-release-plan-'))
+    const headSha = (
+      await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
+    ).stdout.trim()
+    await writePreTagGit(fakeBin)
+
+    const result = await execFileAsync(
+      'node',
+      [
+        releasePlanScript,
+        '--allow-missing-tag',
+        '--allow-missing-remote-tag',
+        '--check-remote',
+      ],
+      {
+        env: {
+          ...process.env,
+          HONOWARDEN_TEST_HEAD_SHA: headSha,
+          PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+        },
+      },
+    )
     const report = JSON.parse(result.stdout) as GithubReleasePlanReport
 
     expect(report.schemaVersion).toBe(1)

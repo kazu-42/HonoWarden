@@ -233,6 +233,9 @@ if (command === 'rev-list\\u0000-n\\u00001\\u0000v0.1.0-alpha') {
 
 if (args[0] === 'ls-remote' && args[1] === '--tags' && args[3] === 'v0.1.0-alpha') {
   process.stdout.write('feedfeedfeedfeedfeedfeedfeedfeedfeedfeed\\trefs/tags/v0.1.0-alpha\\n')
+  if (args[4] !== 'v0.1.0-alpha^{}') {
+    process.exit(0)
+  }
   process.stdout.write(remoteCommit + '\\trefs/tags/v0.1.0-alpha^{}\\n')
   process.exit(0)
 }
