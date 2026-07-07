@@ -70,6 +70,13 @@
       {
         "command": "repository brand scan",
         "status": "passed"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28865791573",
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28865791573",
+        "headSha": "4eb6ee14ba3098d6cc0404f11f23c805930d3445"
       }
     ]
   }

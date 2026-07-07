@@ -1003,6 +1003,21 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Gate Command Scope Coverage
+
+Implemented:
+
+- release gate workflow evidence now requires
+  `.workflow/week-26-release-command-repo-scope/state.json`
+- `week-26-release-command-repo-scope` records passing CI run `28865791573`
+- release gate tests assert the command repository-scope workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:
