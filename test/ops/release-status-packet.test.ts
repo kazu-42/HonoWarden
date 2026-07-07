@@ -111,7 +111,7 @@ describe('release status packet', () => {
       `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
     )
     expect(report.commands.publishRelease).toBe(
-      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag',
+      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
     )
     expect(report.commands.verifyPublished).toContain(
       'pnpm release:published:packet -- --strict',

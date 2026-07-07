@@ -85,7 +85,9 @@ describe('release published packet', () => {
       isPrerelease: true,
       targetCommitish: targetCommit,
     })
-    expect(report.commands.viewRelease).toBe('gh release view v0.1.0-alpha')
+    expect(report.commands.viewRelease).toBe(
+      'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
+    )
     expect(report.publishedVerificationText).toBe(
       `${targetCommit} の v0.1.0-alpha published prerelease verification が成功した`,
     )

@@ -7,6 +7,7 @@ import process from 'node:process'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const targetTag = 'v0.1.0-alpha'
+const targetRepository = 'kazu-42/HonoWarden'
 const targetVersion = '0.1.0-alpha'
 const targetWorkflowName = 'Release Tag Verification'
 const defaultRemote = 'origin'
@@ -78,9 +79,9 @@ function buildPublishPacket(options) {
     commands: {
       publishRelease:
         ready && release.release
-          ? `gh release edit ${targetTag} --draft=false --prerelease --verify-tag`
+          ? `gh release edit ${targetTag} --draft=false --prerelease --verify-tag --repo ${targetRepository}`
           : null,
-      viewRelease: `gh release view ${targetTag}`,
+      viewRelease: `gh release view ${targetTag} --repo ${targetRepository}`,
     },
     publishApprovalText:
       ready && release.release

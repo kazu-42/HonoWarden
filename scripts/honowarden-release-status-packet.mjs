@@ -7,6 +7,7 @@ import process from 'node:process'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const targetTag = 'v0.1.0-alpha'
+const targetRepository = 'kazu-42/HonoWarden'
 const targetVersion = '0.1.0-alpha'
 const defaultRemote = 'origin'
 
@@ -82,7 +83,7 @@ function buildStatusPacket(options) {
       viewRelease:
         publishReport?.commands?.viewRelease ??
         publishedReport?.commands?.viewRelease ??
-        `gh release view ${targetTag}`,
+        `gh release view ${targetTag} --repo ${targetRepository}`,
     },
     limitations: [
       'This packet does not publish, update, or delete a GitHub release.',

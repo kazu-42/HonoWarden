@@ -1,0 +1,76 @@
+{
+  "title": "Week 26 Release Command Repository Scope",
+  "slug": "week-26-release-command-repo-scope",
+  "created_at": "2026-07-07T12:40:00+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "This workflow only updates local command strings, tests, docs, and workflow artifacts. Release publication and deploy writes remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-implementation",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-tests-docs",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec prettier --check scripts/honowarden-github-release-plan.mjs scripts/honowarden-release-publish-packet.mjs scripts/honowarden-release-published-packet.mjs scripts/honowarden-release-status-packet.mjs test/ops/github-release-plan.test.ts test/ops/post-tag-release-packet.test.ts test/ops/release-approval-packet.test.ts test/ops/release-evidence-bundle.test.ts test/ops/release-publish-packet.test.ts test/ops/release-published-packet.test.ts test/ops/release-status-packet.test.ts docs/current-state.md .workflow/week-26-release-command-repo-scope/**/*.md .workflow/week-26-release-command-repo-scope/state.json",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/github-release-plan.test.ts test/ops/post-tag-release-packet.test.ts test/ops/release-approval-packet.test.ts test/ops/release-evidence-bundle.test.ts test/ops/release-publish-packet.test.ts test/ops/release-published-packet.test.ts test/ops/release-status-packet.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-command-repo-scope",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "phase draft_ready_for_publication with repo-scoped publish and view commands"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "38 files, 287 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed"
+      }
+    ]
+  }
+}

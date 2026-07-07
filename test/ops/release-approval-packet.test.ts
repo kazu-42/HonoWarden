@@ -90,6 +90,7 @@ describe('release approval packet', () => {
     expect(report.commands.createDraft).toContain(
       'gh release create v0.1.0-alpha',
     )
+    expect(report.commands.createDraft).toContain('--repo kazu-42/HonoWarden')
     expect(report.ci.verifiedRun).toBeNull()
     expect(report.approvalText).toBe(
       `${report.targetCommit} に v0.1.0-alpha を作成して push してよい`,

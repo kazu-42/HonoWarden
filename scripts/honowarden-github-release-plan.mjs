@@ -8,6 +8,7 @@ import process from 'node:process'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const targetTag = 'v0.1.0-alpha'
+const targetRepository = 'kazu-42/HonoWarden'
 const defaultExpectedVersion = '0.1.0-alpha'
 const defaultNotesFile = 'docs/release/v0.1.0-alpha-release-notes.md'
 const defaultRemote = 'origin'
@@ -63,8 +64,17 @@ function buildReleasePlan(options) {
         '--draft',
         '--prerelease',
         '--verify-tag',
+        '--repo',
+        targetRepository,
       ]),
-      viewRelease: commandString(['gh', 'release', 'view', targetTag]),
+      viewRelease: commandString([
+        'gh',
+        'release',
+        'view',
+        targetTag,
+        '--repo',
+        targetRepository,
+      ]),
     },
     limitations: buildLimitations(options),
   }

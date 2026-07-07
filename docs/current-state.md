@@ -987,6 +987,22 @@ Not implemented:
 - automatic GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Command Repository Scope
+
+Implemented:
+
+- emitted GitHub Release create, view, and publish commands include
+  `--repo kazu-42/HonoWarden`
+- publish and status packets now surface repo-scoped publication commands
+- published verification packet now surfaces a repo-scoped view command
+- GitHub release plan, approval packet, post-tag packet, and evidence bundle
+  tests assert repo-scoped release commands
+
+Not implemented:
+
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:

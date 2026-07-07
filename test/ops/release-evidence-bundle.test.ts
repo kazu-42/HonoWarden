@@ -106,6 +106,9 @@ describe('release evidence bundle', () => {
     expect(report.commands.createDraftAfterTagVerification).toContain(
       'gh release create v0.1.0-alpha',
     )
+    expect(report.commands.createDraftAfterTagVerification).toContain(
+      '--repo kazu-42/HonoWarden',
+    )
     expect(report.approvalText).toBe(
       `${headSha} に v0.1.0-alpha を作成して push してよい`,
     )

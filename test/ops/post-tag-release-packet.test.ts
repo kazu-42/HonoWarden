@@ -106,7 +106,10 @@ describe('post-tag release packet', () => {
       'gh release create v0.1.0-alpha',
     )
     expect(report.commands.createDraft).toContain(`--target ${targetCommit}`)
-    expect(report.commands.viewRelease).toBe('gh release view v0.1.0-alpha')
+    expect(report.commands.createDraft).toContain('--repo kazu-42/HonoWarden')
+    expect(report.commands.viewRelease).toBe(
+      'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
+    )
     expect(report.draftApprovalText).toBe(
       `${targetCommit} の v0.1.0-alpha tag verification が成功したので GitHub release draft を作成してよい`,
     )

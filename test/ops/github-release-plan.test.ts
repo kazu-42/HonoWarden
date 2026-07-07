@@ -77,13 +77,16 @@ describe('github release plan', () => {
     expect(report.commands.createDraft).toContain('--draft')
     expect(report.commands.createDraft).toContain('--prerelease')
     expect(report.commands.createDraft).toContain('--verify-tag')
+    expect(report.commands.createDraft).toContain('--repo kazu-42/HonoWarden')
     expect(report.commands.createDraft).toContain(
       '--notes-file docs/release/v0.1.0-alpha-release-notes.md',
     )
     expect(report.commands.createDraft).toContain(
       `--target ${report.targetCommit}`,
     )
-    expect(report.commands.viewRelease).toBe('gh release view v0.1.0-alpha')
+    expect(report.commands.viewRelease).toBe(
+      'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
+    )
     expect(report.limitations).toContain(
       'This plan does not create, update, publish, or delete a GitHub release.',
     )

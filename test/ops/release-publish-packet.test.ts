@@ -87,9 +87,11 @@ describe('release publish packet', () => {
       targetCommitish: targetCommit,
     })
     expect(report.commands.publishRelease).toBe(
-      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag',
+      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
     )
-    expect(report.commands.viewRelease).toBe('gh release view v0.1.0-alpha')
+    expect(report.commands.viewRelease).toBe(
+      'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
+    )
     expect(report.publishApprovalText).toBe(
       `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
     )
