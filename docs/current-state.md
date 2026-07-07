@@ -281,6 +281,7 @@ Implemented:
 Not implemented:
 
 - backup export route or backup-export re-auth guard
+- TOTP change route
 - live client re-auth evidence
 
 The project remains pre-alpha and must not be used to store real secrets.
