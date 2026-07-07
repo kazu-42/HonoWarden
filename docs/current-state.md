@@ -804,7 +804,7 @@ Implemented:
   TOTP challenge, TOTP login success, empty sync, sync with one folder and
   cipher, account profile, account revision, direct folder and cipher reads,
   policy metadata, domain metadata, collection metadata, device reads, and
-  known-device preflight
+  known-device preflight, and device revoke
 - password-grant replay uses fixture request headers/form data and explicitly
   opts into stateful replay while preserving the default mutating fixture guard
 - refresh-grant replay seeds a deterministic refresh-token session and verifies
@@ -816,6 +816,9 @@ Implemented:
 - TOTP login success replay seeds a deterministic device-bound challenge and
   scopes fake system time to the fixture where the declared one-time code is
   valid
+- device revoke replay signs the synthetic access token for the fixture owner
+  and verifies the real authenticated revoke route with explicit stateful replay
+  opt-in
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads
@@ -828,8 +831,8 @@ Not implemented:
 
 - route-executed replay for mutating fixtures that require ordered state
   transitions beyond the password-grant, refresh-grant, TOTP challenge, and
-  TOTP login fixtures
-- route replay for revoke flows
+  TOTP login, and device revoke fixtures
+- route replay fixtures for revoke-all session flow
 - live client evidence for newly route-replayed fixtures
 
 ## Week 26 Alpha Version Alignment

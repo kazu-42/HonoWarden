@@ -240,6 +240,14 @@ const replayFixtures = [
     },
   },
   {
+    path: 'devices/revoke-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      authUser: deviceReplayUser,
+      deviceRevokeChanges: 1,
+    },
+  },
+  {
     path: 'folders/list-success.json',
     database: {
       folders: folderRows,
