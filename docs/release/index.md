@@ -13,6 +13,7 @@ Use this index as the feature-freeze entry point:
 - [Migration Freeze](migration-freeze.md)
 - [Release Gate Preflight](release-gate-preflight.md)
 - [Alpha Tagging Runbook](tagging-runbook.md)
+- [Publication Gate](publication-gate.md)
 - [Live Client Evidence](live-client-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
 - [Staging Deploy Dry Run Evidence](staging-deploy-evidence.md)

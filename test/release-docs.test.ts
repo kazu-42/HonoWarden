@@ -14,6 +14,7 @@ const releaseDocs = [
   'migration-freeze.md',
   'release-gate-preflight.md',
   'tagging-runbook.md',
+  'publication-gate.md',
   'live-client-evidence.md',
   'backup-restore-drill-evidence.md',
   'staging-deploy-evidence.md',
@@ -94,6 +95,25 @@ describe('release feature-freeze docs', () => {
     expect(runbook).toContain('git tag -a v0.1.0-alpha')
     expect(runbook).toContain('git push origin v0.1.0-alpha')
     expect(runbook).toContain('Do not silently retag')
+  })
+
+  it('keeps release publication approval-gated', () => {
+    const runbook = readReleaseDoc('publication-gate.md')
+
+    expect(runbook).toContain('Status: draft ready for publication approval')
+    expect(runbook).toContain(
+      'e7a3c5ea9e51030143736bb0e7a36cb7a8babfce の v0.1.0-alpha draft prerelease を公開してよい',
+    )
+    expect(runbook).toContain(
+      'pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935',
+    )
+    expect(runbook).toContain(
+      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
+    )
+    expect(runbook).toContain(
+      'pnpm release:published:packet -- --strict --tag-workflow-run-id 28863312935',
+    )
+    expect(runbook).toContain('Do not deploy from this release')
   })
 })
 

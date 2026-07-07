@@ -20,6 +20,7 @@ const requiredReleaseDocs = [
   'migration-freeze.md',
   'release-gate-preflight.md',
   'tagging-runbook.md',
+  'publication-gate.md',
   'live-client-evidence.md',
   'v0.1.0-alpha-release-notes.md',
 ]

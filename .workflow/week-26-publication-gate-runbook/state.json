@@ -1,0 +1,78 @@
+{
+  "title": "Week 26 Publication Gate Runbook",
+  "slug": "week-26-publication-gate-runbook",
+  "created_at": "2026-07-07T12:33:24+00:00",
+  "status": "planned",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local docs, tests, workflow artifacts, git push, and CI only. GitHub Release publication, deployment, tag mutation, DNS, email routing, secret writes, and Cloudflare resource writes remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-runbook",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-gate-tests",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec prettier --check docs/release/publication-gate.md docs/release/index.md docs/current-state.md scripts/honowarden-release-gate.mjs test/release-docs.test.ts .workflow/week-26-publication-gate-runbook/**/*.md .workflow/week-26-publication-gate-runbook/state.json",
+        "status": "passed",
+        "evidence": "Initial run found four unformatted new Markdown files; pnpm exec prettier --write corrected them."
+      },
+      {
+        "command": "pnpm exec vitest run test/release-docs.test.ts test/ops/release-gate.test.ts",
+        "status": "passed",
+        "evidence": "2 files, 8 tests"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready; required docs include docs/release/publication-gate.md"
+      },
+      {
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "phase draft_ready_for_publication"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-publication-gate-runbook",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "38 files, 288 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed"
+      }
+    ]
+  }
+}

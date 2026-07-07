@@ -1018,6 +1018,21 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Publication Gate Runbook
+
+Implemented:
+
+- human-readable publication gate at `docs/release/publication-gate.md`
+- release docs index links the publication gate
+- release gate required docs include `publication-gate.md`
+- release docs tests assert exact publication approval text, repo-scoped publish
+  command, status packet command, published packet command, and deploy exclusion
+
+Not implemented:
+
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:
