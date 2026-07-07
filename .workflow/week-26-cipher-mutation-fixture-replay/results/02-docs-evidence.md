@@ -37,6 +37,8 @@
   - returned `completion: incomplete`
   - blocking reason remains `release_publication_approval_required`
 
-## Pending
+## CI Evidence
 
-- GitHub Actions readback after push.
+- GitHub Actions CI run `28882928391`
+  - head SHA `15ec423d4cbc06aa98b335939b599656446f5d9c`
+  - conclusion `success`

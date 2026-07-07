@@ -59,6 +59,9 @@ semantics with the existing fixture while preserving the permanent-delete route.
 - `pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935`
   - returned `completion: incomplete`
   - blocking reason remains `release_publication_approval_required`
+- GitHub Actions CI run `28882928391`
+  - head SHA `15ec423d4cbc06aa98b335939b599656446f5d9c`
+  - conclusion `success`
 
 ## Remaining Risks
 
