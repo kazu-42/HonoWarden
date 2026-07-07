@@ -58,6 +58,9 @@ describe('release gate preflight', () => {
       '.workflow/week-26-known-device-api/state.json',
     )
     expect(workflowEvidence).toContain(
+      '.workflow/week-26-device-metadata-update-api/state.json',
+    )
+    expect(workflowEvidence).toContain(
       '.workflow/week-26-alpha-tag-preflight/state.json',
     )
     expect(workflowEvidence).toContain(

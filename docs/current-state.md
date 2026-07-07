@@ -1368,6 +1368,21 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Gate Device Metadata Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed device metadata update
+  API workflow
+- `week-26-device-metadata-update-api` records passing CI run `28888487458`
+- release gate tests assert the device metadata workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Published Packet
 
 Implemented:

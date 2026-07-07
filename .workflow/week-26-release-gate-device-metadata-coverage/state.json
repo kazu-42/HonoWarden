@@ -1,0 +1,92 @@
+{
+  "title": "Week 26 release gate device metadata coverage",
+  "slug": "week-26-release-gate-device-metadata-coverage",
+  "created_at": "2026-07-07T18:17:11+00:00",
+  "updated_at": "2026-07-07T18:19:26Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local release gate, tests, docs, workflow artifacts, commit/push, and CI only. Release publication, deployment, tag mutation, DNS/email, Cloudflare, Linear, secret writes, and production data remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-spark-gate-implementation",
+      "status": "completed",
+      "owner": "spark",
+      "scope": [
+        "scripts/honowarden-release-gate.mjs",
+        "test/ops/release-gate.test.ts"
+      ]
+    },
+    {
+      "id": "02-main-docs-verification",
+      "status": "in_progress",
+      "owner": "codex",
+      "scope": [
+        "docs/current-state.md",
+        ".workflow/week-26-release-gate-device-metadata-coverage/**"
+      ]
+    }
+  ],
+  "verification": {
+    "status": "local_passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/ops/release-gate.test.ts",
+        "status": "pass",
+        "evidence": "1 file and 2 tests passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "pass",
+        "evidence": "release gate overall ready with device metadata workflow evidence"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-device-metadata-coverage",
+        "status": "pass",
+        "evidence": "workflow verification passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "pass",
+        "evidence": "TypeScript noEmit passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "pass",
+        "evidence": "ESLint passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "pass",
+        "evidence": "Prettier check passed"
+      },
+      {
+        "command": "pnpm brand:scan",
+        "status": "pass",
+        "evidence": "repository brand scan returned clean"
+      },
+      {
+        "command": "pnpm compat:test",
+        "status": "pass",
+        "evidence": "3 files and 80 tests passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "pass",
+        "evidence": "43 files and 378 tests passed"
+      },
+      {
+        "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "pass",
+        "evidence": "phase draft_ready_for_publication"
+      },
+      {
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "expected_incomplete",
+        "evidence": "blockingReason release_publication_approval_required"
+      }
+    ]
+  }
+}

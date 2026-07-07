@@ -47,6 +47,7 @@ const requiredWorkflowSlugs = [
   'week-26-email-routing-preflight',
   'week-26-device-list-api',
   'week-26-known-device-api',
+  'week-26-device-metadata-update-api',
   'week-26-alpha-version-alignment',
   'week-26-alpha-tag-preflight',
   'week-26-tagging-runbook',
