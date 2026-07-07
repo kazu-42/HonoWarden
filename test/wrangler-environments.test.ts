@@ -12,6 +12,9 @@ type WranglerBinding = {
 
 type WranglerEnvironment = {
   name: string
+  triggers: {
+    crons: string[]
+  }
   vars: Record<string, string>
   d1_databases: WranglerBinding[]
   r2_buckets: WranglerBinding[]
@@ -19,6 +22,9 @@ type WranglerEnvironment = {
 
 type WranglerConfig = {
   name: string
+  triggers: {
+    crons: string[]
+  }
   vars: Record<string, string>
   d1_databases: WranglerBinding[]
   r2_buckets: WranglerBinding[]
@@ -29,6 +35,7 @@ type WranglerConfig = {
 }
 
 const config = parse(readFileSync('wrangler.jsonc', 'utf8')) as WranglerConfig
+const expectedHourlyCron = ['0 * * * *']
 
 describe('wrangler deployment environments', () => {
   it('keeps runtime environment labels explicit', () => {
@@ -80,6 +87,18 @@ describe('wrangler deployment environments', () => {
     expect(config.env.production.vars.HONOWARDEN_BOOTSTRAP_ENABLED).toBe(
       'false',
     )
+  })
+
+  it('configures top-level scheduled cleanup cron for UTC hourly', () => {
+    expect(config.triggers.crons).toEqual(expectedHourlyCron)
+  })
+
+  it('configures staging scheduled cleanup cron for UTC hourly', () => {
+    expect(config.env.staging.triggers.crons).toEqual(expectedHourlyCron)
+  })
+
+  it('configures production scheduled cleanup cron for UTC hourly', () => {
+    expect(config.env.production.triggers.crons).toEqual(expectedHourlyCron)
   })
 
   it('keeps audit logging opt-in across deployable environments', () => {

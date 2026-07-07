@@ -8,6 +8,7 @@ import {
 import { encryptTotpSecret } from '../src/domain/totp-secret'
 import { signAccessToken, verifyAccessToken } from '../src/domain/tokens'
 import { hotp } from '../src/domain/totp'
+import * as retentionCleanup from '../src/maintenance/retention-cleanup'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 
 describe('HonoWarden app', () => {
@@ -904,6 +905,10 @@ describe('HonoWarden app', () => {
   })
 
   it('rejects invalid password grants without revealing user existence', async () => {
+    const cleanup = vi
+      .spyOn(retentionCleanup, 'cleanupTransientAuthData')
+      .mockResolvedValue()
+
     const response = await app.request(
       '/identity/connect/token',
       {
@@ -934,6 +939,11 @@ describe('HonoWarden app', () => {
         Object: 'error',
       },
     })
+    expect(cleanup).toHaveBeenCalledTimes(1)
+    expect(cleanup).toHaveBeenCalledWith(
+      expect.any(FakeD1Database),
+      expect.any(String),
+    )
   })
 
   it('rejects password grants for disabled users without revealing account state', async () => {

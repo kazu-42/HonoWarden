@@ -604,12 +604,18 @@ Implemented:
 - stale, unlocked `auth_failure_buckets` cleanup by retention threshold
 - expired or consumed `totp_challenges` cleanup
 - idempotent repository cleanup functions with row caps
+- shared cleanup implementation reused by both password-grant inline
+  maintenance and the Worker scheduled handler
+- hourly UTC Cloudflare Cron Trigger configuration for default, staging, and
+  production deploy targets
 - retention cleanup runbook under `docs/operations/retention-cleanup.md`
-- tests for bounded and idempotent auth-defense and TOTP challenge cleanup
+- tests for bounded and idempotent auth-defense, TOTP challenge cleanup,
+  scheduled handler execution, and cron configuration
 
 Not implemented:
 
-- Cloudflare Cron Trigger for cleanup when password-grant traffic is absent
+- live Cloudflare deploy applying the Cron Trigger
+- Cron Events monitoring evidence
 - cleanup metrics or alerting
 - dedicated cleanup-only indexes for larger production datasets
 

@@ -1,0 +1,98 @@
+{
+  "title": "Week 26 retention cleanup cron trigger",
+  "slug": "week-26-retention-cleanup-cron-trigger",
+  "created_at": "2026-07-07T17:41:20+00:00",
+  "updated_at": "2026-07-07T17:47:24Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local code, tests, docs, workflow artifacts, commit, push, and CI only. Cloudflare deploy, live Cron Trigger mutation, release publication, tag mutation, DNS/email, and secret writes remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-spark-implementation",
+      "status": "completed",
+      "owner": "spark",
+      "scope": [
+        "src/index.ts",
+        "src/app.ts",
+        "src/maintenance/retention-cleanup.ts",
+        "wrangler.jsonc",
+        "test/scheduled.test.ts",
+        "test/wrangler-environments.test.ts",
+        "test/app.test.ts"
+      ]
+    },
+    {
+      "id": "02-main-docs-verification",
+      "status": "in_progress",
+      "owner": "codex",
+      "scope": [
+        "docs/current-state.md",
+        "docs/operations/retention-cleanup.md",
+        ".workflow/week-26-retention-cleanup-cron-trigger"
+      ]
+    }
+  ],
+  "verification": {
+    "status": "local_passed",
+    "checks": [
+      {
+        "command": "pnpm check",
+        "status": "pass",
+        "evidence": "TypeScript noEmit passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/scheduled.test.ts test/wrangler-environments.test.ts test/app.test.ts test/repositories/auth-repository.test.ts test/repositories/totp-repository.test.ts",
+        "status": "pass",
+        "evidence": "5 files and 153 tests passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "pass",
+        "evidence": "ESLint passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "pass",
+        "evidence": "Prettier check passed after formatting test/scheduled.test.ts"
+      },
+      {
+        "command": "pnpm brand:scan",
+        "status": "pass",
+        "evidence": "repository brand scan returned clean"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-retention-cleanup-cron-trigger",
+        "status": "pass",
+        "evidence": "workflow verification passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "pass",
+        "evidence": "43 files and 371 tests passed"
+      },
+      {
+        "command": "pnpm compat:test",
+        "status": "pass",
+        "evidence": "3 files and 78 tests passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "pass",
+        "evidence": "release gate overall ready"
+      },
+      {
+        "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "pass",
+        "evidence": "phase draft_ready_for_publication"
+      },
+      {
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "expected_incomplete",
+        "evidence": "blockingReason release_publication_approval_required"
+      }
+    ]
+  }
+}

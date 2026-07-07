@@ -3,6 +3,9 @@
   "name": "honowarden",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-06",
+  "triggers": {
+    "crons": ["0 * * * *"],
+  },
   "observability": {
     "enabled": true,
   },
@@ -28,6 +31,9 @@
   "env": {
     "staging": {
       "name": "honowarden-staging",
+      "triggers": {
+        "crons": ["0 * * * *"],
+      },
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
@@ -50,6 +56,9 @@
     },
     "production": {
       "name": "honowarden",
+      "triggers": {
+        "crons": ["0 * * * *"],
+      },
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",

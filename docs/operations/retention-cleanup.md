@@ -16,18 +16,29 @@ lines, backup manifests, or R2 objects.
 
 ## Schedule
 
-In the alpha implementation, cleanup is inline maintenance on the password-grant
-token path. Each request with a valid `grant_type=password` form and device
-identifier triggers one bounded cleanup slice before login-defense bucket
-lookup.
+Cleanup runs from two entrypoints:
 
-There is no Cloudflare Cron Trigger yet. If password-grant traffic is absent,
-stale transient rows can remain until the next password-grant request.
+- inline maintenance on the password-grant token path
+- a Worker scheduled handler configured through Cloudflare Cron Triggers
+
+Each request with a valid `grant_type=password` form and device identifier
+triggers one bounded cleanup slice before login-defense bucket lookup.
+
+`wrangler.jsonc` configures the scheduled handler to run hourly in UTC:
+
+```text
+0 * * * *
+```
+
+The repository change only defines the Worker handler and Wrangler
+configuration. Applying or changing the live Cron Trigger still requires an
+operator-approved Cloudflare deploy.
 
 ## Bounds
 
-Each cleanup query deletes at most `100` rows per request. This keeps the hot
-path bounded and lets repeated login traffic drain old rows gradually.
+Each cleanup query deletes at most `100` rows per entrypoint execution. This
+keeps both the hot path and scheduled Worker execution bounded, and lets
+repeated traffic or hourly cron executions drain old rows gradually.
 
 Retention rules:
 
@@ -38,14 +49,19 @@ Retention rules:
 - TOTP login challenges are eligible when they are expired or already consumed.
 
 The queries are idempotent. Re-running a cleanup slice after all eligible rows
-are gone deletes zero rows.
+are gone deletes zero rows. This is required because Cloudflare Cron Triggers
+use at-least-once delivery and can rarely run more than once for the same
+scheduled time.
 
 ## Failure Behavior
 
-Cleanup runs inside the same D1-backed token exchange path as login-defense
-reads and writes. If cleanup fails, the password-grant request fails with the
-same structured `database_unavailable` response used for token exchange
-failures.
+Inline cleanup runs inside the same D1-backed token exchange path as
+login-defense reads and writes. If inline cleanup fails, the password-grant
+request fails with the same structured `database_unavailable` response used for
+token exchange failures.
+
+Scheduled cleanup rejects the `waitUntil` task on failure so Cloudflare records
+the Cron Event failure and can retry according to platform behavior.
 
 This is intentional for the alpha scope: a missing cleanup table or incompatible
 schema means the deployed database is not at the expected migration level.
@@ -56,7 +72,7 @@ Local checks:
 
 ```sh
 pnpm test -- test/repositories/auth-repository.test.ts test/repositories/totp-repository.test.ts
-pnpm test -- test/app.test.ts
+pnpm test -- test/app.test.ts test/scheduled.test.ts test/wrangler-environments.test.ts
 pnpm check
 pnpm lint
 pnpm format
@@ -65,12 +81,9 @@ pnpm format
 The repository tests assert that cleanup is bounded, idempotent, and does not
 delete active login-defense buckets.
 
-## Future Scheduled Job
+## Remaining Work
 
-A future production hardening slice can move the same repository cleanup
-functions behind a Cloudflare Cron Trigger. That should add:
-
-- a dedicated maintenance route or scheduled Worker handler
-- deployment evidence for the trigger
+- operator-approved Cloudflare deploy to apply the configured Cron Trigger
+- Cron Events monitoring evidence after deployment
 - metrics for rows deleted and cleanup failures
 - explicit indexes if production row counts justify them

@@ -71,7 +71,6 @@ import {
   invalidateRefreshTokenSession,
   listDevicesByUser,
   knownActiveDeviceExists,
-  cleanupAuthDefenseState,
   recordAuthAttempt,
   recordFailedAuthBucket,
   recordFailedLogin,
@@ -90,12 +89,12 @@ import {
   createTotpChallenge,
   disableTotpSetup,
   enableTotpSetup,
-  cleanupExpiredTotpChallenges,
   findActiveTotpChallengeByHash,
   findTotpSetupByUserId,
   recordAcceptedTotpStep,
   upsertPendingTotpSetup,
 } from './repositories/totp-repository'
+import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
 import {
   createBootstrapUser,
   getAccountRevisionDate,
@@ -143,14 +142,6 @@ const accessTokenTtlSeconds = 3600
 const refreshTokenTtlSeconds = 60 * 60 * 24 * 30
 const totpChallengeTtlSeconds = 5 * 60
 const recentPasswordAuthTtlSeconds = 5 * 60
-const authDefenseCleanupRowsPerSlice = 100
-
-const authDefenseCleanupWindowSeconds = Math.max(
-  loginDefensePolicy.accountFailureWindowSeconds,
-  loginDefensePolicy.accountLockoutSeconds,
-  loginDefensePolicy.ipFailureWindowSeconds,
-  loginDefensePolicy.ipRetryAfterSeconds,
-)
 
 const defaultCorsHeaders = [
   'Accept',
@@ -233,29 +224,6 @@ function buildHealthResponse(requestIdValue: string, environment?: string) {
     environment: resolveRuntimeEnvironment(environment),
     requestId: requestIdValue,
   }
-}
-
-async function cleanupTransientAuthData(
-  database: Pick<D1Database, 'prepare'>,
-  now: string,
-): Promise<void> {
-  // This call is intentionally bounded and idempotent so it can be triggered on
-  // hot paths without risking large table churn.
-  await cleanupAuthDefenseState(database, {
-    now,
-    authAttemptExpiredBefore: new Date(
-      Date.parse(now) - authDefenseCleanupWindowSeconds * 1000,
-    ).toISOString(),
-    authFailureBucketExpiredBefore: new Date(
-      Date.parse(now) - authDefenseCleanupWindowSeconds * 1000,
-    ).toISOString(),
-    maxRowsPerQuery: authDefenseCleanupRowsPerSlice,
-  })
-
-  await cleanupExpiredTotpChallenges(database, {
-    expiredBefore: now,
-    limit: authDefenseCleanupRowsPerSlice,
-  })
 }
 
 app.get('/', (c) => {
