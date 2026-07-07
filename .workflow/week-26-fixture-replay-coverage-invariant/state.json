@@ -2,8 +2,8 @@
   "title": "Week 26 fixture replay coverage invariant",
   "slug": "week-26-fixture-replay-coverage-invariant",
   "created_at": "2026-07-07T16:51:22+00:00",
-  "updated_at": "2026-07-07T16:54:00Z",
-  "status": "in_progress",
+  "updated_at": "2026-07-07T16:55:50Z",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": null,
@@ -27,7 +27,7 @@
     }
   ],
   "verification": {
-    "status": "passed_local_ci_pending",
+    "status": "passed",
     "checks": [
       {
         "command": "pnpm exec vitest run test/compat/fixture-route-replay.test.ts",
@@ -63,6 +63,11 @@
         "command": "brand scan",
         "status": "passed",
         "evidence": "no external compatibility brand references in repo-controlled files"
+      },
+      {
+        "command": "gh run view 28883717869 --repo kazu-42/HonoWarden",
+        "status": "passed",
+        "evidence": "CI run 28883717869 completed successfully for 4f53bdc519cece12da7479e200ab4caa1feb8b3f"
       }
     ]
   }

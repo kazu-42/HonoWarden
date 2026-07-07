@@ -1,6 +1,6 @@
 # Week 26 Fixture Replay Coverage Invariant
 
-Status: local verification passed; GitHub Actions evidence pending.
+Status: completed.
 
 ## Summary
 
@@ -23,8 +23,9 @@ the Hono app, not only selected stateless fixtures.
 - `pnpm test`: passed, 362 tests.
 - `pnpm format`: passed.
 - External compatibility brand scan: passed.
+- GitHub Actions CI `28883717869`: passed for
+  `4f53bdc519cece12da7479e200ab4caa1feb8b3f`.
 
 ## Remaining Risk
 
-- GitHub Actions CI still needs to pass on the pushed implementation commit.
 - The `v0.1.0-alpha` draft prerelease remains publication-approval gated.
