@@ -1,0 +1,90 @@
+{
+  "title": "Week 26 Post Alpha Ops Readiness Packet",
+  "slug": "week-26-post-alpha-ops-readiness-packet",
+  "created_at": "2026-07-07T18:24:20+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": null,
+    "notes": "Local script, tests, docs, and workflow artifact changes only. Release publication, deployment, DNS, Email Routing, email sends, and secret writes remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-contract",
+      "status": "completed"
+    },
+    {
+      "id": "02-tests",
+      "status": "completed"
+    },
+    {
+      "id": "03-docs-workflow",
+      "status": "completed"
+    },
+    {
+      "id": "04-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "focused ops packet tests",
+        "command": "pnpm exec vitest run test/ops/ops-readiness-packet.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "focused docs email completion tests",
+        "command": "pnpm exec vitest run test/ops/ops-readiness-packet.test.ts test/release-docs.test.ts test/ops/email-preflight.test.ts test/ops/release-completion-audit.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "name": "format",
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "name": "brand scan",
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "name": "full test suite",
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "name": "compatibility tests",
+        "command": "pnpm compat:test",
+        "status": "passed"
+      },
+      {
+        "name": "strict release gate",
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-post-alpha-ops-readiness-packet",
+        "status": "passed"
+      },
+      {
+        "name": "ops packet live readback",
+        "command": "pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported status not_ready with blockingReason release_publication_approval_required."
+      }
+    ]
+  }
+}

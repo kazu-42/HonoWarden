@@ -44,3 +44,20 @@ reviewed without inventing release process under time pressure.
   release commit before running the printed tag commands.
 - [Alpha Tagging Runbook](tagging-runbook.md) has been followed with explicit
   operator approval before tag creation and push.
+
+## Post-Alpha Operations Readiness
+
+Publishing the GitHub Release is not the same as production operations
+readiness. After release publication is verified, use the read-only operations
+packet to aggregate the remaining deploy, website, DNS, email, smoke, and
+rollback gates:
+
+```sh
+pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
+```
+
+The packet is intentionally conservative. It treats documentation-only website
+status and local email input presence as useful context, but not as live
+operational proof. Strict mode is reserved for the state after release
+publication, Worker smoke evidence, website domain evidence, Email Routing
+evidence, and rollback evidence have all been recorded.

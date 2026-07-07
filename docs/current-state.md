@@ -1383,6 +1383,28 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Post-Alpha Ops Readiness Packet
+
+Implemented:
+
+- read-only operations readiness packet exposed as
+  `pnpm ops:readiness:packet`
+- aggregation of alpha release completion audit, email local preflight, and
+  recorded Cloudflare/website/email/rollback evidence gates
+- conservative requirement model that separates GitHub Release completion from
+  Worker deploy, DNS, website, Email Routing, live smoke, and rollback evidence
+- focused tests that model external release readback with fake `git`/`gh`
+  commands and prove email tokens/destinations are not printed
+- release and website/email docs that point operators to the packet before
+  requesting post-release operations approvals
+
+Not implemented:
+
+- automatic GitHub release publication
+- Worker deploy, DNS mutation, Email Routing configuration, or test email send
+- live Worker smoke, website route, email routing, or rollback evidence
+- release gate coverage for this workflow's future CI run
+
 ## Week 26 Release Published Packet
 
 Implemented:

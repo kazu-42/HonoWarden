@@ -111,11 +111,17 @@ Local preflight:
 ```sh
 pnpm email:preflight
 pnpm email:preflight -- --strict
+pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
 ```
 
 The preflight is offline. It checks whether the Cloudflare token/account/zone
 inputs and forwarding-destination variables are present, but it does not call
 Cloudflare, create routes, send messages, or print token/destination values.
+
+The operations readiness packet is also read-only. It combines the alpha release
+completion audit, local email preflight, and recorded evidence files so deploy,
+DNS, website, email, smoke-test, and rollback approvals remain separate from
+GitHub Release publication.
 
 ## Current Status
 

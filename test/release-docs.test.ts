@@ -117,6 +117,9 @@ describe('release feature-freeze docs', () => {
       'pnpm release:completion:audit -- --strict --tag-workflow-run-id 28863312935',
     )
     expect(runbook).toContain(
+      'pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935',
+    )
+    expect(runbook).toContain(
       'blockingReason: "release_publication_approval_required"',
     )
     expect(runbook).toContain('Do not deploy from this release')

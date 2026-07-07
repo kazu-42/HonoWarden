@@ -134,6 +134,18 @@ Expected post-publication state:
 Record the publication timestamp, release URL, published packet output, and
 status packet output in the release tracker.
 
+After the release is verified, run the operations readiness packet before
+requesting deploy, DNS, or Email Routing approval:
+
+```sh
+pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
+```
+
+Before Worker deploy, website route changes, or Email Routing changes, this
+packet is expected to remain `status: "not_ready"` and to name the first missing
+operations evidence gate. Do not treat a complete release audit as proof that
+`honowarden.com`, the API Worker, or project email are live and tested.
+
 ## Out Of Scope
 
 Do not deploy from this release in the publication gate.
