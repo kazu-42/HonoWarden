@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Status: in progress; local verification passed and CI is pending.
+Status: completed.
 
 This workflow makes the alpha release gate require the completed device
 metadata update API workflow evidence.
@@ -32,11 +32,11 @@ Local checks passed:
 - full unit test suite and compat suite
 - read-only release status and completion audit packets
 
-GitHub Actions CI readback is pending for the implementation commit.
+GitHub Actions CI readback passed for implementation commit
+`146acda98fdec65ee224112a3bd975bd49679b26`.
 
 ## Remaining Risks
 
-- GitHub Actions CI still needs to pass.
 - Release publication and deployment remain approval-gated.
 
 ## Reusable Follow-up
