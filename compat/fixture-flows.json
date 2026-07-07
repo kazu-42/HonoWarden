@@ -31,6 +31,15 @@
       ]
     },
     {
+      "id": "metadata_read",
+      "fixtures": [
+        "metadata/policies-list-success.json",
+        "metadata/policies-new-list-success.json",
+        "metadata/domains-success.json",
+        "metadata/settings-domains-success.json"
+      ]
+    },
+    {
       "id": "folder_crud",
       "fixtures": [
         "folders/create-success.json",

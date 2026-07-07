@@ -1,0 +1,36 @@
+{
+  "name": "metadata-policies-new-list-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/policies/new"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [],
+      "continuationToken": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "list"
+    },
+    {
+      "path": "$.data",
+      "type": "array",
+      "length": 0
+    },
+    {
+      "path": "$.continuationToken",
+      "type": "null"
+    }
+  ]
+}

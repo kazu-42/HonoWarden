@@ -1032,6 +1032,42 @@ app.get('/api/sync', async (c) => {
   }
 })
 
+app.get('/api/policies', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(buildPolicyListResponse())
+})
+
+app.get('/api/policies/new', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(buildPolicyListResponse())
+})
+
+app.get('/api/domains', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(buildDomainsResponse())
+})
+
+app.get('/api/settings/domains', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(buildDomainsResponse())
+})
+
 app.get('/api/devices', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -2182,10 +2218,7 @@ function buildSyncResponse(
     Folders: folders.map(buildFolderResponse),
     Collections: [],
     Ciphers: ciphers.map(buildCipherResponse),
-    Domains: {
-      EquivalentDomains: [],
-      GlobalEquivalentDomains: [],
-    },
+    Domains: buildDomainsResponse(),
     Policies: [],
     PoliciesNew: [],
     Sends: [],
@@ -2194,6 +2227,21 @@ function buildSyncResponse(
           MasterPasswordUnlock: masterPasswordUnlock,
         }
       : null,
+  }
+}
+
+function buildPolicyListResponse() {
+  return {
+    object: 'list',
+    data: [],
+    continuationToken: null,
+  }
+}
+
+function buildDomainsResponse() {
+  return {
+    EquivalentDomains: [],
+    GlobalEquivalentDomains: [],
   }
 }
 

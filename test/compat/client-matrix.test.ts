@@ -64,6 +64,7 @@ const requiredFlows = [
   'empty_sync',
   'account_profile',
   'direct_read',
+  'metadata_read',
   'folder_crud',
   'cipher_create',
   'cipher_lifecycle',

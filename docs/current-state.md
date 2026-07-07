@@ -725,6 +725,25 @@ Not implemented:
 - collection-scoped reads
 - live client evidence for direct folder or cipher read endpoints
 
+## Week 26 Metadata Read APIs
+
+Implemented:
+
+- authenticated `GET /api/policies`
+- authenticated `GET /api/policies/new`
+- authenticated `GET /api/domains`
+- authenticated `GET /api/settings/domains`
+- policy endpoints return empty list responses for the alpha personal-vault
+  scope
+- domain endpoints reuse the same empty equivalent-domain metadata as `/api/sync`
+- compatibility fixture flow `metadata_read` for policy and domain responses
+
+Not implemented:
+
+- policy management or organization policy enforcement
+- custom equivalent-domain configuration
+- live client evidence for metadata read endpoints
+
 ## Week 26 Alpha Version Alignment
 
 Implemented:

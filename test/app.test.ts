@@ -1735,6 +1735,87 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('returns empty policy metadata for authenticated users', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const path of ['/api/policies', '/api/policies/new']) {
+      const response = await app.request(
+        path,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toEqual({
+        object: 'list',
+        data: [],
+        continuationToken: null,
+      })
+    }
+  })
+
+  it('returns domain metadata aliases for authenticated users', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const path of ['/api/domains', '/api/settings/domains']) {
+      const response = await app.request(
+        path,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toEqual({
+        EquivalentDomains: [],
+        GlobalEquivalentDomains: [],
+      })
+    }
+  })
+
+  it('requires bearer authorization for metadata reads', async () => {
+    for (const path of ['/api/policies', '/api/domains']) {
+      const response = await app.request(
+        path,
+        {
+          headers: {
+            'X-Request-Id': 'metadata-missing-token-request',
+          },
+        },
+        {
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(401)
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'missing_token',
+        },
+        requestId: 'metadata-missing-token-request',
+      })
+    }
+  })
+
   it('returns the latest account revision date for a valid access token', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)

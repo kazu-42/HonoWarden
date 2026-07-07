@@ -1,0 +1,31 @@
+{
+  "name": "metadata-domains-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/domains"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "EquivalentDomains": [],
+      "GlobalEquivalentDomains": []
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.EquivalentDomains",
+      "type": "array",
+      "length": 0
+    },
+    {
+      "path": "$.GlobalEquivalentDomains",
+      "type": "array",
+      "length": 0
+    }
+  ]
+}
