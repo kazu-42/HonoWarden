@@ -1,0 +1,42 @@
+{
+  "title": "Week 26 Alpha Tag Preflight",
+  "slug": "week-26-alpha-tag-preflight",
+  "created_at": "2026-07-07T05:18:23+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local script, tests, docs, and workflow evidence only. Tag creation and push remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "contract-tests",
+      "status": "completed"
+    },
+    {
+      "id": "script-implementation",
+      "status": "completed"
+    },
+    {
+      "id": "docs-scripts",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/ops/alpha-tag-preflight.test.ts",
+      "pnpm release:tag:preflight -- --allow-dirty --allow-existing-tag",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm format",
+      "pnpm release:gate -- --strict",
+      "repository brand scan"
+    ]
+  }
+}

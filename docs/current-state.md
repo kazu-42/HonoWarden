@@ -697,3 +697,24 @@ Not implemented:
 - `v0.1.0-alpha` Git tag
 - package publishing
 - deployment tied to the version update
+
+## Week 26 Alpha Tag Preflight
+
+Implemented:
+
+- read-only alpha tag preflight exposed as `pnpm release:tag:preflight`
+- strict mode for final release-commit validation through
+  `pnpm release:tag:preflight -- --strict`
+- package version check against `0.1.0-alpha`
+- nested strict release gate check before tag commands are emitted
+- clean working tree check for normal strict operation
+- local `v0.1.0-alpha` tag absence check
+- JSON report with source commit, checks, explicit limitations, and the tag
+  commands an operator can run after CI passes
+
+Not implemented:
+
+- `v0.1.0-alpha` Git tag creation
+- tag push
+- GitHub release publication
+- remote tag absence verification
