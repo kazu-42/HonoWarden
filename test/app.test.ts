@@ -394,15 +394,29 @@ describe('HonoWarden app', () => {
     }
   })
 
-  it('returns explicit errors for unsupported organization and send surfaces', async () => {
-    for (const path of [
-      '/api/organizations',
-      '/api/organizations/org-id/collections',
-      '/api/sends',
-      '/api/sends/send-id',
+  it('returns explicit errors for unsupported alpha surfaces', async () => {
+    for (const request of [
+      { method: 'POST', path: '/api/organizations' },
+      { method: 'POST', path: '/api/organizations/org-id/collections' },
+      { method: 'POST', path: '/api/sends' },
+      { method: 'POST', path: '/api/sends/send-id' },
+      { method: 'POST', path: '/api/collections' },
+      { method: 'POST', path: '/api/collections/collection-id' },
+      { method: 'POST', path: '/api/emergency-access' },
+      { method: 'POST', path: '/api/emergency-access/invite' },
+      { method: 'POST', path: '/api/attachments' },
+      { method: 'GET', path: '/api/attachments/attachment-id' },
+      { method: 'POST', path: '/api/ciphers/cipher-id/attachment' },
+      {
+        method: 'DELETE',
+        path: '/api/ciphers/cipher-id/attachment/attachment-id',
+      },
+      { method: 'PUT', path: '/api/devices/device-id' },
+      { method: 'PATCH', path: '/api/devices/device-id/keys' },
+      { method: 'PUT', path: '/api/devices/device-id/trust' },
     ]) {
-      const response = await app.request(path, {
-        method: 'POST',
+      const response = await app.request(request.path, {
+        method: request.method,
         headers: {
           'X-Request-Id': 'unsupported-surface-request',
         },

@@ -1,0 +1,79 @@
+{
+  "title": "Week 26 Unsupported Mutation Guards",
+  "slug": "week-26-unsupported-mutation-guards",
+  "created_at": "2026-07-07T12:56:59+00:00",
+  "updated_at": "2026-07-07T12:59:11Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, tests, docs, workflow artifacts, commit, push, and CI verification only. GitHub Release publication, deployment, tag mutation, DNS, email routing, secret writes, and Cloudflare resource writes remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-route-guards",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-tests-docs",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec prettier --write src/app.ts test/app.test.ts docs/current-state.md .workflow/week-26-unsupported-mutation-guards/plan.md .workflow/week-26-unsupported-mutation-guards/orchestration.md .workflow/week-26-unsupported-mutation-guards/packets/01-route-guards.md .workflow/week-26-unsupported-mutation-guards/packets/02-tests-docs.md .workflow/week-26-unsupported-mutation-guards/results/01-route-guards.md .workflow/week-26-unsupported-mutation-guards/results/02-tests-docs.md",
+        "status": "passed",
+        "evidence": "All files already matched Prettier output."
+      },
+      {
+        "command": "pnpm exec vitest run test/app.test.ts",
+        "status": "passed",
+        "evidence": "1 file, 98 tests"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-unsupported-mutation-guards",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "39 files, 292 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready"
+      },
+      {
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "phase draft_ready_for_publication"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed"
+      }
+    ]
+  }
+}

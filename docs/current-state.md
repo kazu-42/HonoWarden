@@ -627,6 +627,8 @@ Implemented:
 
 - explicit `501` JSON response for `/api/organizations` and child paths
 - explicit `501` JSON response for `/api/sends` and child paths
+- explicit `501` JSON response for collection, emergency-access, attachment,
+  cipher-attachment, and device metadata/trust/key mutation paths
 - request ID preservation on unsupported feature responses
 - route test coverage proving these paths do not fall through to generic `404`
 
@@ -634,6 +636,9 @@ Not implemented:
 
 - organization or shared-vault functionality
 - public file-sharing functionality
+- collection or emergency-access functionality
+- attachment object storage, download, or mutation functionality
+- device metadata mutation or trust/key update functionality
 
 ## Week 26 Revoke Other Sessions
 
