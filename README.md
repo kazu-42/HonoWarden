@@ -72,6 +72,10 @@ TOTP setup and login require `HONOWARDEN_TOTP_SECRET` to wrap authenticator secr
 
 Audit JSON lines are opt-in through `HONOWARDEN_AUDIT_LOGS=true`. See [docs/operations/audit-events.md](docs/operations/audit-events.md) for the event contract and secret-safety rules.
 
+Transient auth-defense cleanup runs in bounded slices on password-grant traffic.
+See [docs/operations/retention-cleanup.md](docs/operations/retention-cleanup.md)
+for retention rules and remaining scheduler work.
+
 Backup and restore planning commands are available for operator drills:
 
 ```sh

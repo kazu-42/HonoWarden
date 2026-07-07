@@ -123,6 +123,18 @@ export type DeviceRevokeResult =
       status: 'not_found'
     }
 
+export type AuthDefenseCleanupInput = {
+  now: string
+  authAttemptExpiredBefore: string
+  authFailureBucketExpiredBefore: string
+  maxRowsPerQuery: number
+}
+
+export type AuthDefenseCleanupResult = {
+  deletedAuthAttempts: number
+  deletedAuthFailureBuckets: number
+}
+
 type AuthLookupDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
@@ -637,6 +649,79 @@ export async function resetAuthFailureBucket(
     )
     .bind(bucketKey)
     .run()
+}
+
+export async function cleanupExpiredAuthAttempts(
+  database: LoginDefenseDatabase,
+  input: {
+    expiredBefore: string
+    limit: number
+  },
+): Promise<number> {
+  const result = await database
+    .prepare(
+      `
+        DELETE FROM auth_attempts
+        WHERE id IN (
+          SELECT id
+          FROM auth_attempts
+          WHERE occurred_at < ?
+          ORDER BY occurred_at ASC
+          LIMIT ?
+        )
+      `,
+    )
+    .bind(input.expiredBefore, input.limit)
+    .run()
+
+  return result.meta.changes
+}
+
+export async function cleanupExpiredAuthFailureBuckets(
+  database: LoginDefenseDatabase,
+  input: {
+    expiredBefore: string
+    now: string
+    limit: number
+  },
+): Promise<number> {
+  const result = await database
+    .prepare(
+      `
+        DELETE FROM auth_failure_buckets
+        WHERE bucket_key IN (
+          SELECT bucket_key
+          FROM auth_failure_buckets
+          WHERE updated_at < ?
+            AND (locked_until IS NULL OR locked_until < ?)
+          ORDER BY updated_at ASC
+          LIMIT ?
+        )
+      `,
+    )
+    .bind(input.expiredBefore, input.now, input.limit)
+    .run()
+
+  return result.meta.changes
+}
+
+export async function cleanupAuthDefenseState(
+  database: LoginDefenseDatabase,
+  input: AuthDefenseCleanupInput,
+): Promise<AuthDefenseCleanupResult> {
+  const [deletedAuthAttempts, deletedAuthFailureBuckets] = await Promise.all([
+    cleanupExpiredAuthAttempts(database, {
+      expiredBefore: input.authAttemptExpiredBefore,
+      limit: input.maxRowsPerQuery,
+    }),
+    cleanupExpiredAuthFailureBuckets(database, {
+      expiredBefore: input.authFailureBucketExpiredBefore,
+      now: input.now,
+      limit: input.maxRowsPerQuery,
+    }),
+  ])
+
+  return { deletedAuthAttempts, deletedAuthFailureBuckets }
 }
 
 export async function rotateRefreshToken(

@@ -232,7 +232,7 @@ Implemented:
 
 Not implemented:
 
-- auth-attempt retention cleanup job
+- scheduled auth-attempt retention cleanup job
 - operator-facing rate-limit metrics or alerts
 - live D1 migration application
 - live client verification under lockout/rate-limit conditions
@@ -260,7 +260,7 @@ Not implemented:
 
 - live D1 migration application
 - live client verification for TOTP setup or login
-- challenge retention cleanup job
+- scheduled challenge retention cleanup job
 - recent re-auth requirements for sensitive operations
 
 ## Week 19 Increment
@@ -561,3 +561,21 @@ Not implemented:
 - mobile live evidence
 - live TOTP login evidence
 - live item mutation evidence
+
+## Week 26 Retention Cleanup
+
+Implemented:
+
+- bounded inline cleanup on the password-grant token path
+- stale `auth_attempts` cleanup by retention threshold
+- stale, unlocked `auth_failure_buckets` cleanup by retention threshold
+- expired or consumed `totp_challenges` cleanup
+- idempotent repository cleanup functions with row caps
+- retention cleanup runbook under `docs/operations/retention-cleanup.md`
+- tests for bounded and idempotent auth-defense and TOTP challenge cleanup
+
+Not implemented:
+
+- Cloudflare Cron Trigger for cleanup when password-grant traffic is absent
+- cleanup metrics or alerting
+- dedicated cleanup-only indexes for larger production datasets

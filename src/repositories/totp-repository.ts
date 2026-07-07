@@ -49,6 +49,15 @@ export type ConsumeTotpChallengeInput = {
   consumedAt: string
 }
 
+export type TotpChallengeCleanupInput = {
+  expiredBefore: string
+  limit: number
+}
+
+export type TotpChallengeCleanupResult = {
+  deletedExpiredChallenges: number
+}
+
 type TotpDatabase = Pick<D1Database, 'prepare'>
 
 type TotpSetupRow = {
@@ -244,6 +253,31 @@ export async function consumeTotpChallenge(
     .run()
 
   return result.meta.changes === 1
+}
+
+export async function cleanupExpiredTotpChallenges(
+  database: TotpDatabase,
+  input: TotpChallengeCleanupInput,
+): Promise<TotpChallengeCleanupResult> {
+  const result = await database
+    .prepare(
+      `
+        DELETE FROM totp_challenges
+        WHERE id IN (
+          SELECT id
+          FROM totp_challenges
+          WHERE (consumed_at IS NOT NULL OR expires_at < ?)
+          ORDER BY expires_at ASC
+          LIMIT ?
+        )
+      `,
+    )
+    .bind(input.expiredBefore, input.limit)
+    .run()
+
+  return {
+    deletedExpiredChallenges: result.meta.changes,
+  }
 }
 
 function totpSetupFromRow(row: TotpSetupRow): TotpSetupRecord {

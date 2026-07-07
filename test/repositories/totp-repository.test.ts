@@ -4,6 +4,7 @@ import {
   consumeTotpChallenge,
   createTotpChallenge,
   enableTotpSetup,
+  cleanupExpiredTotpChallenges,
   findActiveTotpChallengeByHash,
   findTotpSetupByUserId,
   recordAcceptedTotpStep,
@@ -174,17 +175,55 @@ describe('totp repository', () => {
 
     expect(replayDatabase.queries.join('\n')).toContain('consumed_at IS NULL')
   })
+
+  it('cleans up expired or consumed login challenges in bounded batches', async () => {
+    const database = new RecordingTotpD1Database(null, null, 1, 4)
+
+    await expect(
+      cleanupExpiredTotpChallenges(database, {
+        expiredBefore: '2026-07-06T00:00:00.000Z',
+        limit: 5,
+      }),
+    ).resolves.toEqual({
+      deletedExpiredChallenges: 4,
+    })
+
+    await expect(
+      cleanupExpiredTotpChallenges(database, {
+        expiredBefore: '2026-07-06T00:00:00.000Z',
+        limit: 5,
+      }),
+    ).resolves.toEqual({
+      deletedExpiredChallenges: 0,
+    })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('DELETE FROM totp_challenges')
+    expect(query).toContain('ORDER BY expires_at ASC')
+    expect(query).toContain('LIMIT ?')
+  })
 })
 
 class RecordingTotpD1Database {
   boundValues: unknown[] = []
   queries: string[] = []
+  private remainingDeleteChanges: number
 
   constructor(
     private readonly setupRow: unknown = null,
     private readonly challengeRow: unknown = null,
     private readonly runChanges = 1,
-  ) {}
+    totpChallengeDeleteChanges = 1,
+  ) {
+    this.remainingDeleteChanges = totpChallengeDeleteChanges
+  }
+
+  private consumeDeleteChanges(): number {
+    const changes = this.remainingDeleteChanges
+    this.remainingDeleteChanges = 0
+
+    return changes
+  }
 
   prepare(query: string): D1PreparedStatement {
     this.queries.push(query)
@@ -211,14 +250,27 @@ class RecordingTotpD1Database {
         results: [],
         meta: fakeMeta,
       }),
-      run: async (): Promise<D1Result> => ({
-        success: true,
-        results: [],
-        meta: {
-          ...fakeMeta,
-          changes: this.runChanges,
-        },
-      }),
+      run: async (): Promise<D1Result> => {
+        if (query.includes('DELETE FROM totp_challenges')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: this.consumeDeleteChanges(),
+            },
+          }
+        }
+
+        return {
+          success: true,
+          results: [],
+          meta: {
+            ...fakeMeta,
+            changes: this.runChanges,
+          },
+        }
+      },
       raw: async <T = unknown>(): Promise<T[]> => [],
     } as D1PreparedStatement
 

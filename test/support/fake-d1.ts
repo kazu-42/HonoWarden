@@ -349,6 +349,33 @@ export class FakeD1Database {
           }
         }
 
+        if (/DELETE\s+FROM\s+auth_attempts/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: fakeMeta,
+          }
+        }
+
+        if (
+          /DELETE\s+FROM\s+auth_failure_buckets/.test(query) &&
+          query.includes('WHERE bucket_key IN')
+        ) {
+          return {
+            success: true,
+            results: [],
+            meta: fakeMeta,
+          }
+        }
+
+        if (/DELETE\s+FROM\s+totp_challenges/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('INSERT INTO auth_failure_buckets')) {
           const bucketKey = String(boundValues[0])
           const now = String(boundValues[1])

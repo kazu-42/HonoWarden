@@ -66,6 +66,7 @@ import {
   findAuthUserById,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  cleanupAuthDefenseState,
   recordAuthAttempt,
   recordFailedAuthBucket,
   recordFailedLogin,
@@ -79,6 +80,7 @@ import {
   consumeTotpChallenge,
   createTotpChallenge,
   enableTotpSetup,
+  cleanupExpiredTotpChallenges,
   findActiveTotpChallengeByHash,
   findTotpSetupByUserId,
   recordAcceptedTotpStep,
@@ -130,6 +132,14 @@ const accessTokenTtlSeconds = 3600
 const refreshTokenTtlSeconds = 60 * 60 * 24 * 30
 const totpChallengeTtlSeconds = 5 * 60
 const recentPasswordAuthTtlSeconds = 5 * 60
+const authDefenseCleanupRowsPerSlice = 100
+
+const authDefenseCleanupWindowSeconds = Math.max(
+  loginDefensePolicy.accountFailureWindowSeconds,
+  loginDefensePolicy.accountLockoutSeconds,
+  loginDefensePolicy.ipFailureWindowSeconds,
+  loginDefensePolicy.ipRetryAfterSeconds,
+)
 
 const defaultCorsHeaders = [
   'Accept',
@@ -212,6 +222,29 @@ function buildHealthResponse(requestIdValue: string, environment?: string) {
     environment: resolveRuntimeEnvironment(environment),
     requestId: requestIdValue,
   }
+}
+
+async function cleanupTransientAuthData(
+  database: Pick<D1Database, 'prepare'>,
+  now: string,
+): Promise<void> {
+  // This call is intentionally bounded and idempotent so it can be triggered on
+  // hot paths without risking large table churn.
+  await cleanupAuthDefenseState(database, {
+    now,
+    authAttemptExpiredBefore: new Date(
+      Date.parse(now) - authDefenseCleanupWindowSeconds * 1000,
+    ).toISOString(),
+    authFailureBucketExpiredBefore: new Date(
+      Date.parse(now) - authDefenseCleanupWindowSeconds * 1000,
+    ).toISOString(),
+    maxRowsPerQuery: authDefenseCleanupRowsPerSlice,
+  })
+
+  await cleanupExpiredTotpChallenges(database, {
+    expiredBefore: now,
+    limit: authDefenseCleanupRowsPerSlice,
+  })
 }
 
 app.get('/', (c) => {
@@ -596,6 +629,8 @@ app.post('/identity/connect/token', async (c) => {
   try {
     const issuedAt = Math.floor(Date.now() / 1000)
     const now = new Date(issuedAt * 1000).toISOString()
+    await cleanupTransientAuthData(c.env.DB, now)
+
     const ipBucketKey = await buildAuthAttemptBucketKey(
       'ip',
       extractClientAddress(c.req.raw.headers),

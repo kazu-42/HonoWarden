@@ -9,6 +9,7 @@ import {
   findAuthUserById,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
+  cleanupAuthDefenseState,
   recordAuthAttempt,
   recordFailedAuthBucket,
   recordFailedLogin,
@@ -366,6 +367,38 @@ describe('auth repository', () => {
     expect(database.boundValues).toContain('account:hashed-bucket')
   })
 
+  it('cleans up stale auth-defense rows in bounded, idempotent slices', async () => {
+    const database = new CleanupAwareAuthD1Database(3, 2)
+    const cleanupInput = {
+      now: '2026-07-06T00:10:00.000Z',
+      authAttemptExpiredBefore: '2026-07-06T00:00:00.000Z',
+      authFailureBucketExpiredBefore: '2026-07-06T00:00:00.000Z',
+      maxRowsPerQuery: 5,
+    }
+
+    await expect(
+      cleanupAuthDefenseState(database, cleanupInput),
+    ).resolves.toEqual({
+      deletedAuthAttempts: 3,
+      deletedAuthFailureBuckets: 2,
+    })
+    await expect(
+      cleanupAuthDefenseState(database, cleanupInput),
+    ).resolves.toEqual({
+      deletedAuthAttempts: 0,
+      deletedAuthFailureBuckets: 0,
+    })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('DELETE FROM auth_attempts')
+    expect(query).toContain('DELETE FROM auth_failure_buckets')
+    expect(query).toContain('ORDER BY occurred_at ASC')
+    expect(query).toContain('ORDER BY updated_at ASC')
+    expect(query).toContain('LIMIT ?')
+    expect(database.boundValues).toContain('2026-07-06T00:00:00.000Z')
+    expect(database.boundValues).toContain(5)
+  })
+
   it('revokes an active owner-scoped device session', async () => {
     const database = new RecordingAuthD1Database(null, null, 1, 1)
 
@@ -405,6 +438,79 @@ describe('auth repository', () => {
     expect(database.queries.join('\n')).not.toContain('UPDATE refresh_tokens')
   })
 })
+
+class CleanupAwareAuthD1Database {
+  boundValues: unknown[] = []
+  queries: string[] = []
+
+  private remainingAuthAttemptDeletes: number
+  private remainingAuthFailureBucketDeletes: number
+
+  constructor(
+    initialAuthAttemptDeletes = 1,
+    initialAuthFailureBucketDeletes = 1,
+  ) {
+    this.remainingAuthAttemptDeletes = initialAuthAttemptDeletes
+    this.remainingAuthFailureBucketDeletes = initialAuthFailureBucketDeletes
+  }
+
+  prepare(query: string): D1PreparedStatement {
+    this.queries.push(query)
+    const thisBoundValues = this.boundValues
+    const thisRemainingAuthAttemptDeletes = () => {
+      const value = this.remainingAuthAttemptDeletes
+      this.remainingAuthAttemptDeletes = 0
+
+      return value
+    }
+    const thisRemainingAuthFailureBucketDeletes = () => {
+      const value = this.remainingAuthFailureBucketDeletes
+      this.remainingAuthFailureBucketDeletes = 0
+
+      return value
+    }
+
+    const run = async <T = Record<string, unknown>>(): Promise<D1Result<T>> => {
+      let changes = fakeMeta.changes
+
+      if (/DELETE\s+FROM\s+auth_attempts/.test(query)) {
+        changes = thisRemainingAuthAttemptDeletes()
+      }
+
+      if (/DELETE\s+FROM\s+auth_failure_buckets/.test(query)) {
+        changes = thisRemainingAuthFailureBucketDeletes()
+      }
+
+      return {
+        success: true,
+        results: [],
+        meta: {
+          ...fakeMeta,
+          changes,
+        },
+      }
+    }
+
+    const bind = (...values: unknown[]) => {
+      thisBoundValues.push(...values)
+      return statement
+    }
+
+    const statement = {
+      bind,
+      first: async <T = unknown>(): Promise<T | null> => null,
+      all: async <T = unknown>(): Promise<D1Result<T>> => ({
+        success: true,
+        results: [],
+        meta: fakeMeta,
+      }),
+      run,
+      raw: async <T = unknown>(): Promise<T[]> => [],
+    } as D1PreparedStatement
+
+    return statement
+  }
+}
 
 class RecordingAuthD1Database {
   boundValues: unknown[] = []
