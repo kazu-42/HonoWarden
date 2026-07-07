@@ -113,8 +113,8 @@
     {
       "key": "website-domain",
       "name": "Website and Domain",
-      "summary": "Launch honowarden.com and the HonoWarden-website repository with domain and email routing.",
-      "description": "Separate website repository and Cloudflare domain/email setup for project presentation, documentation entry points, and OSS trust signals.",
+      "summary": "Maintain honowarden.com, the HonoWarden-website repository, and domain email routing.",
+      "description": "Separate website repository and Cloudflare domain/email setup for project presentation, documentation entry points, and OSS trust signals. The website repository and HTTPS domains are live; Email Routing remains gated on a refreshed Cloudflare OAuth scope and inbound mailbox tests.",
       "startDate": "2026-07-06",
       "targetDate": "2026-08-02",
       "priority": 3,
@@ -291,7 +291,7 @@
       "priority": 2,
       "estimate": 3,
       "labels": ["area:infra", "area:website", "type:ops", "evidence:required"],
-      "description": "Wire honowarden.com for the homepage and project email handling.\n\nAcceptance criteria:\n- apex and www route to the website Worker or Pages deployment\n- security contact email routing is configured and tested\n- DNS records are documented with rollback notes\n- no private account identifiers are committed"
+      "description": "Finish honowarden.com project email handling without regressing the live website.\n\nAcceptance criteria:\n- apex and www continue to route to the website Worker deployment\n- security contact email routing is configured and tested before security contact metadata is deployed\n- DNS records, Email Routing status, and rollback notes are documented\n- no secrets, verification tokens, or mailbox contents are committed"
     },
     {
       "key": "website-repo",
@@ -300,7 +300,7 @@
       "priority": 3,
       "estimate": 3,
       "labels": ["area:website", "type:feature", "agent:codex"],
-      "description": "Create the separate HonoWarden-website repository and ship a small Hono-based homepage.\n\nAcceptance criteria:\n- repository exists with license, README, CI, and deploy config\n- homepage is a real project page, not a placeholder landing shell\n- primary calls point to docs, GitHub, and security contact\n- deployed URL and honowarden.com route are verified"
+      "description": "Keep the separate HonoWarden-website repository healthy as the public project surface.\n\nAcceptance criteria:\n- repository exists with license, README, CI, and deploy config\n- homepage is a real project page, not a placeholder landing shell\n- primary calls point to docs, GitHub, and security policy\n- deployed URL and honowarden.com route are verified after each deploy\n- security contact metadata is deployed only after inbound email delivery is verified"
     },
     {
       "key": "live-client-evidence",
@@ -451,7 +451,7 @@
     "firstUpdate": {
       "projectKey": "alpha-api",
       "health": "atRisk",
-      "body": "Local implementation is complete through Week 25 on commit 4c13485, with GitHub Actions CI run 28798502815 passing. The alpha remains at risk until live Cloudflare resources, live official-client compatibility evidence, backup/restore drill evidence, honowarden.com routing/email evidence, and final release tagging are recorded. Next focus: Week 26 release gate, live-client evidence, staging/prod Cloudflare resources, and the HonoWarden-website launch."
+      "body": "Local release-gate checks are passing on HonoWarden commit 2233ab6 with GitHub Actions CI run 28840604341 passing. The website repository is live on commit 62a0777 with CI run 28840604186 passing, and honowarden.com plus www return the Worker website over HTTPS. Remaining risk is external setup: the Linear connector is pointed at the wrong workspace, Cloudflare Email Routing is missing email_routing:write in the current OAuth scope, security@ delivery is untested, and the final alpha tag/release has not been cut."
     }
   },
   "documents": [

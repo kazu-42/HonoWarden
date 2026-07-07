@@ -2,10 +2,10 @@
 
 This document describes the intended HonoWarden Linear setup.
 
-As of 2026-07-06 JST, the local DevTools browser opens
-`linear.app/honowarden` at the login screen, and the available Linear MCP
-connection returns teams from another workspace. Do not create HonoWarden issues
-through that MCP connection until it resolves to `linear.app/honowarden`.
+As of 2026-07-07 JST, the intended workspace is `linear.app/honowarden`, but
+the available Linear MCP connection returns teams and projects from an `interx`
+workspace. Do not create HonoWarden issues through that MCP connection until it
+resolves to `linear.app/honowarden`.
 
 ## Source Of Truth
 
@@ -20,7 +20,9 @@ The seed defines:
 
 - one team: `HW` / `HonoWarden`
 - one initiative: `HonoWarden Alpha Launch`
-- three projects: alpha API, operations readiness, and website/domain
+- three projects: alpha API, operations readiness, and website/domain, updated
+  to reflect that the website repository and HTTPS domains are live while Email
+  Routing remains gated
 - Week 20 through Week 26 milestones for the alpha API project
 - labels for area, type, risk, evidence, agent ownership, and alpha release gate
 - initial issues covering Week 20 through Week 26, Cloudflare resources, website,
