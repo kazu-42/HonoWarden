@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
 import { delimiter, join } from 'node:path'
@@ -35,6 +35,7 @@ type ReleaseEvidenceBundleReport = {
     }
     brandScan: {
       status: 'pass' | 'fail'
+      detail: string
       matches: string[]
     }
     postTagPreview: {
@@ -100,6 +101,7 @@ describe('release evidence bundle', () => {
     expect(report.evidence.brandScan).toMatchObject({
       status: 'pass',
       matches: [],
+      detail: 'repository brand scan returned no content or path hits',
     })
     expect(report.commands.createTag).toContain('git tag -a v0.1.0-alpha')
     expect(report.commands.pushTag).toBe(`git push ${remote} v0.1.0-alpha`)
@@ -115,7 +117,7 @@ describe('release evidence bundle', () => {
     expect(report.limitations).toContain(
       'This bundle does not create, move, delete, or push a Git tag.',
     )
-  })
+  }, 20000)
 
   it('writes the bundle to an explicit output path', async () => {
     const remote = await mkdtemp(join(tmpdir(), 'honowarden-bundle-remote-'))
@@ -158,7 +160,57 @@ describe('release evidence bundle', () => {
     expect(fileReport.status).toBe('ready')
     expect(fileReport.targetCommit).toBe(stdoutReport.targetCommit)
     expect(fileReport.approvalText).toBe(stdoutReport.approvalText)
-  })
+  }, 20000)
+
+  it('maps shared brand scan failures to evidence matches', async () => {
+    const remote = await mkdtemp(join(tmpdir(), 'honowarden-bundle-remote-'))
+    const fakeBin = await mkdtemp(join(tmpdir(), 'honowarden-bundle-gh-'))
+    const blockedProbe = join(repoRoot, 'brand-scan-shared-probe.txt')
+    const ciUrl = 'https://example.invalid/actions/runs/12345'
+    const headSha = (
+      await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
+    ).stdout.trim()
+
+    await execFileAsync('git', ['init', '--bare', remote])
+    await writePreTagGit(fakeBin)
+    await writeFakeGh(fakeBin)
+    await writeFile(
+      blockedProbe,
+      `tokenized reference: ${['Bit', 'warden'].join('')}\n`,
+    )
+
+    try {
+      const result = await execFileAsync(
+        'node',
+        [
+          evidenceBundleScript,
+          '--remote',
+          remote,
+          '--allow-dirty',
+          '--ci-run-id',
+          '12345',
+          '--ci-url',
+          ciUrl,
+        ],
+        {
+          env: fakeEnv(fakeBin, { ciUrl, headSha }),
+        },
+      )
+      const report = JSON.parse(result.stdout) as ReleaseEvidenceBundleReport
+
+      expect(report.status).toBe('not_ready')
+      expect(statusById(report, 'brand_scan_clean')).toBe('fail')
+      expect(report.evidence.brandScan).toMatchObject({
+        status: 'fail',
+        detail: 'repository brand scan found blocked content or path hits',
+      })
+      expect(report.evidence.brandScan.matches).toContain(
+        'brand-scan-shared-probe.txt:1',
+      )
+    } finally {
+      await rm(blockedProbe, { force: true })
+    }
+  }, 20000)
 
   it('fails strict mode without CI evidence', async () => {
     const remote = await mkdtemp(join(tmpdir(), 'honowarden-bundle-remote-'))
@@ -184,7 +236,7 @@ describe('release evidence bundle', () => {
     ).rejects.toMatchObject({
       stdout: expect.stringContaining('"id": "approval_packet_ready"'),
     })
-  })
+  }, 20000)
 })
 
 async function writeFakeGh(fakeBin: string) {

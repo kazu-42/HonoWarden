@@ -1077,12 +1077,15 @@ Implemented:
   `pnpm release:evidence:bundle`
 - combined JSON summary of strict release gate, remote tag preflight, release
   approval packet, post-tag dry-run preview, and repository brand scan
+- repository brand scan evidence delegates to the shared
+  `scripts/honowarden-brand-scan.mjs` policy instead of duplicating traversal
+  and pattern logic in the evidence bundle
 - optional local `--output` writer for saving the JSON evidence artifact without
   touching external systems
 - exact tag approval text emitted only when strict evidence is ready for the
   current commit
-- focused tests covering ready output, explicit local evidence output, and
-  strict failure when CI evidence is absent
+- focused tests covering ready output, explicit local evidence output, shared
+  scanner failure mapping, and strict failure when CI evidence is absent
 - tagging runbook step requiring the evidence bundle before tag approval
 
 Not implemented:
