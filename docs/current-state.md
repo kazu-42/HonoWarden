@@ -1458,6 +1458,22 @@ Not implemented:
 - live Worker smoke, website route, email routing, or rollback evidence
 - automatic promotion from `not_performed` to `passed`
 
+## Week 26 Release Gate Ops Evidence Template Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed post-alpha ops
+  evidence template workflow
+- `week-26-ops-evidence-templates` records passed CI run `28890162723`
+- release gate tests assert the ops evidence template workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage change's own future CI run
+- automatic promotion from `not_performed` to `passed`
+- Worker deploy, DNS mutation, Email Routing configuration, or test email send
+- live Worker smoke, website route, email routing, or rollback evidence
+
 ## Week 26 Release Published Packet
 
 Implemented:
