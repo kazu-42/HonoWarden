@@ -799,11 +799,13 @@ Not implemented:
 Implemented:
 
 - route-executed compatibility fixture replay for deterministic stateless
-  fixtures
-- replay coverage for server config, prelogin, empty sync, sync with one folder
-  and cipher, account profile, account revision, direct folder and cipher
-  reads, policy metadata, domain metadata, collection metadata, device reads,
-  and known-device preflight
+  fixtures and selected explicitly opted-in stateful fixtures
+- replay coverage for server config, prelogin, password grant, empty sync, sync
+  with one folder and cipher, account profile, account revision, direct folder
+  and cipher reads, policy metadata, domain metadata, collection metadata,
+  device reads, and known-device preflight
+- password-grant replay uses fixture request headers/form data and explicitly
+  opts into stateful replay while preserving the default mutating fixture guard
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads
@@ -815,8 +817,8 @@ Implemented:
 Not implemented:
 
 - route-executed replay for mutating fixtures that require ordered state
-  transitions
-- route replay for token grant, refresh, TOTP challenge, or revoke flows
+  transitions beyond the password-grant fixture
+- route replay for refresh, TOTP challenge, TOTP login, or revoke flows
 - live client evidence for newly route-replayed fixtures
 
 ## Week 26 Alpha Version Alignment

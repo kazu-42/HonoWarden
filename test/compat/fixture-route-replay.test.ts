@@ -93,6 +93,10 @@ const replayFixtures = [
     path: 'prelogin/pbkdf2.json',
   },
   {
+    path: 'token/password-grant-success.json',
+    allowMutatingFixtures: true,
+  },
+  {
     path: 'sync/empty-personal-vault.json',
   },
   {
@@ -180,8 +184,12 @@ const replayFixtures = [
 describe('compatibility fixture route replay', () => {
   for (const fixture of replayFixtures) {
     it(`replays ${fixture.path} against the app`, async () => {
-      const replayOptions =
-        'database' in fixture ? { database: fixture.database } : {}
+      const replayOptions = {
+        ...('database' in fixture ? { database: fixture.database } : {}),
+        ...('allowMutatingFixtures' in fixture
+          ? { allowMutatingFixtures: fixture.allowMutatingFixtures }
+          : {}),
+      }
       const result = await runCompatFixture(
         fixturePath(fixture.path),
         replayOptions,
