@@ -2,7 +2,7 @@
   "title": "Week 26 Publication Gate Runbook",
   "slug": "week-26-publication-gate-runbook",
   "created_at": "2026-07-07T12:33:24+00:00",
-  "status": "planned",
+  "status": "completed",
   "approval": {
     "required": false,
     "granted": true,
@@ -72,6 +72,13 @@
       {
         "command": "repository brand scan",
         "status": "passed"
+      },
+      {
+        "name": "GitHub Actions CI",
+        "status": "passed",
+        "run": "28866583897",
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28866583897",
+        "headSha": "6ae65131403a04df943950e9a39556f1d02bc543"
       }
     ]
   }

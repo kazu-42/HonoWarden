@@ -58,6 +58,7 @@ const requiredWorkflowSlugs = [
   'week-26-release-published-packet',
   'week-26-release-status-packet',
   'week-26-release-command-repo-scope',
+  'week-26-publication-gate-runbook',
 ]
 
 function buildReleaseGateReport() {

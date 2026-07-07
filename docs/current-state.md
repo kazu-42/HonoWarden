@@ -1033,6 +1033,21 @@ Not implemented:
 - GitHub release publication
 - deployment from a tag or release
 
+## Week 26 Release Gate Publication Runbook Coverage
+
+Implemented:
+
+- release gate workflow evidence now requires
+  `.workflow/week-26-publication-gate-runbook/state.json`
+- `week-26-publication-gate-runbook` records passing CI run `28866583897`
+- release gate tests assert the publication gate runbook workflow evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- GitHub release publication
+- deployment from a tag or release
+
 ## Week 26 Release Gate Publication Packet Coverage
 
 Implemented:
