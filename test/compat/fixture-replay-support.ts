@@ -136,7 +136,15 @@ export function loadCompatFixture(path: string): CompatFixture {
 }
 
 export function isStatelessCompatFixture(fixture: CompatFixture): boolean {
-  return fixture.endpoint.method === 'GET'
+  if (fixture.endpoint.method === 'GET') {
+    return true
+  }
+
+  return (
+    fixture.endpoint.method === 'POST' &&
+    (fixture.endpoint.path === '/identity/accounts/prelogin' ||
+      fixture.endpoint.path === '/identity/accounts/prelogin/password')
+  )
 }
 
 export async function runCompatFixture(

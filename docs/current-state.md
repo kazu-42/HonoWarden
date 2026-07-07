@@ -766,17 +766,18 @@ Not implemented:
 
 Implemented:
 
-- route-executed compatibility fixture replay for deterministic read-only
+- route-executed compatibility fixture replay for deterministic stateless
   fixtures
-- replay coverage for empty sync, sync with one folder and cipher, account
-  profile, direct folder and cipher reads, policy metadata, domain metadata,
-  and collection metadata
+- replay coverage for prelogin, empty sync, sync with one folder and cipher,
+  account profile, direct folder and cipher reads, policy metadata, domain
+  metadata, and collection metadata
 - deterministic synthetic access-token replacement for fixture requests that
   use `Bearer synthetic-access-token`
 - `FakeD1Database` seeding for fixture-backed user, folder, and cipher reads
 - assertion-driven replay that checks fixture status and declared fixture
   assertions against actual Hono responses
-- explicit stateless replay guard that rejects mutating fixtures by default
+- explicit stateless replay guard that rejects stateful or mutating fixtures by
+  default
 
 Not implemented:
 

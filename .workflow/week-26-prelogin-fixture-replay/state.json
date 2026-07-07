@@ -1,0 +1,84 @@
+{
+  "title": "Week 26 Prelogin Fixture Replay",
+  "slug": "week-26-prelogin-fixture-replay",
+  "created_at": "2026-07-07T13:38:52+00:00",
+  "updated_at": "2026-07-07T13:40:43Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, tests, docs, workflow artifacts, commit, push, and CI verification only. GitHub Release publication, deployment, tag mutation, DNS, email routing, secret writes, and Cloudflare resource writes remain separately approval-gated."
+  },
+  "packets": [
+    {
+      "id": "01-stateless-classification",
+      "status": "completed",
+      "owner": "spark"
+    },
+    {
+      "id": "02-tests-docs",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec prettier --write test/compat/fixture-replay-support.ts test/compat/fixture-route-replay.test.ts docs/current-state.md docs/compatibility-matrix.md .workflow/week-26-prelogin-fixture-replay/**/*.md .workflow/week-26-prelogin-fixture-replay/state.json",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/compat/compat-fixtures.test.ts test/compat/fixture-route-replay.test.ts",
+        "status": "passed",
+        "evidence": "2 files, 44 tests"
+      },
+      {
+        "command": "pnpm compat:test",
+        "status": "passed",
+        "evidence": "3 files, 50 tests"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-prelogin-fixture-replay",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "40 files, 334 tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "repository brand scan",
+        "status": "passed",
+        "evidence": "No forbidden external compatibility brand strings found outside allowed exclusions."
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "overall ready"
+      },
+      {
+        "command": "pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "evidence": "phase draft_ready_for_publication"
+      }
+    ]
+  }
+}

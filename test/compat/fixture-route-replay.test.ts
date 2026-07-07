@@ -69,6 +69,9 @@ const cipherRows = [
 
 const replayFixtures = [
   {
+    path: 'prelogin/pbkdf2.json',
+  },
+  {
     path: 'sync/empty-personal-vault.json',
   },
   {
