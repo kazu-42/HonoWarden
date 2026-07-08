@@ -2,6 +2,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { error as logError, log } from 'node:console'
+import { createHash } from 'node:crypto'
 import process from 'node:process'
 import { URL } from 'node:url'
 
@@ -25,6 +26,9 @@ query HonoWardenLinearPreflight {
     }
   }
   teams(first: 250) {
+    pageInfo {
+      hasNextPage
+    }
     nodes {
       id
       name
@@ -39,18 +43,27 @@ query HonoWardenLinearPreflight {
     }
   }
   projects(first: 50) {
+    pageInfo {
+      hasNextPage
+    }
     nodes {
       id
       name
     }
   }
   initiatives(first: 50) {
+    pageInfo {
+      hasNextPage
+    }
     nodes {
       id
       name
     }
   }
   issueLabels(first: 250) {
+    pageInfo {
+      hasNextPage
+    }
     nodes {
       id
       name
@@ -60,6 +73,9 @@ query HonoWardenLinearPreflight {
     }
   }
   documents(first: 250) {
+    pageInfo {
+      hasNextPage
+    }
     nodes {
       id
       title
@@ -72,6 +88,9 @@ query HonoWardenLinearPreflight {
     }
   }
   customViews(first: 250) {
+    pageInfo {
+      hasNextPage
+    }
     nodes {
       id
       name
@@ -163,6 +182,7 @@ async function buildLinearPreflightReport(seed, env, options = {}) {
     name: stringValue(seed.team?.name),
   }
   const seedSummary = summarizeSeed(seed)
+  const seedFingerprint = fingerprintJson(seed)
   const baseReport = {
     schemaVersion: 1,
     generatedAt,
@@ -175,6 +195,7 @@ async function buildLinearPreflightReport(seed, env, options = {}) {
       team: expectedTeam,
     },
     seed: seedSummary,
+    seedFingerprint,
     workspace: null,
     viewer: null,
     team: null,
@@ -493,22 +514,26 @@ function summarizeInventory(seed, data, expectedTeam) {
     remoteViews
       .filter((view) => view.team?.key === teamKey || view.team === null)
       .map((view) => view.name),
+    data.customViews?.pageInfo?.hasNextPage === false,
   )
 
   return {
     projects: matchByName(
       (seed.projects ?? []).map((project) => project.name),
       remoteProjects.map((project) => project.name),
+      data.projects?.pageInfo?.hasNextPage === false,
     ),
     initiative: matchByName(
       [seed.initiative?.name].filter(Boolean),
       remoteInitiatives.map((initiative) => initiative.name),
+      data.initiatives?.pageInfo?.hasNextPage === false,
     ),
     labels: matchByName(
       (seed.labels ?? []).map((label) => label.name),
       remoteLabels
         .filter((label) => label.team?.key === teamKey || label.team === null)
         .map((label) => label.name),
+      data.issueLabels?.pageInfo?.hasNextPage === false,
     ),
     documents: matchByName(
       (seed.documents ?? []).map((document) => document.title),
@@ -521,6 +546,7 @@ function summarizeInventory(seed, data, expectedTeam) {
             ),
         )
         .map((document) => document.title),
+      data.documents?.pageInfo?.hasNextPage === false,
     ),
     views: {
       ...viewInventory,
@@ -537,15 +563,18 @@ function collectUniqueStrings(values) {
   return [...new Set(values.filter((value) => value !== null))].sort()
 }
 
-function matchByName(expected, actual) {
+function matchByName(expected, actual, complete) {
   const actualSet = new Set(actual.filter(Boolean))
-  const expectedNames = expected.filter(Boolean)
+  const expectedNames = expected.filter(Boolean).sort()
   const matched = expectedNames.filter((name) => actualSet.has(name)).sort()
   const missing = expectedNames.filter((name) => !actualSet.has(name)).sort()
 
   return {
     expected: expectedNames.length,
+    expectedNames,
+    complete,
     matched: matched.length,
+    matchedNames: matched,
     missing: missing.length,
     missingNames: missing,
   }
@@ -585,6 +614,28 @@ function stringValue(value) {
 
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function fingerprintJson(value) {
+  return {
+    algorithm: 'sha256',
+    value: createHash('sha256').update(stableJson(value)).digest('hex'),
+  }
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(',')}]`
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(',')}}`
+  }
+
+  return JSON.stringify(value)
 }
 
 main().catch((error) => {

@@ -22,6 +22,10 @@ type LinearPreflightReport = {
   expected: {
     workspaceSlug: string | null
   }
+  seedFingerprint: {
+    algorithm: 'sha256'
+    value: string
+  }
   workspace: null | {
     urlKey: string
   }
@@ -46,8 +50,12 @@ type LinearPreflightReport = {
 
 type InventorySummary = {
   expected: number
+  expectedNames: string[]
+  complete: boolean
   matched: number
+  matchedNames: string[]
   missing: number
+  missingNames: string[]
 }
 
 describe('Linear API preflight', () => {
@@ -269,11 +277,21 @@ describe('Linear API preflight', () => {
     expect(authorizationHeader).toBe('test-linear-preflight-token')
     expect(report.status).toBe('ready')
     expect(report.blockingReason).toBeNull()
+    expect(report.seedFingerprint).toMatchObject({
+      algorithm: 'sha256',
+      value: expect.stringMatching(/^[a-f0-9]{64}$/),
+    })
     expect(report.team?.key).toBe('HW')
     expect(report.team?.missingStateTypes).toEqual([])
     expect(statusById(report, 'workflow_state_types')).toBe('pass')
     expect(report.inventory?.projects).toMatchObject({
       expected: 3,
+      expectedNames: [
+        'HonoWarden v0.1.0-alpha',
+        'Operations Readiness',
+        'Website and Domain',
+      ],
+      complete: true,
       matched: 3,
       missing: 0,
     })
@@ -284,6 +302,14 @@ describe('Linear API preflight', () => {
     })
     expect(report.inventory?.views).toMatchObject({
       expected: 6,
+      expectedNames: [
+        'Agent Queue',
+        'Alpha Command Center',
+        'Evidence Missing',
+        'Published Alpha Evidence',
+        'Security and Ops Risk',
+        'Week 26 Release Gate',
+      ],
       matched: 6,
       missing: 0,
       manualProjectScoped: 1,
@@ -366,6 +392,7 @@ function linearData({
       ],
     },
     projects: {
+      pageInfo: { hasNextPage: false },
       nodes: [
         { id: 'project-alpha', name: 'HonoWarden v0.1.0-alpha' },
         { id: 'project-ops', name: 'Operations Readiness' },
@@ -373,9 +400,11 @@ function linearData({
       ],
     },
     initiatives: {
+      pageInfo: { hasNextPage: false },
       nodes: [{ id: 'initiative-alpha', name: 'HonoWarden Alpha Launch' }],
     },
     issueLabels: {
+      pageInfo: { hasNextPage: false },
       nodes: [
         'area:api',
         'area:auth',
@@ -395,6 +424,7 @@ function linearData({
       ].map((name) => ({ id: `label-${name}`, name, team: { key: 'HW' } })),
     },
     documents: {
+      pageInfo: { hasNextPage: false },
       nodes: [
         {
           id: 'document-tracking',
@@ -405,6 +435,7 @@ function linearData({
       ],
     },
     customViews: {
+      pageInfo: { hasNextPage: false },
       nodes: [
         'Alpha Command Center',
         'Week 26 Release Gate',

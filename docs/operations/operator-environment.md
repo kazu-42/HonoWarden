@@ -105,6 +105,7 @@ gh auth status
 pnpm wrangler whoami
 pnpm linear:seed
 pnpm linear:preflight
+pnpm linear:apply-plan
 pnpm email:preflight
 ```
 
@@ -115,11 +116,13 @@ Before applying external changes:
 1. `direnv status` shows this repository is allowed.
 2. `pnpm linear:preflight -- --strict` reports `status: "ready"` before Linear
    API writes are planned.
-3. `gh auth status` resolves to the intended GitHub user.
-4. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
-5. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
-6. Destination inboxes for email routing are verified in Cloudflare.
-7. The current worktree is clean or the pending diff is intentionally scoped.
+3. `pnpm linear:apply-plan -- --preflight-report <ready-report> --strict`
+   produces a reviewed plan before Linear writes are attempted.
+4. `gh auth status` resolves to the intended GitHub user.
+5. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
+6. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
+7. Destination inboxes for email routing are verified in Cloudflare.
+8. The current worktree is clean or the pending diff is intentionally scoped.
 
 Use strict local preflight before requesting email-routing writes:
 
@@ -157,6 +160,13 @@ seed; it cannot override the workspace that preflight verifies. The report
 inventories matching seed projects, labels, documents, and views without
 printing the API key. Project-scoped views are listed for manual confirmation
 because the read-only root view inventory does not prove that scope.
+
+`pnpm linear:apply-plan` is also local-only. It reads the seed and, optionally,
+a saved ready preflight report, then emits ordered create/confirm/manual
+operations for review. Ready reports must match the current seed fingerprint
+and page-complete inventory expected-name set before the plan can classify
+objects as already present. It does not read `LINEAR_API_KEY`, does not call
+GraphQL, and does not create or update Linear objects.
 
 ## Missing Inputs
 

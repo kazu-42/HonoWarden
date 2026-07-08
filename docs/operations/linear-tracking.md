@@ -30,6 +30,28 @@ environment overrides as a mismatch unless they match the checked-in seed.
 Project-scoped views remain manual inventory because they are created from the
 project issue list rather than the root view list.
 
+Create a local, non-mutating apply plan with:
+
+```sh
+pnpm linear:apply-plan
+```
+
+When strict preflight is ready, save that preflight JSON and use it to classify
+which seed objects already exist and which still need creation:
+
+```sh
+mkdir -p test/.tmp
+pnpm linear:preflight -- --strict > test/.tmp/linear-preflight.ready.json
+pnpm linear:apply-plan -- --preflight-report test/.tmp/linear-preflight.ready.json --strict
+```
+
+`linear:apply-plan` does not read `LINEAR_API_KEY` and does not call Linear. It
+requires the saved preflight report to include the same seed fingerprint and
+page-complete inventory expected-name set as the current seed before it can
+classify objects as create or confirm-existing. It is a planning artifact only;
+it must not be treated as proof that issues, projects, views, documents, or
+Pulse settings were applied.
+
 The seed defines:
 
 - one team: `HW` / `HonoWarden`
@@ -73,7 +95,14 @@ Safe verification steps:
    does not return only unrelated workspace teams.
 4. If using `LINEAR_API_KEY`, run `pnpm linear:preflight -- --strict` and
    require `status: "ready"`.
-5. Only then create issues, projects, and documents through MCP or API tooling.
+5. Generate a strict apply plan and review the create/confirm/manual
+   operations:
+
+   ```sh
+   pnpm linear:apply-plan -- --preflight-report <ready-report> --strict
+   ```
+
+6. Only then create issues, projects, and documents through MCP or API tooling.
 
 ## Recommended Apply Order
 
@@ -93,6 +122,10 @@ Safe verification steps:
 Do not skip the preflight. A passing `pnpm linear:seed` only proves the checked
 in seed is internally coherent; it does not prove that the active Linear
 connector or API key targets `linear.app/honowarden`.
+
+Do not skip the apply-plan review. A ready preflight proves the workspace and
+team are safe targets; it does not prove every seed object already exists or
+that Pulse/custom-view settings can be represented by the same automation path.
 
 ## Views
 
