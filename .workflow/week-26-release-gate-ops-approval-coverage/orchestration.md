@@ -28,8 +28,8 @@ referential.
   release gate should include.
 - `02-docs-workflow`: finalize this workflow package (plan/orchestration/results
   - packets + state/final report).
-- `03-verification`: record verification status and pending CI evidence for this
-  coverage workflow until the main agent records it.
+- `03-verification`: record verification status and CI evidence for this coverage
+  workflow once the main run is available.
 
 ## Completion Audit
 
@@ -38,6 +38,7 @@ referential.
 - This coverage workflow is excluded from `requiredWorkflowSlugs`.
 - Packets 01, 02, and local verification in packet 03 are marked completed in
   `state.json`.
-- CI evidence for this coverage workflow is explicitly pending until this PR lands.
+- CI evidence for this coverage workflow is recorded from the first passing main
+  run after the PR landed.
 - No release publication, tag mutation, Cloudflare deploy/DNS/Email Routing writes,
   email send, or secret write is listed as completed.

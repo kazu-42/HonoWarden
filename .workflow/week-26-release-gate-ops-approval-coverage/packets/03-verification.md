@@ -6,7 +6,7 @@ Record local verification posture for this coverage workflow.
 
 Status:
 
-completed locally; CI evidence pending after PR
+completed
 
 What is complete:
 
@@ -14,8 +14,10 @@ What is complete:
 - Companion release-gate code, tests, and docs are integrated by the main agent.
 - Local release-gate tests, strict release-gate readback, workflow verifier, and brand
   scan have passing evidence.
+- Main CI run `28908896648` passed for
+  `56edea4315e0a81ba6b99032ec42c53960b22e3d`.
 
 Blocking item:
 
-- Full completion requires a passed GitHub Actions evidence run for this coverage
-  workflow after the PR lands.
+- None for this workflow artifact. Release publication, deploy, DNS, Email Routing,
+  and secrets remain separate approval-gated work.

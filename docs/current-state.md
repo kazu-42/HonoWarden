@@ -1505,10 +1505,12 @@ Implemented:
   `28908143129`
 - release gate tests assert the ops readiness release approval gate workflow
   evidence path
+- `week-26-release-gate-ops-approval-coverage` records passed CI run
+  `28908896648` while remaining outside release-gate self-reference
 
 Not implemented:
 
-- self-referential gating of this coverage workflow's own future CI run
+- self-referential gating of this coverage workflow
 - automatic GitHub release publication
 - tag creation, movement, deletion, or push
 - Worker deploy, DNS mutation, Email Routing configuration, or test email send

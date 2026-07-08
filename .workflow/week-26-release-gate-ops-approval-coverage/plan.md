@@ -13,16 +13,16 @@ non-self-referential.
 - This coverage workflow is not added to `requiredWorkflowSlugs`.
 - This workflow artifact performs no external writes; companion code/test/docs
   changes are integrated by the main agent.
-- CI evidence for this coverage workflow itself remains pending until explicitly
-  recorded by the main agent.
+- CI evidence for this coverage workflow is recorded after the PR that introduced
+  it landed on `main`.
 
 ## Current Context
 
 The target workflow file for the requirement is
 `.workflow/week-26-ops-readiness-release-approval-gate/state.json`.
 This slice records the release-gate coverage intent and packet status after the
-target workflow has completed, while deferring CI evidence capture for this new
-coverage workflow.
+target workflow has completed, and now records the first passing main CI evidence
+for this coverage workflow.
 
 ## Constraints
 
@@ -52,8 +52,8 @@ The listed operational writes and publication actions remain approval-gated else
 - `01-gate-implementation`: define required slugs/evidence wiring targets.
 - `02-docs-workflow`: complete the workflow artifact package for this coverage
   slice.
-- `03-verification`: record current verification posture; CI evidence for this
-  coverage workflow is pending.
+- `03-verification`: record current verification posture and main CI evidence for
+  this coverage workflow.
 
 ## Integration Policy
 
@@ -68,9 +68,9 @@ may land in the same PR, but this coverage workflow must not be listed in
 - `pnpm release:gate -- --strict` (with `week-26-ops-readiness-release-approval-gate`
   included).
 - `python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-ops-approval-coverage`
-- CI evidence readback for this coverage workflow state run (pending in this slice).
+- CI evidence readback for this coverage workflow state run.
 
 ## Reusable Artifacts
 
 Use the standard pattern: gate update first, document in this workflow folder, then
-add CI evidence in `state.json` when the main evidence run is available.
+add CI evidence in `state.json` after the main evidence run is available.
