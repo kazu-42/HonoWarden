@@ -434,7 +434,13 @@ The project remains pre-alpha and must not be used to store real secrets.
 Implemented:
 
 - Linear seed validation script exposed as `pnpm linear:seed`
-- HonoWarden Linear seed updated with the current Week 25 completion status
+- HonoWarden Linear seed updated with the current post-publication Week 26
+  status
+- Linear seed issue states now distinguish 14 completed alpha/ops items from
+  four started follow-ups: domain email, live-client evidence expansion, TOTP
+  change management, and rollback rehearsal evidence
+- `pnpm linear:seed` now validates issue `stateType` values and reports issue
+  state counts
 - README link to `docs/operations/linear-tracking.md`
 - access guard documented to prevent writing HonoWarden issues into an unrelated
   Linear workspace
@@ -447,6 +453,7 @@ Not implemented:
   not authenticated to `linear.app/honowarden`
 - Pulse workspace settings mutation
 - Linear custom view creation through UI automation
+- live Linear application of the updated issue states and published-alpha view
 
 The Linear seed remains the source of truth until a connector or browser session
 is authenticated to the `honowarden` workspace.

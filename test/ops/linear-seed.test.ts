@@ -22,13 +22,21 @@ describe('Linear tracking seed', () => {
         issues: number
         views: number
       }
+      issueStateCounts: {
+        started: number
+        completed: number
+      }
     }
 
     expect(output.workspaceSlug).toBe('honowarden')
     expect(output.counts.labels).toBeGreaterThanOrEqual(10)
     expect(output.counts.projects).toBe(3)
-    expect(output.counts.issues).toBeGreaterThanOrEqual(12)
-    expect(output.counts.views).toBeGreaterThanOrEqual(5)
+    expect(output.counts.issues).toBe(18)
+    expect(output.counts.views).toBe(7)
+    expect(output.issueStateCounts).toMatchObject({
+      completed: 14,
+      started: 4,
+    })
   })
 
   it('fails when an issue references an unknown label', async () => {
@@ -44,6 +52,26 @@ describe('Linear tracking seed', () => {
       execFileAsync('node', [seedScript, invalidSeedFile]),
     ).rejects.toMatchObject({
       stderr: expect.stringContaining('missing:label'),
+    })
+  })
+
+  it('fails when an issue has an unknown state type', async () => {
+    const workDir = await fixtureDir('linear-seed-state')
+    const invalidSeedFile = join(workDir, 'seed.json')
+    const seed = JSON.parse(await readFile(seedFile, 'utf8')) as {
+      issues: Array<{ stateType: string }>
+    }
+    const firstIssue = seed.issues[0]
+    if (!firstIssue) {
+      throw new Error('seed fixture must contain at least one issue')
+    }
+    firstIssue.stateType = 'blocked'
+    await writeFile(invalidSeedFile, JSON.stringify(seed, null, 2))
+
+    await expect(
+      execFileAsync('node', [seedScript, invalidSeedFile]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('stateType must be one of'),
     })
   })
 })

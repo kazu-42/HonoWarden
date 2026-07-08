@@ -2,7 +2,7 @@
 
 This document describes the intended HonoWarden Linear setup.
 
-As of 2026-07-07 JST, the intended workspace is `linear.app/honowarden`, but
+As of 2026-07-08 JST, the intended workspace is `linear.app/honowarden`, but
 the available Linear MCP connection returns teams and projects from an `interx`
 workspace. Do not create HonoWarden issues through that MCP connection until it
 resolves to `linear.app/honowarden`.
@@ -26,8 +26,10 @@ The seed defines:
 - Week 20 through Week 26 milestones for the alpha API project
 - labels for area, type, risk, evidence, agent ownership, and alpha release gate
 - initial issues covering Week 20 through Week 26, Cloudflare resources, website,
-  domain/email routing, live official-client evidence, cleanup jobs, and release
-  automation
+  domain/email routing, live official-client evidence, cleanup jobs, rollback
+  rehearsal, and release automation
+- issue `stateType` values that map to Linear state types, currently 14
+  completed items and four started follow-ups
 - custom view definitions
 - Pulse cadence and the first status-update body
 
@@ -36,8 +38,9 @@ Current validated counts:
 - 15 labels
 - 3 projects
 - 7 milestones
-- 17 issues
-- 6 shared view definitions
+- 18 issues
+- 7 shared view definitions
+- issue state counts: 14 completed, 4 started
 - 1 tracking overview document
 
 ## Access Prerequisites
@@ -66,7 +69,8 @@ Safe verification steps:
 5. Create Week 20 through Week 26 milestones on `HonoWarden v0.1.0-alpha`.
 6. Create the tracking overview document on the alpha project.
 7. Create issues in seed order, preserving `blockedBy` relationships after both
-   sides exist.
+   sides exist and mapping each issue `stateType` to the workspace state with
+   the matching Linear state type.
 8. Post the first project update from the seed Pulse section.
 9. Create the custom views and favorite the high-signal views in the sidebar.
 
@@ -85,6 +89,8 @@ project issue list:
   status.
 - `Evidence Missing`: active issues labeled `evidence:required`, grouped by
   project.
+- `Published Alpha Evidence`: completed `release:alpha` issues, grouped by
+  project, for readback after publication.
 
 Use shared team or project views, not personal-only views, for the command center
 and release gate. Keep personal Pulse custom feeds optional.
@@ -98,9 +104,9 @@ Recommended defaults:
 - Pulse summary: weekdays, delivered by 07:00 local time.
 - Alpha project update reminder: Monday and Friday at 18:00 Asia/Tokyo.
 - Operations and website project update reminder: Friday at 18:00 Asia/Tokyo.
-- Health default for the first update: `atRisk` until live Cloudflare resources,
-  live official-client evidence, backup/restore drill evidence, and security
-  review materials are recorded.
+- Health default for the first update: `atRisk` until Email Routing is tested,
+  live-client evidence is broadened beyond the CLI smoke, and rollback evidence
+  is no longer partial.
 
 Every project update should include:
 

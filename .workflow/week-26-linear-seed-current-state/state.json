@@ -1,0 +1,82 @@
+{
+  "title": "Week 26 Linear Seed Current State",
+  "slug": "week-26-linear-seed-current-state",
+  "created_at": "2026-07-08T03:18:10+00:00",
+  "status": "implemented",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local seed, validation, tests, docs, and workflow artifacts only. No live Linear mutation was performed."
+  },
+  "packets": [
+    {
+      "id": "01-seed-state",
+      "status": "completed",
+      "result": "results/01-seed-state.md"
+    },
+    {
+      "id": "02-validation-docs",
+      "status": "completed",
+      "result": "results/02-validation-docs.md"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "linear seed validation",
+        "command": "pnpm linear:seed",
+        "status": "passed",
+        "evidence": "18 issues, 7 views, 14 completed, 4 started"
+      },
+      {
+        "name": "linear seed tests",
+        "command": "pnpm exec vitest run test/ops/linear-seed.test.ts",
+        "status": "passed",
+        "evidence": "1 test file, 3 tests passed"
+      },
+      {
+        "name": "typecheck",
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "name": "format",
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "name": "full test suite",
+        "command": "pnpm test",
+        "status": "passed",
+        "evidence": "45 files, 397 tests passed"
+      },
+      {
+        "name": "brand scan",
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "name": "release gate",
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "evidence": "linear_tracking_seed details: 7 views, 18 issues"
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python3 /Users/hackhike/dev/HonoWarden/.codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-linear-seed-current-state",
+        "status": "passed"
+      },
+      {
+        "name": "diff check",
+        "command": "git diff --check",
+        "status": "passed"
+      }
+    ]
+  }
+}

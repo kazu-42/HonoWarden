@@ -5,6 +5,13 @@ import { error as logError, log } from 'node:console'
 import process from 'node:process'
 
 const defaultSeedPath = 'ops/linear/honowarden.seed.json'
+const allowedStateTypes = new Set([
+  'backlog',
+  'unstarted',
+  'started',
+  'completed',
+  'canceled',
+])
 
 async function main(argv = process.argv.slice(2)) {
   const seedPath = argv[0] ?? defaultSeedPath
@@ -60,6 +67,7 @@ function validateSeed(seed) {
   for (const issue of issues) {
     requireString(errors, issue.title, `issues.${issue.key}.title`)
     requireString(errors, issue.description, `issues.${issue.key}.description`)
+    requireStateType(errors, issue.stateType, `issues.${issue.key}.stateType`)
 
     if (!projectKeys.has(issue.projectKey)) {
       errors.push(
@@ -134,11 +142,32 @@ function validateSeed(seed) {
         views: views.length,
         documents: (seed.documents ?? []).length,
       },
+      issueStateCounts: issueStateCounts(issues),
       pulse: {
         workspaceDefaultCadence: seed.pulse?.workspaceDefaultCadence,
         projectUpdateReminder: seed.pulse?.projectUpdateReminder,
       },
     },
+  }
+}
+
+function issueStateCounts(issues) {
+  const counts = Object.fromEntries(
+    [...allowedStateTypes].map((stateType) => [stateType, 0]),
+  )
+
+  for (const issue of issues) {
+    if (allowedStateTypes.has(issue.stateType)) {
+      counts[issue.stateType] += 1
+    }
+  }
+
+  return counts
+}
+
+function requireStateType(errors, value, field) {
+  if (!allowedStateTypes.has(value)) {
+    errors.push(`${field} must be one of ${[...allowedStateTypes].join(', ')}`)
   }
 }
 
