@@ -1,0 +1,106 @@
+{
+  "title": "Week 26 Linear mutation packet",
+  "slug": "week-26-linear-mutation-packet",
+  "created_at": "2026-07-08T15:11:45+00:00",
+  "status": "ready_for_pr",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local-only packet generation; no live Linear writes in this slice."
+  },
+  "packets": [
+    {
+      "id": "01-script",
+      "status": "completed",
+      "owner": "spark"
+    },
+    {
+      "id": "02-tests",
+      "status": "completed",
+      "owner": "spark"
+    },
+    {
+      "id": "03-docs",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "04-integration",
+      "status": "completed",
+      "owner": "codex"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/ops/linear-mutation-packet.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/linear-apply-plan.test.ts test/ops/linear-mutation-packet.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm linear:seed",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm linear:preflight",
+        "status": "passed_expected_not_ready"
+      },
+      {
+        "command": "pnpm linear:apply-plan",
+        "status": "passed_expected_blocked"
+      },
+      {
+        "command": "pnpm linear:mutation-packet -- --apply-plan /tmp/honowarden-blocked-apply-plan.json",
+        "status": "passed_expected_blocked"
+      },
+      {
+        "command": "ready fixture: pnpm linear:apply-plan -- --preflight-report <ready-preflight.json> --strict | pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan.json> --strict",
+        "status": "passed_ready_packet_55_total_31_mutations_21_confirmations_3_manual"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-linear-mutation-packet",
+        "status": "passed"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "command": "target-file secret pattern scan",
+        "status": "passed"
+      },
+      {
+        "command": "codex review --uncommitted",
+        "status": "passed_no_findings_after_fixes"
+      }
+    ]
+  }
+}

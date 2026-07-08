@@ -42,7 +42,8 @@ which seed objects already exist and which still need creation:
 ```sh
 mkdir -p test/.tmp
 pnpm linear:preflight -- --strict > test/.tmp/linear-preflight.ready.json
-pnpm linear:apply-plan -- --preflight-report test/.tmp/linear-preflight.ready.json --strict
+pnpm linear:apply-plan -- --preflight-report test/.tmp/linear-preflight.ready.json --strict > test/.tmp/linear-apply-plan.ready.json
+pnpm linear:mutation-packet -- --apply-plan test/.tmp/linear-apply-plan.ready.json --strict
 ```
 
 `linear:apply-plan` does not read `LINEAR_API_KEY` and does not call Linear. It
@@ -51,6 +52,13 @@ page-complete inventory expected-name set as the current seed before it can
 classify objects as create or confirm-existing. It is a planning artifact only;
 it must not be treated as proof that issues, projects, views, documents, or
 Pulse settings were applied.
+
+`linear:mutation-packet` also stays local-only. It consumes a ready apply-plan
+JSON, separates mutation candidates from existing-object confirmations and
+manual confirmations, and preserves operation payloads for a future guarded
+writer. Blocked input plans intentionally produce no mutation steps. The packet
+does not resolve Linear IDs, does not read credentials, and does not execute
+writes.
 
 The seed defines:
 
@@ -102,7 +110,13 @@ Safe verification steps:
    pnpm linear:apply-plan -- --preflight-report <ready-report> --strict
    ```
 
-6. Only then create issues, projects, and documents through MCP or API tooling.
+6. Generate a strict mutation packet from the reviewed ready apply plan:
+
+   ```sh
+   pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan> --strict
+   ```
+
+7. Only then create issues, projects, and documents through MCP or API tooling.
 
 ## Recommended Apply Order
 
@@ -126,6 +140,9 @@ connector or API key targets `linear.app/honowarden`.
 Do not skip the apply-plan review. A ready preflight proves the workspace and
 team are safe targets; it does not prove every seed object already exists or
 that Pulse/custom-view settings can be represented by the same automation path.
+
+Do not treat the mutation packet as execution evidence. It is the handoff format
+for a future guarded writer, not proof that the writer ran.
 
 ## Views
 
