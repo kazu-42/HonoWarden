@@ -63,6 +63,7 @@ const requiredWorkflowSlugs = [
   'week-26-release-status-packet',
   'week-26-post-alpha-ops-readiness-packet',
   'week-26-ops-evidence-templates',
+  'week-26-ops-readiness-release-approval-gate',
   'week-26-release-command-repo-scope',
   'week-26-publication-gate-runbook',
   'week-26-alpha-completion-audit',

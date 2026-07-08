@@ -97,6 +97,14 @@
         "name": "compatibility tests",
         "command": "pnpm compat:test",
         "status": "passed"
+      },
+      {
+        "name": "implementation ci",
+        "command": "gh run view 28908143129 --repo kazu-42/HonoWarden --json databaseId,headSha,status,conclusion,url,workflowName,event",
+        "status": "passed",
+        "runId": 28908143129,
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28908143129",
+        "headSha": "48e05c565a4a33d7629bdc83bd4bf5f74ccb4893"
       }
     ]
   }

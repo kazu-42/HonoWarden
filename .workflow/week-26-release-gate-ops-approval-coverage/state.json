@@ -1,0 +1,60 @@
+{
+  "title": "Week 26 release gate ops approval coverage",
+  "slug": "week-26-release-gate-ops-approval-coverage",
+  "created_at": "2026-07-08T00:24:54+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": null,
+    "granted": null,
+    "notes": "Workflow artifact updates only. No release publication, tag mutation, Cloudflare deploy/DNS/Email Routing writes, email sends, or secret writes."
+  },
+  "packets": [
+    {
+      "id": "01-gate-implementation",
+      "status": "completed"
+    },
+    {
+      "id": "02-docs-workflow",
+      "status": "completed"
+    },
+    {
+      "id": "03-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "local_passed_ci_pending",
+    "checks": [
+      {
+        "name": "focused release gate tests",
+        "status": "passed",
+        "command": "pnpm exec vitest run test/ops/release-gate.test.ts test/ops/ops-readiness-packet.test.ts test/release-docs.test.ts"
+      },
+      {
+        "name": "strict release gate after integration",
+        "status": "passed",
+        "command": "pnpm release:gate -- --strict"
+      },
+      {
+        "name": "target workflow verifier",
+        "status": "passed",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-ops-readiness-release-approval-gate"
+      },
+      {
+        "name": "coverage workflow verifier",
+        "status": "passed",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-release-gate-ops-approval-coverage"
+      },
+      {
+        "name": "brand scan",
+        "status": "passed",
+        "command": "pnpm brand:scan"
+      },
+      {
+        "name": "coverage workflow ci evidence",
+        "status": "pending",
+        "notes": "Pending until this PR lands; this coverage workflow is intentionally not listed in requiredWorkflowSlugs."
+      }
+    ]
+  }
+}
