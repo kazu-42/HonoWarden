@@ -55,6 +55,10 @@ function parseOptions(argv) {
   }
 
   for (const arg of argv) {
+    if (arg === '--') {
+      continue
+    }
+
     if (arg === '--strict') {
       options.strict = true
       continue

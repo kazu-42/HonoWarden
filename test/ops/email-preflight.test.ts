@@ -82,6 +82,17 @@ describe('email routing preflight', () => {
       stdout: expect.stringContaining('"status": "not_ready"'),
     })
   })
+
+  it('handles npm-style -- separator before strict mode and exits with non-zero status', async () => {
+    await expect(
+      execFileAsync('node', [preflightScript, '--', '--strict'], {
+        env: cleanEnv(),
+      }),
+    ).rejects.toMatchObject({
+      code: 1,
+      stdout: expect.stringContaining('"status": "not_ready"'),
+    })
+  })
 })
 
 function statusById(report: EmailPreflightReport, id: string) {
