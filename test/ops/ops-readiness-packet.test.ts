@@ -28,6 +28,15 @@ type OpsReadinessPacket = {
       | 'not_ready_for_publication'
       | 'unknown'
     targetCommit: string
+    publicationGate: {
+      approvalRequired: boolean
+      nextActionId: string | null
+      approvalText: string | null
+      publishCommand: string | null
+      verifyPublishedCommand: string
+      viewReleaseCommand: string
+      postPublicationPendingChecks: string[]
+    }
   }
   email: {
     localPreflightStatus: 'ready' | 'not_ready'
@@ -48,7 +57,9 @@ type OpsReadinessPacket = {
     blocker: string | null
   }>
   commands: {
+    publishRelease: string | null
     publishedVerification: string
+    viewRelease: string
   }
   limitations: string[]
 }
@@ -88,6 +99,18 @@ describe('ops readiness packet', () => {
       statusPhase: 'draft_ready_for_publication',
       targetCommit,
     })
+    expect(report.release.publicationGate).toMatchObject({
+      approvalRequired: true,
+      nextActionId: 'request_publication_approval',
+      approvalText: `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
+      publishCommand:
+        'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
+      verifyPublishedCommand:
+        'pnpm release:published:packet -- --strict --tag-workflow-run-id 54321 --tag-workflow-url https://example.invalid/actions/runs/54321',
+      viewReleaseCommand:
+        'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
+      postPublicationPendingChecks: ['release_state'],
+    })
     expect(statusById(report, 'release_published_verified')).toBe('fail')
     expect(statusById(report, 'cloudflare_resources_recorded')).toBe('pass')
     expect(statusById(report, 'staging_dry_run_recorded')).toBe('pass')
@@ -99,6 +122,12 @@ describe('ops readiness packet', () => {
     expect(statusById(report, 'ops_rollback_evidence_recorded')).toBe('fail')
     expect(report.commands.publishedVerification).toBe(
       'pnpm release:published:packet -- --strict --tag-workflow-run-id 54321 --tag-workflow-url https://example.invalid/actions/runs/54321',
+    )
+    expect(report.commands.publishRelease).toBe(
+      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
+    )
+    expect(report.commands.viewRelease).toBe(
+      'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
     )
     expect(report.commands.publishedVerification).not.toContain('28863312935')
     expect(report.limitations).toContain(
@@ -120,7 +149,18 @@ describe('ops readiness packet', () => {
     })
     const report = JSON.parse(result.stdout) as OpsReadinessPacket
 
+    expect(report.release.statusPhase).toBe('not_ready_for_publication')
+    expect(report.release.publicationGate).toMatchObject({
+      approvalRequired: false,
+      nextActionId: 'resolve_publication_blockers',
+      approvalText: null,
+      publishCommand: null,
+      postPublicationPendingChecks: [],
+    })
     expect(report.commands.publishedVerification).toBe(
+      'pnpm release:published:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>',
+    )
+    expect(report.release.publicationGate.verifyPublishedCommand).toBe(
       'pnpm release:published:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>',
     )
   })
@@ -169,6 +209,44 @@ describe('ops readiness packet', () => {
     expect(result.stdout).not.toContain('cf-secret-token')
     expect(result.stdout).not.toContain('security-destination@example.test')
     expect(result.stdout).not.toContain('support-destination@example.test')
+  })
+
+  it('keeps post-publication failure checks actionable after a visible release fails verification', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
+    const fakeBin = await createFakeReleaseBin({
+      isDraft: false,
+      isPrerelease: false,
+      targetCommit,
+      tagWorkflowUrl,
+    })
+
+    const result = await execFileAsync(
+      'node',
+      [
+        readinessPacketScript,
+        '--expected-commit',
+        targetCommit,
+        '--tag-workflow-run-id',
+        '54321',
+        '--tag-workflow-url',
+        tagWorkflowUrl,
+      ],
+      {
+        env: fakeEnv(fakeBin),
+      },
+    )
+    const report = JSON.parse(result.stdout) as OpsReadinessPacket
+
+    expect(report.release.statusPhase).toBe('published_not_verified')
+    expect(report.release.publicationGate).toMatchObject({
+      approvalRequired: false,
+      nextActionId: 'inspect_published_release_verification',
+      approvalText: null,
+      publishCommand: null,
+      postPublicationPendingChecks: ['release_state'],
+    })
+    expect(report.blockingReason).toBe('post_publication_verification_failed')
   })
 
   it('passes strict mode only when release, email, and live ops evidence are recorded', async () => {
@@ -223,6 +301,12 @@ describe('ops readiness packet', () => {
     expect(report.status).toBe('ready')
     expect(report.blockingReason).toBeNull()
     expect(report.release.statusPhase).toBe('published_verified')
+    expect(report.release.publicationGate).toMatchObject({
+      approvalRequired: false,
+      nextActionId: 'record_publication_and_prepare_deployment_gate',
+      approvalText: null,
+      publishCommand: null,
+    })
     expect(report.requirements.every((entry) => entry.status === 'pass')).toBe(
       true,
     )

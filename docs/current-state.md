@@ -1474,6 +1474,27 @@ Not implemented:
 - Worker deploy, DNS mutation, Email Routing configuration, or test email send
 - live Worker smoke, website route, email routing, or rollback evidence
 
+## Week 26 Ops Readiness Release Approval Gate
+
+Implemented:
+
+- ops readiness packet now exposes the release publication approval gate
+  inherited from the alpha completion audit
+- `release.publicationGate` includes whether approval is required, the exact
+  approval text, the publish command, the post-publication verification command,
+  the release view command, and pending post-publication checks
+- top-level ops readiness `commands` now includes `publishRelease` and
+  `viewRelease` alongside `publishedVerification`
+- focused tests prove draft-ready packets carry the exact approval text/command
+  while published packets clear the publication approval requirement
+
+Not implemented:
+
+- automatic GitHub release publication
+- tag creation, movement, deletion, or push
+- Worker deploy, DNS mutation, Email Routing configuration, or test email send
+- live Worker smoke, website route, email routing, or rollback evidence
+
 ## Week 26 Release Published Packet
 
 Implemented:
