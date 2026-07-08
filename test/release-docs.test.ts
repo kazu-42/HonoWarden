@@ -146,16 +146,35 @@ describe('release feature-freeze docs', () => {
     expect(workerEvidence).toContain('Approved rollback command: unresolved')
     expect(workerEvidence).toContain('synthetic prelogin: HTTP `403`')
 
-    for (const evidence of [websiteEvidence, emailEvidence]) {
-      expect(evidence).toContain('Status: not_performed')
-      expect(evidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
-      expect(evidence).toContain('approval')
-      expect(evidence).toContain('rollback')
-    }
+    expect(websiteEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(websiteEvidence).toContain(
+      '36b8171f7afd55bf306e5482cca454a0b3822a39',
+    )
+    expect(websiteEvidence).toContain('eef4ab71-d6e8-401f-93c3-27e7bd2bcd91')
+    expect(websiteEvidence).toContain('0f398ae5-6d01-42a8-bbe4-35378661ce81')
+    expect(websiteEvidence).toContain('HTTPS smoke')
+    expect(websiteEvidence).toContain(
+      'https://github.com/kazu-42/HonoWarden/releases/tag/v0.1.0-alpha',
+    )
+    expect(websiteEvidence).toContain(
+      'https://github.com/kazu-42/HonoWarden/blob/main/SECURITY.md',
+    )
+    expect(websiteEvidence).toContain('does not advertise')
+    expect(websiteEvidence).toContain('security.txt`: HTTP `404`')
+    expect(websiteEvidence).toContain(
+      'pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes',
+    )
+
+    expect(emailEvidence).toContain('Status: not_performed')
+    expect(emailEvidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(emailEvidence).toContain('approval')
+    expect(emailEvidence).toContain('rollback')
 
     expect(rollbackEvidence).toContain('Status: partial')
     expect(rollbackEvidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
     expect(rollbackEvidence).toContain('Approved rollback command: unresolved')
+    expect(rollbackEvidence).toContain('eef4ab71-d6e8-401f-93c3-27e7bd2bcd91')
+    expect(rollbackEvidence).toContain('3db432cb-6422-4311-b558-6eb2b0b5bb51')
     expect(rollbackEvidence).toContain('rollback')
   })
 })

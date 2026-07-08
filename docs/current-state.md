@@ -1541,7 +1541,7 @@ Not implemented:
 - automatic GitHub release publication
 - deployment from a tag or release
 
-## Week 26 Release Publication And Worker Live Smoke
+## Week 26 Release Publication, Worker Smoke, And Website Live Evidence
 
 Implemented:
 
@@ -1565,11 +1565,22 @@ Implemented:
   `docs/release/publication-gate.md`, and
   `docs/release/ops-rollback-evidence.md` were updated with the non-secret
   publication, D1, deploy, and rollback-handle evidence
+- `kazu-42/HonoWarden-website` PR #1 updated the public homepage to link to the
+  v0.1.0-alpha GitHub Release and repository security policy without
+  advertising unverified `security@honowarden.com` or `security.txt` metadata
+- `honowarden.com` and `www.honowarden.com` were deployed from website merge
+  commit `36b8171f7afd55bf306e5482cca454a0b3822a39` to Worker version
+  `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91`
+- website live smoke passed for apex and `www` root responses, `/health`, link
+  assertions, negative security-mailbox assertions, and inactive
+  `security.txt` routes
+- `docs/release/website-live-evidence.md` now records website deployment,
+  route, HTTPS smoke, link target, security-contact visibility, and rollback
+  handle evidence
 
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- website live evidence in `docs/release/website-live-evidence.md`
 - Email Routing live evidence in `docs/release/email-routing-evidence.md`
 - verified safe rollback target selection for the API Worker
 - rollback rehearsal or rollback execution
