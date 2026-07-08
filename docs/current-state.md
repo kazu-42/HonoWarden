@@ -460,11 +460,15 @@ Implemented:
 - `.env.example` placeholders for Linear, GitHub, Cloudflare, email forwarding,
   and local Worker smoke variables
 - direnv watch rules for local secret files
+- `.env.local` is loaded with `dotenv_if_exists`, so dotenv-style `KEY=value`
+  operator inputs are exported to child processes
 - CI-covered operator environment policy tests under
   `test/ops/operator-environment.test.ts`
 - read-only `pnpm email:preflight` for Email Routing readiness without printing
   token or destination values
 - Email Routing preflight tests under `test/ops/email-preflight.test.ts`
+- ignored local Email Routing inputs are now configured for account id, zone id,
+  and all six destination variables; `CLOUDFLARE_API_TOKEN` remains missing
 
 Not implemented:
 
@@ -1577,11 +1581,18 @@ Implemented:
 - `docs/release/website-live-evidence.md` now records website deployment,
   route, HTTPS smoke, link target, security-contact visibility, and rollback
   handle evidence
+- Email Routing readback on 2026-07-08 confirmed Cloudflare OAuth is logged into
+  account `gHive`, but Wrangler still reports missing `email_routing:write` and
+  `email_sending:write`; settings, rules, and destination-address API calls
+  fail with Cloudflare authentication error `10000`
+- DNS readback for `honowarden.com` shows Cloudflare nameservers and website
+  A/AAAA records, but no MX or apex TXT records yet
 
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- Email Routing live evidence in `docs/release/email-routing-evidence.md`
+- Email Routing live route creation and inbound delivery evidence in
+  `docs/release/email-routing-evidence.md`
 - verified safe rollback target selection for the API Worker
 - rollback rehearsal or rollback execution
 - production secret writes, public registration enablement, or real vault-data

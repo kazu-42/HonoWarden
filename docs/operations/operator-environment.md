@@ -54,9 +54,12 @@ Ignored local files may provide secrets:
 - `.env.local`
 - `.envrc.local`
 
-The tracked `.envrc` watches both ignored local files, so changing local API
-keys or forwarding destinations prompts direnv to reload after the next
-`direnv allow`.
+Use `.env.local` for dotenv-style `KEY=value` entries copied from
+`.env.example`. Use `.envrc.local` only when shell syntax is needed. The
+tracked `.envrc` watches both ignored local files, loads `.env.local` with
+`dotenv_if_exists`, and loads `.envrc.local` with `source_env_if_exists`.
+Changing local API keys or forwarding destinations prompts direnv to reload
+after the next `direnv allow`.
 
 ## Required Local Secrets
 

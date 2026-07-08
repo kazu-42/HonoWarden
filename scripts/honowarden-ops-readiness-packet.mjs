@@ -87,6 +87,7 @@ function buildOpsReadinessPacket(options) {
       localPreflightStatus: emailPreflight.report?.status ?? 'not_ready',
       configuredRoutes: configuredEmailRoutes(emailPreflight.report),
       requiredRoutes: emailPreflight.report?.routes?.length ?? 0,
+      failedChecks: failedEmailPreflightChecks(emailPreflight.report),
       exitCode: emailPreflight.exitCode,
       error: emailPreflight.error,
     },
@@ -182,6 +183,7 @@ function buildPublishedVerificationCommand(options) {
 function buildRequirements({ releaseAudit, emailPreflight, evidence }) {
   const releaseComplete = releaseAudit.report?.completion === 'complete'
   const emailInputsReady = emailPreflight.report?.status === 'ready'
+  const emailFailedChecks = failedEmailPreflightChecks(emailPreflight.report)
 
   return [
     requirement({
@@ -230,15 +232,15 @@ function buildRequirements({ releaseAudit, emailPreflight, evidence }) {
     requirement({
       id: 'email_local_inputs_ready',
       passed: emailInputsReady,
-      blocker: 'email_local_inputs_missing',
+      blocker: emailLocalInputsBlocker(emailPreflight.report),
       evidence: [
         `email preflight: ${emailPreflight.report?.status ?? 'not_ready'}`,
         `configured routes: ${configuredEmailRoutes(emailPreflight.report)}/${
           emailPreflight.report?.routes?.length ?? 0
         }`,
+        `failed checks: ${emailFailedChecks.length === 0 ? 'none' : emailFailedChecks.join(', ')}`,
       ],
-      nextAction:
-        'Populate local Cloudflare and forwarding-destination inputs without committing secrets.',
+      nextAction: emailLocalInputsNextAction(emailPreflight.report),
     }),
     requirement({
       id: 'email_routing_live_evidence_recorded',
@@ -325,6 +327,96 @@ function configuredEmailRoutes(report) {
   }
 
   return report.routes.filter((route) => route.destinationConfigured).length
+}
+
+function failedEmailPreflightChecks(report) {
+  if (!Array.isArray(report?.checks)) {
+    return []
+  }
+
+  return report.checks.flatMap((check) => {
+    if (
+      !check ||
+      check.status === 'pass' ||
+      typeof check.id !== 'string' ||
+      check.id.length === 0
+    ) {
+      return []
+    }
+
+    return [check.id]
+  })
+}
+
+function emailLocalInputsBlocker(report) {
+  const failedChecks = failedEmailPreflightChecks(report)
+
+  if (report?.status === 'ready') {
+    return null
+  }
+
+  if (failedChecks.length === 0) {
+    return 'email_local_inputs_missing'
+  }
+
+  if (failedChecks.length === 1 && failedChecks[0] === 'cloudflare_api_token') {
+    return 'cloudflare_api_token_missing'
+  }
+
+  if (
+    failedChecks.some((id) =>
+      ['cloudflare_account_id', 'cloudflare_zone_id'].includes(id),
+    )
+  ) {
+    return 'cloudflare_local_inputs_missing'
+  }
+
+  if (failedChecks.every((id) => id.startsWith('destination_'))) {
+    return 'email_forwarding_destinations_missing'
+  }
+
+  if (failedChecks.includes('cloudflare_api_token')) {
+    return 'email_local_inputs_missing'
+  }
+
+  return 'email_local_inputs_missing'
+}
+
+function emailLocalInputsNextAction(report) {
+  const failedChecks = failedEmailPreflightChecks(report)
+  const actions = []
+
+  if (failedChecks.length === 0) {
+    return 'Populate local Cloudflare and forwarding-destination inputs without committing secrets.'
+  }
+
+  if (failedChecks.includes('cloudflare_api_token')) {
+    actions.push(
+      'Set CLOUDFLARE_API_TOKEN with zone read, DNS write, and Email Routing write access.',
+    )
+  }
+
+  if (
+    failedChecks.some((id) =>
+      ['cloudflare_account_id', 'cloudflare_zone_id'].includes(id),
+    )
+  ) {
+    actions.push(
+      'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_ZONE_ID_HONOWARDEN_COM.',
+    )
+  }
+
+  if (failedChecks.some((id) => id.startsWith('destination_'))) {
+    actions.push(
+      'Set the verified HONOWARDEN_*_FORWARD_TO destination variables before creating routes.',
+    )
+  }
+
+  if (actions.length === 0) {
+    return 'Populate local Cloudflare and forwarding-destination inputs without committing secrets.'
+  }
+
+  return `${actions.join(' ')} Keep values in the ignored local environment without committing secrets.`
 }
 
 function firstBlockingReason(requirements) {

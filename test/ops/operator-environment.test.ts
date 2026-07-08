@@ -47,7 +47,7 @@ describe('operator environment policy', () => {
 
     expect(envrc).toContain('watch_file .env.local')
     expect(envrc).toContain('watch_file .envrc.local')
-    expect(envrc).toContain('source_env_if_exists .env.local')
+    expect(envrc).toContain('dotenv_if_exists .env.local')
     expect(envrc).toContain('source_env_if_exists .envrc.local')
   })
 

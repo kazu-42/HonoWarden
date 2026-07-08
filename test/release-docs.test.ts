@@ -168,6 +168,13 @@ describe('release feature-freeze docs', () => {
     expect(emailEvidence).toContain('Status: not_performed')
     expect(emailEvidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
     expect(emailEvidence).toContain('approval')
+    expect(emailEvidence).toContain('Current Readback: 2026-07-08')
+    expect(emailEvidence).toContain('CLOUDFLARE_API_TOKEN` is missing')
+    expect(emailEvidence).toContain('Configured routes: `6/6`')
+    expect(emailEvidence).toContain(
+      'Cloudflare API authentication error `10000`',
+    )
+    expect(emailEvidence).toContain('MX records: none returned')
     expect(emailEvidence).toContain('rollback')
 
     expect(rollbackEvidence).toContain('Status: partial')
@@ -175,6 +182,10 @@ describe('release feature-freeze docs', () => {
     expect(rollbackEvidence).toContain('Approved rollback command: unresolved')
     expect(rollbackEvidence).toContain('eef4ab71-d6e8-401f-93c3-27e7bd2bcd91')
     expect(rollbackEvidence).toContain('3db432cb-6422-4311-b558-6eb2b0b5bb51')
+    expect(rollbackEvidence).toContain(
+      'Email Routing Pre-Change Rollback Handle',
+    )
+    expect(rollbackEvidence).toContain('missing `email_routing:write`')
     expect(rollbackEvidence).toContain('rollback')
   })
 })

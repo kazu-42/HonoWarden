@@ -60,6 +60,30 @@ merged.
   `pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes`
 - Rollback execution: not performed because post-deploy website smoke passed
 
+## Email Routing Pre-Change Rollback Handle
+
+Email Routing readback was performed on 2026-07-08 without mutating
+Cloudflare.
+
+- `honowarden.com` nameservers: `anna.ns.cloudflare.com`,
+  `damon.ns.cloudflare.com`
+- Pre-change MX readback: no MX records returned
+- Pre-change apex TXT readback: no TXT records returned
+- Email Routing settings readback: blocked by Cloudflare API authentication
+  error `10000`
+- Email Routing rules readback: blocked by Cloudflare API authentication error
+  `10000`
+- Email Routing destination-address readback: blocked by Cloudflare API
+  authentication error `10000`
+- Wrangler OAuth blocker: missing `email_routing:write` and
+  `email_sending:write` scopes
+- Route rollback command: unresolved until a successful route create operation
+  records rule identifiers or dashboard state
+- DNS rollback command: unresolved until an approved DNS MX/SPF mutation records
+  the previous and new record state
+- Rollback execution: not performed because no Email Routing or DNS mutation was
+  performed
+
 ## Evidence To Record
 
 For each approved operation, record:
