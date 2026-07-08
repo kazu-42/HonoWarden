@@ -9,6 +9,7 @@ import process from 'node:process'
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const targetTag = 'v0.1.0-alpha'
 const targetVersion = '0.1.0-alpha'
+const targetRepository = 'kazu-42/HonoWarden'
 const defaultRemote = 'origin'
 
 function main(argv = process.argv.slice(2)) {
@@ -54,6 +55,12 @@ function buildOpsReadinessPacket(options) {
   const ready = requirements.every(
     (requirement) => requirement.status === 'pass',
   )
+  const publishedVerificationCommand =
+    buildPublishedVerificationCommand(options)
+  const releasePublicationGate = buildReleasePublicationGate({
+    releaseStatus: releaseAudit.report?.releaseStatus,
+    publishedVerificationCommand,
+  })
 
   return {
     schemaVersion: 1,
@@ -67,6 +74,7 @@ function buildOpsReadinessPacket(options) {
       blockingReason: releaseAudit.report?.blockingReason ?? null,
       statusPhase: releaseAudit.report?.releaseStatus?.phase ?? 'unknown',
       targetCommit: releaseAudit.report?.targetCommit ?? options.expectedCommit,
+      publicationGate: releasePublicationGate,
       exitCode: releaseAudit.exitCode,
       error: releaseAudit.error,
     },
@@ -94,7 +102,9 @@ function buildOpsReadinessPacket(options) {
           : []),
       ].join(' '),
       emailPreflight: 'pnpm email:preflight -- --strict',
-      publishedVerification: buildPublishedVerificationCommand(options),
+      publishRelease: releasePublicationGate.publishCommand,
+      publishedVerification: publishedVerificationCommand,
+      viewRelease: releasePublicationGate.viewReleaseCommand,
     },
     limitations: [
       'This packet does not publish, update, or delete a GitHub release.',
@@ -104,6 +114,49 @@ function buildOpsReadinessPacket(options) {
       'Email local preflight proves required inputs are present but not that Cloudflare Email Routing is enabled.',
     ],
   }
+}
+
+function buildReleasePublicationGate({
+  releaseStatus,
+  publishedVerificationCommand,
+}) {
+  const phase = releaseStatus?.phase ?? 'unknown'
+  const nextAction = releaseStatus?.nextAction ?? null
+  const approvalRequired = phase === 'draft_ready_for_publication'
+
+  return {
+    approvalRequired,
+    nextActionId: nextAction?.id ?? null,
+    approvalText: approvalRequired
+      ? (releaseStatus?.approvalText ?? null)
+      : null,
+    publishCommand: approvalRequired
+      ? (releaseStatus?.commands?.publishRelease ?? null)
+      : null,
+    verifyPublishedCommand: publishedVerificationCommand,
+    viewReleaseCommand:
+      releaseStatus?.commands?.viewRelease ??
+      `gh release view ${targetTag} --repo ${targetRepository}`,
+    postPublicationPendingChecks: postPublicationPendingChecksFromNextAction(
+      nextAction,
+      phase,
+    ),
+  }
+}
+
+function postPublicationPendingChecksFromNextAction(nextAction, phase) {
+  if (Array.isArray(nextAction?.postPublicationPendingChecks)) {
+    return nextAction.postPublicationPendingChecks
+  }
+
+  if (
+    phase === 'published_not_verified' &&
+    Array.isArray(nextAction?.failedChecks)
+  ) {
+    return nextAction.failedChecks
+  }
+
+  return []
 }
 
 function buildPublishedVerificationCommand(options) {

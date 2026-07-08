@@ -1,0 +1,103 @@
+{
+  "title": "Week 26 ops readiness release approval gate",
+  "slug": "week-26-ops-readiness-release-approval-gate",
+  "created_at": "2026-07-08T00:03:51+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Workflow artifact updates only. No release publication, tag mutation, deploy, DNS/Email Routing writes, email sends, or secret writes were performed."
+  },
+  "packets": [
+    {
+      "id": "contract-code",
+      "status": "completed"
+    },
+    {
+      "id": "tests-docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "focused ops/release packet tests",
+        "command": "pnpm exec vitest run test/ops/ops-readiness-packet.test.ts test/ops/release-completion-audit.test.ts test/ops/release-status-packet.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "ops readiness packet readback",
+        "command": "pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported status not_ready with release.publicationGate.approvalRequired true and the exact publication approval text."
+      },
+      {
+        "name": "release status packet readback",
+        "command": "pnpm release:status:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported phase draft_ready_for_publication and nextAction request_publication_approval."
+      },
+      {
+        "name": "completion audit readback",
+        "command": "pnpm release:completion:audit -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935",
+        "status": "passed",
+        "notes": "Reported completion incomplete with blockingReason release_publication_approval_required."
+      },
+      {
+        "name": "brand scan",
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-ops-readiness-release-approval-gate",
+        "status": "passed"
+      },
+      {
+        "name": "focused docs and packet tests",
+        "command": "pnpm exec vitest run test/ops/ops-readiness-packet.test.ts test/ops/release-completion-audit.test.ts test/ops/release-status-packet.test.ts test/release-docs.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "strict release gate",
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "name": "diff whitespace check",
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "name": "format check",
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "name": "full test suite",
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "name": "compatibility tests",
+        "command": "pnpm compat:test",
+        "status": "passed"
+      }
+    ]
+  }
+}
