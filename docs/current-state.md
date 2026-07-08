@@ -447,6 +447,9 @@ Implemented:
 - local-only `pnpm linear:apply-plan` turns the seed and an optional ready
   preflight report into a reviewable apply plan without reading credentials or
   mutating Linear
+- local-only `pnpm linear:mutation-packet` turns a ready apply-plan JSON into a
+  reviewable mutation packet for a future guarded writer without reading
+  credentials or mutating Linear
 - README link to `docs/operations/linear-tracking.md`
 - access guard documented to prevent writing HonoWarden issues into an unrelated
   Linear workspace
@@ -463,10 +466,13 @@ Not implemented:
 - live mutation support inside the apply-plan command; it intentionally remains
   a non-mutating planning step until strict preflight and write-scope evidence
   are available
+- live mutation support inside the mutation-packet command; it intentionally
+  omits blocked-plan steps and does not resolve Linear IDs or execute writes
 
 The Linear seed remains the source of truth until a connector, browser session,
 or strict API preflight is authenticated to the `honowarden` workspace and the
-reviewed apply plan is executed by a separate guarded write path.
+reviewed apply plan and mutation packet are executed by a separate guarded write
+path.
 
 ## Operator Environment Setup
 

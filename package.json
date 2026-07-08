@@ -32,6 +32,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "linear:apply-plan": "node scripts/honowarden-linear-apply-plan.mjs",
+    "linear:mutation-packet": "node scripts/honowarden-linear-mutation-packet.mjs",
     "linear:preflight": "node scripts/honowarden-linear-preflight.mjs",
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",

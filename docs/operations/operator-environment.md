@@ -106,6 +106,7 @@ pnpm wrangler whoami
 pnpm linear:seed
 pnpm linear:preflight
 pnpm linear:apply-plan
+pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan>
 pnpm email:preflight
 ```
 
@@ -118,11 +119,13 @@ Before applying external changes:
    API writes are planned.
 3. `pnpm linear:apply-plan -- --preflight-report <ready-report> --strict`
    produces a reviewed plan before Linear writes are attempted.
-4. `gh auth status` resolves to the intended GitHub user.
-5. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
-6. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
-7. Destination inboxes for email routing are verified in Cloudflare.
-8. The current worktree is clean or the pending diff is intentionally scoped.
+4. `pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan> --strict`
+   produces a reviewed packet before any guarded writer is used.
+5. `gh auth status` resolves to the intended GitHub user.
+6. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
+7. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
+8. Destination inboxes for email routing are verified in Cloudflare.
+9. The current worktree is clean or the pending diff is intentionally scoped.
 
 Use strict local preflight before requesting email-routing writes:
 
@@ -167,6 +170,12 @@ operations for review. Ready reports must match the current seed fingerprint
 and page-complete inventory expected-name set before the plan can classify
 objects as already present. It does not read `LINEAR_API_KEY`, does not call
 GraphQL, and does not create or update Linear objects.
+
+`pnpm linear:mutation-packet` is the next local-only handoff step. It reads a
+ready apply-plan JSON, emits mutation candidates, existing-object confirmations,
+and manual confirmations for review, and intentionally omits executable buckets
+when the input plan is blocked. It does not read credentials, resolve Linear
+IDs, call GraphQL, or create or update Linear objects.
 
 ## Missing Inputs
 
