@@ -166,6 +166,7 @@
       "milestone": "Week 20 - Backup and restore",
       "priority": 2,
       "estimate": 3,
+      "stateType": "completed",
       "labels": [
         "area:ops",
         "type:ops",
@@ -182,6 +183,7 @@
       "milestone": "Week 21 - Observability",
       "priority": 2,
       "estimate": 3,
+      "stateType": "completed",
       "labels": [
         "area:ops",
         "area:auth",
@@ -199,6 +201,7 @@
       "milestone": "Week 22 - Regression suite",
       "priority": 2,
       "estimate": 3,
+      "stateType": "completed",
       "labels": [
         "area:api",
         "type:feature",
@@ -215,6 +218,7 @@
       "milestone": "Week 23 - Multi-user dogfood",
       "priority": 2,
       "estimate": 3,
+      "stateType": "completed",
       "labels": [
         "area:api",
         "area:auth",
@@ -232,6 +236,7 @@
       "milestone": "Week 24 - Security review materials",
       "priority": 1,
       "estimate": 5,
+      "stateType": "completed",
       "labels": [
         "area:docs",
         "area:auth",
@@ -249,6 +254,7 @@
       "milestone": "Week 25 - Feature freeze",
       "priority": 2,
       "estimate": 3,
+      "stateType": "completed",
       "labels": [
         "area:docs",
         "area:ops",
@@ -265,6 +271,7 @@
       "milestone": "Week 26 - v0.1.0-alpha",
       "priority": 1,
       "estimate": 5,
+      "stateType": "completed",
       "labels": ["area:ops", "type:ops", "evidence:required", "release:alpha"],
       "blockedBy": ["security-review-materials", "feature-freeze-docs"],
       "description": "Cut the alpha release only after the release gate evidence is attached.\n\nAcceptance criteria:\n- browser extension, desktop, and mobile live-client evidence is recorded or explicitly downgraded with rationale\n- backup/restore drill evidence is linked\n- CI, compatibility fixtures, brand scan, and workflow verifier pass\n- GitHub release and tag are created from the reviewed commit"
@@ -275,6 +282,7 @@
       "projectKey": "ops-readiness",
       "priority": 2,
       "estimate": 3,
+      "stateType": "completed",
       "labels": [
         "area:infra",
         "area:ops",
@@ -290,6 +298,7 @@
       "projectKey": "website-domain",
       "priority": 2,
       "estimate": 3,
+      "stateType": "started",
       "labels": ["area:infra", "area:website", "type:ops", "evidence:required"],
       "description": "Finish honowarden.com project email handling without regressing the live website.\n\nAcceptance criteria:\n- apex and www continue to route to the website Worker deployment\n- security contact email routing is configured and tested before security contact metadata is deployed\n- DNS records, Email Routing status, and rollback notes are documented\n- no secrets, verification tokens, or mailbox contents are committed"
     },
@@ -299,6 +308,7 @@
       "projectKey": "website-domain",
       "priority": 3,
       "estimate": 3,
+      "stateType": "completed",
       "labels": ["area:website", "type:feature", "agent:codex"],
       "description": "Keep the separate HonoWarden-website repository healthy as the public project surface.\n\nAcceptance criteria:\n- repository exists with license, README, CI, and deploy config\n- homepage is a real project page, not a placeholder landing shell\n- primary calls point to docs, GitHub, and security policy\n- deployed URL and honowarden.com route are verified after each deploy\n- security contact metadata is deployed only after inbound email delivery is verified"
     },
@@ -308,6 +318,7 @@
       "projectKey": "alpha-api",
       "priority": 2,
       "estimate": 5,
+      "stateType": "started",
       "labels": ["area:api", "type:ops", "evidence:required", "release:alpha"],
       "description": "Upgrade selected compatibility matrix rows from fixture-only to live-client evidence.\n\nAcceptance criteria:\n- exact client versions and platforms are recorded\n- login, sync, folder, cipher, refresh, and second-factor flows have evidence where in scope\n- failures are listed as known issues instead of being hidden\n- no real secrets appear in captured evidence"
     },
@@ -317,6 +328,7 @@
       "projectKey": "ops-readiness",
       "priority": 3,
       "estimate": 2,
+      "stateType": "completed",
       "labels": ["area:ops", "area:auth", "type:feature", "risk:security"],
       "description": "Keep transient auth-defense tables bounded.\n\nAcceptance criteria:\n- stale auth-attempt buckets and expired login challenges can be pruned safely\n- cleanup is idempotent and owner-safe\n- runbook explains schedule and failure behavior"
     },
@@ -326,6 +338,7 @@
       "projectKey": "alpha-api",
       "priority": 3,
       "estimate": 3,
+      "stateType": "completed",
       "labels": ["area:auth", "type:feature", "risk:security", "agent:spark"],
       "description": "Add an authenticated route to revoke all other sessions for the current user.\n\nAcceptance criteria:\n- route requires recent password authentication\n- current token behavior is explicit\n- refresh tokens are invalidated transactionally where possible\n- tests cover self-device behavior and revoked refresh rejection"
     },
@@ -335,6 +348,7 @@
       "projectKey": "alpha-api",
       "priority": 3,
       "estimate": 3,
+      "stateType": "started",
       "labels": ["area:auth", "type:feature", "risk:security", "agent:spark"],
       "description": "Complete second-factor lifecycle management after setup and login are stable.\n\nAcceptance criteria:\n- disable and change routes require recent password authentication\n- replay and stale-token behavior remains fail-closed\n- sync profile state reflects changes\n- tests cover invalid code, stale token, and successful lifecycle transitions"
     },
@@ -344,8 +358,19 @@
       "projectKey": "ops-readiness",
       "priority": 3,
       "estimate": 1,
+      "stateType": "completed",
       "labels": ["area:ops", "type:docs", "evidence:required"],
       "description": "Turn the Week 20 runbook into an operating habit.\n\nAcceptance criteria:\n- cadence is documented for staging and production-like resources\n- drill evidence template includes source, target, timestamps, commands, and verification result\n- failure escalation and abort conditions are explicit"
+    },
+    {
+      "key": "rollback-rehearsal",
+      "title": "Complete operations rollback rehearsal evidence",
+      "projectKey": "ops-readiness",
+      "priority": 2,
+      "estimate": 2,
+      "stateType": "started",
+      "labels": ["area:ops", "type:ops", "evidence:required"],
+      "description": "Close the remaining rollback evidence gap after publication.\n\nAcceptance criteria:\n- API Worker rollback target selection is verified or an incident-specific redeploy strategy is recorded\n- website rollback handle is rechecked after the latest website deployment\n- Email Routing rollback notes include rule identifiers after approved route creation\n- a rollback rehearsal or actual rollback records health checks and the continue/rollback/hold decision\n- no secrets, private mailbox destinations, or real vault data are recorded"
     },
     {
       "key": "release-automation",
@@ -353,6 +378,7 @@
       "projectKey": "ops-readiness",
       "priority": 4,
       "estimate": 2,
+      "stateType": "completed",
       "labels": ["area:ops", "type:ops", "release:alpha"],
       "description": "Make release creation repeatable.\n\nAcceptance criteria:\n- changelog template separates features, fixes, operations, security notes, and known limitations\n- tag and GitHub release commands are documented\n- rollback notes are linked from the release checklist"
     },
@@ -362,6 +388,7 @@
       "projectKey": "alpha-api",
       "priority": 3,
       "estimate": 2,
+      "stateType": "completed",
       "labels": ["area:api", "area:docs", "type:docs", "release:alpha"],
       "description": "Prevent unsupported protocol surfaces from silently pretending to work.\n\nAcceptance criteria:\n- unsupported routes are listed with expected 403 or 501 behavior\n- compatibility docs explain alpha non-goals\n- tests cover representative unsupported surfaces"
     }
@@ -441,6 +468,18 @@
       },
       "groupBy": "project",
       "orderBy": "priority"
+    },
+    {
+      "name": "Published Alpha Evidence",
+      "type": "issue",
+      "scope": "team",
+      "layout": "list",
+      "filters": {
+        "label": ["release:alpha"],
+        "statusType": ["completed"]
+      },
+      "groupBy": "project",
+      "orderBy": "priority"
     }
   ],
   "pulse": {
@@ -451,14 +490,14 @@
     "firstUpdate": {
       "projectKey": "alpha-api",
       "health": "atRisk",
-      "body": "Local release-gate checks are passing on HonoWarden commit 2233ab6 with GitHub Actions CI run 28840604341 passing. The website repository is live on commit 62a0777 with CI run 28840604186 passing, and honowarden.com plus www return the Worker website over HTTPS. Remaining risk is external setup: the Linear connector is pointed at the wrong workspace, Cloudflare Email Routing is missing email_routing:write in the current OAuth scope, security@ delivery is untested, and the final alpha tag/release has not been cut."
+      "body": "v0.1.0-alpha is published and verified at release target e7a3c5ea9e51030143736bb0e7a36cb7a8babfce. The API Workers, D1 migrations, website repository, honowarden.com, and www.honowarden.com live smoke evidence are recorded. Remaining risk is operational setup: the Linear connector still needs to target the honowarden workspace before live issue/project/view writes, Cloudflare Email Routing is waiting on a scoped API token or refreshed OAuth scope, security@ delivery is untested, and rollback evidence remains partial until Email Routing and a rollback rehearsal are complete."
     }
   },
   "documents": [
     {
       "title": "HonoWarden Tracking Overview",
       "projectKey": "alpha-api",
-      "content": "This project tracks HonoWarden through v0.1.0-alpha.\n\nOperating rules:\n- every close needs tests or explicit evidence\n- fixture-only compatibility is not live-client evidence\n- no real secrets in issues, comments, fixtures, logs, or screenshots\n- unsupported feature surfaces must fail explicitly\n- project updates are the source of truth for weekly health\n\nCore views:\n- Alpha Command Center\n- Week 26 Release Gate\n- Security and Ops Risk\n- Agent Queue\n- Evidence Missing"
+      "content": "This project tracks HonoWarden through v0.1.0-alpha.\n\nOperating rules:\n- every close needs tests or explicit evidence\n- fixture-only compatibility is not live-client evidence\n- no real secrets in issues, comments, fixtures, logs, or screenshots\n- unsupported feature surfaces must fail explicitly\n- project updates are the source of truth for weekly health\n\nCore views:\n- Alpha Command Center\n- Week 26 Release Gate\n- Security and Ops Risk\n- Agent Queue\n- Evidence Missing\n- Published Alpha Evidence"
     }
   ]
 }
