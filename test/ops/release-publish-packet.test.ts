@@ -141,7 +141,13 @@ describe('release publish packet', () => {
     await expect(
       execFileAsync(
         'node',
-        [publishPacketScript, '--expected-commit', targetCommit, '--strict'],
+        [
+          publishPacketScript,
+          '--expected-commit',
+          targetCommit,
+          '--strict',
+          '--no-default-tag-workflow-evidence',
+        ],
         {
           env: fakeEnv(fakeBin),
         },

@@ -121,6 +121,30 @@ describe('release status packet', () => {
     )
   })
 
+  it('uses recorded tag workflow evidence by default after recovery evidence exists', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const tagWorkflowUrl =
+      'https://github.com/kazu-42/HonoWarden/actions/runs/28863312935'
+    const fakeBin = await createFakeStatusBin({
+      headCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      isDraft: true,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl,
+    })
+
+    const result = await execFileAsync('node', [statusPacketScript], {
+      env: fakeEnv(fakeBin),
+    })
+    const report = JSON.parse(result.stdout) as ReleaseStatusPacketReport
+
+    expect(report.status).toBe('ready')
+    expect(report.phase).toBe('draft_ready_for_publication')
+    expect(report.commands.verifyPublished).toBe(
+      'pnpm release:published:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935',
+    )
+  })
+
   it('summarizes a published release that passed post-publication verification', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
@@ -178,6 +202,8 @@ describe('release status packet', () => {
         targetCommit,
         '--tag-workflow-run-id',
         '54321',
+        '--tag-workflow-url',
+        'https://example.invalid/actions/runs/54321',
       ],
       {
         env: fakeEnv(fakeBin),
@@ -208,7 +234,13 @@ describe('release status packet', () => {
     await expect(
       execFileAsync(
         'node',
-        [statusPacketScript, '--expected-commit', targetCommit, '--strict'],
+        [
+          statusPacketScript,
+          '--expected-commit',
+          targetCommit,
+          '--strict',
+          '--no-default-tag-workflow-evidence',
+        ],
         {
           env: fakeEnv(fakeBin),
         },

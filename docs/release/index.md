@@ -60,6 +60,11 @@ rollback gates:
 pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
 ```
 
+The tag workflow arguments can be omitted after the recorded recovery evidence
+exists; the packet resolves them from
+`.workflow/week-26-release-tag-recovery/state.json` and revalidates the run
+before reporting publication readiness.
+
 The packet is intentionally conservative. It treats documentation-only website
 status and local email input presence as useful context, but not as live
 operational proof. Strict mode is reserved for the state after release

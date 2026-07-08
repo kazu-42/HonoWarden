@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import process from 'node:process'
 
+import { resolveTagWorkflowEvidenceOptions } from './honowarden-tag-workflow-evidence.mjs'
+
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const targetTag = 'v0.1.0-alpha'
 const targetRepository = 'kazu-42/HonoWarden'
@@ -183,6 +185,9 @@ function runReleasePacket(scriptPath, options) {
     ...(options.expectedCommit
       ? ['--expected-commit', options.expectedCommit]
       : []),
+    ...(options.defaultTagWorkflowEvidence === false
+      ? ['--no-default-tag-workflow-evidence']
+      : []),
     ...(options.tagWorkflowRunId
       ? ['--tag-workflow-run-id', options.tagWorkflowRunId]
       : []),
@@ -259,6 +264,7 @@ function repoPath(...parts) {
 function parseOptions(args) {
   const options = {
     expectedCommit: null,
+    defaultTagWorkflowEvidence: true,
     remote: defaultRemote,
     strict: false,
     tagWorkflowRunId: null,
@@ -292,6 +298,9 @@ function parseOptions(args) {
       case '--strict':
         options.strict = true
         break
+      case '--no-default-tag-workflow-evidence':
+        options.defaultTagWorkflowEvidence = false
+        break
       case '--tag-workflow-run-id': {
         const value = args[index + 1]
         if (!value) {
@@ -319,12 +328,12 @@ function parseOptions(args) {
     }
   }
 
-  return options
+  return resolveTagWorkflowEvidenceOptions(options, repoRoot)
 }
 
 function printUsage() {
   process.stderr.write(`Usage:
-  node scripts/honowarden-release-status-packet.mjs [--strict] [--remote <remote>] [--expected-commit <sha>] [--tag-workflow-run-id <id>] [--tag-workflow-url <url>]
+  node scripts/honowarden-release-status-packet.mjs [--strict] [--remote <remote>] [--expected-commit <sha>] [--tag-workflow-run-id <id>] [--tag-workflow-url <url>] [--no-default-tag-workflow-evidence]
 `)
 }
 
