@@ -31,6 +31,7 @@
     "email:preflight": "node scripts/honowarden-email-preflight.mjs",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
+    "linear:preflight": "node scripts/honowarden-linear-preflight.mjs",
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",
     "ops:readiness:packet": "node scripts/honowarden-ops-readiness-packet.mjs",
