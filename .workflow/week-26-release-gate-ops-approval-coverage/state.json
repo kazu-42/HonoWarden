@@ -2,10 +2,10 @@
   "title": "Week 26 release gate ops approval coverage",
   "slug": "week-26-release-gate-ops-approval-coverage",
   "created_at": "2026-07-08T00:24:54+00:00",
-  "status": "in_progress",
+  "status": "completed",
   "approval": {
-    "required": null,
-    "granted": null,
+    "required": false,
+    "granted": true,
     "notes": "Workflow artifact updates only. No release publication, tag mutation, Cloudflare deploy/DNS/Email Routing writes, email sends, or secret writes."
   },
   "packets": [
@@ -23,7 +23,7 @@
     }
   ],
   "verification": {
-    "status": "local_passed_ci_pending",
+    "status": "passed",
     "checks": [
       {
         "name": "focused release gate tests",
@@ -52,8 +52,12 @@
       },
       {
         "name": "coverage workflow ci evidence",
-        "status": "pending",
-        "notes": "Pending until this PR lands; this coverage workflow is intentionally not listed in requiredWorkflowSlugs."
+        "status": "passed",
+        "command": "gh run view 28908896648 --repo kazu-42/HonoWarden --json databaseId,headSha,status,conclusion,url,workflowName,event",
+        "runId": 28908896648,
+        "url": "https://github.com/kazu-42/HonoWarden/actions/runs/28908896648",
+        "headSha": "56edea4315e0a81ba6b99032ec42c53960b22e3d",
+        "notes": "This coverage workflow is intentionally not listed in requiredWorkflowSlugs."
       }
     ]
   }
