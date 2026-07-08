@@ -1495,6 +1495,25 @@ Not implemented:
 - Worker deploy, DNS mutation, Email Routing configuration, or test email send
 - live Worker smoke, website route, email routing, or rollback evidence
 
+## Week 26 Release Gate Ops Approval Coverage
+
+Implemented:
+
+- release gate workflow evidence now covers the completed ops readiness release
+  approval gate workflow
+- `week-26-ops-readiness-release-approval-gate` records passed CI run
+  `28908143129`
+- release gate tests assert the ops readiness release approval gate workflow
+  evidence path
+
+Not implemented:
+
+- self-referential gating of this coverage workflow's own future CI run
+- automatic GitHub release publication
+- tag creation, movement, deletion, or push
+- Worker deploy, DNS mutation, Email Routing configuration, or test email send
+- live Worker smoke, website route, email routing, or rollback evidence
+
 ## Week 26 Release Published Packet
 
 Implemented:

@@ -52,6 +52,8 @@
 - `pnpm format` passed.
 - `pnpm test` passed with 44 files and 384 tests.
 - `pnpm compat:test` passed with 3 files and 80 tests.
+- GitHub Actions CI for merge commit `48e05c565a4a33d7629bdc83bd4bf5f74ccb4893`
+  passed in run `28908143129`.
 
 ## Remaining Risks
 
@@ -59,8 +61,6 @@
 - GitHub Release publication, Worker deploy, DNS/Email Routing writes, email
   sends, secret writes, and live operational evidence remain separate approval
   gates.
-- CI evidence for this implementation is still pending until the branch/PR check
-  runs.
 
 ## Reusable Follow-up
 
