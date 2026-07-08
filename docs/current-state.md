@@ -1174,6 +1174,8 @@ Implemented:
 - checks for local tag context, remote tag context, tag verification workflow
   evidence, release gate readiness, draft prerelease state, target commit, and
   release-note body sections
+- missing tag workflow arguments are filled from the recorded
+  `week-26-release-tag-recovery` evidence and revalidated with `gh run view`
 - target commit defaults to the local `v0.1.0-alpha` tag commit so the packet
   remains valid after `main` advances
 - machine-generated approval text for publishing the draft prerelease
@@ -1197,6 +1199,8 @@ Implemented:
   `published_not_verified`, or `not_ready_for_publication`
 - machine-readable next action, approval text, publish command, published
   verification command, and release view command
+- tag workflow evidence defaults are propagated into publish and published
+  packet readbacks when explicit `--tag-workflow-*` arguments are omitted
 - focused tests covering draft-ready, published-verified, and strict
   not-ready states
 - tagging runbook instructions requiring the status packet before publication

@@ -144,9 +144,13 @@ describe('ops readiness packet', () => {
       tagWorkflowUrl: 'https://example.invalid/actions/runs/54321',
     })
 
-    const result = await execFileAsync('node', [readinessPacketScript], {
-      env: fakeEnv(fakeBin),
-    })
+    const result = await execFileAsync(
+      'node',
+      [readinessPacketScript, '--no-default-tag-workflow-evidence'],
+      {
+        env: fakeEnv(fakeBin),
+      },
+    )
     const report = JSON.parse(result.stdout) as OpsReadinessPacket
 
     expect(report.release.statusPhase).toBe('not_ready_for_publication')
@@ -162,6 +166,36 @@ describe('ops readiness packet', () => {
     )
     expect(report.release.publicationGate.verifyPublishedCommand).toBe(
       'pnpm release:published:packet -- --strict --tag-workflow-run-id <run-id> --tag-workflow-url <run-url>',
+    )
+  })
+
+  it('uses recorded tag workflow evidence by default for release publication readiness', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const tagWorkflowUrl =
+      'https://github.com/kazu-42/HonoWarden/actions/runs/28863312935'
+    const fakeBin = await createFakeReleaseBin({
+      isDraft: true,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl,
+    })
+
+    const result = await execFileAsync('node', [readinessPacketScript], {
+      env: fakeEnv(fakeBin),
+    })
+    const report = JSON.parse(result.stdout) as OpsReadinessPacket
+
+    expect(report.blockingReason).toBe('release_publication_approval_required')
+    expect(report.release.statusPhase).toBe('draft_ready_for_publication')
+    expect(report.release.publicationGate).toMatchObject({
+      approvalRequired: true,
+      nextActionId: 'request_publication_approval',
+      approvalText: `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
+      publishCommand:
+        'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
+    })
+    expect(report.commands.publishedVerification).toBe(
+      'pnpm release:published:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935',
     )
   })
 

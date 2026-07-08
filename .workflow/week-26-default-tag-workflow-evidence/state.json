@@ -1,0 +1,127 @@
+{
+  "title": "Week 26 default tag workflow evidence",
+  "slug": "week-26-default-tag-workflow-evidence",
+  "created_at": "2026-07-08T00:59:10+00:00",
+  "status": "local_completed_ci_pending",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local read-only tooling, tests, docs, workflow artifacts, PR, and CI only. No release publication, tag mutation, deploy, DNS/Email Routing write, email send, or secret write."
+  },
+  "packets": [
+    {
+      "id": "01-helper",
+      "status": "completed",
+      "owner": "spark"
+    },
+    {
+      "id": "02-integration",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-docs-workflow",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "04-verification",
+      "status": "local_completed_ci_pending",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "local_passed_ci_pending",
+    "checks": [
+      {
+        "name": "Focused release/ops packet tests",
+        "status": "passed",
+        "command": "pnpm exec vitest run test/ops/tag-workflow-evidence.test.ts test/ops/release-publish-packet.test.ts test/ops/release-published-packet.test.ts test/ops/release-status-packet.test.ts test/ops/release-completion-audit.test.ts test/ops/ops-readiness-packet.test.ts",
+        "result": "6 files, 27 tests passed"
+      },
+      {
+        "name": "Typecheck",
+        "status": "passed",
+        "command": "pnpm check"
+      },
+      {
+        "name": "Lint",
+        "status": "passed",
+        "command": "pnpm lint"
+      },
+      {
+        "name": "Format",
+        "status": "passed",
+        "command": "pnpm format"
+      },
+      {
+        "name": "Brand scan",
+        "status": "passed",
+        "command": "pnpm brand:scan"
+      },
+      {
+        "name": "Full test suite",
+        "status": "passed",
+        "command": "pnpm test",
+        "result": "45 files, 392 tests passed"
+      },
+      {
+        "name": "Compatibility tests",
+        "status": "passed",
+        "command": "pnpm compat:test",
+        "result": "3 files, 80 tests passed"
+      },
+      {
+        "name": "Release gate strict",
+        "status": "passed",
+        "command": "pnpm release:gate -- --strict",
+        "result": "overall ready"
+      },
+      {
+        "name": "No-arg release status readback",
+        "status": "passed",
+        "command": "pnpm release:status:packet",
+        "result": "ready / draft_ready_for_publication"
+      },
+      {
+        "name": "No-arg completion audit readback",
+        "status": "passed",
+        "command": "pnpm release:completion:audit",
+        "result": "incomplete / release_publication_approval_required"
+      },
+      {
+        "name": "No-arg ops readiness readback",
+        "status": "passed",
+        "command": "pnpm ops:readiness:packet",
+        "result": "not_ready / release_publication_approval_required"
+      },
+      {
+        "name": "No-arg publish packet strict readback",
+        "status": "passed",
+        "command": "pnpm release:publish:packet -- --strict",
+        "result": "ready, verified Release Tag Verification run 28863312935"
+      },
+      {
+        "name": "Diff whitespace check",
+        "status": "passed",
+        "command": "git diff --check"
+      },
+      {
+        "name": "Codex review",
+        "status": "passed",
+        "command": "codex review --uncommitted",
+        "result": "Initial P2 partial-evidence/default-mixing finding fixed; rerun reported no actionable issues"
+      },
+      {
+        "name": "PR CI",
+        "status": "pending",
+        "command": "GitHub Actions after PR push"
+      },
+      {
+        "name": "Main CI",
+        "status": "pending",
+        "command": "GitHub Actions after merge"
+      }
+    ]
+  }
+}

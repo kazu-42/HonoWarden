@@ -45,6 +45,13 @@ Run the status packet immediately before publication:
 pnpm release:status:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
 ```
 
+The `--tag-workflow-*` arguments are explicit audit pins. If omitted, the
+release status, publish, published, completion-audit, and operations-readiness
+packets read the recorded `Release Tag Verification` evidence from
+`.workflow/week-26-release-tag-recovery/state.json` and still revalidate the run
+through `gh run view`. Use `--no-default-tag-workflow-evidence` only when
+testing the missing-evidence failure path.
+
 The expected packet fields are:
 
 - `status: "ready"`

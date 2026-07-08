@@ -114,6 +114,10 @@ pnpm email:preflight -- --strict
 pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935
 ```
 
+`pnpm ops:readiness:packet` may also be run without the tag workflow arguments
+after `.workflow/week-26-release-tag-recovery/state.json` records the passed
+`Release Tag Verification` run; the packet revalidates that run before using it.
+
 The preflight is offline. It checks whether the Cloudflare token/account/zone
 inputs and forwarding-destination variables are present, but it does not call
 Cloudflare, create routes, send messages, or print token/destination values.

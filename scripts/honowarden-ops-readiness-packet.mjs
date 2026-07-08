@@ -6,6 +6,8 @@ import { isAbsolute, join, relative } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import process from 'node:process'
 
+import { resolveTagWorkflowEvidenceOptions } from './honowarden-tag-workflow-evidence.mjs'
+
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const targetTag = 'v0.1.0-alpha'
 const targetVersion = '0.1.0-alpha'
@@ -34,6 +36,9 @@ function buildOpsReadinessPacket(options) {
     options.remote,
     ...(options.expectedCommit
       ? ['--expected-commit', options.expectedCommit]
+      : []),
+    ...(options.defaultTagWorkflowEvidence === false
+      ? ['--no-default-tag-workflow-evidence']
       : []),
     ...(options.tagWorkflowRunId
       ? ['--tag-workflow-run-id', options.tagWorkflowRunId]
@@ -414,6 +419,7 @@ function normalizeEvidencePath(path) {
 function parseOptions(args) {
   const options = {
     expectedCommit: null,
+    defaultTagWorkflowEvidence: true,
     remote: defaultRemote,
     strict: false,
     tagWorkflowRunId: null,
@@ -450,6 +456,9 @@ function parseOptions(args) {
       }
       case '--strict':
         options.strict = true
+        break
+      case '--no-default-tag-workflow-evidence':
+        options.defaultTagWorkflowEvidence = false
         break
       case '--tag-workflow-run-id': {
         const value = args[index + 1]
@@ -520,7 +529,7 @@ function parseOptions(args) {
     options.rollbackEvidencePath &&
     normalizeEvidencePath(options.rollbackEvidencePath)
 
-  return options
+  return resolveTagWorkflowEvidenceOptions(options, repoRoot)
 }
 
 function evidencePathValue(option, value) {
@@ -533,7 +542,7 @@ function evidencePathValue(option, value) {
 
 function printUsage() {
   process.stdout.write(`Usage:
-  node scripts/honowarden-ops-readiness-packet.mjs [--strict] [--remote <remote>] [--expected-commit <sha>] [--tag-workflow-run-id <id>] [--tag-workflow-url <url>]
+  node scripts/honowarden-ops-readiness-packet.mjs [--strict] [--remote <remote>] [--expected-commit <sha>] [--tag-workflow-run-id <id>] [--tag-workflow-url <url>] [--no-default-tag-workflow-evidence]
 
 Read-only post-alpha operations readiness packet.
 `)
