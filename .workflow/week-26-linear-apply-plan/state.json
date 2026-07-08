@@ -1,0 +1,98 @@
+{
+  "title": "Week 26 Linear apply plan",
+  "slug": "week-26-linear-apply-plan",
+  "created_at": "2026-07-08T14:13:13+00:00",
+  "status": "implemented",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local-only planning command; no live Linear writes in this slice."
+  },
+  "packets": [
+    {
+      "id": "01-script",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "02-tests",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "03-docs",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "04-integration",
+      "status": "completed",
+      "owner": "codex"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/ops/linear-apply-plan.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/linear-preflight.test.ts test/ops/linear-apply-plan.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm linear:apply-plan",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm linear:apply-plan -- --strict",
+        "status": "passed_expected_failure"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm linear:seed",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm linear:preflight",
+        "status": "passed_expected_not_ready"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-linear-apply-plan",
+        "status": "passed"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "command": "codex review --uncommitted",
+        "status": "passed_after_payload_followup"
+      }
+    ]
+  }
+}

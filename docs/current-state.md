@@ -444,6 +444,9 @@ Implemented:
 - read-only `pnpm linear:preflight` verifies `LINEAR_API_KEY` against the
   expected Linear workspace slug, team, and workflow state types before any live
   seed application
+- local-only `pnpm linear:apply-plan` turns the seed and an optional ready
+  preflight report into a reviewable apply plan without reading credentials or
+  mutating Linear
 - README link to `docs/operations/linear-tracking.md`
 - access guard documented to prevent writing HonoWarden issues into an unrelated
   Linear workspace
@@ -457,9 +460,13 @@ Not implemented:
 - Pulse workspace settings mutation
 - Linear custom view creation through UI automation
 - live Linear application of the updated issue states and published-alpha view
+- live mutation support inside the apply-plan command; it intentionally remains
+  a non-mutating planning step until strict preflight and write-scope evidence
+  are available
 
-The Linear seed remains the source of truth until a connector or browser session
-is authenticated to the `honowarden` workspace.
+The Linear seed remains the source of truth until a connector, browser session,
+or strict API preflight is authenticated to the `honowarden` workspace and the
+reviewed apply plan is executed by a separate guarded write path.
 
 ## Operator Environment Setup
 
