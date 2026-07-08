@@ -2,12 +2,25 @@
 
 Target: `v0.1.0-alpha`.
 
-Status: draft ready for publication approval.
+Status: published verified.
 
 This document is the human-readable gate for publishing the alpha GitHub
-Release. It complements the machine-readable status packet and exists so the
-operator can verify the exact target, approval text, command, and post-publish
-checks before making the release visible.
+Release. It complements the machine-readable status packet and records the
+publication proof for the alpha prerelease.
+
+## Publication Evidence
+
+- Published at: `2026-07-08T01:37:46Z`
+- Release URL:
+  `https://github.com/kazu-42/HonoWarden/releases/tag/v0.1.0-alpha`
+- Release state: published prerelease
+- Release target commit:
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`
+- Published packet: `status: "ready"`
+- Status packet: `phase: "published_verified"`
+- Completion audit: `completion: "complete"`
+- Published verification text:
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce の v0.1.0-alpha published prerelease verification が成功した`
 
 ## Current Draft State
 

@@ -2,30 +2,46 @@
 
 Target: `v0.1.0-alpha`.
 
-Status: not_performed.
+Status: partial.
 
 Mode: post-alpha rollback handle and recovery evidence.
 
-This file is the required evidence placeholder for rollback readiness after
-Worker deploy, website route changes, or Email Routing changes. It must remain
-`not_performed` until the operator has recorded concrete rollback handles and
-verified that the service can return to the previous safe state.
+This file records rollback readiness after Worker deploy, website route changes,
+or Email Routing changes. It remains `partial` until website and Email Routing
+rollback evidence is recorded and a rollback rehearsal or actual rollback has
+been verified.
 
 Rollback readiness is separate from release publication, CI success, and local
 dry-run output.
 
-## Required Approval Before Execution
+## API Worker Previous-Version Handles
 
-Rollback evidence collection must explicitly name the operation being guarded:
+Standing operator approval was provided on 2026-07-08. API Worker deploys were
+completed after the alpha GitHub Release was published and verified.
 
-- API Worker deploy
-- website deploy or domain route change
-- DNS change
-- Email Routing change
-- production secret write
+### Staging API Worker
 
-If the operation has not been approved, record the rollback plan only and leave
-this file as `not_performed`.
+- Current version: `bf0333dc-9efa-4001-aa31-20b3e10731c9`
+- Current deployment: `ae336be4-169b-4a8a-a8c7-8d4b8ab7fa32`
+- Candidate previous version: `f2357f14-8430-4b9f-913d-2dbad72322dd`
+- Candidate status: pre-correction `main` deployment, not verified as the safe
+  rollback target
+- Approved rollback command: unresolved
+
+### Production API Worker
+
+- Current version: `72577dd9-c859-4673-b653-fbdd796f8f7d`
+- Current deployment: `24f81b98-b761-4faa-aa78-cd773bb5d0c1`
+- Candidate previous version: `2c0b365b-3cf9-4766-ba8d-e5bd969c969d`
+- Candidate status: pre-correction `main` deployment, not verified as the safe
+  rollback target
+- Approved rollback command: unresolved
+
+The candidate previous versions are known deployable Worker versions, but they
+are the pre-correction deployments from `main`
+`392637b3e277ba35057ba461cd82fac69013f603`, not the alpha release target. Do
+not treat them as approved rollback targets without an incident-specific
+decision. Rollback was not executed because post-deploy smoke passed.
 
 ## Evidence To Record
 
@@ -52,8 +68,13 @@ data.
 API Worker:
 
 ```sh
-# Fill in the approved previous deployment id or redeploy command.
-pnpm wrangler deploy --env staging
+# API Worker rollback command is unresolved.
+# Candidate previous versions for investigation:
+# staging: f2357f14-8430-4b9f-913d-2dbad72322dd
+# production: 2c0b365b-3cf9-4766-ba8d-e5bd969c969d
+#
+# Do not run a rollback until the operator selects a verified safe target or
+# decides to redeploy a reviewed commit.
 ```
 
 Website:
@@ -70,8 +91,8 @@ Email Routing:
 
 ## Not Performed
 
-- Rollback rehearsal has not been performed by this evidence file.
-- API Worker rollback has not been performed by this evidence file.
+- API Worker rollback command approval has not been recorded.
+- API Worker rollback rehearsal has not been performed by this evidence file.
 - Website route rollback has not been performed by this evidence file.
 - Email Routing rollback has not been performed by this evidence file.
 - DNS rollback has not been performed by this evidence file.

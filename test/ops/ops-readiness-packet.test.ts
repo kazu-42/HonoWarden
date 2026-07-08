@@ -74,6 +74,7 @@ describe('ops readiness packet', () => {
       targetCommit,
       tagWorkflowUrl,
     })
+    const evidence = await createBlockedEvidenceFiles()
 
     const result = await execFileAsync(
       'node',
@@ -83,6 +84,14 @@ describe('ops readiness packet', () => {
         '54321',
         '--tag-workflow-url',
         tagWorkflowUrl,
+        '--worker-live-smoke-evidence',
+        evidence.worker,
+        '--website-live-evidence',
+        evidence.website,
+        '--email-routing-evidence',
+        evidence.email,
+        '--rollback-evidence',
+        evidence.rollback,
       ],
       {
         env: fakeEnv(fakeBin),
@@ -358,7 +367,30 @@ function statusById(report: OpsReadinessPacket, id: string) {
     ?.status
 }
 
+async function createBlockedEvidenceFiles() {
+  return createEvidenceFiles({
+    worker: 'not_performed',
+    website: 'not_performed',
+    email: 'not_performed',
+    rollback: 'partial',
+  })
+}
+
 async function createPassedEvidenceFiles() {
+  return createEvidenceFiles({
+    worker: 'passed',
+    website: 'passed',
+    email: 'passed',
+    rollback: 'passed',
+  })
+}
+
+async function createEvidenceFiles(statuses: {
+  worker: 'not_performed' | 'partial' | 'passed'
+  website: 'not_performed' | 'partial' | 'passed'
+  email: 'not_performed' | 'partial' | 'passed'
+  rollback: 'not_performed' | 'partial' | 'passed'
+}) {
   const dir = `test/.tmp/ops-readiness-${Date.now()}-${Math.random()
     .toString(16)
     .slice(2)}`
@@ -372,8 +404,11 @@ async function createPassedEvidenceFiles() {
   }
 
   await Promise.all(
-    Object.values(paths).map((path) =>
-      writeFile(join(repoRoot, path), `# Test Evidence\n\nStatus: passed\n`),
+    Object.entries(paths).map(([key, path]) =>
+      writeFile(
+        join(repoRoot, path),
+        `# Test Evidence\n\nStatus: ${statuses[key as keyof typeof statuses]}\n`,
+      ),
     ),
   )
 

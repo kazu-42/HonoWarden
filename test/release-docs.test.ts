@@ -97,10 +97,12 @@ describe('release feature-freeze docs', () => {
     expect(runbook).toContain('Do not silently retag')
   })
 
-  it('keeps release publication approval-gated', () => {
+  it('keeps release publication proof and the original approval gate auditable', () => {
     const runbook = readReleaseDoc('publication-gate.md')
 
-    expect(runbook).toContain('Status: draft ready for publication approval')
+    expect(runbook).toContain('Status: published verified')
+    expect(runbook).toContain('Published at: `2026-07-08T01:37:46Z`')
+    expect(runbook).toContain('Status packet: `phase: "published_verified"`')
     expect(runbook).toContain(
       'e7a3c5ea9e51030143736bb0e7a36cb7a8babfce の v0.1.0-alpha draft prerelease を公開してよい',
     )
@@ -122,10 +124,11 @@ describe('release feature-freeze docs', () => {
     expect(runbook).toContain(
       'blockingReason: "release_publication_approval_required"',
     )
+    expect(runbook).toContain('Expected post-publication state')
     expect(runbook).toContain('Do not deploy from this release')
   })
 
-  it('keeps post-alpha operations evidence placeholders conservative', () => {
+  it('keeps post-alpha operations evidence statuses honest', () => {
     const index = readReleaseDoc('index.md')
     const workerEvidence = readReleaseDoc('worker-live-smoke-evidence.md')
     const websiteEvidence = readReleaseDoc('website-live-evidence.md')
@@ -137,17 +140,23 @@ describe('release feature-freeze docs', () => {
     expect(index).toContain('email-routing-evidence.md')
     expect(index).toContain('ops-rollback-evidence.md')
 
-    for (const evidence of [
-      workerEvidence,
-      websiteEvidence,
-      emailEvidence,
-      rollbackEvidence,
-    ]) {
+    expect(workerEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(workerEvidence).toContain('e7a3c5ea9e51030143736bb0e7a36cb7a8babfce')
+    expect(workerEvidence).toContain('Candidate previous version ID')
+    expect(workerEvidence).toContain('Approved rollback command: unresolved')
+    expect(workerEvidence).toContain('synthetic prelogin: HTTP `403`')
+
+    for (const evidence of [websiteEvidence, emailEvidence]) {
       expect(evidence).toContain('Status: not_performed')
       expect(evidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
       expect(evidence).toContain('approval')
       expect(evidence).toContain('rollback')
     }
+
+    expect(rollbackEvidence).toContain('Status: partial')
+    expect(rollbackEvidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(rollbackEvidence).toContain('Approved rollback command: unresolved')
+    expect(rollbackEvidence).toContain('rollback')
   })
 })
 
