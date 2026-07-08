@@ -10,11 +10,25 @@ resolves to `linear.app/honowarden`.
 ## Source Of Truth
 
 The seed file is [ops/linear/honowarden.seed.json](../../ops/linear/honowarden.seed.json).
-Validate it with:
+Validate the local seed shape with:
 
 ```sh
 pnpm linear:seed
 ```
+
+Verify the active Linear API key and workspace before any live writes with:
+
+```sh
+pnpm linear:preflight -- --strict
+```
+
+`linear:preflight` is read-only. It checks the Linear GraphQL organization
+`urlKey`, the `HW` / `HonoWarden` team, and the workflow state types needed by
+the seed before reporting `status: "ready"`. It rejects custom GraphQL
+endpoints before attaching the API key, and it treats local workspace slug
+environment overrides as a mismatch unless they match the checked-in seed.
+Project-scoped views remain manual inventory because they are created from the
+project issue list rather than the root view list.
 
 The seed defines:
 
@@ -57,7 +71,9 @@ Safe verification steps:
    authentication error.
 3. Confirm the Linear MCP `list_teams` result returns the HonoWarden team and
    does not return only unrelated workspace teams.
-4. Only then create issues, projects, and documents through MCP or API tooling.
+4. If using `LINEAR_API_KEY`, run `pnpm linear:preflight -- --strict` and
+   require `status: "ready"`.
+5. Only then create issues, projects, and documents through MCP or API tooling.
 
 ## Recommended Apply Order
 
@@ -73,6 +89,10 @@ Safe verification steps:
    the matching Linear state type.
 8. Post the first project update from the seed Pulse section.
 9. Create the custom views and favorite the high-signal views in the sidebar.
+
+Do not skip the preflight. A passing `pnpm linear:seed` only proves the checked
+in seed is internally coherent; it does not prove that the active Linear
+connector or API key targets `linear.app/honowarden`.
 
 ## Views
 

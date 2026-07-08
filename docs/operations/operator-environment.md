@@ -9,6 +9,7 @@ Cloudflare tokens, destination inboxes, and runtime secrets outside git.
 Use this environment for local automation only:
 
 - validating the Linear seed
+- verifying Linear API access before applying the seed
 - applying Linear issues/projects/views once the workspace is accessible
 - creating or updating the separate website repository
 - deploying Workers after explicit approval
@@ -103,6 +104,7 @@ Read-only checks that are safe to run without approval:
 gh auth status
 pnpm wrangler whoami
 pnpm linear:seed
+pnpm linear:preflight
 pnpm email:preflight
 ```
 
@@ -111,7 +113,8 @@ pnpm email:preflight
 Before applying external changes:
 
 1. `direnv status` shows this repository is allowed.
-2. `printenv LINEAR_API_KEY` is non-empty when Linear API writes are planned.
+2. `pnpm linear:preflight -- --strict` reports `status: "ready"` before Linear
+   API writes are planned.
 3. `gh auth status` resolves to the intended GitHub user.
 4. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
 5. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
@@ -137,9 +140,23 @@ updates through that session.
 Use one of these before Linear writes:
 
 - provide `LINEAR_API_KEY` for the `honowarden` workspace through `.env.local`;
-  or
+  then run `pnpm linear:preflight -- --strict` and require the workspace
+  `urlKey`, team, and workflow state type checks to pass; or
 - reconnect the Linear MCP session so list/read calls return the HonoWarden
   workspace instead of `interx`.
+
+`pnpm linear:preflight` calls the Linear GraphQL API read-only. It does not
+create issues, projects, labels, documents, views, comments, or Pulse updates.
+It fails closed when `LINEAR_API_KEY` is missing, when the API key resolves to a
+workspace whose `urlKey` is not `honowarden`, when the `HW` / `HonoWarden` team
+is absent, or when the team's workflow state types cannot represent the seed's
+issue `stateType` values. It also rejects custom GraphQL endpoints before
+sending the API key, so local endpoint overrides cannot exfiltrate the token. If
+`HONOWARDEN_LINEAR_WORKSPACE_SLUG` is set locally, it must match the checked-in
+seed; it cannot override the workspace that preflight verifies. The report
+inventories matching seed projects, labels, documents, and views without
+printing the API key. Project-scoped views are listed for manual confirmation
+because the read-only root view inventory does not prove that scope.
 
 ## Missing Inputs
 

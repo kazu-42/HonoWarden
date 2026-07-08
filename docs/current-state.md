@@ -441,6 +441,9 @@ Implemented:
   change management, and rollback rehearsal evidence
 - `pnpm linear:seed` now validates issue `stateType` values and reports issue
   state counts
+- read-only `pnpm linear:preflight` verifies `LINEAR_API_KEY` against the
+  expected Linear workspace slug, team, and workflow state types before any live
+  seed application
 - README link to `docs/operations/linear-tracking.md`
 - access guard documented to prevent writing HonoWarden issues into an unrelated
   Linear workspace
