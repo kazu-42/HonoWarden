@@ -42,6 +42,7 @@ type OpsReadinessPacket = {
     localPreflightStatus: 'ready' | 'not_ready'
     configuredRoutes: number
     requiredRoutes: number
+    failedChecks: string[]
   }
   evidence: {
     cloudflareResourcesRecorded: boolean
@@ -55,6 +56,8 @@ type OpsReadinessPacket = {
     id: string
     status: 'pass' | 'fail'
     blocker: string | null
+    evidence: string[]
+    nextAction: string | null
   }>
   commands: {
     publishRelease: string | null
@@ -248,10 +251,165 @@ describe('ops readiness packet', () => {
       localPreflightStatus: 'ready',
       configuredRoutes: 6,
       requiredRoutes: 6,
+      failedChecks: [],
     })
     expect(result.stdout).not.toContain('cf-secret-token')
     expect(result.stdout).not.toContain('security-destination@example.test')
     expect(result.stdout).not.toContain('support-destination@example.test')
+  })
+
+  it('keeps the Cloudflare API token as the precise blocker when route inputs are present', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
+    const fakeBin = await createFakeReleaseBin({
+      isDraft: true,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl,
+    })
+    const env = {
+      ...fakeEnv(fakeBin),
+      CLOUDFLARE_API_TOKEN: '',
+      CLOUDFLARE_ACCOUNT_ID: 'account-id',
+      CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: 'zone-id',
+      HONOWARDEN_SECURITY_FORWARD_TO: 'security-destination@example.test',
+      HONOWARDEN_SUPPORT_FORWARD_TO: 'support-destination@example.test',
+      HONOWARDEN_GENERAL_FORWARD_TO: 'hello-destination@example.test',
+      HONOWARDEN_ADMIN_FORWARD_TO: 'admin-destination@example.test',
+      HONOWARDEN_POSTMASTER_FORWARD_TO: 'postmaster-destination@example.test',
+      HONOWARDEN_ABUSE_FORWARD_TO: 'abuse-destination@example.test',
+    }
+
+    const result = await execFileAsync(
+      'node',
+      [
+        readinessPacketScript,
+        '--tag-workflow-run-id',
+        '54321',
+        '--tag-workflow-url',
+        tagWorkflowUrl,
+      ],
+      { env },
+    )
+    const report = JSON.parse(result.stdout) as OpsReadinessPacket
+    const emailRequirement = requirementById(report, 'email_local_inputs_ready')
+
+    expect(report.email).toMatchObject({
+      localPreflightStatus: 'not_ready',
+      configuredRoutes: 6,
+      requiredRoutes: 6,
+      failedChecks: ['cloudflare_api_token'],
+    })
+    expect(emailRequirement).toMatchObject({
+      status: 'fail',
+      blocker: 'cloudflare_api_token_missing',
+    })
+    expect(emailRequirement.evidence).toContain(
+      'failed checks: cloudflare_api_token',
+    )
+    expect(emailRequirement.nextAction).toContain('CLOUDFLARE_API_TOKEN')
+    expect(result.stdout).not.toContain('security-destination@example.test')
+  })
+
+  it('keeps mixed token and destination failures on the broader local-input blocker', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
+    const fakeBin = await createFakeReleaseBin({
+      isDraft: true,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl,
+    })
+    const env = {
+      ...fakeEnv(fakeBin),
+      CLOUDFLARE_API_TOKEN: '',
+      CLOUDFLARE_ACCOUNT_ID: 'account-id',
+      CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: 'zone-id',
+      HONOWARDEN_SECURITY_FORWARD_TO: 'security-destination@example.test',
+    }
+
+    const result = await execFileAsync(
+      'node',
+      [
+        readinessPacketScript,
+        '--tag-workflow-run-id',
+        '54321',
+        '--tag-workflow-url',
+        tagWorkflowUrl,
+      ],
+      { env },
+    )
+    const report = JSON.parse(result.stdout) as OpsReadinessPacket
+    const emailRequirement = requirementById(report, 'email_local_inputs_ready')
+
+    expect(report.email).toMatchObject({
+      localPreflightStatus: 'not_ready',
+      configuredRoutes: 1,
+      requiredRoutes: 6,
+      failedChecks: expect.arrayContaining([
+        'cloudflare_api_token',
+        'destination_support',
+        'destination_hello',
+        'destination_admin',
+        'destination_postmaster',
+        'destination_abuse',
+      ]),
+    })
+    expect(emailRequirement).toMatchObject({
+      status: 'fail',
+      blocker: 'email_local_inputs_missing',
+    })
+    expect(emailRequirement.nextAction).toContain('CLOUDFLARE_API_TOKEN')
+    expect(emailRequirement.nextAction).toContain('HONOWARDEN_*_FORWARD_TO')
+    expect(result.stdout).not.toContain('security-destination@example.test')
+  })
+
+  it('keeps next actions complete when every email local input category is missing', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
+    const fakeBin = await createFakeReleaseBin({
+      isDraft: true,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl,
+    })
+    const env = {
+      ...fakeEnv(fakeBin),
+      CLOUDFLARE_API_TOKEN: '',
+      CLOUDFLARE_ACCOUNT_ID: '',
+      CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: '',
+      HONOWARDEN_SECURITY_FORWARD_TO: '',
+      HONOWARDEN_SUPPORT_FORWARD_TO: '',
+      HONOWARDEN_GENERAL_FORWARD_TO: '',
+      HONOWARDEN_ADMIN_FORWARD_TO: '',
+      HONOWARDEN_POSTMASTER_FORWARD_TO: '',
+      HONOWARDEN_ABUSE_FORWARD_TO: '',
+    }
+
+    const result = await execFileAsync(
+      'node',
+      [
+        readinessPacketScript,
+        '--tag-workflow-run-id',
+        '54321',
+        '--tag-workflow-url',
+        tagWorkflowUrl,
+      ],
+      { env },
+    )
+    const report = JSON.parse(result.stdout) as OpsReadinessPacket
+    const emailRequirement = requirementById(report, 'email_local_inputs_ready')
+
+    expect(emailRequirement).toMatchObject({
+      status: 'fail',
+      blocker: 'cloudflare_local_inputs_missing',
+    })
+    expect(emailRequirement.nextAction).toContain('CLOUDFLARE_API_TOKEN')
+    expect(emailRequirement.nextAction).toContain('CLOUDFLARE_ACCOUNT_ID')
+    expect(emailRequirement.nextAction).toContain(
+      'CLOUDFLARE_ZONE_ID_HONOWARDEN_COM',
+    )
+    expect(emailRequirement.nextAction).toContain('HONOWARDEN_*_FORWARD_TO')
   })
 
   it('keeps post-publication failure checks actionable after a visible release fails verification', async () => {
@@ -365,6 +523,16 @@ describe('ops readiness packet', () => {
 function statusById(report: OpsReadinessPacket, id: string) {
   return report.requirements.find((requirement) => requirement.id === id)
     ?.status
+}
+
+function requirementById(report: OpsReadinessPacket, id: string) {
+  const requirement = report.requirements.find(
+    (requirement) => requirement.id === id,
+  )
+
+  expect(requirement, `${id} requirement should exist`).toBeDefined()
+
+  return requirement!
 }
 
 async function createBlockedEvidenceFiles() {
