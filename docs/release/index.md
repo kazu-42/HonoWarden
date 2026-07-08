@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-06.
+Last updated: 2026-07-08.
 
 Use this index as the feature-freeze entry point:
 
@@ -71,6 +71,6 @@ operational proof. Strict mode is reserved for the state after release
 publication, Worker smoke evidence, website domain evidence, Email Routing
 evidence, and rollback evidence have all been recorded.
 
-The post-alpha evidence files are committed as `Status: not_performed`
-placeholders. Leave them in that state until the corresponding approved
-operation has actually run and the redacted proof is recorded.
+The post-alpha evidence files started as `Status: not_performed` placeholders.
+Only mark an evidence file `passed` after the corresponding approved operation
+has actually run and the redacted proof is recorded.

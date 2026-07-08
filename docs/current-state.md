@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## Week 1 Status
 
@@ -1540,3 +1540,38 @@ Not implemented:
 
 - automatic GitHub release publication
 - deployment from a tag or release
+
+## Week 26 Release Publication And Worker Live Smoke
+
+Implemented:
+
+- `v0.1.0-alpha` GitHub Release was published as a prerelease on 2026-07-08
+  after the draft release and tag verification gates passed
+- `pnpm release:published:packet -- --strict`,
+  `pnpm release:status:packet -- --strict`, and
+  `pnpm release:completion:audit -- --strict` verified the published release
+  target commit `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`
+- production D1 migrations `0001`, `0002`, and `0003` were applied and
+  rechecked with `wrangler d1 migrations list --env production --remote`
+- staging and production API Workers were deployed from the release target
+  commit after an initial `main` deploy was identified as the wrong source and
+  corrected
+- live HTTPS smoke passed for staging and production `/health`, `/healthz`,
+  `/health/db`, `/api/config`, and synthetic prelogin deny behavior
+- Worker deployment IDs, version IDs, candidate previous-version handles, and
+  redacted live-smoke results are recorded in
+  `docs/release/worker-live-smoke-evidence.md`
+- `docs/release/cloudflare-resource-evidence.md`,
+  `docs/release/publication-gate.md`, and
+  `docs/release/ops-rollback-evidence.md` were updated with the non-secret
+  publication, D1, deploy, and rollback-handle evidence
+
+Not implemented:
+
+- custom API domain routing for the alpha API Worker
+- website live evidence in `docs/release/website-live-evidence.md`
+- Email Routing live evidence in `docs/release/email-routing-evidence.md`
+- verified safe rollback target selection for the API Worker
+- rollback rehearsal or rollback execution
+- production secret writes, public registration enablement, or real vault-data
+  dogfood

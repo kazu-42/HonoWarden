@@ -3,15 +3,16 @@
 Target: `v0.1.0-alpha`.
 
 Date: 2026-07-07.
+Updated: 2026-07-08.
 
 Status: passed.
 
 Mode: Cloudflare resource creation and verification.
 
 This evidence records the non-secret Cloudflare resources created for
-HonoWarden alpha readiness. It covers D1 and R2 resources plus staging D1
-migrations. It does not claim Worker deployment, route binding, secret writes,
-or live HTTP smoke.
+HonoWarden alpha readiness. It covers D1 and R2 resources plus staging and
+production D1 migrations. Worker live deploy and HTTP smoke evidence is recorded
+separately in [Worker Live Smoke Evidence](worker-live-smoke-evidence.md).
 
 ## Account
 
@@ -44,6 +45,7 @@ pnpm wrangler d1 create honowarden --location apac
 pnpm wrangler r2 bucket create honowarden-staging-vault-objects --location apac
 pnpm wrangler r2 bucket create honowarden-vault-objects --location apac
 printf 'y\n' | pnpm wrangler d1 migrations apply honowarden-staging --env staging --remote
+printf 'y\n' | pnpm exec wrangler d1 migrations apply DB --env production --remote
 ```
 
 The same migration command was first run without `--remote`; Wrangler applied it
@@ -73,6 +75,15 @@ pnpm wrangler d1 execute honowarden-staging --env staging --remote --command "se
 
 Staging remote migrations: `0001`, `0002`, `0003`.
 
+Remote production migration verification:
+
+```sh
+pnpm wrangler d1 migrations list DB --env production --remote
+```
+
+Production remote migrations: no migrations to apply after applying `0001`,
+`0002`, and `0003` on 2026-07-08.
+
 Remote staging schema table verification included:
 
 ```text
@@ -94,7 +105,6 @@ users
 - Worker deploy: not performed.
 - Secret writes: not performed.
 - Route writes: not performed.
-- Production migration apply: not performed.
 - Live HTTP smoke: not performed.
 - Live client evidence: not performed.
 

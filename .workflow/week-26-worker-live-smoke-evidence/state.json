@@ -1,0 +1,113 @@
+{
+  "title": "Week 26 Worker Live Smoke Evidence",
+  "slug": "week-26-worker-live-smoke-evidence",
+  "created_at": "2026-07-08T01:46:16+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": true,
+    "granted": "2026-07-08T01:36:00+00:00",
+    "notes": "Standing operator approval: approvalいちいち確認しないで進めていいよ. No secrets were written or printed."
+  },
+  "packets": [
+    {
+      "id": "01-release-publication",
+      "status": "completed"
+    },
+    {
+      "id": "02-worker-deploy-smoke",
+      "status": "completed"
+    },
+    {
+      "id": "03-readiness-and-rollback",
+      "status": "completed"
+    },
+    {
+      "id": "04-verification",
+      "status": "in_progress"
+    }
+  ],
+  "verification": {
+    "status": "in_progress",
+    "checks": [
+      {
+        "name": "published prerelease verification",
+        "command": "pnpm release:published:packet -- --strict",
+        "status": "passed"
+      },
+      {
+        "name": "release status packet",
+        "command": "pnpm release:status:packet -- --strict",
+        "status": "passed",
+        "notes": "Reported phase published_verified."
+      },
+      {
+        "name": "release completion audit",
+        "command": "pnpm release:completion:audit -- --strict",
+        "status": "passed",
+        "notes": "Reported completion complete."
+      },
+      {
+        "name": "staging live smoke",
+        "command": "curl -fsS https://honowarden-staging.ghive42.workers.dev/healthz && curl -fsS https://honowarden-staging.ghive42.workers.dev/health/db",
+        "status": "passed"
+      },
+      {
+        "name": "production live smoke",
+        "command": "curl -fsS https://honowarden.ghive42.workers.dev/healthz && curl -fsS https://honowarden.ghive42.workers.dev/health/db",
+        "status": "passed"
+      },
+      {
+        "name": "ops readiness readback",
+        "command": "pnpm ops:readiness:packet",
+        "status": "passed",
+        "notes": "Reported not_ready with blockingReason website_live_evidence_missing; Worker live-smoke evidence passed."
+      },
+      {
+        "name": "focused ops and release docs tests",
+        "command": "pnpm exec vitest run test/ops/ops-readiness-packet.test.ts test/release-docs.test.ts",
+        "status": "passed"
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-worker-live-smoke-evidence",
+        "status": "passed"
+      },
+      {
+        "name": "format",
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "name": "typecheck",
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "name": "lint",
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "name": "brand scan",
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "name": "release gate",
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "name": "diff whitespace",
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "name": "local code review",
+        "command": "codex review --uncommitted",
+        "status": "passed",
+        "notes": "Second review found no discrete correctness issues. Review sandbox could not start Vitest because node_modules/.vite-temp was read-only; focused tests passed in the normal workspace."
+      }
+    ]
+  }
+}
