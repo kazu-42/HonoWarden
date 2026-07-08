@@ -1,0 +1,40 @@
+{
+  "title": "Week 26 website live evidence",
+  "slug": "week-26-website-live-evidence",
+  "created_at": "2026-07-08T02:07:18+00:00",
+  "status": "completed",
+  "approval": {
+    "required": true,
+    "granted": true,
+    "notes": "User granted standing approval for project-scoped GitHub and Cloudflare writes on 2026-07-08."
+  },
+  "packets": [
+    {
+      "id": "spark-website-public-links",
+      "status": "accepted_for_local_review",
+      "owner": "spark",
+      "write_scope": [
+        "/Users/hackhike/dev/HonoWarden-website/src/index.ts",
+        "/Users/hackhike/dev/HonoWarden-website/test/app.test.ts"
+      ]
+    },
+    {
+      "id": "main-deploy-evidence",
+      "status": "completed",
+      "owner": "codex",
+      "write_scope": [
+        "/Users/hackhike/dev/HonoWarden",
+        "/Users/hackhike/dev/HonoWarden-website/docs"
+      ]
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "website local checks",
+      "website PR CI",
+      "cloudflare live smoke",
+      "main repo release docs/readiness checks"
+    ]
+  }
+}

@@ -43,6 +43,23 @@ are the pre-correction deployments from `main`
 not treat them as approved rollback targets without an incident-specific
 decision. Rollback was not executed because post-deploy smoke passed.
 
+## Website Previous-Version Handle
+
+Standing operator approval was provided on 2026-07-08. The website deployment
+was performed from `kazu-42/HonoWarden-website` after PR #1 passed CI and was
+merged.
+
+- Website merge commit: `36b8171f7afd55bf306e5482cca454a0b3822a39`
+- Current deployment: `0f398ae5-6d01-42a8-bbe4-35378661ce81`
+- Current version: `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91`
+- Previous deployment: `5b1f701c-4654-46e5-bca7-09de61316783`
+- Previous version: `3db432cb-6422-4311-b558-6eb2b0b5bb51`
+- Previous status: known-good public website deployment that did not advertise
+  an active unverified security mailbox
+- Rollback command:
+  `pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes`
+- Rollback execution: not performed because post-deploy website smoke passed
+
 ## Evidence To Record
 
 For each approved operation, record:
@@ -80,7 +97,7 @@ API Worker:
 Website:
 
 ```sh
-# Fill in the approved previous website deployment id or route restore command.
+pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes
 ```
 
 Email Routing:
@@ -93,7 +110,8 @@ Email Routing:
 
 - API Worker rollback command approval has not been recorded.
 - API Worker rollback rehearsal has not been performed by this evidence file.
-- Website route rollback has not been performed by this evidence file.
+- Website route rollback has not been performed by this evidence file because
+  post-deploy smoke passed.
 - Email Routing rollback has not been performed by this evidence file.
 - DNS rollback has not been performed by this evidence file.
 
