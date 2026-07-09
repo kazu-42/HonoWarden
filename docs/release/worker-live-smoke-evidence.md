@@ -53,7 +53,9 @@ remained disabled, and audit logging remained disabled.
   `f2357f14-8430-4b9f-913d-2dbad72322dd`
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target for this alpha evidence
-- Approved rollback command: unresolved
+- Approved recovery strategy: redeploy release target commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`; see
+  [Operations Rollback Evidence](ops-rollback-evidence.md)
 
 ### Production
 
@@ -66,7 +68,9 @@ remained disabled, and audit logging remained disabled.
   `2c0b365b-3cf9-4766-ba8d-e5bd969c969d`
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target for this alpha evidence
-- Approved rollback command: unresolved
+- Approved recovery strategy: redeploy release target commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`; see
+  [Operations Rollback Evidence](ops-rollback-evidence.md)
 
 ## Commands Run
 
@@ -134,16 +138,18 @@ Redacted results:
   tracked separately in website/API route evidence.
 - Public account registration remains disabled.
 - No production secrets were written.
-- Candidate previous-version handles are recorded, but approved rollback
-  commands remain unresolved because the previous versions are pre-correction
-  `main` deployments rather than verified safe rollback targets.
+- Candidate previous-version handles are recorded, but they are not approved
+  rollback targets because the previous versions are pre-correction `main`
+  deployments. The approved alpha recovery strategy is to redeploy the reviewed
+  release target commit as recorded in
+  [Operations Rollback Evidence](ops-rollback-evidence.md).
 
 ## Rollback
 
 If deploy or smoke validation fails:
 
 1. Stop promotion.
-2. Redeploy the previous Worker version or remove the route, depending on the
-   approved rollback plan.
+2. Redeploy the reviewed release target commit, or remove the route, depending
+   on the approved rollback plan.
 3. Re-run `/health`, `/healthz`, and `/health/db` against the restored target.
 4. Record the rollback timestamp and resulting health response.
