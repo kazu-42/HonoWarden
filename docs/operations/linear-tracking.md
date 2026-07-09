@@ -44,7 +44,8 @@ mkdir -p test/.tmp
 pnpm linear:preflight -- --strict > test/.tmp/linear-preflight.ready.json
 pnpm linear:apply-plan -- --preflight-report test/.tmp/linear-preflight.ready.json --strict > test/.tmp/linear-apply-plan.ready.json
 pnpm linear:mutation-packet -- --apply-plan test/.tmp/linear-apply-plan.ready.json --strict > test/.tmp/linear-mutation-packet.ready.json
-pnpm linear:request-plan -- --mutation-packet test/.tmp/linear-mutation-packet.ready.json --strict
+pnpm linear:request-plan -- --mutation-packet test/.tmp/linear-mutation-packet.ready.json --strict > test/.tmp/linear-request-plan.ready.json
+pnpm linear:resolution-plan -- --request-plan test/.tmp/linear-request-plan.ready.json --resolution-map <local-resolution-map> --strict
 ```
 
 `linear:apply-plan` does not read `LINEAR_API_KEY` and does not call Linear. It
@@ -67,6 +68,12 @@ requirements, existing-object confirmations, and manual confirmations for a
 future guarded writer. It intentionally uses local intent names instead of
 asserting unverified live GraphQL mutation names. It does not read credentials,
 call Linear, or execute writes.
+
+`linear:resolution-plan` is local-only as well. It consumes a ready request plan
+and a supplied local resolution map, then reports whether every required
+workspace, team, project, milestone, issue, label, state, and initiative ID is
+available for a future guarded writer. It does not fetch IDs from Linear, read
+credentials, or execute writes.
 
 The seed defines:
 
@@ -130,7 +137,14 @@ Safe verification steps:
    pnpm linear:request-plan -- --mutation-packet <ready-mutation-packet> --strict
    ```
 
-8. Only then create issues, projects, and documents through MCP or API tooling.
+8. Generate a strict resolution plan from the reviewed ready request plan and a
+   local ID map:
+
+   ```sh
+   pnpm linear:resolution-plan -- --request-plan <ready-request-plan> --resolution-map <local-resolution-map> --strict
+   ```
+
+9. Only then create issues, projects, and documents through MCP or API tooling.
 
 ## Recommended Apply Order
 
@@ -161,6 +175,10 @@ for a future guarded writer, not proof that the writer ran.
 Do not treat the request plan as execution evidence. It is the deterministic
 writer-input contract; live execution still requires ID resolution, explicit
 credentials, write-scope confirmation, and readback.
+
+Do not treat the resolution plan as execution evidence. It only proves a local
+ID map is complete enough for the reviewed request plan; it does not prove that
+any writer ran or that Linear accepted mutations.
 
 ## Views
 

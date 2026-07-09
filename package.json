@@ -35,6 +35,7 @@
     "linear:mutation-packet": "node scripts/honowarden-linear-mutation-packet.mjs",
     "linear:preflight": "node scripts/honowarden-linear-preflight.mjs",
     "linear:request-plan": "node scripts/honowarden-linear-request-plan.mjs",
+    "linear:resolution-plan": "node scripts/honowarden-linear-resolution-plan.mjs",
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "lint": "eslint .",
     "ops:readiness:packet": "node scripts/honowarden-ops-readiness-packet.mjs",

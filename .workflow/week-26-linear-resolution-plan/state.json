@@ -1,0 +1,93 @@
+{
+  "title": "Week 26 Linear resolution plan",
+  "slug": "week-26-linear-resolution-plan",
+  "created_at": "2026-07-09T00:15:14+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local-only ID resolution planning; no live Linear reads or writes."
+  },
+  "packets": [
+    {
+      "id": "01-spark-script-test",
+      "status": "completed",
+      "owner": "spark"
+    },
+    {
+      "id": "02-docs-integration",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "03-review",
+      "status": "completed",
+      "owner": "codex"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/ops/linear-resolution-plan.test.ts",
+        "status": "passed_10_tests"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/linear-request-plan.test.ts test/ops/linear-resolution-plan.test.ts",
+        "status": "passed_19_tests"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed_50_files_448_tests"
+      },
+      {
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "command": "missing-map resolution-plan smoke",
+        "status": "passed_expected_blocked"
+      },
+      {
+        "command": "seed-derived apply-plan -> mutation-packet -> request-plan -> resolution-plan smoke",
+        "status": "passed_ready_52_resolved_0_missing"
+      },
+      {
+        "command": "missing concrete initiative and milestone refs reproduction",
+        "status": "passed"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "command": "target-file secret pattern scan",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-linear-resolution-plan",
+        "status": "passed"
+      },
+      {
+        "command": "codex review --uncommitted",
+        "status": "passed_clean"
+      }
+    ]
+  }
+}
