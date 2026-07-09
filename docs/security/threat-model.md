@@ -12,10 +12,11 @@ In scope:
 
 - Cloudflare Worker API implemented in `src/app.ts`
 - D1 schema and repository access patterns
-- R2 binding reserved for encrypted object storage
+- R2 binding for encrypted object storage, including cipher attachment bodies
 - account bootstrap, profile mutation, login, refresh, sync, folder, cipher,
   device listing, identifier lookup, metadata update, encrypted-key update,
-  device revoke, TOTP, backup/restore, audit logging, and compatibility fixtures
+  device revoke, TOTP, cipher attachments, backup/restore, audit logging, and
+  compatibility fixtures
 - Wrangler environment separation and local CI gates
 
 Out of scope for the initial product:
@@ -39,6 +40,7 @@ Out of scope for the initial product:
 | access tokens                         | client bearer token                    | verify signature, expiry, subject, device, and security stamp |
 | TOTP setup secret                     | D1 AES-GCM envelope                    | wrap with `HONOWARDEN_TOTP_SECRET`; reject replay             |
 | vault folders and ciphers             | D1 encrypted payload columns           | preserve ciphertext; enforce owner scope                      |
+| cipher attachment metadata            | D1 `cipher_attachments`                | bind object metadata to owner and cipher lifecycle            |
 | R2 vault objects                      | R2                                     | store encrypted objects only; no plaintext server access      |
 | audit events                          | platform logs                          | omit secrets and vault payloads                               |
 | backup artifacts                      | operator filesystem and target D1/R2   | checksum and restore only into fresh targets                  |
@@ -82,6 +84,7 @@ Out of scope for the initial product:
 - TOTP setup, setup verify, and disable routes
 - device revoke route
 - folder and cipher CRUD routes
+- cipher attachment upload, download, and delete routes
 - operator backup/restore and account lifecycle CLIs
 - audit log stream
 
@@ -90,7 +93,7 @@ Out of scope for the initial product:
 | Threat                 | Current Controls                                                                                                                                                | Residual Risk                                                                |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                                                       | no asymmetric token keys; bulk trusted-device approval is not implemented    |
-| Tampering              | D1 owner predicates, revision conflict checks, backup checksum validation                                                                                       | no live restore drill evidence yet                                           |
+| Tampering              | D1 owner predicates, attachment metadata predicates, revision conflict checks, backup checksum validation                                                       | no live restore drill evidence yet                                           |
 | Repudiation            | opt-in audit events for bootstrap, auth failures, refresh reuse, device revoke, revoke-all-other-sessions, and TOTP disable                                     | audit events are not persisted in D1 and do not cover every vault CRUD route |
 | Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, secret-safe audit filtering                                                       | platform logs/backups remain sensitive operational data                      |
 | Denial of service      | password-grant IP and account lockouts, bounded fixture tests                                                                                                   | no global request quota, queue, or abuse monitoring beyond login defenses    |
@@ -104,7 +107,8 @@ Out of scope for the initial product:
 
 2. Cross-user vault row access through guessed IDs.
    Current mitigation: repository predicates bind `user_id`, folder ownership is
-   checked before cipher create/update, and app tests cover mixed-user sync.
+   checked before cipher create/update, attachment lookups bind user and cipher
+   IDs, and app tests cover mixed-user sync.
 
 3. Refresh token replay from a compromised device.
    Current mitigation: refresh rotation, revoked-token session invalidation,

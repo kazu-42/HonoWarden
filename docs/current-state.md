@@ -741,8 +741,8 @@ Implemented:
 
 - explicit `501` JSON response for `/api/organizations` and child paths
 - explicit `501` JSON response for `/api/sends` and child paths
-- explicit `501` JSON response for collection, emergency-access, attachment,
-  and cipher-attachment paths
+- explicit `501` JSON response for collection, emergency-access, and top-level
+  `/api/attachments` paths
 - request ID preservation on unsupported feature responses
 - route test coverage proving these paths do not fall through to generic `404`
 
@@ -751,7 +751,8 @@ Not implemented:
 - organization or shared-vault functionality
 - public file-sharing functionality
 - collection or emergency-access functionality
-- attachment object storage, download, or mutation functionality
+- top-level attachment collection APIs outside the cipher-scoped upload,
+  download, and delete routes
 
 ## Week 26 Revoke Other Sessions
 
@@ -921,9 +922,39 @@ Implemented:
 
 Not implemented:
 
-- direct attachment read APIs
 - collection-scoped reads
 - live client evidence for direct folder or cipher read endpoints
+
+## Week 26 Attachment Storage APIs
+
+Implemented:
+
+- forward-only D1 migration `0006_cipher_attachments.sql` for
+  owner-scoped attachment metadata
+- `cipher_attachments` required-table health coverage
+- authenticated `POST /api/ciphers/:id/attachment` multipart upload
+- authenticated `GET /api/ciphers/:id/attachment/:attachmentId` download
+- authenticated `DELETE /api/ciphers/:id/attachment/:attachmentId` delete
+- server-generated R2 object keys under `attachments/<uuid>` that do not embed
+  plaintext user IDs, cipher IDs, filenames, or emails
+- attachment metadata storage for opaque client-encrypted `fileName` and
+  attachment `key` values
+- upload failure cleanup that deletes the just-written R2 object when metadata
+  persistence fails
+- attachment download and delete authorization through `user_id`, `cipher_id`,
+  and attachment `id` predicates
+- cipher read/list/sync responses inject D1 attachment metadata and never expose
+  the internal R2 object key
+- compatibility fixture flow `attachment_metadata` proving sync metadata shape
+- HTTP tests for upload, missing/cross-user cipher rejection, download,
+  cross-user denial, delete, and sync metadata injection
+- repository tests for attachment create/list/find/delete owner predicates
+
+Not implemented:
+
+- live official-client attachment upload/download/delete evidence
+- top-level `/api/attachments` collection APIs
+- server-side plaintext inspection, scanning, or filename parsing
 
 ## Week 26 Metadata Read APIs
 

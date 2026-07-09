@@ -157,6 +157,22 @@ const cipherRows = [
   },
 ]
 
+const attachmentRows = [
+  {
+    id: 'attachment-id',
+    userId: replayUser.id,
+    cipherId: 'cipher-id',
+    objectKey: 'attachments/00000000-0000-4000-8000-0000000000a1',
+    fileName: '2.encrypted-file-name',
+    attachmentKey: '2.encrypted-attachment-key',
+    size: 15,
+    contentType: 'application/octet-stream',
+    revisionDate: '2026-07-10T00:00:00.000Z',
+    createdAt: '2026-07-10T00:00:00.000Z',
+    updatedAt: '2026-07-10T00:00:00.000Z',
+  },
+]
+
 const replayFixtures = [
   {
     path: 'config/server-config-success.json',
@@ -205,6 +221,18 @@ const replayFixtures = [
       },
       folders: folderRows,
       ciphers: cipherRows,
+    },
+  },
+  {
+    path: 'sync/with-attachment.json',
+    database: {
+      authUser: {
+        ...replayUser,
+        totpEnabled: true,
+      },
+      folders: folderRows,
+      ciphers: cipherRows,
+      attachments: attachmentRows,
     },
   },
   {

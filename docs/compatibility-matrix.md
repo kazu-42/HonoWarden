@@ -16,6 +16,10 @@ Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compa
 | mobile_ios        | 2026.6.0 | 3325  | v2026.6.0-bwpm    | 2026-06-26T15:03:00Z | fixture_only | No live mobile login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `GET /api/devices/knowndevice`); encrypted device key update has fixture coverage only.                                       |
 | cli               | 2026.6.0 |       | cli-v2026.6.0     | 2026-06-25T18:32:52Z | live_smoke   | Live CLI smoke covers config, password login, empty sync, and revision lookup only; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `GET /api/devices/knowndevice`); encrypted device key update has fixture coverage only. |
 
+Attachment sync metadata has fixture coverage through `attachment_metadata`.
+Live official-client attachment upload, download, and delete evidence is still
+not recorded for any tracked client surface.
+
 ## Verification Levels
 
 - `fixture_only`: CI verifies protocol fixtures and route behavior using synthetic payloads, but no real client binary has been run for this exact version.
@@ -51,6 +55,7 @@ opaque continuation tokens.
 - `device_keys_update`
 - `known_device_preflight`
 - `sync_with_items`
+- `attachment_metadata`
 - `folder_crud`
 - `cipher_create`
 - `cipher_lifecycle`

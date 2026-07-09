@@ -78,14 +78,21 @@ Data stored:
    keyring; legacy no-kid tokens are accepted only through the configured
    fallback window.
 3. Worker loads the active user and rejects disabled users.
-4. Folder and cipher repository calls bind `auth.user.id`.
+4. Folder, cipher, and attachment repository calls bind `auth.user.id`.
 5. Cipher and folder payloads remain opaque encrypted strings to the server.
+6. Attachment uploads store opaque encrypted bytes in R2 under
+   `attachments/<uuid>` object keys and store owner-scoped metadata in D1.
+7. Attachment download and delete first resolve D1 metadata by authenticated
+   `user_id`, `cipher_id`, and attachment `id`; R2 object keys are never exposed
+   in API responses.
 
 Owner-scope invariant:
 
 - a caller can only list, update, delete, restore, or permanently delete rows
   whose `user_id` equals the authenticated user id
 - cipher create/update with a folder id first verifies folder ownership
+- attachment metadata must match the authenticated user and parent cipher before
+  any R2 object read or delete
 
 ## Account Lifecycle Operator CLI
 
@@ -178,6 +185,8 @@ payloads, request bodies, or response bodies.
 3. Remote R2 backup can discover object keys through the S3-compatible
    `ListObjectsV2` API without downloading object bodies during dry-run.
 4. Executed export writes D1 SQL, optional R2 object files, and manifest data.
+   Attachment backups require both `cipher_attachments` metadata in D1 and the
+   corresponding `attachments/` R2 objects.
 5. Restore validates manifest schema, deterministic R2 key/file mapping,
    relative paths, R2 path containment, and SHA-256 hashes.
 6. Restore execution requires `--confirm-fresh-target`.

@@ -35,6 +35,8 @@ Do not commit real secret values to the repository.
 | device identifiers and names  | D1 `devices`                             | operational metadata; treat as sensitive              |
 | encrypted folder names        | D1 `folders.encrypted_name`              | ciphertext but still sensitive backup material        |
 | encrypted cipher JSON         | D1 `ciphers.encrypted_json`              | ciphertext; server must not parse plaintext           |
+| attachment metadata           | D1 `cipher_attachments`                  | encrypted filename/key plus opaque R2 object pointer  |
+| attachment object bodies      | R2 `attachments/<uuid>`                  | opaque encrypted bytes; no plaintext server access    |
 | encrypted TOTP setup secret   | D1 `user_totp.encrypted_secret`          | AES-GCM envelope under TOTP secret                    |
 | TOTP challenge hash           | D1 `totp_challenges.challenge_hash`      | single-use, expiring, device-bound                    |
 | auth failure bucket keys      | D1 `auth_*` tables                       | hashed bucket metadata, not raw IP                    |

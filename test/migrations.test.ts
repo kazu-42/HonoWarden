@@ -97,6 +97,31 @@ describe('initial D1 migration', () => {
     expect(allMigrations).toContain("VALUES ('0005')")
   })
 
+  it('adds owner-scoped cipher attachment metadata for R2 objects', () => {
+    expect(allMigrations).toContain(
+      'CREATE TABLE IF NOT EXISTS cipher_attachments',
+    )
+    expect(allMigrations).toContain('user_id TEXT NOT NULL')
+    expect(allMigrations).toContain('cipher_id TEXT NOT NULL')
+    expect(allMigrations).toContain('object_key TEXT NOT NULL UNIQUE')
+    expect(allMigrations).toContain('file_name TEXT NOT NULL')
+    expect(allMigrations).toContain('attachment_key TEXT NOT NULL')
+    expect(allMigrations).toContain('size INTEGER NOT NULL')
+    expect(allMigrations).toContain(
+      'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+    )
+    expect(allMigrations).toContain(
+      'FOREIGN KEY (cipher_id) REFERENCES ciphers(id) ON DELETE CASCADE',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_cipher_attachments_user_cipher',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_cipher_attachments_user_revision',
+    )
+    expect(allMigrations).toContain("VALUES ('0006')")
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -111,4 +136,5 @@ const allMigrations = [
   readFileSync('migrations/0003_totp_login.sql', 'utf8'),
   readFileSync('migrations/0004_totp_change.sql', 'utf8'),
   readFileSync('migrations/0005_device_keys.sql', 'utf8'),
+  readFileSync('migrations/0006_cipher_attachments.sql', 'utf8'),
 ].join('\n')

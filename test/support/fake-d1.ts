@@ -17,6 +17,10 @@ type FakeD1DatabaseOptions = {
   userTotp?: Record<string, unknown> | null
   totpChallenge?: Record<string, unknown> | null
   cipher?: Record<string, unknown> | null
+  attachment?: Record<string, unknown> | null
+  attachmentDeleteChanges?: number
+  attachmentInsertChanges?: number
+  attachments?: Record<string, unknown>[]
   cipherInsertChanges?: number
   cipherPermanentDeleteChanges?: number
   cipherRestoreChanges?: number
@@ -131,6 +135,17 @@ export class FakeD1Database {
           ) as T | null
         }
 
+        if (query.includes('FROM cipher_attachments')) {
+          if (options.attachment !== undefined) {
+            return (options.attachment ?? null) as T | null
+          }
+
+          return findScopedAttachmentRow(
+            options.attachments ?? [],
+            boundValues,
+          ) as T | null
+        }
+
         if (query.includes('FROM ciphers')) {
           if (options.cipher !== undefined) {
             return (options.cipher ?? null) as T | null
@@ -186,6 +201,17 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (query.includes('FROM cipher_attachments')) {
+          return {
+            success: true,
+            results: filterAttachmentRows(
+              options.attachments ?? [],
+              boundValues,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('FROM ciphers')) {
           return {
             success: true,
@@ -268,6 +294,28 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.cipherInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO cipher_attachments')) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.attachmentInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+cipher_attachments/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.attachmentDeleteChanges ?? 1,
             },
           }
         }
@@ -734,6 +782,31 @@ function findScopedRow(
   return scopedRows[0] ?? null
 }
 
+function findScopedAttachmentRow(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  const id = String(boundValues[0] ?? '')
+  const cipherId = String(boundValues[1] ?? '')
+  const userId = String(boundValues[2] ?? '')
+
+  return (
+    rows.find(
+      (row) =>
+        row.id === id && row.cipherId === cipherId && row.userId === userId,
+    ) ?? null
+  )
+}
+
+function filterAttachmentRows(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  const userId = String(boundValues[0] ?? '')
+
+  return rows.filter((row) => row.userId === userId).sort(compareRevisionThenId)
+}
+
 function findDeviceRow(
   rows: Record<string, unknown>[],
   boundValues: unknown[],
@@ -777,6 +850,7 @@ export const requiredTables = [
   'auth_failure_buckets',
   'folders',
   'ciphers',
+  'cipher_attachments',
   'user_totp',
   'totp_challenges',
 ] as const
