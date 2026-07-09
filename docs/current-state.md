@@ -1697,12 +1697,19 @@ Implemented:
   fail with Cloudflare authentication error `10000`
 - DNS readback for `honowarden.com` shows Cloudflare nameservers and website
   A/AAAA records, but no MX or apex TXT records yet
+- AI-driven inquiry inbox architecture is documented in
+  `docs/operations/ai-inquiry-inbox.md`, including trust boundaries,
+  Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
+  Object state boundaries, human approval rules, retention/redaction controls,
+  and follow-up implementation split for `HON-24` through `HON-28`
 
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
 - Email Routing live route creation and inbound delivery evidence in
   `docs/release/email-routing-evidence.md`
+- AI inquiry inbox Worker, mailbox UI, body or attachment storage, AI triage,
+  approved outbound replies, and Linear issue creation automation
 - verified safe rollback target selection for the API Worker
 - rollback rehearsal or rollback execution
 - production secret writes, public registration enablement, or real vault-data

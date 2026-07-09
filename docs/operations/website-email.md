@@ -71,6 +71,11 @@ configure that provider's MX, SPF, DKIM, and DMARC records instead of or
 alongside Cloudflare Email Routing. Do not assume Cloudflare Email Routing alone
 is a mail client.
 
+For the project-owned AI inquiry inbox path, use
+[AI Inquiry Inbox Architecture](ai-inquiry-inbox.md). That design keeps the
+alpha forwarding posture until route evidence, access control, retention,
+redaction, and human approval rules are in place.
+
 ## Email Worker Phases
 
 Phase 1 should use simple Email Routing forwarding rules only.
@@ -85,6 +90,14 @@ Phase 2 can add an Email Worker when there is a concrete need:
 
 Do not parse or store full message bodies or attachments in HonoWarden systems
 until retention, access control, and deletion policy are written down.
+
+Phase 3 can add the AI inquiry inbox after the architecture gate is satisfied:
+
+- metadata-only ingestion and forwarding remain the default
+- raw MIME and attachment storage require an explicit retention/deletion switch
+- AI may classify, summarize, and draft, but external replies require human
+  approval by default
+- Linear issue creation uses redacted summaries and requires human approval
 
 ## Cloudflare Configuration Checklist
 
@@ -178,4 +191,5 @@ Create or update issues for:
 - Email Routing destination verification
 - email route smoke evidence
 - mailbox-provider decision, if a real inbox UI is required
+- AI inquiry inbox implementation phases after the architecture gate
 - public security contact verification
