@@ -69,6 +69,7 @@ describe('release feature-freeze docs', () => {
     expect(releaseNotes).toContain('independent security audit')
     expect(releaseNotes).toContain('fixture_only')
     expect(releaseNotes).toContain('D1 audit-event persistence')
+    expect(releaseNotes).toContain('vault mutation audit event coverage')
   })
 
   it('aligns the package version with the alpha target', () => {

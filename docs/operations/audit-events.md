@@ -48,9 +48,19 @@ Fields:
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection
+- `attachment.create`: successful encrypted attachment upload metadata creation
+- `attachment.delete`: successful encrypted attachment metadata and object delete
 - `backup.export`: user export success and database-failure outcomes, with
   count-only context and no request or response bodies
+- `cipher.create`: successful cipher creation with type/favorite/folder flags
+- `cipher.delete`: successful cipher trash mutation
+- `cipher.permanent_delete`: successful permanent cipher deletion
+- `cipher.restore`: successful cipher restore mutation
+- `cipher.update`: successful cipher update with type/favorite/folder flags
 - `device.revoke`: successful and not-found device revoke attempts
+- `folder.create`: successful folder creation
+- `folder.delete`: successful folder soft deletion
+- `folder.update`: successful folder update
 - `session.revoke_all`: successful revoke-all-other-sessions attempts
 - `totp.change`: TOTP change start and verify outcomes
 - `totp.disable`: successful and not-enabled TOTP disable attempts
@@ -137,6 +147,10 @@ in an environment that should persist rows.
 Operator backup and restore audit evidence is still runbook-based in the alpha
 scope. Each backup/restore drill should record the manifest path, commands,
 target resources, and verification result in the project update. The
+`pnpm backup:export` and `pnpm backup:restore` commands print a secret-safe
+`audit` packet with the action name, result status, and manifest SHA-256 id.
+The packet does not include database names, bucket names, object keys, or
+command arguments. The
 user-triggered `POST /api/accounts/export` route emits the `backup.export`
 Worker audit event and persists it to D1 when audit logging is enabled, but that
 event is not a substitute for an operator disaster-recovery backup record.

@@ -1,0 +1,60 @@
+{
+  "title": "HON-48 vault audit coverage",
+  "slug": "hon-48-vault-audit-coverage",
+  "created_at": "2026-07-09T18:58:31+00:00",
+  "status": "verified",
+  "approval": {
+    "required": "production deploy or live backup execution only",
+    "granted": "local implementation and PR covered by user instruction",
+    "notes": "Do not execute production backup/restore commands for HON-48."
+  },
+  "packets": [
+    {
+      "id": "route-audit-coverage",
+      "status": "completed"
+    },
+    {
+      "id": "backup-audit-packet",
+      "status": "completed"
+    },
+    {
+      "id": "docs-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/app.test.ts test/ops/backup-cli.test.ts --testNamePattern \"secret-safe audit events for folder mutations|secret-safe audit events for cipher mutations|secret-safe audit events for attachment mutations|plans a local D1 and R2 export|plans a local restore\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/app.test.ts test/ops/backup-cli.test.ts test/security-docs.test.ts test/release-docs.test.ts --testNamePattern \"secret-safe audit events|plans a local D1 and R2 export|plans a local restore|critical security|release notes\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "details": "94 files, 820 tests"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "details": "overall ready"
+      }
+    ]
+  }
+}

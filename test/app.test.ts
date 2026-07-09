@@ -4352,6 +4352,110 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('emits secret-safe audit events for folder mutations', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      folderDeleteChanges: 1,
+      folderUpdateChanges: 1,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const createResponse = await app.request(
+      '/api/folders',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'audit-folder-create-request',
+        },
+        body: JSON.stringify({
+          name: '2.encrypted-folder-name',
+        }),
+      },
+      env,
+    )
+    const updateResponse = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'audit-folder-update-request',
+        },
+        body: JSON.stringify({
+          name: '2.updated-encrypted-folder-name',
+          revisionDate: '2026-07-06T00:00:00.000Z',
+        }),
+      },
+      env,
+    )
+    const deleteResponse = await app.request(
+      '/api/folders/folder-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-folder-delete-request',
+        },
+      },
+      env,
+    )
+
+    expect(createResponse.status).toBe(201)
+    expect(updateResponse.status).toBe(200)
+    expect(deleteResponse.status).toBe(200)
+    expect(database.auditEventInserts.map((event) => event.name)).toEqual([
+      'folder.create',
+      'folder.update',
+      'folder.delete',
+    ])
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-folder-create-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'folder',
+        contextJson: JSON.stringify({ resultStatus: 'created' }),
+      }),
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-folder-update-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'folder',
+        targetId: 'folder-id',
+        contextJson: JSON.stringify({ resultStatus: 'updated' }),
+      }),
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-folder-delete-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'folder',
+        targetId: 'folder-id',
+        contextJson: JSON.stringify({ resultStatus: 'deleted' }),
+      }),
+    ])
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      '2.encrypted-folder-name',
+    )
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      'test-token-secret',
+    )
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      accessToken,
+    )
+  })
+
   it('returns not found when deleting a missing or cross-user folder', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -4925,6 +5029,67 @@ describe('HonoWarden app', () => {
     expect(bucket.keys()).toEqual([])
   })
 
+  it('does not delete uploaded attachment bytes when audit persistence fails after metadata create', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const form = new FormData()
+    form.set('fileName', '2.encrypted-file-name')
+    form.set('key', '2.encrypted-attachment-key')
+    form.set('file', new Blob(['encrypted-bytes']), 'ignored.bin')
+
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-attachment-create-failure-request',
+        },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          auditEventInsertThrows: true,
+          cipher: {
+            id: 'cipher-id',
+            userId: 'user-id',
+            folderId: null,
+            type: 1,
+            favorite: 0,
+            encryptedJson: JSON.stringify({
+              type: 1,
+              favorite: false,
+              name: '2.encrypted-cipher-name',
+            }),
+            revisionDate: '2026-07-06T00:05:00.000Z',
+            createdAt: '2026-07-06T00:04:00.000Z',
+          },
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'storage_unavailable',
+      },
+    })
+    expect(bucket.putKeys).toHaveLength(1)
+    expect(bucket.deletedKeys).toEqual([])
+    const [storedKey] = bucket.putKeys
+    if (!storedKey) {
+      throw new Error('Expected attachment upload to write an R2 object.')
+    }
+    expect(bucket.has(storedKey)).toBe(true)
+    auditLog.mockRestore()
+  })
+
   it('downloads encrypted attachment bytes for the owning cipher', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -5029,6 +5194,105 @@ describe('HonoWarden app', () => {
     })
     expect(bucket.has('attachments/opaque-object-id')).toBe(false)
     expect(bucket.deletedKeys).toEqual(['attachments/opaque-object-id'])
+  })
+
+  it('emits secret-safe audit events for attachment mutations', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    await bucket.put('attachments/opaque-object-id', 'encrypted-bytes')
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      attachmentDeleteChanges: 1,
+      attachments: [attachmentRecord()],
+      cipher: {
+        id: 'cipher-id',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: JSON.stringify({
+          type: 1,
+          favorite: false,
+          name: '2.encrypted-cipher-name',
+        }),
+        revisionDate: '2026-07-06T00:05:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+      },
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+    const form = new FormData()
+    form.set('fileName', '2.encrypted-file-name')
+    form.set('key', '2.encrypted-attachment-key')
+    form.set('file', new Blob(['encrypted-bytes']), 'ignored.bin')
+
+    const uploadResponse = await app.request(
+      '/api/ciphers/cipher-id/attachment',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-attachment-create-request',
+        },
+        body: form,
+      },
+      env,
+    )
+    const deleteResponse = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-attachment-delete-request',
+        },
+      },
+      env,
+    )
+
+    expect(uploadResponse.status).toBe(201)
+    expect(deleteResponse.status).toBe(200)
+    expect(database.auditEventInserts.map((event) => event.name)).toEqual([
+      'attachment.create',
+      'attachment.delete',
+    ])
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-attachment-create-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'attachment',
+        contextJson: JSON.stringify({
+          resultStatus: 'created',
+          cipherId: 'cipher-id',
+          size: 15,
+        }),
+      }),
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-attachment-delete-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'attachment',
+        targetId: 'attachment-id',
+        contextJson: JSON.stringify({
+          resultStatus: 'deleted',
+          cipherId: 'cipher-id',
+        }),
+      }),
+    ])
+    const serialized = JSON.stringify(database.auditEventInserts)
+    expect(serialized).not.toContain('2.encrypted-file-name')
+    expect(serialized).not.toContain('2.encrypted-attachment-key')
+    expect(serialized).not.toContain('attachments/opaque-object-id')
+    expect(serialized).not.toContain('encrypted-bytes')
+    expect(serialized).not.toContain(accessToken)
   })
 
   it('creates a secure-note cipher while preserving unknown encrypted fields', async () => {
@@ -5920,6 +6184,169 @@ describe('HonoWarden app', () => {
       id: 'cipher-id',
       revisionDate: expect.any(String),
     })
+  })
+
+  it('emits secret-safe audit events for cipher mutations', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      cipher: {
+        createdAt: '2026-07-06T00:04:00.000Z',
+      },
+      cipherPermanentDeleteChanges: 1,
+      cipherRestoreChanges: 1,
+      cipherSoftDeleteChanges: 1,
+      cipherUpdateChanges: 1,
+      folder: {
+        id: 'folder-id',
+      },
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const createResponse = await app.request(
+      '/api/ciphers',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'audit-cipher-create-request',
+        },
+        body: JSON.stringify(cipherCreateBody()),
+      },
+      env,
+    )
+    const updateResponse = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'audit-cipher-update-request',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          revisionDate: '2026-07-06T00:04:00.000Z',
+          name: '2.updated-encrypted-cipher-name',
+        }),
+      },
+      env,
+    )
+    const trashResponse = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-cipher-delete-request',
+        },
+      },
+      env,
+    )
+    const restoreResponse = await app.request(
+      '/api/ciphers/cipher-id/restore',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-cipher-restore-request',
+        },
+      },
+      env,
+    )
+    const permanentDeleteResponse = await app.request(
+      '/api/ciphers/cipher-id/delete',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-cipher-permanent-delete-request',
+        },
+      },
+      env,
+    )
+
+    expect(createResponse.status).toBe(201)
+    expect(updateResponse.status).toBe(200)
+    expect(trashResponse.status).toBe(200)
+    expect(restoreResponse.status).toBe(200)
+    expect(permanentDeleteResponse.status).toBe(200)
+    expect(database.auditEventInserts.map((event) => event.name)).toEqual([
+      'cipher.create',
+      'cipher.update',
+      'cipher.delete',
+      'cipher.restore',
+      'cipher.permanent_delete',
+    ])
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-cipher-create-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'cipher',
+        contextJson: JSON.stringify({
+          resultStatus: 'created',
+          cipherType: 1,
+          favorite: true,
+          hasFolder: true,
+        }),
+      }),
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-cipher-update-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'cipher',
+        targetId: 'cipher-id',
+        contextJson: JSON.stringify({
+          resultStatus: 'updated',
+          cipherType: 1,
+          favorite: true,
+          hasFolder: true,
+        }),
+      }),
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-cipher-delete-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'cipher',
+        targetId: 'cipher-id',
+        contextJson: JSON.stringify({ resultStatus: 'deleted' }),
+      }),
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-cipher-restore-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'cipher',
+        targetId: 'cipher-id',
+        contextJson: JSON.stringify({ resultStatus: 'restored' }),
+      }),
+      expect.objectContaining({
+        outcome: 'success',
+        requestId: 'audit-cipher-permanent-delete-request',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'cipher',
+        targetId: 'cipher-id',
+        contextJson: JSON.stringify({ resultStatus: 'permanently_deleted' }),
+      }),
+    ])
+    const serialized = JSON.stringify(database.auditEventInserts)
+    expect(serialized).not.toContain('2.encrypted-cipher-name')
+    expect(serialized).not.toContain('2.updated-encrypted-cipher-name')
+    expect(serialized).not.toContain('2.encrypted-password')
+    expect(serialized).not.toContain('2.encrypted-username')
+    expect(serialized).not.toContain(accessToken)
+    expect(serialized).not.toContain('test-token-secret')
   })
 
   it('returns not found for missing cipher lifecycle mutations', async () => {

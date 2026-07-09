@@ -39,6 +39,8 @@ describe('security review materials', () => {
     expect(dataFlow).toContain('## Refresh Grant')
     expect(dataFlow).toContain('## Backup And Restore')
     expect(dataFlow).toContain('D1 `audit_events`')
+    expect(dataFlow).toContain('folder create, update, and delete')
+    expect(dataFlow).toContain('manifest SHA-256 id only')
 
     const authStateMachine = readSecurityDoc('auth-state-machine.md')
     expect(authStateMachine).toContain('## Account States')

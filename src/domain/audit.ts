@@ -4,7 +4,17 @@ export type AuditEventName =
   | 'auth.refresh_grant'
   | 'auth.refresh_reuse'
   | 'backup.export'
+  | 'attachment.create'
+  | 'attachment.delete'
+  | 'cipher.create'
+  | 'cipher.delete'
+  | 'cipher.permanent_delete'
+  | 'cipher.restore'
+  | 'cipher.update'
   | 'device.revoke'
+  | 'folder.create'
+  | 'folder.delete'
+  | 'folder.update'
   | 'session.revoke_all'
   | 'totp.change'
   | 'totp.disable'
@@ -23,7 +33,14 @@ export type AuditEvent = {
     deviceIdentifier?: string
   }
   target?: {
-    type: 'account' | 'device' | 'session' | 'backup'
+    type:
+      | 'account'
+      | 'attachment'
+      | 'backup'
+      | 'cipher'
+      | 'device'
+      | 'folder'
+      | 'session'
     id?: string
   }
   context?: AuditContext
@@ -41,7 +58,14 @@ type AuditEventInput = {
     deviceIdentifier?: string | undefined
   }
   target?: {
-    type: 'account' | 'device' | 'session' | 'backup'
+    type:
+      | 'account'
+      | 'attachment'
+      | 'backup'
+      | 'cipher'
+      | 'device'
+      | 'folder'
+      | 'session'
     id?: string | undefined
   }
   context?: AuditContext

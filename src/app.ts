@@ -147,7 +147,14 @@ type AuditInput = {
     deviceIdentifier?: string | undefined
   }
   target?: {
-    type: 'account' | 'device' | 'session' | 'backup'
+    type:
+      | 'account'
+      | 'attachment'
+      | 'backup'
+      | 'cipher'
+      | 'device'
+      | 'folder'
+      | 'session'
     id?: string | undefined
   }
   context?: Record<string, string | number | boolean | null>
@@ -304,6 +311,31 @@ async function emitBackupExportAuditEvent(
       id: auth.user.id,
     },
     context,
+  })
+}
+
+async function emitVaultMutationAuditEvent(
+  c: AppContext,
+  auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
+  input: {
+    name: AuditEventName
+    outcome: AuditEventOutcome
+    target: {
+      type: 'attachment' | 'cipher' | 'folder'
+      id?: string
+    }
+    context: Record<string, string | number | boolean | null>
+  },
+): Promise<void> {
+  await emitAuditEvent(c, {
+    name: input.name,
+    outcome: input.outcome,
+    actor: {
+      userId: auth.user.id,
+      deviceIdentifier: auth.deviceIdentifier,
+    },
+    target: input.target,
+    context: input.context,
   })
 }
 
@@ -574,26 +606,42 @@ app.post('/api/ciphers/:id/attachment', async (c) => {
       },
     })
 
-    try {
-      const attachment = await createCipherAttachment(c.env.DB, {
-        id: attachmentId,
-        userId: auth.user.id,
-        cipherId,
-        objectKey,
-        fileName: upload.fileName,
-        attachmentKey: upload.attachmentKey,
-        size: upload.size,
-        contentType: upload.contentType,
-        revisionDate: now,
-        createdAt: now,
-        updatedAt: now,
-      })
+    const attachment = await (async () => {
+      try {
+        return await createCipherAttachment(c.env.DB, {
+          id: attachmentId,
+          userId: auth.user.id,
+          cipherId,
+          objectKey,
+          fileName: upload.fileName,
+          attachmentKey: upload.attachmentKey,
+          size: upload.size,
+          contentType: upload.contentType,
+          revisionDate: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+      } catch {
+        await c.env.VAULT_OBJECTS.delete(objectKey)
+        throw new Error('attachment metadata create failed')
+      }
+    })()
 
-      return c.json(buildAttachmentResponse(attachment), 201)
-    } catch {
-      await c.env.VAULT_OBJECTS.delete(objectKey)
-      throw new Error('attachment metadata create failed')
-    }
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'attachment.create',
+      outcome: 'success',
+      target: {
+        type: 'attachment',
+        id: attachment.id,
+      },
+      context: {
+        resultStatus: 'created',
+        cipherId,
+        size: attachment.size,
+      },
+    })
+
+    return c.json(buildAttachmentResponse(attachment), 201)
   } catch {
     return c.json(
       apiError(
@@ -684,6 +732,19 @@ app.delete('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
     if (result.status === 'not_found') {
       return c.json(attachmentNotFoundError(c.get('requestId')), 404)
     }
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'attachment.delete',
+      outcome: 'success',
+      target: {
+        type: 'attachment',
+        id: attachment.id,
+      },
+      context: {
+        resultStatus: 'deleted',
+        cipherId,
+      },
+    })
 
     return c.json({
       object: 'attachmentDeletion',
@@ -2229,11 +2290,24 @@ app.post('/api/folders', async (c) => {
   const revisionDate = new Date().toISOString()
 
   try {
+    const folderId = crypto.randomUUID()
     const folder = await createFolder(c.env.DB, {
-      id: crypto.randomUUID(),
+      id: folderId,
       userId: auth.user.id,
       name: folderRequest.name,
       revisionDate,
+    })
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'folder.create',
+      outcome: 'success',
+      target: {
+        type: 'folder',
+        id: folder.id,
+      },
+      context: {
+        resultStatus: 'created',
+      },
     })
 
     return c.json(buildFolderResponse(folder), 201)
@@ -2366,6 +2440,18 @@ app.put('/api/folders/:id', async (c) => {
       return c.json(revisionConflictError(c.get('requestId')), 409)
     }
 
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'folder.update',
+      outcome: 'success',
+      target: {
+        type: 'folder',
+        id: folder.folder.id,
+      },
+      context: {
+        resultStatus: 'updated',
+      },
+    })
+
     return c.json(buildFolderResponse(folder.folder))
   } catch {
     return c.json(
@@ -2404,6 +2490,18 @@ app.delete('/api/folders/:id', async (c) => {
         404,
       )
     }
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'folder.delete',
+      outcome: 'success',
+      target: {
+        type: 'folder',
+        id: result.id,
+      },
+      context: {
+        resultStatus: 'deleted',
+      },
+    })
 
     return c.json({
       object: 'folderDeletion',
@@ -2463,8 +2561,9 @@ app.post('/api/ciphers', async (c) => {
       }
     }
 
+    const cipherId = crypto.randomUUID()
     const cipher = await createCipher(c.env.DB, {
-      id: crypto.randomUUID(),
+      id: cipherId,
       userId: auth.user.id,
       folderId: cipherRequest.cipher.folderId,
       type: cipherRequest.cipher.type,
@@ -2472,6 +2571,21 @@ app.post('/api/ciphers', async (c) => {
       encryptedJson: cipherRequest.cipher.encryptedJson,
       revisionDate: now,
       createdAt: now,
+    })
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'cipher.create',
+      outcome: 'success',
+      target: {
+        type: 'cipher',
+        id: cipher.id,
+      },
+      context: {
+        resultStatus: 'created',
+        cipherType: cipher.type,
+        favorite: cipher.favorite,
+        hasFolder: cipher.folderId !== null,
+      },
     })
 
     return c.json(buildCipherResponse(cipher), 201)
@@ -2631,6 +2745,21 @@ app.put('/api/ciphers/:id', async (c) => {
       return c.json(revisionConflictError(c.get('requestId')), 409)
     }
 
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'cipher.update',
+      outcome: 'success',
+      target: {
+        type: 'cipher',
+        id: cipher.cipher.id,
+      },
+      context: {
+        resultStatus: 'updated',
+        cipherType: cipher.cipher.type,
+        favorite: cipher.cipher.favorite,
+        hasFolder: cipher.cipher.folderId !== null,
+      },
+    })
+
     return c.json(buildCipherResponse(cipher.cipher))
   } catch {
     return c.json(
@@ -2679,6 +2808,18 @@ async function trashCipherById(c: AppContext) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'cipher.delete',
+      outcome: 'success',
+      target: {
+        type: 'cipher',
+        id: result.id,
+      },
+      context: {
+        resultStatus: 'deleted',
+      },
+    })
+
     return c.json({
       object: 'cipher',
       id: result.id,
@@ -2715,6 +2856,18 @@ app.put('/api/ciphers/:id/restore', async (c) => {
     if (result.status === 'not_found') {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'cipher.restore',
+      outcome: 'success',
+      target: {
+        type: 'cipher',
+        id: result.id,
+      },
+      context: {
+        resultStatus: 'restored',
+      },
+    })
 
     return c.json({
       object: 'cipher',
@@ -2764,6 +2917,18 @@ async function permanentlyDeleteCipherById(c: AppContext) {
     if (result.status === 'not_found') {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'cipher.permanent_delete',
+      outcome: 'success',
+      target: {
+        type: 'cipher',
+        id: result.id,
+      },
+      context: {
+        resultStatus: 'permanently_deleted',
+      },
+    })
 
     return c.json({
       object: 'cipherDeletion',
