@@ -51,6 +51,12 @@ not compatibility claims; ADR 0006 requires policy schema, enforcement points,
 default behavior, audit, rollback, and compatibility fixture design before
 support can be claimed.
 
+Collection metadata remains fixture-covered as authenticated empty read-only
+responses for personal vaults. Collection mutation and cipher assignment are not
+compatibility claims; ADR 0007 requires ownership, membership, assignment,
+audit, migration, rollback, and compatibility fixture design before support can
+be claimed.
+
 There is intentionally no Send or public file-sharing row. Cipher-scoped
 attachments are authenticated owner-scoped vault operations; public sharing
 would require ADR 0003's access-token, expiration, revocation, rate-limit,

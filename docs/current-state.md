@@ -198,6 +198,9 @@ Implemented:
   0005, threat model, and compatibility docs
 - explicit policy management/enforcement exclusion and personal-vault empty
   policy metadata default in ADR 0006, threat model, and compatibility docs
+- explicit collection mutation/assignment exclusion and personal-vault
+  read-only empty collection metadata default in ADR 0007, threat model, and
+  compatibility docs
 - explicit Send/public-sharing exclusion and future design gates in ADR 0003,
   threat model, and compatibility docs
 - explicit Emergency Access exclusion and future delegated-recovery design gates
@@ -1120,6 +1123,8 @@ Implemented:
   scope
 - collection lookup returns stable `collection_not_found`
 - collection mutation routes remain explicit `unsupported_feature` responses
+- collection create/update/delete and cipher assignment remain excluded by ADR
+  0007 until shared/team vault scope is reopened
 - compatibility fixture coverage under the `metadata_read` flow
 
 Not implemented:

@@ -59,6 +59,15 @@ personal-vault product line. ADR 0006 defines the no-policy default behavior and
 the schema, enforcement, audit, rollback, and compatibility gates required
 before future policy support.
 
+## Collection Mutation Boundary
+
+HonoWarden exposes authenticated empty collection metadata reads only. It does
+not implement collection create, update, delete, cipher assignment, or
+organization-scoped collections in the alpha personal-vault product line. ADR
+0007 defines the read-only default behavior and the ownership, membership,
+assignment, audit, migration, rollback, and fixture gates required before future
+collection mutation support.
+
 ## Send And Public Sharing Boundary
 
 HonoWarden does not expose Send or public file-sharing in the alpha release.
