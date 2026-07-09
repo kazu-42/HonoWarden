@@ -80,6 +80,7 @@ const requiredFlows = [
   'session_revoke',
   'totp_login',
   'sync_with_items',
+  'attachment_metadata',
 ] as const
 
 describe('client compatibility matrix', () => {

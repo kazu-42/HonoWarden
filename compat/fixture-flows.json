@@ -112,6 +112,10 @@
     {
       "id": "sync_with_items",
       "fixtures": ["sync/with-folder-and-cipher.json"]
+    },
+    {
+      "id": "attachment_metadata",
+      "fixtures": ["sync/with-attachment.json"]
     }
   ]
 }

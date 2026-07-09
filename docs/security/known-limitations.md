@@ -25,6 +25,9 @@ inputs, not minor documentation notes.
 - Public registration is disabled.
 - Organizations and shared vaults are not implemented.
 - Send is not implemented.
+- Cipher-scoped attachment upload, download, delete, and sync metadata are
+  implemented for opaque client-encrypted payloads, but no live official-client
+  attachment run has been captured yet.
 - read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, and device encrypted-key update routes are implemented; bulk trusted-device approval and login-with-device workflows are not.
 - account disable/enable operator CLI is dry-run-first, but no admin UI or live
   production lifecycle evidence is recorded yet.

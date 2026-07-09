@@ -10,6 +10,7 @@ import { signAccessToken, verifyAccessToken } from '../src/domain/tokens'
 import { hotp } from '../src/domain/totp'
 import * as retentionCleanup from '../src/maintenance/retention-cleanup'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
+import { FakeR2Bucket } from './support/fake-r2'
 
 describe('HonoWarden app', () => {
   afterEach(() => {
@@ -407,11 +408,6 @@ describe('HonoWarden app', () => {
       { method: 'POST', path: '/api/emergency-access/invite' },
       { method: 'POST', path: '/api/attachments' },
       { method: 'GET', path: '/api/attachments/attachment-id' },
-      { method: 'POST', path: '/api/ciphers/cipher-id/attachment' },
-      {
-        method: 'DELETE',
-        path: '/api/ciphers/cipher-id/attachment/attachment-id',
-      },
       { method: 'PATCH', path: '/api/devices/device-id' },
     ]) {
       const response = await app.request(request.path, {
@@ -4457,6 +4453,218 @@ describe('HonoWarden app', () => {
     expect(body).not.toHaveProperty('attachments2')
   })
 
+  it('uploads encrypted attachment bytes to an opaque R2 object key', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const form = new FormData()
+    form.set('fileName', '2.encrypted-file-name')
+    form.set('key', '2.encrypted-attachment-key')
+    form.set(
+      'file',
+      new Blob(['encrypted-bytes'], {
+        type: 'application/octet-stream',
+      }),
+      'plaintext-name-is-not-used.bin',
+    )
+
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'attachment-upload-request',
+        },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipher: {
+            id: 'cipher-id',
+            userId: 'user-id',
+            folderId: null,
+            type: 1,
+            favorite: 0,
+            encryptedJson: JSON.stringify({
+              type: 1,
+              favorite: false,
+              name: '2.encrypted-cipher-name',
+            }),
+            revisionDate: '2026-07-06T00:05:00.000Z',
+            createdAt: '2026-07-06T00:04:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(201)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
+      object: 'attachment',
+      id: expect.any(String),
+      cipherId: 'cipher-id',
+      fileName: '2.encrypted-file-name',
+      key: '2.encrypted-attachment-key',
+      size: 15,
+      url: expect.stringContaining('/api/ciphers/cipher-id/attachment/'),
+      revisionDate: expect.any(String),
+    })
+    expect(body).not.toHaveProperty('objectKey')
+    expect(bucket.keys()).toHaveLength(1)
+    const [objectKey] = bucket.keys()
+    expect(objectKey).toMatch(/^attachments\/[0-9a-f-]{36}$/)
+    expect(objectKey).not.toContain('user-id')
+    expect(objectKey).not.toContain('cipher-id')
+    expect(objectKey).not.toContain('file-name')
+  })
+
+  it('rejects attachment upload for missing or cross-user ciphers before R2 writes', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const form = new FormData()
+    form.set('fileName', '2.encrypted-file-name')
+    form.set('key', '2.encrypted-attachment-key')
+    form.set('file', new Blob(['encrypted-bytes']), 'ignored.bin')
+
+    const response = await app.request(
+      '/api/ciphers/missing-cipher-id/attachment',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipher: null,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'cipher_not_found',
+      },
+    })
+    expect(bucket.keys()).toEqual([])
+  })
+
+  it('downloads encrypted attachment bytes for the owning cipher', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    await bucket.put('attachments/opaque-object-id', 'encrypted-bytes', {
+      httpMetadata: {
+        contentType: 'application/octet-stream',
+      },
+    })
+
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          attachments: [attachmentRecord()],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe(
+      'application/octet-stream',
+    )
+    await expect(response.text()).resolves.toBe('encrypted-bytes')
+  })
+
+  it('does not download cross-user attachment metadata', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    await bucket.put('attachments/opaque-object-id', 'encrypted-bytes')
+
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          attachments: [
+            {
+              ...attachmentRecord(),
+              userId: 'other-user-id',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'attachment_not_found',
+      },
+    })
+  })
+
+  it('deletes attachment metadata and its R2 object for the owning cipher', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    await bucket.put('attachments/opaque-object-id', 'encrypted-bytes')
+
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          attachmentDeleteChanges: 1,
+          attachments: [attachmentRecord()],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'attachmentDeletion',
+      id: 'attachment-id',
+      cipherId: 'cipher-id',
+      revisionDate: expect.any(String),
+    })
+    expect(bucket.has('attachments/opaque-object-id')).toBe(false)
+    expect(bucket.deletedKeys).toEqual(['attachments/opaque-object-id'])
+  })
+
   it('creates a secure-note cipher while preserving unknown encrypted fields', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -4611,6 +4819,7 @@ describe('HonoWarden app', () => {
               deletedAt: '2026-07-06T00:06:00.000Z',
             },
           ],
+          attachments: [attachmentRecord()],
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -4630,6 +4839,16 @@ describe('HonoWarden app', () => {
           revisionDate: '2026-07-06T00:05:00.000Z',
           creationDate: '2026-07-06T00:04:00.000Z',
           deletedDate: null,
+          attachments: [
+            {
+              id: 'attachment-id',
+              url: '/api/ciphers/cipher-id/attachment/attachment-id',
+              fileName: '2.encrypted-file-name',
+              key: '2.encrypted-attachment-key',
+              size: 15,
+              sizeName: '15 B',
+            },
+          ],
         },
         {
           object: 'cipher',
@@ -5488,6 +5707,22 @@ function cipherCreateBody() {
       password: '2.encrypted-password',
       uris: [],
     },
+  }
+}
+
+function attachmentRecord() {
+  return {
+    id: 'attachment-id',
+    userId: 'user-id',
+    cipherId: 'cipher-id',
+    objectKey: 'attachments/opaque-object-id',
+    fileName: '2.encrypted-file-name',
+    attachmentKey: '2.encrypted-attachment-key',
+    size: 15,
+    contentType: 'application/octet-stream',
+    revisionDate: '2026-07-10T00:00:00.000Z',
+    createdAt: '2026-07-10T00:00:00.000Z',
+    updatedAt: '2026-07-10T00:00:00.000Z',
   }
 }
 

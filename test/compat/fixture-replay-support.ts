@@ -67,6 +67,10 @@ type CompatFixtureDatabaseSeed = {
   tables?: readonly string[]
   authUser?: CompatAuthUserRecord
   authUsers?: readonly CompatAuthUserRecord[]
+  attachment?: Record<string, JsonValue> | null
+  attachmentDeleteChanges?: number
+  attachmentInsertChanges?: number
+  attachments?: Record<string, JsonValue>[]
   ciphers?: Record<string, JsonValue>[]
   cipherInsertChanges?: number
   cipherPermanentDeleteChanges?: number
@@ -343,6 +347,10 @@ function buildDatabaseSeed(
     tables: seed.tables ?? requiredTables,
     authUsers,
     authUser: seed.authUser ?? authUsers[0] ?? defaultAuthUser,
+    attachment: seed.attachment ?? null,
+    attachmentDeleteChanges: seed.attachmentDeleteChanges ?? 1,
+    attachmentInsertChanges: seed.attachmentInsertChanges ?? 1,
+    attachments: seed.attachments ?? [],
     ciphers: seed.ciphers ?? [],
     cipherInsertChanges: seed.cipherInsertChanges ?? 1,
     cipherPermanentDeleteChanges: seed.cipherPermanentDeleteChanges ?? 1,

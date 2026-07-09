@@ -1,8 +1,10 @@
 # Backup And Restore Runbook
 
 HonoWarden stores structured account and vault-sync state in D1. R2 is reserved
-for larger object payloads. Backup and restore operations are intentionally
-operator-driven in the alpha scope; there is no authenticated public backup API.
+for larger object payloads, including cipher attachment bodies stored under
+opaque `attachments/<uuid>` keys. Backup and restore operations are
+intentionally operator-driven in the alpha scope; there is no authenticated
+public backup API.
 
 The wrapper script plans and optionally executes Wrangler commands:
 
@@ -24,6 +26,10 @@ The backup directory contains:
   export
 - `d1.sql`: D1 SQL export
 - `r2/`: object files named by base64url-encoded object keys
+
+D1 contains attachment metadata in `cipher_attachments`; R2 contains the opaque
+attachment bytes. A complete attachment backup must include both the D1 export
+and every referenced `attachments/` R2 object.
 
 The backup still contains sensitive encrypted application data and operational
 metadata. Store it as sensitive data even though HonoWarden never decrypts vault
@@ -77,6 +83,11 @@ pnpm backup:export -- \
   --r2-list \
   --r2-prefix attachments/
 ```
+
+Use `--r2-prefix attachments/` when the goal is to capture all vault attachment
+objects. The prefix is safe to disclose operationally because the suffix is a
+server-generated UUID and does not include user IDs, cipher IDs, emails, or
+filenames.
 
 `--r2-list` is remote-only. It requires R2 S3 API credentials through
 `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`; `AWS_ACCESS_KEY_ID` and

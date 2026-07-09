@@ -47,6 +47,13 @@ import { getDatabaseHealth } from './infra/db-health'
 import { resolveRuntimeEnvironment } from './infra/environment'
 import { buildServerConfig } from './protocol/config'
 import {
+  createCipherAttachment,
+  deleteCipherAttachment,
+  findCipherAttachment,
+  listCipherAttachmentsByUser,
+} from './repositories/attachment-repository'
+import type { CipherAttachmentRecord } from './repositories/attachment-repository'
+import {
   createCipher,
   findCipherById,
   listCiphersByUser,
@@ -499,6 +506,180 @@ app.all('/api/emergency-access', unsupportedAlphaFeature)
 app.all('/api/emergency-access/*', unsupportedAlphaFeature)
 app.all('/api/attachments', unsupportedAlphaFeature)
 app.all('/api/attachments/*', unsupportedAlphaFeature)
+app.post('/api/ciphers/:id/attachment', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  if (!cipherId) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'Cipher id is required.'),
+      400,
+    )
+  }
+
+  const upload = await parseAttachmentUploadRequest(c.req.raw)
+  if (!upload.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Attachment payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const now = new Date().toISOString()
+  const attachmentId = crypto.randomUUID()
+  const objectKey = buildAttachmentObjectKey()
+
+  try {
+    const cipher = await findCipherById(c.env.DB, {
+      id: cipherId,
+      userId: auth.user.id,
+    })
+
+    if (!cipher || cipher.deletedAt) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    await c.env.VAULT_OBJECTS.put(objectKey, upload.body, {
+      httpMetadata: {
+        contentType: upload.contentType,
+      },
+    })
+
+    try {
+      const attachment = await createCipherAttachment(c.env.DB, {
+        id: attachmentId,
+        userId: auth.user.id,
+        cipherId,
+        objectKey,
+        fileName: upload.fileName,
+        attachmentKey: upload.attachmentKey,
+        size: upload.size,
+        contentType: upload.contentType,
+        revisionDate: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      return c.json(buildAttachmentResponse(attachment), 201)
+    } catch {
+      await c.env.VAULT_OBJECTS.delete(objectKey)
+      throw new Error('attachment metadata create failed')
+    }
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Attachment upload failed.',
+      ),
+      503,
+    )
+  }
+})
+app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const attachment = await findCipherAttachment(c.env.DB, {
+      id: c.req.param('attachmentId'),
+      cipherId: c.req.param('id'),
+      userId: auth.user.id,
+    })
+
+    if (!attachment) {
+      return c.json(attachmentNotFoundError(c.get('requestId')), 404)
+    }
+
+    const object = await c.env.VAULT_OBJECTS.get(attachment.objectKey)
+    if (!object?.body) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'storage_unavailable',
+          'Attachment object was not found.',
+        ),
+        503,
+      )
+    }
+
+    const headers = new Headers({
+      'Content-Type': attachment.contentType ?? 'application/octet-stream',
+      'X-HonoWarden-Attachment-Id': attachment.id,
+    })
+
+    return new Response(object.body, {
+      status: 200,
+      headers,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Attachment download failed.',
+      ),
+      503,
+    )
+  }
+})
+app.delete('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  const attachmentId = c.req.param('attachmentId')
+
+  try {
+    const attachment = await findCipherAttachment(c.env.DB, {
+      id: attachmentId,
+      cipherId,
+      userId: auth.user.id,
+    })
+
+    if (!attachment) {
+      return c.json(attachmentNotFoundError(c.get('requestId')), 404)
+    }
+
+    await c.env.VAULT_OBJECTS.delete(attachment.objectKey)
+    const result = await deleteCipherAttachment(c.env.DB, {
+      id: attachmentId,
+      cipherId,
+      userId: auth.user.id,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(attachmentNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json({
+      object: 'attachmentDeletion',
+      id: attachment.id,
+      cipherId: attachment.cipherId,
+      revisionDate: new Date().toISOString(),
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Attachment delete failed.',
+      ),
+      503,
+    )
+  }
+})
 app.all('/api/ciphers/:id/attachment', unsupportedAlphaFeature)
 app.all('/api/ciphers/:id/attachment/*', unsupportedAlphaFeature)
 app.put('/api/devices/:id', async (c) => {
@@ -1132,12 +1313,13 @@ app.get('/api/sync', async (c) => {
   }
 
   try {
-    const [folders, ciphers] = await Promise.all([
+    const [folders, ciphers, attachments] = await Promise.all([
       listFoldersByUser(c.env.DB, auth.user.id),
       listCiphersByUser(c.env.DB, auth.user.id),
+      listCipherAttachmentsByUser(c.env.DB, auth.user.id),
     ])
 
-    return c.json(buildSyncResponse(auth.user, folders, ciphers))
+    return c.json(buildSyncResponse(auth.user, folders, ciphers, attachments))
   } catch {
     return c.json(
       apiError(
@@ -2245,15 +2427,19 @@ app.get('/api/ciphers', async (c) => {
   }
 
   try {
-    const page = await listCiphersByUserPage(c.env.DB, {
-      userId: auth.user.id,
-      ...pagination.value,
-    })
+    const [page, attachments] = await Promise.all([
+      listCiphersByUserPage(c.env.DB, {
+        userId: auth.user.id,
+        ...pagination.value,
+      }),
+      listCipherAttachmentsByUser(c.env.DB, auth.user.id),
+    ])
 
     return c.json(
       buildCipherListResponse(
         page.items,
         buildContinuationToken('cipher', page),
+        buildAttachmentsByCipherId(attachments),
       ),
     )
   } catch {
@@ -2275,16 +2461,24 @@ app.get('/api/ciphers/:id', async (c) => {
   }
 
   try {
-    const cipher = await findCipherById(c.env.DB, {
-      id: c.req.param('id'),
-      userId: auth.user.id,
-    })
+    const [cipher, attachments] = await Promise.all([
+      findCipherById(c.env.DB, {
+        id: c.req.param('id'),
+        userId: auth.user.id,
+      }),
+      listCipherAttachmentsByUser(c.env.DB, auth.user.id),
+    ])
 
     if (!cipher) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
-    return c.json(buildCipherResponse(cipher))
+    return c.json(
+      buildCipherResponse(
+        cipher,
+        buildAttachmentsByCipherId(attachments).get(cipher.id) ?? [],
+      ),
+    )
   } catch {
     return c.json(
       apiError(
@@ -2789,15 +2983,19 @@ function buildSyncResponse(
   user: AuthUserRecord,
   folders: readonly FolderRecord[] = [],
   ciphers: readonly CipherRecord[] = [],
+  attachments: readonly CipherAttachmentRecord[] = [],
 ) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
+  const attachmentsByCipherId = buildAttachmentsByCipherId(attachments)
 
   return {
     object: 'sync',
     Profile: buildProfileResponse(user),
     Folders: folders.map(buildFolderResponse),
     Collections: [],
-    Ciphers: ciphers.map(buildCipherResponse),
+    Ciphers: ciphers.map((cipher) =>
+      buildCipherResponse(cipher, attachmentsByCipherId.get(cipher.id) ?? []),
+    ),
     Domains: buildDomainsResponse(),
     Policies: [],
     PoliciesNew: [],
@@ -3020,10 +3218,16 @@ function buildFolderListResponse(
 function buildCipherListResponse(
   ciphers: readonly CipherRecord[],
   continuationToken: string | null = null,
+  attachmentsByCipherId: ReadonlyMap<
+    string,
+    readonly CipherAttachmentRecord[]
+  > = new Map(),
 ) {
   return {
     object: 'list',
-    data: ciphers.map(buildCipherResponse),
+    data: ciphers.map((cipher) =>
+      buildCipherResponse(cipher, attachmentsByCipherId.get(cipher.id) ?? []),
+    ),
     continuationToken,
   }
 }
@@ -3054,9 +3258,13 @@ function isTrustedDevice(device: DeviceRecord): boolean {
   )
 }
 
-function buildCipherResponse(cipher: CipherRecord) {
+function buildCipherResponse(
+  cipher: CipherRecord,
+  attachments: readonly CipherAttachmentRecord[] = [],
+) {
   const payload = normalizeCipherResponsePayload(
     parseStoredCipherPayload(cipher.encryptedJson),
+    attachments,
   )
 
   return {
@@ -3080,6 +3288,7 @@ function buildCipherResponse(cipher: CipherRecord) {
 
 function normalizeCipherResponsePayload(
   payload: Record<string, unknown>,
+  attachments: readonly CipherAttachmentRecord[],
 ): Record<string, unknown> {
   const normalized = { ...payload }
 
@@ -3098,8 +3307,63 @@ function normalizeCipherResponsePayload(
 
   delete normalized.attachments2
   delete normalized.Attachments2
+  delete normalized.Attachments
+  normalized.attachments = attachments.map(buildAttachmentMetadataResponse)
 
   return normalized
+}
+
+function buildAttachmentsByCipherId(
+  attachments: readonly CipherAttachmentRecord[],
+): Map<string, CipherAttachmentRecord[]> {
+  const grouped = new Map<string, CipherAttachmentRecord[]>()
+
+  for (const attachment of attachments) {
+    const group = grouped.get(attachment.cipherId) ?? []
+    group.push(attachment)
+    grouped.set(attachment.cipherId, group)
+  }
+
+  return grouped
+}
+
+function buildAttachmentResponse(attachment: CipherAttachmentRecord) {
+  return {
+    object: 'attachment',
+    ...buildAttachmentMetadataResponse(attachment),
+    cipherId: attachment.cipherId,
+    revisionDate: attachment.revisionDate,
+  }
+}
+
+function buildAttachmentMetadataResponse(attachment: CipherAttachmentRecord) {
+  return {
+    id: attachment.id,
+    url: `/api/ciphers/${encodeURIComponent(
+      attachment.cipherId,
+    )}/attachment/${encodeURIComponent(attachment.id)}`,
+    fileName: attachment.fileName,
+    key: attachment.attachmentKey,
+    size: attachment.size,
+    sizeName: formatByteSize(attachment.size),
+  }
+}
+
+function formatByteSize(size: number): string {
+  if (size < 1024) {
+    return `${size} B`
+  }
+
+  const units = ['KB', 'MB', 'GB', 'TB'] as const
+  let value = size / 1024
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`
 }
 
 function normalizeCipherPermissions(value: unknown) {
@@ -3148,6 +3412,7 @@ function apiError(
     | 'cipher_not_found'
     | 'collection_not_found'
     | 'account_not_found'
+    | 'attachment_not_found'
     | 'current_device_revoke_forbidden'
     | 'database_unavailable'
     | 'device_not_found'
@@ -3157,7 +3422,8 @@ function apiError(
     | 'missing_token'
     | 'reauth_required'
     | 'revision_conflict'
-    | 'server_misconfigured',
+    | 'server_misconfigured'
+    | 'storage_unavailable',
   message: string,
 ) {
   return {
@@ -3308,6 +3574,14 @@ function cipherNotFoundError(requestIdValue: string) {
   return apiError(requestIdValue, 'cipher_not_found', 'Cipher was not found.')
 }
 
+function attachmentNotFoundError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'attachment_not_found',
+    'Attachment was not found.',
+  )
+}
+
 function folderNotFoundError(requestIdValue: string) {
   return apiError(requestIdValue, 'folder_not_found', 'Folder was not found.')
 }
@@ -3456,6 +3730,74 @@ async function readJsonBody(request: Request): Promise<unknown> {
 
 async function readFormBody(request: Request): Promise<URLSearchParams> {
   return new URLSearchParams(await request.text())
+}
+
+async function parseAttachmentUploadRequest(request: Request): Promise<
+  | {
+      ok: true
+      attachmentKey: string
+      body: ArrayBuffer
+      contentType: string
+      fileName: string
+      size: number
+    }
+  | { ok: false }
+> {
+  try {
+    const form = await request.formData()
+    const fileName = readFormString(form, 'fileName', 'FileName')
+    const attachmentKey = readFormString(form, 'key', 'Key')
+    const file = readFormBlob(form, 'file', 'data', 'attachment')
+
+    if (!fileName || !attachmentKey || !file) {
+      return { ok: false }
+    }
+
+    const body = await file.arrayBuffer()
+
+    return {
+      ok: true,
+      attachmentKey,
+      body,
+      contentType: file.type || 'application/octet-stream',
+      fileName,
+      size: body.byteLength,
+    }
+  } catch {
+    return { ok: false }
+  }
+}
+
+function readFormString(
+  form: FormData,
+  ...fieldNames: string[]
+): string | undefined {
+  for (const fieldName of fieldNames) {
+    const value = form.get(fieldName)
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
+function readFormBlob(
+  form: FormData,
+  ...fieldNames: string[]
+): Blob | undefined {
+  for (const fieldName of fieldNames) {
+    const value = form.get(fieldName)
+    if (value instanceof Blob) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
+function buildAttachmentObjectKey(): string {
+  return `attachments/${crypto.randomUUID()}`
 }
 
 function decodePathParam(value: string): string {
