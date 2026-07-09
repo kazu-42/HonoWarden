@@ -35,9 +35,10 @@ inputs, not minor documentation notes.
 - read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented; login-with-device approval, pending auth-request, and push notification workflows are not.
 - account disable/enable operator CLI is dry-run-first, but no admin UI or live
   production lifecycle evidence is recorded yet.
-- AI inquiry inbox architecture is documented, but the inbox Worker, mailbox
-  UI, email body or attachment storage, AI triage, approved outbound replies,
-  and Linear issue creation automation are not implemented yet.
+- AI inquiry inbox architecture is documented and metadata-only inbound storage
+  is implemented, but the mailbox UI, email body or attachment storage, AI
+  triage, approved outbound replies, and Linear issue creation automation are
+  not implemented yet.
 
 ## Security Control Gaps
 
@@ -85,5 +86,7 @@ inputs, not minor documentation notes.
   long-term archive storage is still operator-owned rather than automated in
   the repository.
 - `security@honowarden.com` inbound routing and public metadata are
-  smoke-tested, but real vulnerability-report handling still needs the inquiry
-  inbox retention/redaction rules.
+  smoke-tested, and a metadata-only inquiry table exists. Real
+  vulnerability-report handling still needs operator UI, forwarding or review
+  workflow, raw body/attachment retention decisions, and redacted issue-creation
+  controls.

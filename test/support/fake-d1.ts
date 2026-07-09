@@ -45,6 +45,7 @@ type FakeD1DatabaseOptions = {
   totpChallengeUpdateChanges?: number
   auditEventCleanupChanges?: number
   auditEventInsertThrows?: boolean
+  inquiryMessageInsertThrows?: boolean
   requestQuotaBucket?: Record<string, unknown> | null
   requestQuotaCleanupChanges?: number
   requestQuotaInsertThrows?: boolean
@@ -83,10 +84,33 @@ export type FakeRequestQuotaCleanupDelete = {
   limit: number
 }
 
+export type FakeInquiryMessageInsert = {
+  id: string
+  mailbox: string
+  envelopeSender: string
+  envelopeSenderSha256: string
+  envelopeRecipient: string
+  messageIdSha256: string | null
+  subjectSha256: string | null
+  headersJson: string
+  headerCount: number
+  rawSize: number
+  bodyMetadataJson: string
+  bodyStorageState: string
+  rawStorageState: string
+  attachmentStorageState: string
+  attachmentCount: number | null
+  deliveryStatus: string
+  rejectReason: string | null
+  receivedAt: string
+  retentionDeleteAfter: string
+}
+
 export class FakeD1Database {
   readonly deletedAuthFailureBucketKeys: string[] = []
   readonly auditEventInserts: FakeAuditEventInsert[] = []
   readonly auditEventCleanupDeletes: FakeAuditEventCleanupDelete[] = []
+  readonly inquiryMessageInserts: FakeInquiryMessageInsert[] = []
   readonly requestQuotaWrites: FakeRequestQuotaWrite[] = []
   readonly requestQuotaCleanupDeletes: FakeRequestQuotaCleanupDelete[] = []
 
@@ -109,6 +133,7 @@ export class FakeD1Database {
     const deletedAuthFailureBucketKeys = this.deletedAuthFailureBucketKeys
     const auditEventInserts = this.auditEventInserts
     const auditEventCleanupDeletes = this.auditEventCleanupDeletes
+    const inquiryMessageInserts = this.inquiryMessageInserts
     const requestQuotaWrites = this.requestQuotaWrites
     const requestQuotaCleanupDeletes = this.requestQuotaCleanupDeletes
     let boundValues: unknown[] = []
@@ -610,6 +635,47 @@ export class FakeD1Database {
           }
         }
 
+        if (query.includes('INSERT INTO inquiry_messages')) {
+          if (options.inquiryMessageInsertThrows) {
+            throw new Error('inquiry message insert failed')
+          }
+
+          inquiryMessageInserts.push({
+            id: String(boundValues[0]),
+            mailbox: String(boundValues[1]),
+            envelopeSender: String(boundValues[2]),
+            envelopeSenderSha256: String(boundValues[3]),
+            envelopeRecipient: String(boundValues[4]),
+            messageIdSha256:
+              boundValues[5] === null ? null : String(boundValues[5]),
+            subjectSha256:
+              boundValues[6] === null ? null : String(boundValues[6]),
+            headersJson: String(boundValues[7]),
+            headerCount: Number(boundValues[8]),
+            rawSize: Number(boundValues[9]),
+            bodyMetadataJson: String(boundValues[10]),
+            bodyStorageState: String(boundValues[11]),
+            rawStorageState: String(boundValues[12]),
+            attachmentStorageState: String(boundValues[13]),
+            attachmentCount:
+              boundValues[14] === null ? null : Number(boundValues[14]),
+            deliveryStatus: String(boundValues[15]),
+            rejectReason:
+              boundValues[16] === null ? null : String(boundValues[16]),
+            receivedAt: String(boundValues[17]),
+            retentionDeleteAfter: String(boundValues[18]),
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
         if (query.includes('INSERT INTO request_quota_buckets')) {
           if (options.requestQuotaInsertThrows) {
             throw new Error('request quota insert failed')
@@ -1000,4 +1066,5 @@ export const requiredTables = [
   'audit_events',
   'user_totp',
   'totp_challenges',
+  'inquiry_messages',
 ] as const

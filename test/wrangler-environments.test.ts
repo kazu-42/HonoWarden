@@ -106,4 +106,22 @@ describe('wrangler deployment environments', () => {
     expect(config.env.staging.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
     expect(config.env.production.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
   })
+
+  it('keeps inquiry mailbox storage vars aligned across deployable environments', () => {
+    const mailboxes =
+      'security,support,hello,admin,postmaster,abuse,inquiry-smoke'
+
+    expect(config.vars.HONOWARDEN_INQUIRY_DOMAIN).toBe('honowarden.com')
+    expect(config.env.staging.vars.HONOWARDEN_INQUIRY_DOMAIN).toBe(
+      'honowarden.com',
+    )
+    expect(config.env.production.vars.HONOWARDEN_INQUIRY_DOMAIN).toBe(
+      'honowarden.com',
+    )
+    expect(config.vars.HONOWARDEN_INQUIRY_MAILBOXES).toBe(mailboxes)
+    expect(config.env.staging.vars.HONOWARDEN_INQUIRY_MAILBOXES).toBe(mailboxes)
+    expect(config.env.production.vars.HONOWARDEN_INQUIRY_MAILBOXES).toBe(
+      mailboxes,
+    )
+  })
 })

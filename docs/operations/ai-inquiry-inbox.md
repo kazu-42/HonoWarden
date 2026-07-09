@@ -1,6 +1,8 @@
 # AI Inquiry Inbox Architecture
 
-Status: proposed for post-alpha implementation.
+Status: phase 1 metadata-only inbound storage implemented; UI, AI drafting,
+outbound replies, Linear sync, raw MIME storage, and attachment storage remain
+post-alpha follow-ups.
 
 This document defines the safe architecture for a HonoWarden contact,
 support, and security inquiry inbox. It is intentionally narrower than a full
@@ -86,18 +88,18 @@ flowchart TB
   AgentDO --> EmailBinding
 ```
 
-Recommended initial split:
+Recommended implementation split:
 
-| Component                   | Responsibility                                                               | Initial phase |
-| --------------------------- | ---------------------------------------------------------------------------- | ------------- |
-| Email handler               | Accept, reject, forward, and record inbound metadata.                        | HON-24        |
-| Access-protected UI/API     | Review threads, drafts, and evidence without exposing raw secrets.           | HON-25        |
-| Inbox D1                    | Canonical thread/message/draft/event index.                                  | HON-24        |
-| Inbox R2                    | Optional raw MIME and attachment storage after retention policy is active.   | HON-24+       |
-| Queue                       | Decouple SMTP event handling from parsing, redaction, AI, and Linear writes. | HON-26        |
-| InquiryAgent Durable Object | Stateful AI drafting session and tool boundary, not canonical storage.       | HON-26        |
-| Email Service binding       | Send approved replies only.                                                  | HON-25        |
-| Linear adapter              | Create/update issues from redacted summaries after human approval.           | HON-27        |
+| Component                   | Responsibility                                                                                                     | Initial phase |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------- |
+| Email handler               | Accept, reject, and record inbound metadata. Forwarding remains route-scoped until the operator flow is validated. | HON-24        |
+| Access-protected UI/API     | Review threads, drafts, and evidence without exposing raw secrets.                                                 | HON-25        |
+| Inbox D1                    | Canonical thread/message/draft/event index.                                                                        | HON-24        |
+| Inbox R2                    | Optional raw MIME and attachment storage after retention policy is active.                                         | HON-24+       |
+| Queue                       | Decouple SMTP event handling from parsing, redaction, AI, and Linear writes.                                       | HON-26        |
+| InquiryAgent Durable Object | Stateful AI drafting session and tool boundary, not canonical storage.                                             | HON-26        |
+| Email Service binding       | Send approved replies only.                                                                                        | HON-25        |
+| Linear adapter              | Create/update issues from redacted summaries after human approval.                                                 | HON-27        |
 
 Do not start with the full Agentic Inbox UI. Start with a compact operator
 workflow for project contact, support, and security reports.
@@ -156,9 +158,12 @@ Each object reference in D1 must include:
 - original filename only as redacted/display metadata
 - retention deadline
 
-Raw MIME and attachment storage starts disabled. Metadata-only ingestion plus
-forwarding remains the default until an operator explicitly enables storage and
-the deletion path is tested.
+Raw MIME and attachment storage starts disabled. The first implementation uses
+the API Worker `email(message, env, ctx)` handler and D1 table
+`inquiry_messages` for metadata-only ingestion. Existing forwarding rules remain
+separate until an operator-facing mailbox UI or Worker forwarding path is
+validated. Raw MIME, body snippets, and attachments require an explicit
+retention/deletion switch and evidence before production use.
 
 ## Inbound Flow
 

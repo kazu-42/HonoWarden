@@ -171,6 +171,25 @@ describe('initial D1 migration', () => {
     expect(allMigrations).not.toContain('client_ip')
   })
 
+  it('adds metadata-only inquiry message storage without raw body or attachment columns', () => {
+    expect(allMigrations).toContain(
+      'CREATE TABLE IF NOT EXISTS inquiry_messages',
+    )
+    expect(allMigrations).toContain('envelope_sender TEXT NOT NULL')
+    expect(allMigrations).toContain('envelope_sender_sha256 TEXT NOT NULL')
+    expect(allMigrations).toContain('subject_sha256 TEXT')
+    expect(allMigrations).toContain('body_metadata_json TEXT NOT NULL')
+    expect(allMigrations).toContain(
+      "raw_storage_state TEXT NOT NULL CHECK (raw_storage_state IN ('disabled'))",
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_inquiry_messages_mailbox_received',
+    )
+    expect(allMigrations).toContain("VALUES ('0009')")
+    expect(allMigrations).not.toContain('raw_body')
+    expect(allMigrations).not.toContain('attachment_body')
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -188,4 +207,5 @@ const allMigrations = [
   readFileSync('migrations/0006_cipher_attachments.sql', 'utf8'),
   readFileSync('migrations/0007_audit_events.sql', 'utf8'),
   readFileSync('migrations/0008_request_quotas.sql', 'utf8'),
+  readFileSync('migrations/0009_inquiry_messages.sql', 'utf8'),
 ].join('\n')

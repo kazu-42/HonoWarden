@@ -1904,12 +1904,24 @@ Implemented:
   Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
   Object state boundaries, human approval rules, retention/redaction controls,
   and follow-up implementation split for `HON-24` through `HON-27`
+- metadata-only inbound inquiry storage is implemented in the API Worker:
+  `email(message, env, ctx)` records D1 `inquiry_messages` rows for configured
+  `honowarden.com` inquiry mailboxes, stores subject and message-id values only
+  as SHA-256 hashes, keeps `raw_storage_state = 'disabled'`, marks body parsing
+  as `not_run`, rejects likely attachment-bearing mail, and fails loudly with
+  `setReject("Temporary inquiry storage failure")` on D1 persistence failure
+- forward-only D1 migration `migrations/0009_inquiry_messages.sql` adds the
+  metadata table and retention/message lookup indexes
+- `docs/release/inquiry-mailbox-evidence.md` records the HON-24 live-smoke
+  plan using a dedicated `inquiry-smoke@honowarden.com` route so existing human
+  forwarding routes stay unchanged until Worker forwarding or mailbox UI is
+  validated
 
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- AI inquiry inbox Worker, mailbox UI, body or attachment storage, AI triage,
-  approved outbound replies, and Linear issue creation automation
+- inquiry mailbox UI, body or attachment storage, AI triage, approved outbound
+  replies, and Linear issue creation automation
 - actual traffic-changing rollback execution, because the current live services
   passed health checks and no incident required rollback
 - production secret writes, public registration enablement, or real vault-data

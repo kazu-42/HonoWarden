@@ -80,16 +80,28 @@ redaction, and human approval rules are in place.
 
 Phase 1 should use simple Email Routing forwarding rules only.
 
-Phase 2 can add an Email Worker when there is a concrete need:
+Phase 2 adds an Email Worker when there is a concrete need:
 
 - reject oversized messages
 - reject obvious malformed or abusive senders
 - route by recipient address
 - add a rate-limited acknowledgment for `security@`
-- archive non-sensitive metadata in R2 for operational evidence
+- archive non-sensitive metadata in D1 for operational evidence
 
-Do not parse or store full message bodies or attachments in HonoWarden systems
-until retention, access control, and deletion policy are written down.
+HON-24 implements the first Phase 2 slice in this API repository:
+
+- `email(message, env, ctx)` records metadata-only rows in D1 table
+  `inquiry_messages`.
+- `HONOWARDEN_INQUIRY_DOMAIN` and `HONOWARDEN_INQUIRY_MAILBOXES` restrict the
+  accepted recipient set.
+- subject and message-id values are stored as SHA-256 hashes; raw subjects,
+  message bodies, and attachments are not stored.
+- likely attachment-bearing messages are rejected until R2 retention, access
+  control, and deletion policy are implemented.
+
+Do not route the existing six forwarding addresses to the Worker until either
+Worker forwarding or an operator mailbox UI has been validated. Use the
+dedicated `inquiry-smoke@honowarden.com` route for live storage smoke tests.
 
 Phase 3 can add the AI inquiry inbox after the architecture gate is satisfied:
 
@@ -174,6 +186,11 @@ Email:
 - `security@honowarden.com` is now referenced by the public website and
   `security.txt`, but real vulnerability-report handling still depends on the
   inquiry inbox retention and redaction controls.
+- Metadata-only inbound inquiry storage is implemented in the API Worker and
+  documented in
+  [Inquiry Mailbox Evidence](../release/inquiry-mailbox-evidence.md). Live
+  storage smoke uses a separate `inquiry-smoke@honowarden.com` route so the
+  existing human-visible forwarding routes are not disrupted.
 
 ## Rollback
 

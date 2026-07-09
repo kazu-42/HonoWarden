@@ -22,6 +22,7 @@ Use this index as the feature-freeze entry point:
 - [Worker Live Smoke Evidence](worker-live-smoke-evidence.md)
 - [Website Live Evidence](website-live-evidence.md)
 - [Email Routing Evidence](email-routing-evidence.md)
+- [Inquiry Mailbox Evidence](inquiry-mailbox-evidence.md)
 - [Retention Cron Evidence](retention-cron-evidence.md)
 - [Operations Rollback Evidence](ops-rollback-evidence.md)
 - [Secret Rotation Drill Evidence](secret-rotation-drill-evidence.md)
