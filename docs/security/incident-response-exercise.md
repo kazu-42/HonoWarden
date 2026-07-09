@@ -120,7 +120,7 @@ The exercise requires these checks before closing a real incident:
 | Gap found during tabletop                                                 | Follow-up                 |
 | ------------------------------------------------------------------------- | ------------------------- |
 | Formal secret rotation was intentionally not executed                     | `HON-60`                  |
-| Cloudflare account member/token access-control review is not recorded     | `HON-58`                  |
+| Cloudflare account least-privilege remediation is still pending           | `HON-64`                  |
 | Independent security audit and external penetration test are not complete | `HON-57`                  |
 | External log sink and Cloudflare log retention access are not implemented | `HON-49`                  |
 | Inquiry mailbox retention/redaction workflow is not implemented           | `HON-24` through `HON-27` |

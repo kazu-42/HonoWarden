@@ -11,7 +11,10 @@ inputs, not minor documentation notes.
 - only a CLI live smoke has been captured; no full live client regression suite
   exists yet
 - no production backup restore drill has been recorded
-- no Cloudflare account access-control review is documented
+- Cloudflare account access-control review is documented, but remediation gaps
+  remain: broad Super Administrator access, no account-level two-factor
+  enforcement, no-expiry active user tokens, and global-key break-glass fallback
+  tracked by `HON-64`
 - incident response runbook and tabletop evidence exist, but no live incident,
   real secret rotation, or external communications drill has been executed
 - no formal secret rotation drill has been run

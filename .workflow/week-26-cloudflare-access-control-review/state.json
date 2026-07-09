@@ -1,0 +1,55 @@
+{
+  "title": "Week 26 Cloudflare Access-Control Review",
+  "slug": "week-26-cloudflare-access-control-review",
+  "created_at": "2026-07-09T14:45:33+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Documentation and local verification only. Cloudflare mutations, token removal, 2FA changes, and credential rotation are deferred to follow-up issues."
+  },
+  "packets": [
+    {
+      "id": "01-review-docs",
+      "status": "completed",
+      "owner": "codex"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm vitest run test/ops/operator-environment.test.ts test/security-docs.test.ts test/release-docs.test.ts",
+        "status": "passed_6_files_23_tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed_86_files_765_tests"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed_ready"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "command": "touched-doc PCRE2 secret/email scan",
+        "status": "passed"
+      }
+    ]
+  }
+}
