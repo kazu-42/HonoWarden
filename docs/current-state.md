@@ -335,11 +335,15 @@ Implemented:
 - audit events for successful and not-found device revoke attempts
 - docs for audit event shape, implemented event names, non-goals, and operator notes
 - tests proving audit builder sanitization and route-level opt-in event emission
+- Cloudflare Workers Logs are enabled through Wrangler observability, and
+  Workers Trace Events Logpush is now configured to push `honowarden` and
+  `honowarden-staging` runtime metadata to a dedicated R2 bucket
+- `docs/release/log-retention-evidence.md` records the Logpush job, R2 sink,
+  retention/access policy, and staging/production smoke readback without
+  tokens, destination credentials, request bodies, or user secrets
 
 Not implemented:
 
-- external log sink integration
-- live log-retention verification
 - automated backup audit ingestion beyond the CLI audit packet and Week 20
   runbook evidence
 
@@ -366,7 +370,6 @@ Not implemented:
 
 - production migration/deploy for `0007_audit_events.sql`
 - enabling audit logging in staging or production
-- external log sink integration and Cloudflare log retention evidence
 - audit events for unsupported organization and public sharing surfaces
 
 ## Week 26 Vault Audit Coverage
@@ -387,7 +390,6 @@ Implemented:
 Not implemented:
 
 - live backup/restore execution audit evidence
-- external log sink ingestion
 - audit coverage for organization/shared-vault and public sharing surfaces
 
 ## Week 26 User Backup Export API

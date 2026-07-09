@@ -19,6 +19,7 @@ Use this index as the feature-freeze entry point:
 - [Remote Backup Evidence](remote-backup-evidence.md)
 - [Staging Deploy Dry Run Evidence](staging-deploy-evidence.md)
 - [Cloudflare Resource Evidence](cloudflare-resource-evidence.md)
+- [Log Retention Evidence](log-retention-evidence.md)
 - [Worker Live Smoke Evidence](worker-live-smoke-evidence.md)
 - [Website Live Evidence](website-live-evidence.md)
 - [Email Routing Evidence](email-routing-evidence.md)

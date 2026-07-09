@@ -15,6 +15,11 @@ type WranglerEnvironment = {
   triggers: {
     crons: string[]
   }
+  logpush: boolean
+  observability: {
+    enabled: boolean
+    head_sampling_rate: number
+  }
   vars: Record<string, string>
   d1_databases: WranglerBinding[]
   r2_buckets: WranglerBinding[]
@@ -24,6 +29,11 @@ type WranglerConfig = {
   name: string
   triggers: {
     crons: string[]
+  }
+  logpush: boolean
+  observability: {
+    enabled: boolean
+    head_sampling_rate: number
   }
   vars: Record<string, string>
   d1_databases: WranglerBinding[]
@@ -105,5 +115,24 @@ describe('wrangler deployment environments', () => {
     expect(config.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
     expect(config.env.production.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
+  })
+
+  it('keeps Workers Logpush and observability enabled for deployable environments', () => {
+    expect(config.logpush).toBe(true)
+    expect(config.env.staging.logpush).toBe(true)
+    expect(config.env.production.logpush).toBe(true)
+
+    expect(config.observability).toMatchObject({
+      enabled: true,
+      head_sampling_rate: 1,
+    })
+    expect(config.env.staging.observability).toMatchObject({
+      enabled: true,
+      head_sampling_rate: 1,
+    })
+    expect(config.env.production.observability).toMatchObject({
+      enabled: true,
+      head_sampling_rate: 1,
+    })
   })
 })
