@@ -277,6 +277,28 @@ describe('client compatibility matrix', () => {
     )
   })
 
+  it('keeps collection mutation outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Collection Mutation Boundary')
+    expect(compatibilityDoc).toMatch(/ADR\s+0007/)
+    expect(compatibilityDoc).toContain('empty collection metadata reads')
+    expect(compatibilityDoc).toContain('cipher assignment')
+    expect(compatibilityMatrixDoc).toContain(
+      'Collection metadata remains fixture-covered',
+    )
+    expect(compatibilityMatrixDoc).toMatch(
+      /Collection mutation and cipher assignment are\s+not\s+compatibility claims/,
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'collection_mutation',
+    )
+  })
+
   it('keeps Send and public sharing outside the alpha compatibility surface', () => {
     const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
     const compatibilityMatrixDoc = readFileSync(

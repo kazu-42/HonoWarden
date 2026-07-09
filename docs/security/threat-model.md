@@ -102,6 +102,11 @@ Explicitly excluded public sharing surface:
   vaults. Policy mutation or organization policy enforcement must not be
   implemented until ADR 0006's schema, enforcement-point, default-behavior,
   audit, rollback, and compatibility controls are designed and verified.
+- Collection metadata reads return authenticated empty read-only responses for
+  personal vaults. Collection mutation, cipher assignment, and
+  organization-scoped collection behavior must not be implemented until ADR
+  0007's ownership, membership, assignment, audit, migration, rollback, and
+  compatibility controls are designed and verified.
 - `/api/sends` and `/api/sends/*` return typed unsupported-feature errors.
 - Top-level `/api/attachments` and `/api/attachments/*` return typed
   unsupported-feature errors.
@@ -166,13 +171,19 @@ Explicitly excluded public sharing surface:
    requires schema, enforcement points, default behavior, audit, rollback, and
    compatibility fixture design before implementation.
 
-9. Public-link abuse or unauthorized sharing.
-   Current mitigation: Send and top-level public attachment routes remain
-   unsupported. ADR 0003 requires access-token entropy, expiration, revocation,
-   rate limits, abuse reporting, cache policy, encrypted/opaque object handling,
-   and retention/deletion design before implementation.
+9. Collection assignment privilege escalation.
+   Current mitigation: collection metadata reads are empty/read-only and
+   collection mutation routes remain unsupported. ADR 0007 requires ownership,
+   membership, assignment, audit, migration, rollback, and compatibility fixture
+   design before implementation.
 
-10. Delegated recovery privilege escalation.
+10. Public-link abuse or unauthorized sharing.
+    Current mitigation: Send and top-level public attachment routes remain
+    unsupported. ADR 0003 requires access-token entropy, expiration, revocation,
+    rate limits, abuse reporting, cache policy, encrypted/opaque object handling,
+    and retention/deletion design before implementation.
+
+11. Delegated recovery privilege escalation.
     Current mitigation: Emergency Access routes remain unsupported. ADR 0004
     requires grantee identity, invitation, delay, cancellation, timeout,
     notification, cryptographic handoff, audit, abuse, rollback, and incident

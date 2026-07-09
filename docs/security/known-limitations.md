@@ -34,6 +34,10 @@ inputs, not minor documentation notes.
   implemented; ADR 0006 keeps policy metadata reads empty for personal vaults
   until policy schema, enforcement points, audit, rollback, and compatibility
   fixtures are designed.
+- Collection mutation and assignment are intentionally not implemented; ADR
+  0007 keeps collection metadata read-only and empty for personal vaults until
+  ownership, membership, assignment, audit, migration, rollback, and
+  compatibility fixtures are designed.
 - Send and public file-sharing are intentionally not implemented; ADR 0003
   requires public access-token entropy, expiration, revocation, rate limits,
   abuse reporting, cache policy, audit, and retention/deletion design before
