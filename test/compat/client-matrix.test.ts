@@ -232,6 +232,23 @@ describe('client compatibility matrix', () => {
     )
   })
 
+  it('keeps Send and public sharing outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Send And Public Sharing Boundary')
+    expect(compatibilityDoc).toContain('ADR 0003')
+    expect(compatibilityDoc).toContain('unauthenticated access')
+    expect(compatibilityDoc).toContain('rate limiting')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Send or public file-sharing row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain('send')
+  })
+
   it('re-evaluates live evidence requirements when metadata advances', () => {
     const androidEntry = matrix.entries.find(
       (entry) => entry.surface === 'mobile_android',

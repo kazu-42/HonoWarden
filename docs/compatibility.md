@@ -41,6 +41,14 @@ Vault would require a new ADR, a dedicated compatibility row, browser security
 review, CSP and static-asset provenance rules, deployment/rollback separation,
 and live evidence before any support claim.
 
+## Send And Public Sharing Boundary
+
+HonoWarden does not expose Send or public file-sharing in the alpha release.
+Cipher-scoped attachments remain authenticated and owner-scoped. Public sharing
+would add unauthenticated access, link enumeration risk, expiration, revocation,
+rate limiting, abuse reporting, cache policy, and separate retention/deletion
+semantics. ADR 0003 defines the minimum design gates before any support claim.
+
 ## Explicit Unsupported Responses
 
 The alpha API returns typed `501` JSON errors for feature families that are

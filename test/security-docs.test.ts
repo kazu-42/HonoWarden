@@ -33,6 +33,8 @@ describe('security review materials', () => {
     expect(threatModel).toContain('## Assets')
     expect(threatModel).toContain('## Trust Boundaries')
     expect(threatModel).toContain('## STRIDE Summary')
+    expect(threatModel).toContain('Public-link abuse or unauthorized sharing')
+    expect(threatModel).toContain('ADR 0003')
 
     const dataFlow = readSecurityDoc('data-flow.md')
     expect(dataFlow).toContain('## Password Grant')
@@ -76,6 +78,7 @@ describe('security review materials', () => {
     const knownLimitations = readSecurityDoc('known-limitations.md')
     expect(knownLimitations).toContain('pre-alpha')
     expect(knownLimitations).toContain('browser-delivered vault UI')
+    expect(knownLimitations).toContain('public access-token entropy')
     expect(knownLimitations).toContain('no independent security audit')
     expect(knownLimitations).toContain('incident response runbook')
     expect(knownLimitations).toContain('bulk trusted-device rotation')
