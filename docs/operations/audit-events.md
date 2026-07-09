@@ -123,9 +123,23 @@ Manual deletion should use the same retention boundary unless an incident
 response or legal hold explicitly requires a narrower scope. Do not delete rows
 by actor or target as a substitute for a reviewed retention decision.
 
+## External Runtime Log Sink
+
+Workers runtime logs and uncaught exception metadata are shipped separately from
+D1 audit rows through Cloudflare Workers Trace Events Logpush. HON-49 selected a
+dedicated R2 bucket, `honowarden-worker-logpush`, with job
+`honowarden-workers-trace-events-to-r2` for `honowarden` and
+`honowarden-staging`.
+
+See [Log Retention Evidence](../release/log-retention-evidence.md) for the
+redacted job readback, retention window, access model, and live smoke evidence.
+Logpush is for runtime observability and incident review. It is not a substitute
+for D1 `audit_events`, and it must not be used to record request bodies,
+response bodies, tokens, passwords, decrypted vault data, encrypted vault
+payloads, or private mailbox contents.
+
 ## Non-Goals In This Slice
 
-- Shipping logs to a vendor-specific sink
 - Logging request/response bodies
 - Logging passwords, refresh tokens, token hashes, encrypted vault payloads, or
   vault item fields

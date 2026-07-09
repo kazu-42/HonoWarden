@@ -5,6 +5,7 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 ## Initial Scope
 
 - API-only server for official upstream clients
+- no browser-delivered vault UI
 - self-hosted endpoint configuration
 - account login and token refresh flows required by official clients
 - personal vault sync for encrypted ciphers, folders, collections needed by small-team use, and attachments where required
@@ -14,9 +15,12 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 ## Explicitly Out of Scope Initially
 
 - Web Vault
+- hosted web app static assets
+- browser session or cookie-authenticated vault UI
 - public registration
 - Organizations administration
 - Send
+- Emergency Access
 - SSO
 - multi-tenant hosted operation
 - enterprise policy management
@@ -30,6 +34,56 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - Keep executable JSON fixtures for client-facing response shapes under `compat/fixtures`.
 - Treat fixture regressions as compatibility regressions once a route has been implemented.
 
+## Web Vault Boundary
+
+HonoWarden does not expose a Web Vault compatibility surface in the alpha
+release. The compatibility matrix tracks protocol clients only. A future Web
+Vault would require a new ADR, a dedicated compatibility row, browser security
+review, CSP and static-asset provenance rules, deployment/rollback separation,
+and live evidence before any support claim.
+
+## Organizations And Shared Vault Boundary
+
+HonoWarden does not expose Organizations or shared vaults in the alpha
+personal-vault product line. Shared vault support would add membership,
+ownership, role, collection-access, cross-user isolation, encrypted key sharing,
+audit, migration, and rollback requirements. ADR 0005 defines the scope as a
+non-goal for this product line and the minimum gates before any future shared or
+team-vault support claim.
+
+## Policy Management Boundary
+
+HonoWarden exposes authenticated empty policy metadata reads only. It does not
+implement policy mutation or organization policy enforcement in the alpha
+personal-vault product line. ADR 0006 defines the no-policy default behavior and
+the schema, enforcement, audit, rollback, and compatibility gates required
+before future policy support.
+
+## Collection Mutation Boundary
+
+HonoWarden exposes authenticated empty collection metadata reads only. It does
+not implement collection create, update, delete, cipher assignment, or
+organization-scoped collections in the alpha personal-vault product line. ADR
+0007 defines the read-only default behavior and the ownership, membership,
+assignment, audit, migration, rollback, and fixture gates required before future
+collection mutation support.
+
+## Send And Public Sharing Boundary
+
+HonoWarden does not expose Send or public file-sharing in the alpha release.
+Cipher-scoped attachments remain authenticated and owner-scoped. Public sharing
+would add unauthenticated access, link enumeration risk, expiration, revocation,
+rate limiting, abuse reporting, cache policy, and separate retention/deletion
+semantics. ADR 0003 defines the minimum design gates before any support claim.
+
+## Emergency Access Boundary
+
+HonoWarden does not expose Emergency Access in the alpha release. Delegated
+recovery would add grantee identity proofing, delayed access, cancellation,
+notification delivery, cryptographic handoff, abuse controls, and transition
+auditing requirements. ADR 0004 defines the minimum design gates before any
+support claim.
+
 ## Explicit Unsupported Responses
 
 The alpha API returns typed `501` JSON errors for feature families that are
@@ -39,6 +93,8 @@ intentionally outside the initial scope:
 - `/api/organizations/*`
 - `/api/sends`
 - `/api/sends/*`
+- `/api/emergency-access`
+- `/api/emergency-access/*`
 
 Response shape:
 

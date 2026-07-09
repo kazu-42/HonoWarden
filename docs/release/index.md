@@ -15,10 +15,12 @@ Use this index as the feature-freeze entry point:
 - [Alpha Tagging Runbook](tagging-runbook.md)
 - [Publication Gate](publication-gate.md)
 - [Live Client Evidence](live-client-evidence.md)
+- [Two-User Dogfood And Disabled-User Evidence](two-user-dogfood-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
 - [Remote Backup Evidence](remote-backup-evidence.md)
 - [Staging Deploy Dry Run Evidence](staging-deploy-evidence.md)
 - [Cloudflare Resource Evidence](cloudflare-resource-evidence.md)
+- [Log Retention Evidence](log-retention-evidence.md)
 - [Worker Live Smoke Evidence](worker-live-smoke-evidence.md)
 - [Website Live Evidence](website-live-evidence.md)
 - [Email Routing Evidence](email-routing-evidence.md)
@@ -48,6 +50,8 @@ reviewed without inventing release process under time pressure.
 - Scheduled remote backup workflow and remote backup evidence are recorded.
 - CLI live-client login/sync smoke evidence is recorded; remaining client
   surfaces stay conservative until their own live evidence is recorded.
+- synthetic two-user dogfood and disabled-user lifecycle evidence is recorded,
+  with production lifecycle execution still operator-gated.
 - `pnpm release:gate -- --strict` passes on the release commit.
 - `pnpm release:tag:preflight -- --strict --check-remote` passes on the clean
   release commit before running the printed tag commands.

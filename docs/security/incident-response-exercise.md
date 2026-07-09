@@ -119,14 +119,14 @@ The exercise requires these checks before closing a real incident:
 
 ## Gaps And Follow-Up Issues
 
-| Gap found during tabletop                                                                             | Follow-up                                  |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Formal secret rotation dry-run is complete; live credential rotation remains intentionally unexecuted | future live rotation window                |
-| Cloudflare account scoped-token rollout is complete, but 2FA/global-key hardening remains             | access-control review / operator hardening |
-| Independent security audit and external penetration test are not complete                             | `HON-57`                                   |
-| External log sink and Cloudflare log retention access are not implemented                             | `HON-49`                                   |
-| Inquiry mailbox retention/redaction workflow is not implemented                                       | `HON-24` through `HON-27`                  |
-| Live two-user disabled-account lifecycle evidence is not recorded                                     | `HON-61`                                   |
+| Gap found during tabletop                                                                                               | Follow-up                                  |
+| ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Formal secret rotation dry-run is complete; live credential rotation remains intentionally unexecuted                   | future live rotation window                |
+| Cloudflare account scoped-token rollout is complete, but 2FA/global-key hardening remains                               | access-control review / operator hardening |
+| Independent security audit and external penetration test are not complete                                               | `HON-57`                                   |
+| Worker runtime Logpush to R2 is configured, but SIEM/vendor alerting and automated retention deletion remain follow-ups | `HON-49`                                   |
+| Inquiry mailbox retention/redaction workflow is not implemented                                                         | `HON-24` through `HON-27`                  |
+| Live two-user disabled-account lifecycle evidence is not recorded                                                       | `HON-61`                                   |
 
 No new issue was required for the tabletop itself. Rows above either map to
 existing follow-up issues or to explicit operator-owned future windows where

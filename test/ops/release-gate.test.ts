@@ -46,6 +46,12 @@ describe('release gate preflight', () => {
     expect(statusById(report, 'staging_deploy_evidence')).toBe('pass')
     expect(statusById(report, 'cloudflare_resource_evidence')).toBe('pass')
     expect(statusById(report, 'live_client_evidence')).toBe('pass')
+    expect(checkById(report, 'release_docs_present')?.evidence).toContain(
+      'docs/release/live-regression-matrix.md',
+    )
+    expect(checkById(report, 'release_docs_present')?.evidence).toContain(
+      'docs/release/two-user-dogfood-evidence.md',
+    )
 
     const workflowEvidence = checkById(report, 'workflow_evidence')?.evidence
     expect(workflowEvidence).toContain(

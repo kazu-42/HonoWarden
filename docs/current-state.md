@@ -186,14 +186,36 @@ Implemented:
 - human-readable compatibility matrix under `docs/compatibility-matrix.md`
 - exact tracked versions for browser extension, desktop, mobile Android, mobile iOS, and CLI surfaces
 - mobile build number tracking for Android and iOS rows
+- metadata refresh cadence/source refs under `compat/client-matrix.json`
+- documented release metadata refresh procedure and stale threshold in
+  `docs/compatibility-matrix.md`
 - conservative `fixture_only` verification level for all rows at matrix creation
 - explicit known issues per client surface
+- explicit Web Vault exclusion and API-only compatibility boundary in ADR and
+  compatibility docs
+- explicit Organizations/shared-vault exclusion and future membership, role,
+  collection-access, cross-user isolation, migration, and rollback gates in ADR
+  0005, threat model, and compatibility docs
+- explicit policy management/enforcement exclusion and personal-vault empty
+  policy metadata default in ADR 0006, threat model, and compatibility docs
+- explicit collection mutation/assignment exclusion and personal-vault
+  read-only empty collection metadata default in ADR 0007, threat model, and
+  compatibility docs
+- explicit Send/public-sharing exclusion and future design gates in ADR 0003,
+  threat model, and compatibility docs
+- explicit Emergency Access exclusion and future delegated-recovery design gates
+  in ADR 0004, threat model, and compatibility docs
 - compatibility matrix validation in `pnpm compat:test`
+- repeatable live regression packet generator in
+  `scripts/honowarden-live-regression-packet.mjs` and release runbook in
+  `docs/release/live-regression-matrix.md`
 
 Not implemented:
 
 - refresh token reuse alerting
 - live client compatibility evidence for the tracked versions
+- actual `live_regression` matrix promotion for any tracked client row
+- automated network fetch of upstream release metadata in CI
 - any storage of real password-vault data
 
 ## Week 16 Increment
@@ -335,11 +357,15 @@ Implemented:
 - audit events for successful and not-found device revoke attempts
 - docs for audit event shape, implemented event names, non-goals, and operator notes
 - tests proving audit builder sanitization and route-level opt-in event emission
+- Cloudflare Workers Logs are enabled through Wrangler observability, and
+  Workers Trace Events Logpush is now configured to push `honowarden` and
+  `honowarden-staging` runtime metadata to a dedicated R2 bucket
+- `docs/release/log-retention-evidence.md` records the Logpush job, R2 sink,
+  retention/access policy, and staging/production smoke readback without
+  tokens, destination credentials, request bodies, or user secrets
 
 Not implemented:
 
-- external log sink integration
-- live log-retention verification
 - automated backup audit ingestion beyond the CLI audit packet and Week 20
   runbook evidence
 
@@ -366,7 +392,6 @@ Not implemented:
 
 - production migration/deploy for `0007_audit_events.sql`
 - enabling audit logging in staging or production
-- external log sink integration and Cloudflare log retention evidence
 - audit events for unsupported organization and public sharing surfaces
 
 ## Week 26 Vault Audit Coverage
@@ -387,7 +412,6 @@ Implemented:
 Not implemented:
 
 - live backup/restore execution audit evidence
-- external log sink ingestion
 - audit coverage for organization/shared-vault and public sharing surfaces
 
 ## Week 26 User Backup Export API
@@ -482,8 +506,8 @@ Implemented:
 
 Not implemented:
 
-- live two-user dogfood evidence
-- live disabled-user lifecycle operation
+- production two-user dogfood evidence
+- production disabled-user lifecycle operation
 - shared vault or Organization isolation
 - account lifecycle admin UI
 
@@ -738,6 +762,8 @@ Implemented:
 - `compat/client-matrix.json` CLI row promoted to `live_smoke`
 - release evidence document under `docs/release/live-client-evidence.md`
 - release gate update requiring linked live evidence for promoted matrix rows
+- Android client release metadata refreshed to `2026.6.1` build `21713` while
+  keeping the row at `fixture_only`
 
 Not implemented:
 
@@ -855,7 +881,8 @@ Implemented:
 
 Not implemented:
 
-- organization or shared-vault functionality
+- organization membership, roles, shared-vault functionality, or shared
+  collection assignment
 - public file-sharing functionality
 - collection or emergency-access functionality
 - login-with-device approval, push notification, or pending auth-request flows
@@ -998,8 +1025,32 @@ Implemented:
 Not implemented:
 
 - admin UI for account lifecycle operations
-- live production disabled-user lifecycle evidence beyond automated regression
-  coverage
+- production disabled-user lifecycle execution beyond dry-run planning and
+  synthetic local evidence
+
+## Week 26 Two-User Dogfood Evidence
+
+Implemented:
+
+- `pnpm dogfood:evidence:packet` synthetic evidence packet generator
+- strict required-flow coverage for two synthetic bootstraps, two-user sync,
+  cross-user read and mutation denials, disabled password grant, disabled
+  refresh grant, disabled sync, disabled vault CRUD, and enable rollback
+  planning
+- URL redaction, safe evidence directory checks, exactly-two synthetic user tag
+  checks, and synthetic-only policy checks
+- stateful FakeD1 account bootstrap support for tests that need inserted users
+  to be visible to later auth lookups
+- focused app-level test that bootstraps two synthetic users in the same fake
+  database, proves owner-scoped sync/read/mutation behavior, disables one user,
+  and verifies password grant, refresh grant, sync, and vault CRUD denial
+- release evidence document under
+  `docs/release/two-user-dogfood-evidence.md`
+
+Not implemented:
+
+- production account disable/enable execution for non-operator accounts
+- real official-client dogfood run for browser, desktop, or mobile surfaces
 
 ## Week 26 Account Revision API
 
@@ -1077,15 +1128,25 @@ Implemented:
 - authenticated `GET /api/policies/new`
 - authenticated `GET /api/domains`
 - authenticated `GET /api/settings/domains`
+- authenticated `POST /api/settings/domains`
+- authenticated `PUT /api/settings/domains`
 - policy endpoints return empty list responses for the alpha personal-vault
   scope
-- domain endpoints reuse the same empty equivalent-domain metadata as `/api/sync`
+- policy mutation and organization policy enforcement are excluded by ADR 0006;
+  no organization policy applies to personal-vault users
+- domain endpoints and `/api/sync` reuse the same owner-scoped custom
+  equivalent-domain metadata from the user row
+- custom equivalent-domain updates replace the owner-scoped `string[][]` set;
+  submitting an empty set deletes the custom domain rules
+- global equivalent-domain rules stay empty in the alpha scope, and
+  organization-scoped domain rules are intentionally not implemented until an
+  organization model exists
 - compatibility fixture flow `metadata_read` for policy and domain responses
 
 Not implemented:
 
-- policy management or organization policy enforcement
-- custom equivalent-domain configuration
+- policy management, policy mutation, or organization policy enforcement
+- organization-scoped equivalent-domain configuration
 - live client evidence for metadata read endpoints
 
 ## Week 26 Collection Metadata Read API
@@ -1098,6 +1159,8 @@ Implemented:
   scope
 - collection lookup returns stable `collection_not_found`
 - collection mutation routes remain explicit `unsupported_feature` responses
+- collection create/update/delete and cipher assignment remain excluded by ADR
+  0007 until shared/team vault scope is reopened
 - compatibility fixture coverage under the `metadata_read` flow
 
 Not implemented:

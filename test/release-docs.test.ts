@@ -16,10 +16,13 @@ const releaseDocs = [
   'tagging-runbook.md',
   'publication-gate.md',
   'live-client-evidence.md',
+  'live-regression-matrix.md',
+  'two-user-dogfood-evidence.md',
   'backup-restore-drill-evidence.md',
   'remote-backup-evidence.md',
   'staging-deploy-evidence.md',
   'cloudflare-resource-evidence.md',
+  'log-retention-evidence.md',
   'v0.1.0-alpha-release-notes.md',
 ] as const
 
@@ -66,9 +69,17 @@ describe('release feature-freeze docs', () => {
 
     expect(releaseNotes).toContain('HonoWarden is pre-alpha')
     expect(releaseNotes).toContain('Web Vault')
+    expect(releaseNotes).toContain('browser session surface')
     expect(releaseNotes).toContain('public registration')
+    expect(releaseNotes).toContain('organization membership')
+    expect(releaseNotes).toContain('organization policy mutation')
+    expect(releaseNotes).toContain('collection create')
+    expect(releaseNotes).toContain('public file-sharing')
+    expect(releaseNotes).toContain('delegated recovery')
     expect(releaseNotes).toContain('independent security audit')
     expect(releaseNotes).toContain('fixture_only')
+    expect(releaseNotes).toContain('live_regression')
+    expect(releaseNotes).toContain('synthetic two-user dogfood')
     expect(releaseNotes).toContain('D1 audit-event persistence')
     expect(releaseNotes).toContain('vault mutation audit event coverage')
   })
@@ -136,10 +147,12 @@ describe('release feature-freeze docs', () => {
     const workerEvidence = readReleaseDoc('worker-live-smoke-evidence.md')
     const websiteEvidence = readReleaseDoc('website-live-evidence.md')
     const emailEvidence = readReleaseDoc('email-routing-evidence.md')
+    const logRetentionEvidence = readReleaseDoc('log-retention-evidence.md')
     const rollbackEvidence = readReleaseDoc('ops-rollback-evidence.md')
 
     expect(index).toContain('worker-live-smoke-evidence.md')
     expect(index).toContain('website-live-evidence.md')
+    expect(index).toContain('log-retention-evidence.md')
     expect(index).toContain('email-routing-evidence.md')
     expect(index).toContain('ops-rollback-evidence.md')
 
@@ -197,6 +210,21 @@ describe('release feature-freeze docs', () => {
     expect(emailEvidence).toContain('visible in the verified')
     expect(emailEvidence).toContain('rollback')
 
+    expect(logRetentionEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(logRetentionEvidence).toContain('workers_trace_events')
+    expect(logRetentionEvidence).toContain('honowarden-worker-logpush')
+    expect(logRetentionEvidence).toContain(
+      'honowarden-workers-trace-events-to-r2',
+    )
+    expect(logRetentionEvidence).toContain('Job ID: `1780267`')
+    expect(logRetentionEvidence).toContain('logpush: true')
+    expect(logRetentionEvidence).toContain('35 days')
+    expect(logRetentionEvidence).toContain('hon49-logpush-smoke')
+    expect(logRetentionEvidence).toContain('20260709T211217Z')
+    expect(logRetentionEvidence).toContain('/REDACTED/staging')
+    expect(logRetentionEvidence).toContain('/REDACTED/production')
+    expect(logRetentionEvidence).not.toContain('secret-access-key=')
+
     expect(rollbackEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
     expect(rollbackEvidence).toContain('Approved recovery command')
     expect(rollbackEvidence).toContain(
@@ -237,6 +265,7 @@ function readReleaseDoc(
     | 'worker-live-smoke-evidence.md'
     | 'website-live-evidence.md'
     | 'email-routing-evidence.md'
+    | 'log-retention-evidence.md'
     | 'ops-rollback-evidence.md',
 ): string {
   return readFileSync(join(releaseDocsRoot, docPath), 'utf8')

@@ -21,6 +21,7 @@ changes and update this document in the same change.
 | `migrations/0007_audit_events.sql`       | `34e1661295fc9f521d898bca587f167a280fa490681d83e327828d43d326239d` |
 | `migrations/0008_request_quotas.sql`     | `fe2955c3733bc4907b0e6711b9c37257dfa67e5973c7495d06bb847ed84ee884` |
 | `migrations/0009_inquiry_messages.sql`   | `3400d862d2d10da455a93b6fd739f534b55f22aa1c526b3283581bab672a4aeb` |
+| `migrations/0010_equivalent_domains.sql` | `4a6b2f2da77103955d78ed132afc8a1519ba4c0a59f50a6a4fdfb4194e6dc559` |
 
 ## Required Tables At Freeze
 

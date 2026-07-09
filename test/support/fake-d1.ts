@@ -338,12 +338,16 @@ export class FakeD1Database {
       },
       async run(): Promise<D1Result> {
         if (query.includes('INSERT OR IGNORE INTO users')) {
+          const insertedUserChanges =
+            options.userInsertChanges ??
+            insertAuthUserIfStateful(options, boundValues)
+
           return {
             success: true,
             results: [],
             meta: {
               ...fakeMeta,
-              changes: options.userInsertChanges ?? 1,
+              changes: insertedUserChanges,
             },
           }
         }
@@ -430,6 +434,20 @@ export class FakeD1Database {
 
         if (/UPDATE\s+ciphers/.test(query)) {
           let changes = options.cipherUpdateChanges ?? 1
+
+          if (
+            options.ciphers &&
+            query.includes('WHERE id = ? AND user_id = ?')
+          ) {
+            const id = String(boundValues[6] ?? '')
+            const userId = String(boundValues[7] ?? '')
+            changes = options.ciphers.some(
+              (row) =>
+                row.id === id && row.userId === userId && row.deletedAt == null,
+            )
+              ? changes
+              : 0
+          }
 
           if (query.includes('deleted_at = NULL')) {
             changes = options.cipherRestoreChanges ?? 1
@@ -817,6 +835,69 @@ export class FakeD1Database {
       },
     }))
   }
+}
+
+function insertAuthUserIfStateful(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  if (!options.authUsers) {
+    return 1
+  }
+
+  const insertedUser = buildInsertedAuthUser(boundValues)
+  const duplicate = options.authUsers.some(
+    (user) =>
+      user.id === insertedUser.id ||
+      user.emailNormalized === insertedUser.emailNormalized,
+  )
+
+  if (duplicate) {
+    return 0
+  }
+
+  options.authUsers.push(insertedUser)
+  return 1
+}
+
+function buildInsertedAuthUser(
+  boundValues: unknown[],
+): Record<string, unknown> {
+  const revisionDate =
+    stringOrNull(boundValues[13]) ?? new Date(0).toISOString()
+
+  return {
+    id: String(boundValues[0]),
+    email: String(boundValues[1]),
+    emailNormalized: String(boundValues[2]),
+    displayName: stringOrNull(boundValues[3]),
+    kdfAlgorithm: String(boundValues[4]),
+    kdfIterations: Number(boundValues[5]),
+    kdfMemory: numberOrNull(boundValues[6]),
+    kdfParallelism: numberOrNull(boundValues[7]),
+    masterPasswordHash: String(boundValues[8]),
+    userKey: stringOrNull(boundValues[9]),
+    publicKey: stringOrNull(boundValues[10]),
+    privateKey: stringOrNull(boundValues[11]),
+    securityStamp: String(boundValues[12]),
+    revisionDate,
+    createdAt: revisionDate,
+    disabledAt: null,
+    loginFailedCount: 0,
+    loginFailedAt: null,
+    loginLockedUntil: null,
+    totpEnabled: false,
+    totpEncryptedSecret: null,
+    totpLastAcceptedStep: null,
+  }
+}
+
+function stringOrNull(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value)
+}
+
+function numberOrNull(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value)
 }
 
 function findAuthUser(

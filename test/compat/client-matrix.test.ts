@@ -8,6 +8,11 @@ type ClientMatrix = {
   schemaVersion: number
   checkedAt: string
   sourceKind: string
+  metadataRefresh: {
+    cadenceDays: number
+    requiredBeforeRelease: boolean
+    staleAfterDays: number
+  }
   entries: ClientMatrixEntry[]
 }
 
@@ -17,6 +22,11 @@ type ClientMatrixEntry = {
   build?: string
   releaseTag: string
   releasePublishedAt: string
+  metadataSource: {
+    kind: string
+    repositoryRef: string
+    releaseSelector: string
+  }
   verificationLevel: string
   liveEvidence?: {
     path: string
@@ -44,6 +54,12 @@ const matrixPath = fileURLToPath(
 )
 const fixtureFlowsPath = fileURLToPath(
   new URL('../../compat/fixture-flows.json', import.meta.url).toString(),
+)
+const compatibilityDocPath = fileURLToPath(
+  new URL('../../docs/compatibility.md', import.meta.url).toString(),
+)
+const compatibilityMatrixDocPath = fileURLToPath(
+  new URL('../../docs/compatibility-matrix.md', import.meta.url).toString(),
 )
 const fixturesRoot = fileURLToPath(
   new URL('../../compat/fixtures', import.meta.url).toString(),
@@ -92,6 +108,11 @@ describe('client compatibility matrix', () => {
     expect(matrix.schemaVersion).toBe(1)
     expect(matrix.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
     expect(matrix.sourceKind).toBe('official-upstream-release-metadata')
+    expect(matrix.metadataRefresh).toEqual({
+      cadenceDays: 14,
+      requiredBeforeRelease: true,
+      staleAfterDays: 21,
+    })
   })
 
   it('covers required client surfaces with exact versions', () => {
@@ -105,10 +126,22 @@ describe('client compatibility matrix', () => {
       expect(entry.releasePublishedAt).toMatch(
         /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
       )
-      expect(['fixture_only', 'live_smoke']).toContain(entry.verificationLevel)
+      expect(Date.parse(entry.releasePublishedAt)).toBeLessThanOrEqual(
+        Date.parse(matrix.checkedAt),
+      )
+      expect(entry.metadataSource.kind).toBe('official-upstream-github-release')
+      expect(entry.metadataSource.releaseSelector).toMatch(
+        /latest non-draft, non-prerelease/,
+      )
+      expect(['fixture_only', 'live_smoke', 'live_regression']).toContain(
+        entry.verificationLevel,
+      )
       expect(entry.knownIssues.length).toBeGreaterThanOrEqual(1)
 
-      if (entry.verificationLevel === 'live_smoke') {
+      if (
+        entry.verificationLevel === 'live_smoke' ||
+        entry.verificationLevel === 'live_regression'
+      ) {
         expect(entry.liveEvidence).toMatchObject({
           status: 'passed',
           clientVersion: entry.version,
@@ -120,6 +153,27 @@ describe('client compatibility matrix', () => {
           /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
         )
         expect(entry.liveEvidence?.flows.length).toBeGreaterThan(0)
+      }
+
+      if (entry.verificationLevel === 'live_regression') {
+        expect(entry.liveEvidence?.path).toContain(
+          'docs/release/live-regression-evidence/',
+        )
+        expect(entry.liveEvidence?.flows).toEqual(
+          expect.arrayContaining([
+            'config',
+            'prelogin',
+            'password_grant',
+            'initial_sync',
+            'post_mutation_sync',
+            'cipher_create',
+            'cipher_update',
+            'cipher_soft_delete',
+            'cipher_permanent_delete',
+            'refresh_grant',
+            'session_revoke',
+          ]),
+        )
       }
 
       for (const issue of entry.knownIssues) {
@@ -168,6 +222,162 @@ describe('client compatibility matrix', () => {
     }
   })
 
+  it('records release source refs for every tracked surface', () => {
+    expect(
+      Object.fromEntries(
+        matrix.entries.map((entry) => [
+          entry.surface,
+          entry.metadataSource.repositoryRef,
+        ]),
+      ),
+    ).toEqual({
+      browser_extension: 'client-apps',
+      desktop: 'client-apps',
+      mobile_android: 'android-mobile-apps',
+      mobile_ios: 'ios-mobile-apps',
+      cli: 'client-apps',
+    })
+  })
+
+  it('keeps Web Vault outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Web Vault Boundary')
+    expect(compatibilityDoc).toContain('does not expose a Web Vault')
+    expect(compatibilityDoc).toContain('new ADR')
+    expect(compatibilityDoc).toContain('CSP')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Web Vault row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'web_vault',
+    )
+  })
+
+  it('keeps Organizations and shared vaults outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain(
+      '## Organizations And Shared Vault Boundary',
+    )
+    expect(compatibilityDoc).toContain('ADR 0005')
+    expect(compatibilityDoc).toContain('membership')
+    expect(compatibilityDoc).toContain('cross-user isolation')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Organizations or shared vault row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'organizations',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'shared_vault',
+    )
+  })
+
+  it('keeps policy management outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Policy Management Boundary')
+    expect(compatibilityDoc).toContain('ADR 0006')
+    expect(compatibilityDoc).toContain('empty policy metadata reads')
+    expect(compatibilityMatrixDoc).toContain(
+      'Policy metadata remains fixture-covered',
+    )
+    expect(compatibilityMatrixDoc).toMatch(
+      /Policy mutation and organization policy enforcement are\s+not compatibility claims/,
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'policy_management',
+    )
+  })
+
+  it('keeps collection mutation outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Collection Mutation Boundary')
+    expect(compatibilityDoc).toMatch(/ADR\s+0007/)
+    expect(compatibilityDoc).toContain('empty collection metadata reads')
+    expect(compatibilityDoc).toContain('cipher assignment')
+    expect(compatibilityMatrixDoc).toContain(
+      'Collection metadata remains fixture-covered',
+    )
+    expect(compatibilityMatrixDoc).toMatch(
+      /Collection mutation and cipher assignment are\s+not\s+compatibility claims/,
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'collection_mutation',
+    )
+  })
+
+  it('keeps Send and public sharing outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Send And Public Sharing Boundary')
+    expect(compatibilityDoc).toContain('ADR 0003')
+    expect(compatibilityDoc).toContain('unauthenticated access')
+    expect(compatibilityDoc).toContain('rate limiting')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Send or public file-sharing row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain('send')
+  })
+
+  it('keeps Emergency Access outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Emergency Access Boundary')
+    expect(compatibilityDoc).toContain('ADR 0004')
+    expect(compatibilityDoc).toMatch(/Delegated\s+recovery/i)
+    expect(compatibilityDoc).toContain('cryptographic handoff')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Emergency Access row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'emergency_access',
+    )
+  })
+
+  it('re-evaluates live evidence requirements when metadata advances', () => {
+    const androidEntry = matrix.entries.find(
+      (entry) => entry.surface === 'mobile_android',
+    )
+
+    expect(androidEntry).toMatchObject({
+      version: '2026.6.1',
+      build: '21713',
+      releaseTag: 'v2026.6.1-bwpm',
+      releasePublishedAt: '2026-07-09T16:57:30Z',
+      verificationLevel: 'fixture_only',
+    })
+    expect(androidEntry?.knownIssues.join('\n')).toContain(
+      'live mobile evidence must be re-run before any promotion',
+    )
+  })
+
   it('records the alpha CLI live smoke while keeping other surfaces conservative', () => {
     const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
     expect(cliEntry?.verificationLevel).toBe('live_smoke')
@@ -181,6 +391,19 @@ describe('client compatibility matrix', () => {
     for (const entry of nonCliEntries) {
       expect(entry.verificationLevel).toBe('fixture_only')
     }
+  })
+
+  it('documents repeatable live regression promotion requirements', () => {
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityMatrixDoc).toContain('live_regression')
+    expect(compatibilityMatrixDoc).toContain('login, sync')
+    expect(compatibilityMatrixDoc).toContain('refresh, session revoke')
+    expect(compatibilityMatrixDoc).toContain('selected auth lifecycle')
+    expect(compatibilityMatrixDoc).toContain('live-regression-matrix.md')
   })
 })
 

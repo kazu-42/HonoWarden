@@ -22,6 +22,8 @@ const requiredReleaseDocs = [
   'tagging-runbook.md',
   'publication-gate.md',
   'live-client-evidence.md',
+  'live-regression-matrix.md',
+  'two-user-dogfood-evidence.md',
   'remote-backup-evidence.md',
   'v0.1.0-alpha-release-notes.md',
 ]
@@ -304,16 +306,27 @@ function hasCiEvidence(checks) {
 
 function checkCompatibilityMatrix() {
   const matrix = readJson('compat/client-matrix.json')
-  const allowedVerificationLevels = new Set(['fixture_only', 'live_smoke'])
+  const allowedVerificationLevels = new Set([
+    'fixture_only',
+    'live_smoke',
+    'live_regression',
+  ])
   const invalidVerificationRows = matrix.entries.filter(
     (entry) => !allowedVerificationLevels.has(entry.verificationLevel),
   )
   const promotedRows = matrix.entries.filter(
     (entry) => entry.verificationLevel !== 'fixture_only',
   )
-  const promotedRowsWithoutEvidence = promotedRows.filter(
-    (entry) => !hasMatrixLiveEvidence(entry),
-  )
+  const promotedRowsWithoutEvidence = promotedRows.filter((entry) => {
+    if (!hasMatrixLiveEvidence(entry)) {
+      return true
+    }
+
+    return (
+      entry.verificationLevel === 'live_regression' &&
+      !hasMatrixLiveRegressionEvidence(entry)
+    )
+  })
   const rowsWithoutKnownIssues = matrix.entries.filter(
     (entry) =>
       !Array.isArray(entry.knownIssues) || entry.knownIssues.length < 1,
@@ -341,7 +354,7 @@ function checkCompatibilityMatrix() {
         ),
       },
       nextAction:
-        'Keep rows at fixture_only or attach complete liveEvidence before promotion.',
+        'Keep rows at fixture_only or attach complete liveEvidence before smoke/regression promotion.',
     }
   }
 
@@ -442,6 +455,37 @@ function hasMatrixLiveEvidence(entry) {
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(evidence.recordedAt) &&
     Array.isArray(evidence.flows) &&
     evidence.flows.length > 0
+  )
+}
+
+function hasMatrixLiveRegressionEvidence(entry) {
+  const evidence = entry.liveEvidence
+  const requiredFlows = [
+    'config',
+    'prelogin',
+    'password_grant',
+    'initial_sync',
+    'post_mutation_sync',
+    'cipher_create',
+    'cipher_update',
+    'cipher_soft_delete',
+    'cipher_permanent_delete',
+    'refresh_grant',
+    'session_revoke',
+  ]
+
+  return (
+    typeof evidence?.path === 'string' &&
+    evidence.path.startsWith('docs/release/live-regression-evidence/') &&
+    requiredFlows.every((flow) => evidence.flows.includes(flow)) &&
+    evidence.flows.some((flow) =>
+      [
+        'totp_login',
+        'device_revoke',
+        'revoke_all_other_sessions',
+        'disabled_user_denied',
+      ].includes(flow),
+    )
   )
 }
 

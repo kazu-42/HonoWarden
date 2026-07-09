@@ -6,8 +6,10 @@
   "triggers": {
     "crons": ["0 * * * *"],
   },
+  "logpush": true,
   "observability": {
     "enabled": true,
+    "head_sampling_rate": 1,
   },
   "vars": {
     "HONOWARDEN_ALLOWED_EMAILS": "",
@@ -37,6 +39,11 @@
       "triggers": {
         "crons": ["0 * * * *"],
       },
+      "logpush": true,
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+      },
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
@@ -64,6 +71,11 @@
       "name": "honowarden",
       "triggers": {
         "crons": ["0 * * * *"],
+      },
+      "logpush": true,
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
       },
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",

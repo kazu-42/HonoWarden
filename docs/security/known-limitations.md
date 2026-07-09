@@ -22,10 +22,30 @@ inputs, not minor documentation notes.
 
 ## Current Product Gaps
 
-- Web Vault is intentionally not implemented.
+- Web Vault is intentionally not implemented; HonoWarden has no
+  browser-delivered vault UI, browser session boundary, or static app asset
+  supply chain in the alpha scope.
 - Public registration is disabled.
-- Organizations and shared vaults are not implemented.
-- Send is not implemented.
+- Organizations and shared vaults are intentionally not implemented; ADR 0005
+  keeps them out of the alpha personal-vault product line unless membership,
+  ownership, role, collection-access, cross-user isolation, encrypted key
+  sharing, audit, migration, and rollback design is completed first.
+- Organization policy management and enforcement are intentionally not
+  implemented; ADR 0006 keeps policy metadata reads empty for personal vaults
+  until policy schema, enforcement points, audit, rollback, and compatibility
+  fixtures are designed.
+- Collection mutation and assignment are intentionally not implemented; ADR
+  0007 keeps collection metadata read-only and empty for personal vaults until
+  ownership, membership, assignment, audit, migration, rollback, and
+  compatibility fixtures are designed.
+- Send and public file-sharing are intentionally not implemented; ADR 0003
+  requires public access-token entropy, expiration, revocation, rate limits,
+  abuse reporting, cache policy, audit, and retention/deletion design before
+  any public sharing support claim.
+- Emergency Access is intentionally not implemented; ADR 0004 requires grantee
+  identity, delayed access, cancellation, notification delivery, cryptographic
+  handoff, transition audit, abuse controls, rollback, and incident-response
+  design before any delegated recovery support claim.
 - Cipher-scoped attachment upload, download, delete, and sync metadata are
   implemented for opaque client-encrypted payloads, but no live official-client
   attachment run has been captured yet.
@@ -79,8 +99,9 @@ inputs, not minor documentation notes.
 - D1 audit-event persistence has a 365-day retention policy, but staging and
   production audit logging remain disabled by default until `0007` is migrated
   and operator access is explicitly approved.
-- External Cloudflare log retention/access and vendor log-sink integration are
-  still not verified.
+- External Worker runtime logs now ship to a dedicated Cloudflare R2 Logpush
+  sink with operator-only access, but downstream SIEM/vendor alerting and
+  automated retention deletion are still operator-run rather than productized.
 - Backup directories and manifests now have a documented short-retention
   encrypted GitHub artifact policy and a 35-day operator archive target, but
   long-term archive storage is still operator-owned rather than automated in

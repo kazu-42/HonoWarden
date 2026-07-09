@@ -51,7 +51,7 @@ export async function getDatabaseHealth(
         `
           SELECT version, applied_at as appliedAt
           FROM schema_migrations
-          ORDER BY applied_at DESC, version DESC
+          ORDER BY version DESC
           LIMIT 1
         `,
       )

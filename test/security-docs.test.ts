@@ -33,6 +33,18 @@ describe('security review materials', () => {
     expect(threatModel).toContain('## Assets')
     expect(threatModel).toContain('## Trust Boundaries')
     expect(threatModel).toContain('## STRIDE Summary')
+    expect(threatModel).toContain('Public-link abuse or unauthorized sharing')
+    expect(threatModel).toContain('ADR 0003')
+    expect(threatModel).toContain('Shared vault privilege escalation')
+    expect(threatModel).toContain('ADR 0005')
+    expect(threatModel).toContain(
+      'Policy bypass through unenforced organization rules',
+    )
+    expect(threatModel).toContain('ADR 0006')
+    expect(threatModel).toContain('Collection assignment privilege escalation')
+    expect(threatModel).toContain('ADR 0007')
+    expect(threatModel).toContain('Delegated recovery privilege escalation')
+    expect(threatModel).toContain('ADR 0004')
 
     const dataFlow = readSecurityDoc('data-flow.md')
     expect(dataFlow).toContain('## Password Grant')
@@ -75,6 +87,12 @@ describe('security review materials', () => {
 
     const knownLimitations = readSecurityDoc('known-limitations.md')
     expect(knownLimitations).toContain('pre-alpha')
+    expect(knownLimitations).toContain('browser-delivered vault UI')
+    expect(knownLimitations).toContain('cross-user isolation')
+    expect(knownLimitations).toContain('policy schema')
+    expect(knownLimitations).toContain('Collection mutation and assignment')
+    expect(knownLimitations).toContain('public access-token entropy')
+    expect(knownLimitations).toContain('delayed access')
     expect(knownLimitations).toContain('no independent security audit')
     expect(knownLimitations).toContain('incident response runbook')
     expect(knownLimitations).toContain('bulk trusted-device rotation')

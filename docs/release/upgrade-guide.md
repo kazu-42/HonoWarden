@@ -52,6 +52,8 @@ pnpm backup:export -- \
   serves the TOTP change routes.
 - `0005_device_keys.sql` must be applied before deploying a Worker commit that
   serves the encrypted device key routes.
+- `0010_equivalent_domains.sql` must be applied before deploying a Worker
+  commit that serves custom equivalent-domain settings writes.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.
 - Update `docs/release/migration-freeze.md` in the same change when migrations
