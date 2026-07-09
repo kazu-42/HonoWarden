@@ -1685,12 +1685,16 @@ Implemented:
 - `kazu-42/HonoWarden-website` PR #1 updated the public homepage to link to the
   v0.1.0-alpha GitHub Release and repository security policy without
   advertising unverified `security@honowarden.com` or `security.txt` metadata
-- `honowarden.com` and `www.honowarden.com` were deployed from website merge
-  commit `36b8171f7afd55bf306e5482cca454a0b3822a39` to Worker version
-  `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91`
-- website live smoke passed for apex and `www` root responses, `/health`, link
-  assertions, negative security-mailbox assertions, and inactive
-  `security.txt` routes
+- `kazu-42/HonoWarden-website` PR #2 restored verified public security contact
+  metadata after Email Routing inbound smoke passed, and redacted private
+  forwarding destinations from the website ops doc
+- `honowarden.com` and `www.honowarden.com` were redeployed from website merge
+  commit `97095812384b47e5a1798108d77d8224f75509f2` to Worker version
+  `b408a4e2-4279-4a57-8172-698b1c77c6ab`
+- website live smoke passed for apex and `www` root responses, `/health`,
+  `/.well-known/security.txt`, `/security.txt` redirect behavior, release-note
+  and security-policy links, and verified `mailto:security@honowarden.com`
+  visibility
 - `docs/release/website-live-evidence.md` now records website deployment,
   route, HTTPS smoke, link target, security-contact visibility, and rollback
   handle evidence
@@ -1718,7 +1722,7 @@ Implemented:
 - Cloudflare deployment readback confirmed staging Worker version
   `bf0333dc-9efa-4001-aa31-20b3e10731c9`, production Worker version
   `72577dd9-c859-4673-b653-fbdd796f8f7d`, and website Worker version
-  `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91` are still serving `100%` traffic
+  `b408a4e2-4279-4a57-8172-698b1c77c6ab` are still serving `100%` traffic
 - rollback rehearsal health checks passed for staging and production
   `/health`, `/healthz`, `/health/db`, `/api/config`, and synthetic prelogin
   denial, with decision `continue`
@@ -1726,7 +1730,7 @@ Implemented:
   `docs/operations/ai-inquiry-inbox.md`, including trust boundaries,
   Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
   Object state boundaries, human approval rules, retention/redaction controls,
-  and follow-up implementation split for `HON-24` through `HON-28`
+  and follow-up implementation split for `HON-24` through `HON-27`
 
 Not implemented:
 
