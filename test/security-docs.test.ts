@@ -37,6 +37,10 @@ describe('security review materials', () => {
     expect(threatModel).toContain('ADR 0003')
     expect(threatModel).toContain('Shared vault privilege escalation')
     expect(threatModel).toContain('ADR 0005')
+    expect(threatModel).toContain(
+      'Policy bypass through unenforced organization rules',
+    )
+    expect(threatModel).toContain('ADR 0006')
     expect(threatModel).toContain('Delegated recovery privilege escalation')
     expect(threatModel).toContain('ADR 0004')
 
@@ -83,6 +87,7 @@ describe('security review materials', () => {
     expect(knownLimitations).toContain('pre-alpha')
     expect(knownLimitations).toContain('browser-delivered vault UI')
     expect(knownLimitations).toContain('cross-user isolation')
+    expect(knownLimitations).toContain('policy schema')
     expect(knownLimitations).toContain('public access-token entropy')
     expect(knownLimitations).toContain('delayed access')
     expect(knownLimitations).toContain('no independent security audit')

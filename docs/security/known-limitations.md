@@ -30,6 +30,10 @@ inputs, not minor documentation notes.
   keeps them out of the alpha personal-vault product line unless membership,
   ownership, role, collection-access, cross-user isolation, encrypted key
   sharing, audit, migration, and rollback design is completed first.
+- Organization policy management and enforcement are intentionally not
+  implemented; ADR 0006 keeps policy metadata reads empty for personal vaults
+  until policy schema, enforcement points, audit, rollback, and compatibility
+  fixtures are designed.
 - Send and public file-sharing are intentionally not implemented; ADR 0003
   requires public access-token entropy, expiration, revocation, rate limits,
   abuse reporting, cache policy, audit, and retention/deletion design before

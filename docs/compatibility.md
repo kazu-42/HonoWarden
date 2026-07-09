@@ -51,6 +51,14 @@ audit, migration, and rollback requirements. ADR 0005 defines the scope as a
 non-goal for this product line and the minimum gates before any future shared or
 team-vault support claim.
 
+## Policy Management Boundary
+
+HonoWarden exposes authenticated empty policy metadata reads only. It does not
+implement policy mutation or organization policy enforcement in the alpha
+personal-vault product line. ADR 0006 defines the no-policy default behavior and
+the schema, enforcement, audit, rollback, and compatibility gates required
+before future policy support.
+
 ## Send And Public Sharing Boundary
 
 HonoWarden does not expose Send or public file-sharing in the alpha release.
