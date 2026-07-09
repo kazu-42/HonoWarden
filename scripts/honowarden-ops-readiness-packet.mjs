@@ -392,7 +392,7 @@ function emailLocalInputsNextAction(report) {
 
   if (failedChecks.includes('cloudflare_api_token')) {
     actions.push(
-      'Set CLOUDFLARE_API_TOKEN with zone read, DNS write, and Email Routing write access.',
+      'Set CLOUDFLARE_API_TOKEN with zone read, DNS write, and Email Routing write access, or set local-only CLOUDFLARE_API_KEY/CLOUDFLARE_GLOBAL_API_KEY auth with CLOUDFLARE_EMAIL.',
     )
   }
 

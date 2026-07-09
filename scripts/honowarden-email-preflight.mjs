@@ -79,11 +79,7 @@ function buildEmailPreflightReport(env) {
     destinationConfigured: stringValue(env[route.envVar]) !== null,
   }))
   const checks = [
-    configuredCheck(
-      'cloudflare_api_token',
-      env.CLOUDFLARE_API_TOKEN,
-      'CLOUDFLARE_API_TOKEN',
-    ),
+    cloudflareApiAuthCheck(env),
     configuredCheck(
       'cloudflare_account_id',
       env.CLOUDFLARE_ACCOUNT_ID,
@@ -131,6 +127,46 @@ function configuredCheck(id, value, envVar) {
     id,
     stringValue(value) !== null,
     stringValue(value) === null ? `${envVar} missing` : `${envVar} configured`,
+  )
+}
+
+function cloudflareApiAuthCheck(env) {
+  const hasToken = stringValue(env.CLOUDFLARE_API_TOKEN) !== null
+  const hasGlobalKey =
+    stringValue(env.CLOUDFLARE_API_KEY) !== null ||
+    stringValue(env.CLOUDFLARE_GLOBAL_API_KEY) !== null
+  const hasGlobalKeyEmail =
+    stringValue(env.CLOUDFLARE_EMAIL) !== null ||
+    stringValue(env.CLOUDFLARE_API_EMAIL) !== null
+
+  if (hasToken) {
+    return check(
+      'cloudflare_api_token',
+      true,
+      'CLOUDFLARE_API_TOKEN configured',
+    )
+  }
+
+  if (hasGlobalKey && hasGlobalKeyEmail) {
+    return check(
+      'cloudflare_api_token',
+      true,
+      'Cloudflare global API key auth configured',
+    )
+  }
+
+  if (hasGlobalKey) {
+    return check(
+      'cloudflare_api_token',
+      false,
+      'Cloudflare global API key configured but CLOUDFLARE_EMAIL is missing',
+    )
+  }
+
+  return check(
+    'cloudflare_api_token',
+    false,
+    'CLOUDFLARE_API_TOKEN or Cloudflare global API key auth missing',
   )
 }
 

@@ -2,12 +2,12 @@
 
 Target: `v0.1.0-alpha`.
 
-Status: not_performed.
+Status: partial.
 
 Mode: Cloudflare Email Routing setup and inbound smoke evidence.
 
 This file is the required evidence placeholder for project email routing under
-`honowarden.com`. It must remain `not_performed` until Email Routing is enabled,
+`honowarden.com`. It must remain `partial` until Email Routing is enabled,
 destination inboxes are verified, routes are created, DNS records are checked,
 and inbound test messages are received.
 
@@ -68,7 +68,86 @@ pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-ur
 
 The preflight must not print tokens or forwarding destinations.
 
-## Current Readback: 2026-07-08
+## Current Readback: 2026-07-09
+
+Approved Cloudflare Email Routing setup was performed with local-only global
+API key auth. The key is stored outside the repository under the operator's
+home configuration, loaded through ignored direnv files, and is not recorded in
+git or this evidence.
+
+Approval context:
+
+- Operator approved using the prepared global API key for the gHive account on
+  2026-07-09 JST.
+- Operator approved routing and database changes, a new repository if needed,
+  and retention policy work in the same thread.
+- No secrets, token values, private destination addresses, message bodies, or
+  attachments were recorded.
+
+Cloudflare account and zone:
+
+- Cloudflare account: `gHive`
+- Cloudflare account ID: `7e31a4cfe4ffd2cfff49c04236261de8`
+- Zone: `honowarden.com`
+- Zone ID: `f943f9ad49c08ef28fe641cf9277b1ed`
+
+Email Routing settings:
+
+- API readback: `enabled: true`
+- API status: `ready`
+- Previous catch-all/drop rule remains disabled and unchanged.
+
+Destination readback:
+
+- Configured destination count: `1`
+- Destination hash tag: `e732fc786e52`
+- Destination verified: `true`
+- Destination created and modified:
+  `2026-07-09T12:31:29.945652Z`
+- Destination address value is intentionally not recorded.
+
+DNS readback:
+
+| Type | Record ID                          | Content                                        | Priority |
+| ---- | ---------------------------------- | ---------------------------------------------- | -------- |
+| MX   | `04fa6f6528ab56d9d2b3d6fbd8fa9ded` | `route3.mx.cloudflare.net`                     | `28`     |
+| MX   | `62a4125f5191bf644e1723cceb04839f` | `route2.mx.cloudflare.net`                     | `35`     |
+| MX   | `d1df42e54f0d39facf12ff0e4a6f0668` | `route1.mx.cloudflare.net`                     | `63`     |
+| TXT  | `905639146eeaf7449af796d7bef2a8ab` | `"v=spf1 include:_spf.mx.cloudflare.net ~all"` | n/a      |
+
+Public DNS readback also returned the Cloudflare MX records and SPF TXT record
+for `honowarden.com`.
+
+Route readback:
+
+| Address                     | Rule ID                            | Priority | Enabled | Action    |
+| --------------------------- | ---------------------------------- | -------- | ------- | --------- |
+| `security@honowarden.com`   | `c303ee9d52e94355a6a5c0680163927c` | `0`      | `true`  | `forward` |
+| `support@honowarden.com`    | `f9821e487f1d4e6e989f0fca1fb5ea6b` | `1`      | `true`  | `forward` |
+| `hello@honowarden.com`      | `e9d2b80c19cf47038165b15282c68eb4` | `2`      | `true`  | `forward` |
+| `admin@honowarden.com`      | `0d3aea1c4e13401085cf7c6be2b7ac00` | `3`      | `true`  | `forward` |
+| `postmaster@honowarden.com` | `f44abae45fc749f9a99e8945ad46e994` | `4`      | `true`  | `forward` |
+| `abuse@honowarden.com`      | `b9d2bf82f1bc41f688299e8be617c7dd` | `5`      | `true`  | `forward` |
+
+Local preflight:
+
+- Command: `direnv exec . pnpm email:preflight -- --strict`
+- Result: `ready`
+- Auth path: Cloudflare global API key plus operator email.
+- Configured routes: `6/6`
+- No token, global key, operator email, or forwarding destination value was
+  printed.
+
+Inbound smoke:
+
+- Status: `not_performed`
+- Required before `Status: passed`: send an external test message to each
+  required route, confirm receipt at the verified destination, and record only
+  redacted timestamps or message ids.
+- `security@honowarden.com` should not be advertised as an active disclosure
+  mailbox until inbound delivery for that route is confirmed.
+
+## Previous Readback: 2026-07-08
 
 Read-only checks were run after the website live evidence was recorded. No
 Email Routing, DNS, destination, or route mutation was performed.
@@ -139,18 +218,16 @@ DNS readback:
 - `honowarden.com` MX records: none returned.
 - Apex TXT records: none returned.
 
-The next strict-readiness step is to provide a scoped `CLOUDFLARE_API_TOKEN`.
-For manual Wrangler readback, refreshing Wrangler OAuth with Email Routing
-scopes may also unblock the API reads. After the API is readable, verify the
-destination address before creating routes.
+At that time, the next strict-readiness step was to provide Cloudflare API auth
+that could read and write Email Routing. That blocker was resolved on
+2026-07-09 by loading local-only global API key auth outside the repository.
 
 ## Not Performed
 
-- Email Routing has not been enabled by this evidence file.
-- DNS MX/SPF mutation has not been performed by this evidence file.
-- Destination inbox verification has not been performed by this evidence file.
 - Inbound email smoke has not been performed by this evidence file.
-- No message body or attachment has been stored by this evidence file.
+- Security contact metadata has not been published from this evidence file.
+- No message body, attachment, private forwarding destination, operator email,
+  token, or global key value has been stored by this evidence file.
 
 ## Rollback
 
