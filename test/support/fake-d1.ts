@@ -45,6 +45,9 @@ type FakeD1DatabaseOptions = {
   totpChallengeUpdateChanges?: number
   auditEventCleanupChanges?: number
   auditEventInsertThrows?: boolean
+  requestQuotaBucket?: Record<string, unknown> | null
+  requestQuotaCleanupChanges?: number
+  requestQuotaInsertThrows?: boolean
 }
 
 export type FakeAuditEventInsert = {
@@ -66,10 +69,26 @@ export type FakeAuditEventCleanupDelete = {
   limit: number
 }
 
+export type FakeRequestQuotaWrite = {
+  bucketKey: string
+  scope: string
+  limit: number
+  windowSeconds: number
+  blockSeconds: number
+}
+
+export type FakeRequestQuotaCleanupDelete = {
+  expiredBefore: string
+  now: string
+  limit: number
+}
+
 export class FakeD1Database {
   readonly deletedAuthFailureBucketKeys: string[] = []
   readonly auditEventInserts: FakeAuditEventInsert[] = []
   readonly auditEventCleanupDeletes: FakeAuditEventCleanupDelete[] = []
+  readonly requestQuotaWrites: FakeRequestQuotaWrite[] = []
+  readonly requestQuotaCleanupDeletes: FakeRequestQuotaCleanupDelete[] = []
 
   private readonly authFailureBuckets = new Map<
     string,
@@ -90,6 +109,8 @@ export class FakeD1Database {
     const deletedAuthFailureBucketKeys = this.deletedAuthFailureBucketKeys
     const auditEventInserts = this.auditEventInserts
     const auditEventCleanupDeletes = this.auditEventCleanupDeletes
+    const requestQuotaWrites = this.requestQuotaWrites
+    const requestQuotaCleanupDeletes = this.requestQuotaCleanupDeletes
     let boundValues: unknown[] = []
 
     const statement = {
@@ -98,6 +119,10 @@ export class FakeD1Database {
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (query.includes('FROM request_quota_buckets')) {
+          return (options.requestQuotaBucket ?? null) as T | null
+        }
+
         if (query.includes('FROM auth_failure_buckets')) {
           const bucketKey = String(boundValues[0] ?? '')
           const lockedUntil = '2999-01-01T00:00:00.000Z'
@@ -585,6 +610,50 @@ export class FakeD1Database {
           }
         }
 
+        if (query.includes('INSERT INTO request_quota_buckets')) {
+          if (options.requestQuotaInsertThrows) {
+            throw new Error('request quota insert failed')
+          }
+
+          const now = String(boundValues[4])
+          const windowThreshold = String(boundValues[5])
+          const blockedUntil = String(boundValues[9])
+          requestQuotaWrites.push({
+            bucketKey: String(boundValues[0]),
+            scope: String(boundValues[1]),
+            limit: Number(boundValues[8]),
+            windowSeconds:
+              (Date.parse(now) - Date.parse(windowThreshold)) / 1000,
+            blockSeconds: (Date.parse(blockedUntil) - Date.parse(now)) / 1000,
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+request_quota_buckets/.test(query)) {
+          requestQuotaCleanupDeletes.push({
+            expiredBefore: String(boundValues[0]),
+            now: String(boundValues[1]),
+            limit: Number(boundValues[2]),
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.requestQuotaCleanupChanges ?? 1,
+            },
+          }
+        }
+
         if (/DELETE\s+FROM\s+audit_events/.test(query)) {
           auditEventCleanupDeletes.push({
             expiredBefore: String(boundValues[0]),
@@ -921,6 +990,7 @@ export const requiredTables = [
   'refresh_tokens',
   'auth_attempts',
   'auth_failure_buckets',
+  'request_quota_buckets',
   'folders',
   'ciphers',
   'cipher_attachments',

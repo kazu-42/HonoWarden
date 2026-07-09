@@ -4,6 +4,8 @@ import {
   auditEventRetentionPolicy,
   cleanupExpiredAuditEvents,
 } from '../repositories/audit-event-repository'
+import { requestQuotaPolicy } from '../domain/request-quota'
+import { cleanupExpiredRequestQuotaBuckets } from '../repositories/request-quota-repository'
 import { cleanupExpiredTotpChallenges } from '../repositories/totp-repository'
 
 const authDefenseCleanupRowsPerSlice = 100
@@ -17,6 +19,7 @@ const authDefenseCleanupWindowSeconds = Math.max(
 
 type CleanupTransientAuthDataOptions = {
   auditEvents?: boolean
+  requestQuotaBuckets?: boolean
 }
 
 export async function cleanupTransientAuthData(
@@ -49,6 +52,16 @@ export async function cleanupTransientAuthData(
           auditEventRetentionPolicy.retentionDays * 86400 * 1000,
       ).toISOString(),
       limit: auditEventRetentionPolicy.maxRowsPerCleanup,
+    })
+  }
+
+  if (options.requestQuotaBuckets) {
+    await cleanupExpiredRequestQuotaBuckets(database, {
+      expiredBefore: new Date(
+        Date.parse(now) - requestQuotaPolicy.cleanupRetentionSeconds * 1000,
+      ).toISOString(),
+      now,
+      limit: requestQuotaPolicy.cleanupRowsPerSlice,
     })
   }
 }

@@ -19,6 +19,7 @@ changes and update this document in the same change.
 | `migrations/0005_device_keys.sql`        | `97071b22d753636c4f9a0fe4c699f0c3802c47f30ae235fd45e9d76137d275e0` |
 | `migrations/0006_cipher_attachments.sql` | `7b4328e31fc34c775c5971ada17c92ec44e89bc889a363c24b6beaa2d4b4e0c0` |
 | `migrations/0007_audit_events.sql`       | `34e1661295fc9f521d898bca587f167a280fa490681d83e327828d43d326239d` |
+| `migrations/0008_request_quotas.sql`     | `fe2955c3733bc4907b0e6711b9c37257dfa67e5973c7495d06bb847ed84ee884` |
 
 ## Required Tables At Freeze
 
@@ -28,6 +29,7 @@ changes and update this document in the same change.
 - `refresh_tokens`
 - `auth_attempts`
 - `auth_failure_buckets`
+- `request_quota_buckets`
 - `folders`
 - `ciphers`
 - `cipher_attachments`

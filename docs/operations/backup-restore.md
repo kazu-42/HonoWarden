@@ -91,9 +91,10 @@ Audit logging emits `backup.export` success and database-failure events when
 `HONOWARDEN_AUDIT_LOGS=true`. Event context is count-only and does not include
 request or response bodies.
 
-There is no export-specific global quota yet. Current abuse controls are bearer
-authentication, recent password authentication, password-grant login defense,
-Cloudflare platform limits, and the future HON-46 global request quota work.
+The export route participates in the opt-in HON-46 global request quota when
+`HONOWARDEN_GLOBAL_REQUEST_QUOTA=true`. Current always-on abuse controls are
+bearer authentication, recent password authentication, password-grant login
+defense, and Cloudflare platform limits.
 Database failures return `503 database_unavailable`; the route performs no
 partial writes and can be retried after the underlying D1 issue is resolved.
 

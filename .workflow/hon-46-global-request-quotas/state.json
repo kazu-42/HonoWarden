@@ -1,0 +1,63 @@
+{
+  "title": "HON-46 global request quotas",
+  "slug": "hon-46-global-request-quotas",
+  "created_at": "2026-07-09T19:22:00+00:00",
+  "status": "verified",
+  "issue": "HON-46",
+  "approval": {
+    "required": "production deploy or production quota enablement only",
+    "granted": "local implementation and PR covered by user instruction",
+    "notes": "Do not enable HONOWARDEN_GLOBAL_REQUEST_QUOTA in production for this issue."
+  },
+  "packets": [
+    {
+      "id": "request-quota-core",
+      "status": "completed"
+    },
+    {
+      "id": "operator-report-docs",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/domain/request-quota.test.ts test/repositories/request-quota-repository.test.ts test/app.test.ts test/ops/abuse-report-cli.test.ts test/migrations.test.ts test/security-docs.test.ts test/scheduled.test.ts test/release-docs.test.ts test/wrangler-environments.test.ts test/infra/db-health.test.ts --testNamePattern \"request quota|global request quota|abuse report|adds request quota|critical security|scheduled auth cleanup|request quota cleanup|migration|release notes|environment|database health\"",
+        "status": "passed",
+        "details": "16 files, 56 focused tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "details": "overall ready"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "details": "97 files, 833 tests"
+      }
+    ]
+  },
+  "boundaries": [
+    "No production deploy.",
+    "No production enablement of HONOWARDEN_GLOBAL_REQUEST_QUOTA.",
+    "No external dashboard or alert routing."
+  ]
+}
