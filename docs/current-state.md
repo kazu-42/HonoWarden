@@ -1989,3 +1989,49 @@ Not implemented:
 - Cloudflare account 2FA enforcement, stale-token retirement, or global-key
   mutation
 - external communications drill
+
+## Week 26 Scheduled Remote Backup Evidence
+
+Implemented:
+
+- `backup:evidence` command for checksum-verified, secret-safe executed backup
+  evidence packets
+- package-manager `--` separator handling for backup CLI commands used by docs
+  and GitHub Actions
+- `backup:schedule:packet` command for a reviewable scheduled remote backup
+  contract
+- scheduled GitHub Actions workflow under
+  `.github/workflows/remote-backup.yml`
+- daily `17 19 * * *` UTC and manual `workflow_dispatch` triggers for remote
+  backup execution
+- required repository secrets for the scheduled workflow:
+  `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+  `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
+  `HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE`
+- local operator env storage for derived R2 S3-compatible credentials and the
+  backup archive passphrase in
+  `~/.config/honowarden/cloudflare-scoped.env`
+- encrypted GitHub Actions artifact retention of 7 days plus a documented
+  35-day operator archive target
+- live remote backup dry-run using R2 S3 listing, which confirmed the normal
+  `attachments/` prefix was empty at the time of the drill
+- live remote production D1 export and R2 backup execution using a temporary
+  non-secret synthetic R2 object
+- `docs/release/remote-backup-evidence.md` with non-secret manifest id, D1
+  checksum/size, R2 object count/digest/size, restore verification, cleanup
+  readback, failure handling, and remaining limitations
+- local fresh-target restore from the remote backup using a separate
+  `--persist-to` target, with restored D1 table count and R2 checksum match
+  verified
+- cleanup readback confirming the temporary production R2 drill object no
+  longer exists
+- focused tests for the scheduled backup packet, remote backup workflow, backup
+  evidence command, and backup CLI separator handling
+
+Not implemented:
+
+- first post-merge GitHub Actions scheduled or manual workflow run, because the
+  new workflow is not available on `main` until this PR merges
+- remote restore into a disposable Cloudflare D1/R2 target
+- long-term external archive copy automation beyond the encrypted GitHub
+  artifact and documented operator retention target

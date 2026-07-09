@@ -116,30 +116,41 @@ CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN" pnpm wrangler d1 execu
 CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN" pnpm email:preflight -- --strict
 ```
 
+Remote backup R2 listing uses the S3-compatible R2 API. The current operator
+setup derives `R2_ACCESS_KEY_ID` from the D1/R2 scoped token id and derives
+`R2_SECRET_ACCESS_KEY` as the SHA-256 hash of that scoped token value, matching
+Cloudflare's R2 authentication guidance. These derived values and
+`HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE` are stored only in
+`~/.config/honowarden/cloudflare-scoped.env` and the GitHub Actions secrets
+used by `.github/workflows/remote-backup.yml`.
+
 ## Required Local Secrets
 
-| Variable                                    | Required for                              | Notes                                                                      |
-| ------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- |
-| `LINEAR_API_KEY`                            | Linear API apply                          | Must belong to an account with access to `https://linear.app/honowarden/`. |
-| `GITHUB_TOKEN`                              | Website repository automation             | Optional if `gh auth status` already has the required repo permissions.    |
-| `CLOUDFLARE_API_TOKEN`                      | Cloudflare API automation                 | Prefer a scoped token over a global key.                                   |
-| `CLOUDFLARE_API_KEY`                        | Cloudflare API automation fallback        | Global key fallback; keep local-only and pair with account email.          |
-| `CLOUDFLARE_GLOBAL_API_KEY`                 | Cloudflare API automation fallback        | Alias for the global key fallback; keep local-only.                        |
-| `CLOUDFLARE_EMAIL`                          | Cloudflare global key auth                | Required when using a global key.                                          |
-| `CLOUDFLARE_API_EMAIL`                      | Cloudflare global key auth                | Alias for the account email used by global key auth.                       |
-| `CLOUDFLARE_ACCOUNT_ID`                     | Worker deploys and account resources      | Non-secret but operationally sensitive.                                    |
-| `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM`         | DNS and email routing on `honowarden.com` | Non-secret but operationally sensitive.                                    |
-| `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        | Worker deploy and route attach            | Scoped account token for HonoWarden deploys.                               |
-| `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    | DNS and Worker route changes              | Scoped account token for `honowarden.com` DNS/routes.                      |
-| `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` | Email Routing changes                     | Scoped account token for Email Routing rules and destination addresses.    |
-| `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         | D1/R2 operations                          | Scoped account token for migrations, readback, backup, and restore.        |
-| `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | Read-only evidence                        | Scoped account token for account/zone/resource evidence collection.        |
-| `HONOWARDEN_SECURITY_FORWARD_TO`            | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_SUPPORT_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_GENERAL_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_ADMIN_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_POSTMASTER_FORWARD_TO`          | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_ABUSE_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| Variable                                    | Required for                              | Notes                                                                                                                             |
+| ------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `LINEAR_API_KEY`                            | Linear API apply                          | Must belong to an account with access to `https://linear.app/honowarden/`.                                                        |
+| `GITHUB_TOKEN`                              | Website repository automation             | Optional if `gh auth status` already has the required repo permissions.                                                           |
+| `CLOUDFLARE_API_TOKEN`                      | Cloudflare API automation                 | Prefer a scoped token over a global key.                                                                                          |
+| `CLOUDFLARE_API_KEY`                        | Cloudflare API automation fallback        | Global key fallback; keep local-only and pair with account email.                                                                 |
+| `CLOUDFLARE_GLOBAL_API_KEY`                 | Cloudflare API automation fallback        | Alias for the global key fallback; keep local-only.                                                                               |
+| `CLOUDFLARE_EMAIL`                          | Cloudflare global key auth                | Required when using a global key.                                                                                                 |
+| `CLOUDFLARE_API_EMAIL`                      | Cloudflare global key auth                | Alias for the account email used by global key auth.                                                                              |
+| `CLOUDFLARE_ACCOUNT_ID`                     | Worker deploys and account resources      | Non-secret but operationally sensitive.                                                                                           |
+| `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM`         | DNS and email routing on `honowarden.com` | Non-secret but operationally sensitive.                                                                                           |
+| `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        | Worker deploy and route attach            | Scoped account token for HonoWarden deploys.                                                                                      |
+| `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    | DNS and Worker route changes              | Scoped account token for `honowarden.com` DNS/routes.                                                                             |
+| `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` | Email Routing changes                     | Scoped account token for Email Routing rules and destination addresses.                                                           |
+| `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         | D1/R2 operations                          | Scoped account token for migrations, readback, backup, and restore.                                                               |
+| `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | Read-only evidence                        | Scoped account token for account/zone/resource evidence collection.                                                               |
+| `R2_ACCESS_KEY_ID`                          | Remote R2 listing                         | S3-compatible access key ID for `pnpm backup:export -- --r2-list`; stored local-only and as a GitHub Actions secret.              |
+| `R2_SECRET_ACCESS_KEY`                      | Remote R2 listing                         | S3-compatible secret access key for `pnpm backup:export -- --r2-list`; store only in ignored env files or GitHub Actions secrets. |
+| `HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE`      | Scheduled backup encryption               | Passphrase for encrypting scheduled backup artifacts before upload.                                                               |
+| `HONOWARDEN_SECURITY_FORWARD_TO`            | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_SUPPORT_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_GENERAL_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_ADMIN_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_POSTMASTER_FORWARD_TO`          | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_ABUSE_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
 
 Local-only Worker smoke variables are also listed in `.env.example`, but
 staging and production must receive them through Wrangler secret commands:

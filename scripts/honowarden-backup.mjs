@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath, URL } from 'node:url'
@@ -28,6 +28,12 @@ async function main(argv = process.argv.slice(2)) {
   if (command === 'restore') {
     const options = parseOptions(rest)
     await runRestore(options)
+    return
+  }
+
+  if (command === 'evidence') {
+    const options = parseOptions(rest)
+    await runEvidence(options)
     return
   }
 
@@ -154,6 +160,69 @@ async function runRestore(options) {
     manifest: manifestPath,
     commands,
   })
+}
+
+async function runEvidence(options) {
+  const fromDir = resolveRequiredPath(options.from, '--from')
+  const outPath = options.out ? resolve(options.out) : undefined
+  const sourceCommit = validateOptionalSourceCommit(options.sourceCommit)
+  const runUrl = validateOptionalRunUrl(options.runUrl)
+  const manifest = await readManifest(fromDir)
+  await verifyBackupFiles(fromDir, manifest)
+
+  const manifestPath = join(fromDir, manifestFileName)
+  const d1Path = join(fromDir, manifest.d1.file)
+  const d1Stats = await stat(d1Path)
+  const objectEvidence = await buildR2Evidence(fromDir, manifest)
+  const evidence = {
+    schemaVersion: 1,
+    action: 'backup.evidence',
+    status: 'executed',
+    generatedAt: new Date().toISOString(),
+    sourceCommit,
+    runUrl,
+    mode: manifest.mode,
+    createdAt: manifest.createdAt,
+    manifestId: `sha256:${await sha256File(manifestPath)}`,
+    d1: {
+      sha256: manifest.d1.sha256,
+      sizeBytes: d1Stats.size,
+    },
+    r2: objectEvidence,
+    safety: {
+      includesDatabaseName: false,
+      includesBucketName: false,
+      includesObjectKeys: false,
+      includesObjectBodies: false,
+    },
+  }
+
+  if (outPath) {
+    await mkdir(dirname(outPath), { recursive: true })
+    await writeFile(outPath, `${JSON.stringify(evidence, null, 2)}\n`)
+  }
+
+  writeJson(evidence)
+}
+
+async function buildR2Evidence(fromDir, manifest) {
+  let totalSizeBytes = 0
+  const objectHashes = []
+
+  for (const object of manifest.r2.objects) {
+    const objectPath = join(fromDir, object.file)
+    const objectStats = await stat(objectPath)
+    totalSizeBytes += objectStats.size
+    objectHashes.push(object.sha256)
+  }
+
+  return {
+    objectCount: manifest.r2.objects.length,
+    objectListRequired: manifest.r2.objectListRequired,
+    objectListSource: manifest.r2.objectListSource ?? null,
+    objectDigestId: `sha256:${sha256Hex(objectHashes.sort().join('\n'))}`,
+    totalSizeBytes,
+  }
 }
 
 async function buildBackupAuditPacket({ name, manifestPath, resultStatus }) {
@@ -643,6 +712,10 @@ function parseOptions(args) {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
 
+    if (arg === '--') {
+      continue
+    }
+
     switch (arg) {
       case '--execute':
         options.execute = true
@@ -665,7 +738,9 @@ function parseOptions(args) {
       case '--r2-account-id':
       case '--r2-region':
       case '--env':
-      case '--persist-to': {
+      case '--persist-to':
+      case '--source-commit':
+      case '--run-url': {
         const value = args[index + 1]
         if (!value) {
           throw new Error(`${arg} requires a value`)
@@ -702,6 +777,37 @@ function requireFreshTargetConfirmation(options) {
       '--confirm-fresh-target is required before restore --execute',
     )
   }
+}
+
+function validateOptionalSourceCommit(value) {
+  if (value === undefined) {
+    return null
+  }
+
+  if (!/^[a-f0-9]{40}$/i.test(value)) {
+    throw new Error('--source-commit must be a 40-character git SHA')
+  }
+
+  return value
+}
+
+function validateOptionalRunUrl(value) {
+  if (value === undefined) {
+    return null
+  }
+
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('--run-url must be a valid HTTPS URL')
+  }
+
+  if (url.protocol !== 'https:') {
+    throw new Error('--run-url must be a valid HTTPS URL')
+  }
+
+  return url.toString()
 }
 
 function modeFlag(mode) {
@@ -869,6 +975,7 @@ function printUsage() {
   process.stderr.write(`Usage:
   node scripts/honowarden-backup.mjs export --out <dir> --database <name> --bucket <name> [--r2-objects <file> | --r2-list] [--r2-prefix <prefix>] [--r2-list-page-size <1-1000>] [--mode local|remote] [--execute]
   node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--execute --confirm-fresh-target]
+  node scripts/honowarden-backup.mjs evidence --from <dir> [--out <file>] [--source-commit <sha>] [--run-url <url>]
 `)
 }
 

@@ -1,0 +1,50 @@
+{
+  "title": "HON-43 Scheduled Remote Backup Evidence",
+  "slug": "hon-43-scheduled-remote-backup-evidence",
+  "created_at": "2026-07-09T20:12:07Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "The user explicitly asked to keep closing open Linear issues autonomously and allowed DB/routing/retention changes. Remote restore over production remains prohibited."
+  },
+  "packets": [
+    {
+      "id": "01-scheduled-job",
+      "status": "completed"
+    },
+    {
+      "id": "02-secret-safe-evidence",
+      "status": "completed"
+    },
+    {
+      "id": "03-live-drill",
+      "status": "completed"
+    },
+    {
+      "id": "04-docs-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm test -- test/ops/backup-cli.test.ts test/ops/scheduled-backup-packet.test.ts test/ops/remote-backup-workflow.test.ts test/ops/operator-environment.test.ts test/release-docs.test.ts",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm format",
+      "pnpm release:gate -- --strict",
+      "pnpm brand:scan",
+      "pnpm test",
+      "pnpm compat:test",
+      "git diff --check",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/hon-43-scheduled-remote-backup-evidence",
+      "remote backup dry-run with R2 S3 listing passed",
+      "remote D1/R2 backup executed with temporary non-secret R2 object",
+      "local fresh-target restore passed with D1 table count 13 and R2 checksum match",
+      "temporary production R2 drill object cleanup readback returned key-not-found",
+      "GitHub Actions backup secrets configured by name",
+      "GitHub Actions CI pending PR push"
+    ]
+  }
+}

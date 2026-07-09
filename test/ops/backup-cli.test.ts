@@ -103,6 +103,32 @@ describe('backup CLI', () => {
     ])
   })
 
+  it('accepts package-manager argument separators before backup options', async () => {
+    const workDir = await fixtureDir('export-separator')
+    const outDir = join(workDir, 'backup')
+
+    const result = await execFileAsync('node', [
+      backupScript,
+      'export',
+      '--',
+      '--out',
+      outDir,
+      '--database',
+      'honowarden',
+      '--bucket',
+      'honowarden-vault-objects',
+      '--mode',
+      'local',
+    ])
+    const output = JSON.parse(result.stdout) as {
+      executed: boolean
+      commands: string[][]
+    }
+
+    expect(output.executed).toBe(false)
+    expect(output.commands[0]).toContain('honowarden')
+  })
+
   it('discovers remote R2 objects during dry-run without downloading object bodies', async () => {
     const workDir = await fixtureDir('export-r2-list')
     const outDir = join(workDir, 'backup')
@@ -572,6 +598,124 @@ describe('backup CLI', () => {
       execFileAsync('node', [backupScript, 'restore', '--from', fromDir]),
     ).rejects.toMatchObject({
       stderr: expect.stringContaining('object file does not match key'),
+    })
+  })
+
+  it('emits secret-safe executed backup evidence from a checksum manifest', async () => {
+    const workDir = await fixtureDir('evidence')
+    const fromDir = join(workDir, 'backup')
+    const outPath = join(workDir, 'backup-evidence.json')
+    const d1Body = 'create table users(id text);\n'
+    const objectBody = 'object-body'
+    await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256(d1Body),
+      objectSha256: await sha256(objectBody),
+    })
+
+    const result = await execFileAsync('node', [
+      backupScript,
+      'evidence',
+      '--from',
+      fromDir,
+      '--out',
+      outPath,
+      '--source-commit',
+      '0123456789abcdef0123456789abcdef01234567',
+      '--run-url',
+      'https://github.com/kazu-42/HonoWarden/actions/runs/123',
+    ])
+    const output = JSON.parse(result.stdout) as {
+      action: string
+      status: string
+      sourceCommit: string
+      runUrl: string
+      manifestId: string
+      d1: { sha256: string; sizeBytes: number }
+      r2: {
+        objectCount: number
+        objectDigestId: string
+        totalSizeBytes: number
+      }
+      safety: {
+        includesDatabaseName: boolean
+        includesBucketName: boolean
+        includesObjectKeys: boolean
+        includesObjectBodies: boolean
+      }
+    }
+    const fileEvidence = JSON.parse(await readFile(outPath, 'utf8'))
+
+    expect(fileEvidence).toEqual(output)
+    expect(output).toMatchObject({
+      action: 'backup.evidence',
+      status: 'executed',
+      sourceCommit: '0123456789abcdef0123456789abcdef01234567',
+      runUrl: 'https://github.com/kazu-42/HonoWarden/actions/runs/123',
+      d1: {
+        sha256: await sha256(d1Body),
+        sizeBytes: Buffer.byteLength(d1Body),
+      },
+      r2: {
+        objectCount: 1,
+        totalSizeBytes: Buffer.byteLength(objectBody),
+      },
+      safety: {
+        includesDatabaseName: false,
+        includesBucketName: false,
+        includesObjectKeys: false,
+        includesObjectBodies: false,
+      },
+    })
+    expect(output.manifestId).toMatch(/^sha256:[a-f0-9]{64}$/)
+    expect(output.r2.objectDigestId).toMatch(/^sha256:[a-f0-9]{64}$/)
+    expect(result.stdout).not.toContain('honowarden-vault-objects')
+    expect(result.stdout).not.toContain('honowarden')
+    expect(result.stdout).not.toContain(objectOneKey)
+    expect(result.stdout).not.toContain(objectBody)
+  })
+
+  it('requires checksum-bearing manifests before emitting executed evidence', async () => {
+    const workDir = await fixtureDir('evidence-missing-checksum')
+    const fromDir = join(workDir, 'backup')
+    await mkdir(join(fromDir, 'r2'), { recursive: true })
+    await writeFile(join(fromDir, 'd1.sql'), 'create table users(id text);\n')
+    await writeFile(join(fromDir, objectOneFile), 'object-body')
+    await writeFile(
+      join(fromDir, 'backup-manifest.json'),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          createdAt: '2026-07-06T00:00:00.000Z',
+          mode: 'remote',
+          database: 'honowarden',
+          bucket: 'honowarden-vault-objects',
+          d1: {
+            file: 'd1.sql',
+          },
+          r2: {
+            objectListRequired: false,
+            objectListSource: 'r2_list_objects_v2',
+            objects: [
+              {
+                key: objectOneKey,
+                file: objectOneFile,
+              },
+            ],
+          },
+          restore: {
+            command: 'node scripts/honowarden-backup.mjs restore',
+          },
+          commands: [],
+        },
+        null,
+        2,
+      ),
+    )
+
+    await expect(
+      execFileAsync('node', [backupScript, 'evidence', '--from', fromDir]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('Backup manifest missing checksum'),
     })
   })
 })

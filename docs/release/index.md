@@ -16,6 +16,7 @@ Use this index as the feature-freeze entry point:
 - [Publication Gate](publication-gate.md)
 - [Live Client Evidence](live-client-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
+- [Remote Backup Evidence](remote-backup-evidence.md)
 - [Staging Deploy Dry Run Evidence](staging-deploy-evidence.md)
 - [Cloudflare Resource Evidence](cloudflare-resource-evidence.md)
 - [Worker Live Smoke Evidence](worker-live-smoke-evidence.md)
@@ -43,6 +44,7 @@ reviewed without inventing release process under time pressure.
 - `docs/release/migration-freeze.md` matches the migration files on disk.
 - Fresh deploy dry-run has been completed against staging configuration.
 - Backup export and fresh-target restore drill evidence exists.
+- Scheduled remote backup workflow and remote backup evidence are recorded.
 - CLI live-client login/sync smoke evidence is recorded; remaining client
   surfaces stay conservative until their own live evidence is recorded.
 - `pnpm release:gate -- --strict` passes on the release commit.

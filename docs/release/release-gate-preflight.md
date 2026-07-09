@@ -49,6 +49,7 @@ The preflight proves repository-local facts:
   evidence
 - compatibility matrix promotions are backed by linked live evidence
 - CLI live-client login and sync evidence is recorded
+- scheduled remote backup workflow and remote backup evidence are recorded
 - staging dry-run evidence includes command, bindings, bundle hash, and
   explicit non-deploy limitations
 - Cloudflare D1/R2 resource evidence is recorded and D1 IDs are no longer
@@ -68,6 +69,11 @@ release commit.
 The preflight still does not prove full browser, desktop, Android, iOS, TOTP, or
 item-mutation behavior through real clients. Those remain compatibility limits
 until separate evidence is recorded.
+
+The remote backup evidence proves a manual live remote backup drill and a
+scheduled workflow contract. It does not prove that the post-merge scheduled
+workflow has already produced its first artifact or that a remote disposable
+Cloudflare restore target has been exercised.
 
 ## Expected Current Result
 

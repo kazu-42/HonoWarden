@@ -17,6 +17,7 @@ const releaseDocs = [
   'publication-gate.md',
   'live-client-evidence.md',
   'backup-restore-drill-evidence.md',
+  'remote-backup-evidence.md',
   'staging-deploy-evidence.md',
   'cloudflare-resource-evidence.md',
   'v0.1.0-alpha-release-notes.md',

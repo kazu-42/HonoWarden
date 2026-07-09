@@ -31,6 +31,9 @@ const localSecretPlaceholders = [
   'CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN',
   'CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN',
   'CLOUDFLARE_HONOWARDEN_READONLY_TOKEN',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE',
   'HONOWARDEN_SECURITY_FORWARD_TO',
   'HONOWARDEN_SUPPORT_FORWARD_TO',
   'HONOWARDEN_GENERAL_FORWARD_TO',
@@ -87,6 +90,7 @@ describe('operator environment policy', () => {
     expect(operatorDocs).toContain('LINEAR_API_KEY')
     expect(operatorDocs).toContain('CLOUDFLARE_API_TOKEN')
     expect(operatorDocs).toContain('CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN')
+    expect(operatorDocs).toContain('HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE')
     expect(operatorDocs).toContain('pnpm cloudflare:tokens')
     expect(operatorDocs).toContain('Cloudflare Access-Control Review')
     expect(operatorDocs).toContain('External Write Gates')
