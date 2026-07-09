@@ -450,6 +450,9 @@ Implemented:
 - local-only `pnpm linear:mutation-packet` turns a ready apply-plan JSON into a
   reviewable mutation packet for a future guarded writer without reading
   credentials or mutating Linear
+- local-only `pnpm linear:request-plan` turns a ready mutation packet into a
+  deterministic executor contract with local intent names and unresolved ID
+  requirements, without reading credentials or mutating Linear
 - README link to `docs/operations/linear-tracking.md`
 - access guard documented to prevent writing HonoWarden issues into an unrelated
   Linear workspace
@@ -468,11 +471,14 @@ Not implemented:
   are available
 - live mutation support inside the mutation-packet command; it intentionally
   omits blocked-plan steps and does not resolve Linear IDs or execute writes
+- live mutation support inside the request-plan command; it intentionally
+  avoids unverified live GraphQL mutation names and only records the local
+  intent/ID-resolution contract for a future guarded writer
 
 The Linear seed remains the source of truth until a connector, browser session,
 or strict API preflight is authenticated to the `honowarden` workspace and the
-reviewed apply plan and mutation packet are executed by a separate guarded write
-path.
+reviewed apply plan, mutation packet, and request plan are executed by a
+separate guarded write path.
 
 ## Operator Environment Setup
 

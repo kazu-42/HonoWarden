@@ -1,0 +1,97 @@
+{
+  "title": "Week 26 Linear request plan",
+  "slug": "week-26-linear-request-plan",
+  "created_at": "2026-07-08T23:42:40+00:00",
+  "status": "ready_for_pr",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local-only request planning; no live Linear writes in this slice."
+  },
+  "packets": [
+    {
+      "id": "01-spark-script-test",
+      "status": "completed",
+      "owner": "spark"
+    },
+    {
+      "id": "02-docs-integration",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "03-review",
+      "status": "completed",
+      "owner": "codex"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/ops/linear-request-plan.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/linear-mutation-packet.test.ts test/ops/linear-request-plan.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm brand:scan",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec eslint scripts/honowarden-linear-request-plan.mjs test/ops/linear-request-plan.test.ts",
+        "status": "passed"
+      },
+      {
+        "command": "blocked apply-plan -> mutation-packet -> request-plan smoke",
+        "status": "passed_expected_blocked"
+      },
+      {
+        "command": "ready fixture apply-plan -> mutation-packet -> request-plan smoke",
+        "status": "passed_ready_55_total_31_requests_21_confirmations_3_manual"
+      },
+      {
+        "command": "seed-derived request-plan dependency smoke",
+        "status": "passed_project_labels_issue_blockers_view_labels_view_states_and_project_filter_requirements"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-linear-request-plan",
+        "status": "passed"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "command": "target-file secret pattern scan",
+        "status": "passed"
+      },
+      {
+        "command": "codex review --uncommitted",
+        "status": "passed_no_findings_after_fixes"
+      }
+    ]
+  }
+}

@@ -43,7 +43,8 @@ which seed objects already exist and which still need creation:
 mkdir -p test/.tmp
 pnpm linear:preflight -- --strict > test/.tmp/linear-preflight.ready.json
 pnpm linear:apply-plan -- --preflight-report test/.tmp/linear-preflight.ready.json --strict > test/.tmp/linear-apply-plan.ready.json
-pnpm linear:mutation-packet -- --apply-plan test/.tmp/linear-apply-plan.ready.json --strict
+pnpm linear:mutation-packet -- --apply-plan test/.tmp/linear-apply-plan.ready.json --strict > test/.tmp/linear-mutation-packet.ready.json
+pnpm linear:request-plan -- --mutation-packet test/.tmp/linear-mutation-packet.ready.json --strict
 ```
 
 `linear:apply-plan` does not read `LINEAR_API_KEY` and does not call Linear. It
@@ -59,6 +60,13 @@ manual confirmations, and preserves operation payloads for a future guarded
 writer. Blocked input plans intentionally produce no mutation steps. The packet
 does not resolve Linear IDs, does not read credentials, and does not execute
 writes.
+
+`linear:request-plan` is the next local-only contract step. It consumes a ready
+mutation packet and emits deterministic request intents, unresolved Linear ID
+requirements, existing-object confirmations, and manual confirmations for a
+future guarded writer. It intentionally uses local intent names instead of
+asserting unverified live GraphQL mutation names. It does not read credentials,
+call Linear, or execute writes.
 
 The seed defines:
 
@@ -116,7 +124,13 @@ Safe verification steps:
    pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan> --strict
    ```
 
-7. Only then create issues, projects, and documents through MCP or API tooling.
+7. Generate a strict request plan from the reviewed ready mutation packet:
+
+   ```sh
+   pnpm linear:request-plan -- --mutation-packet <ready-mutation-packet> --strict
+   ```
+
+8. Only then create issues, projects, and documents through MCP or API tooling.
 
 ## Recommended Apply Order
 
@@ -143,6 +157,10 @@ that Pulse/custom-view settings can be represented by the same automation path.
 
 Do not treat the mutation packet as execution evidence. It is the handoff format
 for a future guarded writer, not proof that the writer ran.
+
+Do not treat the request plan as execution evidence. It is the deterministic
+writer-input contract; live execution still requires ID resolution, explicit
+credentials, write-scope confirmation, and readback.
 
 ## Views
 
