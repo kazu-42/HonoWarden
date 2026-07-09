@@ -26,6 +26,11 @@ const localSecretPlaceholders = [
   'CLOUDFLARE_API_EMAIL',
   'CLOUDFLARE_ACCOUNT_ID',
   'CLOUDFLARE_ZONE_ID_HONOWARDEN_COM',
+  'CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN',
+  'CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN',
+  'CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN',
+  'CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN',
+  'CLOUDFLARE_HONOWARDEN_READONLY_TOKEN',
   'HONOWARDEN_SECURITY_FORWARD_TO',
   'HONOWARDEN_SUPPORT_FORWARD_TO',
   'HONOWARDEN_GENERAL_FORWARD_TO',
@@ -81,6 +86,8 @@ describe('operator environment policy', () => {
     expect(operatorDocs).toContain('direnv Setup')
     expect(operatorDocs).toContain('LINEAR_API_KEY')
     expect(operatorDocs).toContain('CLOUDFLARE_API_TOKEN')
+    expect(operatorDocs).toContain('CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN')
+    expect(operatorDocs).toContain('pnpm cloudflare:tokens')
     expect(operatorDocs).toContain('Cloudflare Access-Control Review')
     expect(operatorDocs).toContain('External Write Gates')
     expect(operatorDocs).toContain('Current Linear Access')
@@ -91,10 +98,12 @@ describe('operator environment policy', () => {
       'docs/operations/cloudflare-access-control.md',
     )
 
-    expect(accessReview).toContain('Status: reviewed')
+    expect(accessReview).toContain('Status: scoped tokens created')
     expect(accessReview).toContain('Redacted Readback')
     expect(accessReview).toContain('Super Administrator - All Privileges')
     expect(accessReview).toContain('Least-Privilege Token Plan')
+    expect(accessReview).toContain('Scoped Token Remediation Workflow')
+    expect(accessReview).toContain('CLOUDFLARE_HONOWARDEN_READONLY_TOKEN')
     expect(accessReview).toContain('Break-Glass Process')
     expect(accessReview).toContain('Stale Credential Decision')
     expect(accessReview).toContain('Review Cadence And Owner')

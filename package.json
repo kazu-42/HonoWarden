@@ -26,6 +26,7 @@
     "cf:typegen": "wrangler types",
     "compat:test": "vitest run test/compat",
     "brand:scan": "node scripts/honowarden-brand-scan.mjs",
+    "cloudflare:tokens": "node scripts/honowarden-cloudflare-token-remediation.mjs",
     "db:migrate:local": "wrangler d1 migrations apply honowarden --local",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",

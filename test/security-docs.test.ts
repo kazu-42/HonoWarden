@@ -64,7 +64,7 @@ describe('security review materials', () => {
     expect(incidentExercise).toContain('Status: passed')
     expect(incidentExercise).toContain('Simulated combined incident')
     expect(incidentExercise).toContain('HON-60')
-    expect(incidentExercise).toContain('HON-64')
+    expect(incidentExercise).toContain('access-control review')
     expect(incidentExercise).toContain('HON-57')
     expect(incidentExercise).toContain('HON-49')
 

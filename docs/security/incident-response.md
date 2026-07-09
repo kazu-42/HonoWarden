@@ -161,7 +161,9 @@ References:
 
 Cloudflare account access review is documented in
 [Cloudflare Access-Control Review](../operations/cloudflare-access-control.md).
-Least-privilege token and 2FA remediation remain tracked by `HON-64`.
+Scoped HonoWarden Cloudflare tokens are available for normal operations;
+account-level 2FA enforcement, legacy-token retirement, and global-key rotation
+remain operator hardening work.
 
 ## Communication
 

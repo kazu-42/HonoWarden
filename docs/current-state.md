@@ -401,7 +401,7 @@ Implemented:
   issues
 - Cloudflare access-control review documenting redacted member/role/token
   readback, least-privilege token plan, accepted temporary break-glass risk, and
-  review cadence; remediation is tracked by `HON-64`
+  review cadence
 - known limitations document preserving pre-alpha and no-independent-audit warnings
 - dependency audit evidence with package manager output and lockfile SHA-256
 - `SECURITY.md` link to the security review materials
@@ -413,8 +413,9 @@ Not implemented:
 
 - independent security audit
 - external penetration test
-- Cloudflare account least-privilege remediation and break-glass rotation after
-  the recorded access-control review
+- full Cloudflare account hardening after the scoped-token rollout: 2FA
+  enforcement, broad role reduction, legacy no-expiry token retirement, and
+  break-glass global-key rotation
 - live incident, real secret rotation, or external communications drill
 - secret rotation drill
 
@@ -517,6 +518,13 @@ Implemented:
 - Email Routing preflight tests under `test/ops/email-preflight.test.ts`
 - Cloudflare global API key auth is stored outside the repository under the
   operator's home config and sourced through ignored `.envrc.local`
+- scoped HonoWarden Cloudflare account token placeholders for deploy,
+  DNS/routes, Email Routing, D1/R2, and read-only evidence tasks
+- scoped Cloudflare token generation/verification script exposed as
+  `pnpm cloudflare:tokens`
+- live scoped-token readback recorded in
+  `docs/operations/cloudflare-access-control.md`; the five scoped tokens expire
+  on `2026-10-07T23:59:59Z`
 - ignored local Email Routing inputs are now configured for Cloudflare auth,
   account id, zone id, and all six destination variables
 

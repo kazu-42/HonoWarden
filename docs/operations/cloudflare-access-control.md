@@ -2,7 +2,8 @@
 
 Last reviewed: 2026-07-09.
 
-Status: reviewed with remediation gaps accepted temporarily.
+Status: scoped tokens created; remaining 2FA, legacy-token, and break-glass
+gaps accepted temporarily.
 
 This document records who and what can mutate HonoWarden Cloudflare resources.
 It intentionally records only account/member hash tags, role names, counts,
@@ -115,15 +116,14 @@ Temporary acceptance:
   operations window.
 - No token or member removal was performed by this review because that is a
   control-plane mutation with account-wide blast radius.
-- The local global key remains accepted only as a break-glass credential until
+- The local global key remains accepted only as a break-glass credential after
   scoped HonoWarden tokens are created and verified.
 - Secret rotation is intentionally deferred to the formal rotation drill tracked
   by `HON-60`.
 
 Follow-up:
 
-- `HON-64`: create scoped tokens, enforce or document 2FA expectations, and
-  remediate no-expiry/broad user tokens
+- `HON-64`: create scoped tokens and document 2FA/no-expiry token expectations
 - `HON-60`: rotate and retire break-glass/global credentials after scoped token
   replacement exists
 - `HON-57`: independent security audit and external penetration test
@@ -149,6 +149,106 @@ Each scoped token must:
 - be loaded through ignored local environment files or CI secrets only
 - be documented by hash tag, owner role, scope, and expiration, never by value
 - be revoked when no longer required
+
+## Scoped Token Remediation Workflow
+
+Repo-owned remediation tooling:
+
+```sh
+pnpm cloudflare:tokens -- plan
+pnpm cloudflare:tokens -- apply --auth global
+pnpm cloudflare:tokens -- apply --auth global --execute
+pnpm cloudflare:tokens -- verify
+```
+
+The script manages five scoped account-token classes:
+
+| Token class        | Local env var                               | Verification class                         |
+| ------------------ | ------------------------------------------- | ------------------------------------------ |
+| Deploy Worker      | `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        | Worker services and Worker routes readback |
+| DNS and routes     | `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    | DNS records and Worker routes readback     |
+| Email Routing      | `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` | Email Routing rules and DNS readback       |
+| D1/R2 operations   | `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         | D1 database and R2 bucket readback         |
+| Read-only evidence | `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | account token and DNS readback             |
+
+`apply --execute` creates missing tokens only, writes one-time token values to
+`~/.config/honowarden/cloudflare-scoped.env` with mode `0600`, and prints only
+token hash tags plus verification statuses. The generated values must be loaded
+through ignored `.envrc.local` and must not be copied into Linear, GitHub,
+docs, shell transcripts, or chat.
+
+Account-level 2FA enforcement is intentionally not automated by this script.
+The review observed accepted members whose two-factor flag read as false, so
+turning on account-wide enforcement without an out-of-band operator check could
+lock out an account owner. The expectation is:
+
+1. every HonoWarden Cloudflare operator enables 2FA;
+2. the member readback is repeated with only hash tags recorded;
+3. account-level enforcement is enabled from a trusted human browser session or
+   an explicit control-plane change window;
+4. the resulting setting readback is recorded here without member emails.
+
+## Post-Remediation Readback
+
+Generated at: `2026-07-09T17:30:38Z`.
+
+Executed commands:
+
+- `pnpm cloudflare:tokens -- apply --auth global --execute --expires-on 2026-10-07T23:59:59Z`
+- `pnpm cloudflare:tokens -- verify --strict`
+
+Local secret storage:
+
+- scoped token values were written to
+  `~/.config/honowarden/cloudflare-scoped.env`
+- file mode readback: `0600`
+- ignored `.envrc.local` now sources the scoped token file
+- ignored `.envrc.local` exports `CLOUDFLARE_API_TOKEN` to the read-only scoped
+  token by default; write operations must override it command-locally
+- token values were not printed, committed, or copied into Linear/GitHub/docs
+
+Created scoped account tokens:
+
+| Token class        | Token tag      | Expiration             | Verification readback                                         |
+| ------------------ | -------------- | ---------------------- | ------------------------------------------------------------- |
+| Deploy Worker      | `6342f7107d60` | `2026-10-07T23:59:59Z` | account-token verify, Worker services, Worker routes passed   |
+| DNS and routes     | `378f715a142f` | `2026-10-07T23:59:59Z` | account-token verify, DNS records, Worker routes passed       |
+| Email Routing      | `db2000584509` | `2026-10-07T23:59:59Z` | account-token verify, Email Routing rules, DNS records passed |
+| D1/R2 operations   | `f9965cf7b00f` | `2026-10-07T23:59:59Z` | account-token verify, D1 databases, R2 buckets passed         |
+| Read-only evidence | `e8af23942e60` | `2026-10-07T23:59:59Z` | account-token verify, account tokens, DNS records passed      |
+
+Current redacted token inventory:
+
+| Metric                                        | Value |
+| --------------------------------------------- | ----- |
+| Active account tokens                         | `7`   |
+| Account tokens without expiration             | `2`   |
+| Active HonoWarden scoped account tokens       | `5`   |
+| HonoWarden scoped tokens without expiration   | `0`   |
+| Visible active user tokens                    | `7`   |
+| Visible active user tokens without expiration | `7`   |
+
+Account/member hardening readback:
+
+- Account-level two-factor enforcement remains `false`.
+- Accepted members remain `2`.
+- Super Administrator members remain `2`.
+- The current member API response no longer exposes a per-member two-factor
+  flag, so account-wide 2FA enforcement still requires a trusted human browser
+  check before mutation.
+
+Post-remediation decision:
+
+- The five HonoWarden scoped account tokens replace the global key for normal
+  deploy, DNS/routes, Email Routing, D1/R2, and read-only evidence work.
+- The two older no-expiry account tokens and seven visible no-expiry user
+  tokens are explicitly re-accepted only for the current operator-owned
+  transition window. They must be reviewed and retired or renewed on the next
+  access-control review.
+- The global key remains loaded only as a break-glass credential until the
+  formal secret rotation drill tracked by `HON-60`.
+- Account-level 2FA enforcement is documented as an operator action instead of
+  being automated from this repository.
 
 ## Break-Glass Process
 
@@ -179,9 +279,11 @@ Accepted temporary stale/broad credentials:
 - local global key break-glass fallback
 
 Reason for acceptance: removing or rotating these credentials could break
-unrelated account automation and requires operator-owned sequencing. The risk is
-recorded here and must be remediated by `HON-64` scoped-token rollout and the
-formal secret rotation drill.
+unrelated account automation and requires operator-owned sequencing. The scoped
+HonoWarden token rollout reduces normal-operation reliance on broad credentials;
+legacy token retirement, role reduction, and break-glass rotation must be
+handled through an operator-owned change window and the formal secret rotation
+drill.
 
 ## Review Cadence And Owner
 
