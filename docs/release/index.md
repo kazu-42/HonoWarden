@@ -23,6 +23,7 @@ Use this index as the feature-freeze entry point:
 - [Email Routing Evidence](email-routing-evidence.md)
 - [Retention Cron Evidence](retention-cron-evidence.md)
 - [Operations Rollback Evidence](ops-rollback-evidence.md)
+- [Secret Rotation Drill Evidence](secret-rotation-drill-evidence.md)
 - [Alpha Release Notes](v0.1.0-alpha-release-notes.md)
 
 ## Freeze Position

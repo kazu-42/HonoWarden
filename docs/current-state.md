@@ -417,7 +417,7 @@ Not implemented:
   enforcement, broad role reduction, legacy no-expiry token retirement, and
   break-glass global-key rotation
 - live incident, real secret rotation, or external communications drill
-- secret rotation drill
+- live staging or production secret rotation drill
 
 ## Week 25 Increment
 
@@ -1822,3 +1822,26 @@ Not implemented:
 - live staging or production TOTP wrapping-secret rotation drill
 - Wrangler runtime secret write automation
 - user communication automation for force re-enrollment
+
+## Week 26 Formal Secret Rotation Dry-Run
+
+Implemented:
+
+- `pnpm secret:rotation:drill` formal dry-run CLI
+- credential-class matrix covering bootstrap token, refresh-token secret,
+  access-token keyring, TOTP wrapping secret, Cloudflare scoped tokens,
+  Cloudflare global-key break-glass fallback, GitHub, Linear, and Email Routing
+  destinations
+- dry-run JSON packet with configured/missing booleans only, never secret values
+- blast-radius, live rotation shape, verification, rollback, and global
+  redaction rules per credential class
+- `docs/operations/secret-rotation-drill.md` runbook
+- `docs/release/secret-rotation-drill-evidence.md` redacted dry-run evidence
+- CI-backed operator test under `test/ops/secret-rotation-drill.test.ts`
+
+Not implemented:
+
+- live staging or production secret rotation
+- Cloudflare account 2FA enforcement, stale-token retirement, or global-key
+  mutation
+- external communications drill

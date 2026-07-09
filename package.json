@@ -52,6 +52,7 @@
     "release:status:packet": "node scripts/honowarden-release-status-packet.mjs",
     "release:tag:recovery": "node scripts/honowarden-release-tag-recovery-packet.mjs",
     "release:tag:preflight": "node scripts/honowarden-alpha-tag-preflight.mjs",
+    "secret:rotation:drill": "node scripts/honowarden-secret-rotation-drill.mjs",
     "staging:dry-run": "node scripts/honowarden-staging-dry-run.mjs",
     "totp:rotate-secret": "node scripts/honowarden-totp-secret-rotation.mjs",
     "test": "vitest run",

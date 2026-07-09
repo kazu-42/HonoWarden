@@ -2,8 +2,8 @@
 
 Last reviewed: 2026-07-09.
 
-Status: scoped tokens created; remaining 2FA, legacy-token, and break-glass
-gaps accepted temporarily.
+Status: scoped tokens created; formal dry-run exists; remaining 2FA,
+legacy-token, and break-glass gaps accepted temporarily.
 
 This document records who and what can mutate HonoWarden Cloudflare resources.
 It intentionally records only account/member hash tags, role names, counts,
@@ -118,14 +118,14 @@ Temporary acceptance:
   control-plane mutation with account-wide blast radius.
 - The local global key remains accepted only as a break-glass credential after
   scoped HonoWarden tokens are created and verified.
-- Secret rotation is intentionally deferred to the formal rotation drill tracked
-  by `HON-60`.
+- Formal secret rotation dry-run coverage is tracked by `HON-60`; live
+  break-glass rotation remains deferred to a separate operator-owned change
+  window.
 
 Follow-up:
 
 - `HON-64`: create scoped tokens and document 2FA/no-expiry token expectations
-- `HON-60`: rotate and retire break-glass/global credentials after scoped token
-  replacement exists
+- `HON-60`: formal dry-run secret rotation drill
 - `HON-57`: independent security audit and external penetration test
 - `HON-49`: external log sink and Cloudflare log retention access
 
@@ -245,8 +245,8 @@ Post-remediation decision:
   tokens are explicitly re-accepted only for the current operator-owned
   transition window. They must be reviewed and retired or renewed on the next
   access-control review.
-- The global key remains loaded only as a break-glass credential until the
-  formal secret rotation drill tracked by `HON-60`.
+- The global key remains loaded only as a break-glass credential until a
+  separate operator-owned live break-glass rotation window.
 - Account-level 2FA enforcement is documented as an operator action instead of
   being automated from this repository.
 
@@ -265,7 +265,8 @@ Rules:
 4. Prefer read-only commands first.
 5. After use, record the Cloudflare deployment/configuration readback and the
    decision to continue, rollback, or hold.
-6. Rotate the break-glass credential during the next formal rotation drill.
+6. Do not rotate the break-glass credential during a dry-run. Rotate it only in
+   a separate operator-approved live change window.
 
 ## Stale Credential Decision
 
@@ -282,8 +283,7 @@ Reason for acceptance: removing or rotating these credentials could break
 unrelated account automation and requires operator-owned sequencing. The scoped
 HonoWarden token rollout reduces normal-operation reliance on broad credentials;
 legacy token retirement, role reduction, and break-glass rotation must be
-handled through an operator-owned change window and the formal secret rotation
-drill.
+handled through an operator-owned live change window.
 
 ## Review Cadence And Owner
 

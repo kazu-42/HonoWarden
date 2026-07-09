@@ -88,8 +88,8 @@ Rollback options:
 - remove a compromised previous key from the verifier set after confirming the
   blast radius and reauth plan
 - rotate `HONOWARDEN_TOKEN_SECRET` only for refresh-token or legacy no-kid
-  fallback exposure; this is a forced re-login event and belongs to the formal
-  secret rotation drill tracked by `HON-60`
+  fallback exposure; this is a forced re-login event and belongs to a separate
+  operator-owned live secret rotation window
 
 ## Evidence To Record
 

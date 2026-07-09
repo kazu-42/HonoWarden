@@ -15,9 +15,9 @@ inputs, not minor documentation notes.
   account-level two-factor enforcement, broad Super Administrator access,
   legacy no-expiry tokens, and global-key break-glass rotation remain operator
   hardening work
-- incident response runbook and tabletop evidence exist, but no live incident,
-  real secret rotation, or external communications drill has been executed
-- no formal secret rotation drill has been run
+- incident response runbook and tabletop evidence exist, and formal secret
+  rotation dry-run evidence exists, but no live incident, real secret rotation,
+  or external communications drill has been executed
 
 ## Current Product Gaps
 
@@ -44,6 +44,9 @@ inputs, not minor documentation notes.
   force-re-enrollment drill has been run.
 - Access tokens still use symmetric HMAC keys. Key id based staged rotation is
   implemented, but no formal live access-token key rotation drill has been run.
+- The formal secret rotation drill is dry-run-only and must not be treated as
+  live credential rotation, account 2FA enforcement, stale-token retirement, or
+  external communications readiness.
 - Rate limiting focuses on password grant, not all authenticated routes.
 - There is no global request quota or abuse monitoring dashboard.
 
