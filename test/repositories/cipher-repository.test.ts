@@ -7,6 +7,7 @@ import {
   restoreCipher,
   softDeleteCipher,
   listCiphersByUser,
+  listCiphersByUserPage,
   updateCipher,
 } from '../../src/repositories/cipher-repository'
 
@@ -71,6 +72,69 @@ describe('cipher repository', () => {
     ])
     expect(database.boundValues).toContain('user-id')
     expect(database.queries.join('\n')).toContain('WHERE user_id = ?')
+    expect(database.queries.join('\n')).not.toContain('deleted_at IS NULL')
+  })
+
+  it('lists a bounded page of ciphers using a keyset cursor', async () => {
+    const database = new RecordingCipherD1Database([
+      {
+        id: 'cipher-next',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: '{"name":"2.next-cipher"}',
+        revisionDate: '2026-07-06T00:06:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+      },
+      {
+        id: 'cipher-extra',
+        userId: 'user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: '{"name":"2.extra-cipher"}',
+        revisionDate: '2026-07-06T00:07:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+        deletedAt: '2026-07-06T00:07:00.000Z',
+      },
+    ])
+
+    await expect(
+      listCiphersByUserPage(database, {
+        userId: 'user-id',
+        limit: 1,
+        cursor: {
+          revisionDate: '2026-07-06T00:05:00.000Z',
+          id: 'cipher-current',
+        },
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 'cipher-next',
+          userId: 'user-id',
+          folderId: null,
+          type: 1,
+          favorite: false,
+          encryptedJson: '{"name":"2.next-cipher"}',
+          revisionDate: '2026-07-06T00:06:00.000Z',
+          createdAt: '2026-07-06T00:04:00.000Z',
+        },
+      ],
+      hasMore: true,
+    })
+    expect(database.boundValues).toEqual([
+      'user-id',
+      '2026-07-06T00:05:00.000Z',
+      '2026-07-06T00:05:00.000Z',
+      'cipher-current',
+      2,
+    ])
+    expect(database.queries.join('\n')).toContain(
+      '(revision_date > ? OR (revision_date = ? AND id > ?))',
+    )
+    expect(database.queries.join('\n')).toContain('LIMIT ?')
     expect(database.queries.join('\n')).not.toContain('deleted_at IS NULL')
   })
 

@@ -649,12 +649,55 @@ function filterRowsByQuery(
   boundValues: unknown[],
   query: string,
 ): Record<string, unknown>[] {
-  const scopedRows = applyDeletedFilter(
+  let scopedRows = applyDeletedFilter(
     filterRowsByUserId(rows, boundValues),
     query,
-  )
+  ).sort(compareRevisionThenId)
+
+  if (query.includes('(revision_date > ? OR (revision_date = ? AND id > ?))')) {
+    const cursorRevisionDate = String(boundValues[1] ?? '')
+    const cursorId = String(boundValues[3] ?? '')
+
+    scopedRows = scopedRows.filter((row) => {
+      const revisionDate = String(row.revisionDate ?? '')
+      const id = String(row.id ?? '')
+
+      return (
+        revisionDate > cursorRevisionDate ||
+        (revisionDate === cursorRevisionDate && id > cursorId)
+      )
+    })
+  }
+
+  if (query.includes('LIMIT ?')) {
+    const limit = Number(boundValues.at(-1))
+    if (Number.isSafeInteger(limit) && limit >= 0) {
+      scopedRows = scopedRows.slice(0, limit)
+    }
+  }
 
   return scopedRows
+}
+
+function compareRevisionThenId(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): number {
+  const leftRevisionDate = String(left.revisionDate ?? '')
+  const rightRevisionDate = String(right.revisionDate ?? '')
+
+  if (leftRevisionDate !== rightRevisionDate) {
+    return leftRevisionDate < rightRevisionDate ? -1 : 1
+  }
+
+  const leftId = String(left.id ?? '')
+  const rightId = String(right.id ?? '')
+
+  if (leftId === rightId) {
+    return 0
+  }
+
+  return leftId < rightId ? -1 : 1
 }
 
 function applyDeletedFilter(
