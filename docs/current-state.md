@@ -1710,6 +1710,18 @@ Implemented:
   visibility without recording private mailbox contents
 - `docs/release/ops-rollback-evidence.md` records Email Routing rule IDs and
   DNS record IDs for rollback handling
+- API Worker rollback rehearsal is recorded as a non-mutating release-target
+  dry-run plus live health-check decision: the previous Worker versions were
+  rejected as unsafe rollback targets, and the approved alpha recovery strategy
+  is to redeploy release target commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`
+- Cloudflare deployment readback confirmed staging Worker version
+  `bf0333dc-9efa-4001-aa31-20b3e10731c9`, production Worker version
+  `72577dd9-c859-4673-b653-fbdd796f8f7d`, and website Worker version
+  `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91` are still serving `100%` traffic
+- rollback rehearsal health checks passed for staging and production
+  `/health`, `/healthz`, `/health/db`, `/api/config`, and synthetic prelogin
+  denial, with decision `continue`
 - AI-driven inquiry inbox architecture is documented in
   `docs/operations/ai-inquiry-inbox.md`, including trust boundaries,
   Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
@@ -1721,7 +1733,7 @@ Not implemented:
 - custom API domain routing for the alpha API Worker
 - AI inquiry inbox Worker, mailbox UI, body or attachment storage, AI triage,
   approved outbound replies, and Linear issue creation automation
-- verified safe rollback target selection for the API Worker
-- rollback rehearsal or rollback execution
+- actual traffic-changing rollback execution, because the current live services
+  passed health checks and no incident required rollback
 - production secret writes, public registration enablement, or real vault-data
   dogfood

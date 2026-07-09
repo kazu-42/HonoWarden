@@ -143,7 +143,8 @@ describe('release feature-freeze docs', () => {
     expect(workerEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
     expect(workerEvidence).toContain('e7a3c5ea9e51030143736bb0e7a36cb7a8babfce')
     expect(workerEvidence).toContain('Candidate previous version ID')
-    expect(workerEvidence).toContain('Approved rollback command: unresolved')
+    expect(workerEvidence).toContain('Approved recovery strategy')
+    expect(workerEvidence).toContain('ops-rollback-evidence.md')
     expect(workerEvidence).toContain('synthetic prelogin: HTTP `403`')
 
     expect(websiteEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
@@ -184,15 +185,34 @@ describe('release feature-freeze docs', () => {
     expect(emailEvidence).toContain('visible in the verified')
     expect(emailEvidence).toContain('rollback')
 
-    expect(rollbackEvidence).toContain('Status: partial')
-    expect(rollbackEvidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
-    expect(rollbackEvidence).toContain('Approved rollback command: unresolved')
+    expect(rollbackEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(rollbackEvidence).toContain('Approved recovery command')
+    expect(rollbackEvidence).toContain(
+      'e7a3c5ea9e51030143736bb0e7a36cb7a8babfce',
+    )
+    expect(rollbackEvidence).toContain(
+      'pnpm exec wrangler deploy --env staging --dry-run',
+    )
+    expect(rollbackEvidence).toContain(
+      'pnpm exec wrangler deploy --env production --dry-run',
+    )
+    expect(rollbackEvidence).toContain(
+      'Do not run `pnpm exec wrangler rollback',
+    )
+    expect(rollbackEvidence).toContain('pre-correction `main` deployments')
+    expect(rollbackEvidence).toContain('API Worker Rollback Rehearsal')
+    expect(rollbackEvidence).toContain('Decision: `continue`')
+    expect(rollbackEvidence).toContain('schemaVersion=0003')
+    expect(rollbackEvidence).toContain('error.code=prelogin_not_allowed')
     expect(rollbackEvidence).toContain('eef4ab71-d6e8-401f-93c3-27e7bd2bcd91')
     expect(rollbackEvidence).toContain('3db432cb-6422-4311-b558-6eb2b0b5bb51')
+    expect(rollbackEvidence).toContain('Inbound smoke status: `passed`')
     expect(rollbackEvidence).toContain('Email Routing Rollback Handle')
     expect(rollbackEvidence).toContain('c303ee9d52e94355a6a5c0680163927c')
     expect(rollbackEvidence).toContain('905639146eeaf7449af796d7bef2a8ab')
-    expect(rollbackEvidence).toContain('Rollback execution: not performed')
+    expect(rollbackEvidence).toContain(
+      'Actual API Worker traffic-changing rollback or redeploy was not performed',
+    )
     expect(rollbackEvidence).toContain('rollback')
   })
 })
