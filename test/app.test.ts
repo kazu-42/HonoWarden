@@ -2267,6 +2267,110 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('updates account profile display name for a valid access token', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/profile',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'profile-update-request',
+        },
+        body: JSON.stringify({
+          Name: 'Renamed Person',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userUpdateChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('X-Request-Id')).toBe('profile-update-request')
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'profile',
+      Id: 'user-id',
+      Name: 'Renamed Person',
+      Email: 'person@example.test',
+      SecurityStamp: 'security-stamp',
+      TwoFactorEnabled: false,
+    })
+  })
+
+  it('rejects invalid account profile update payloads', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/profile',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-profile-update-request',
+        },
+        body: JSON.stringify({
+          Name: '',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'invalid-profile-update-request',
+    })
+  })
+
+  it('returns not found when an account profile update affects no active user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/profile',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'missing-profile-update-request',
+        },
+        body: JSON.stringify({
+          name: 'Renamed Person',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'account_not_found',
+      },
+      requestId: 'missing-profile-update-request',
+    })
+  })
+
   it('reports enabled TOTP state in sync profile', async () => {
     const user = {
       ...authUserRecord(),

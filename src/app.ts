@@ -102,6 +102,7 @@ import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
 import {
   createBootstrapUser,
   getAccountRevisionDate,
+  updateAccountProfile,
 } from './repositories/user-repository'
 import { serviceVersion } from './version'
 
@@ -402,6 +403,8 @@ app.get('/api/accounts/profile', async (c) => {
 
   return c.json(buildAccountProfileResponse(auth.user))
 })
+app.put('/api/accounts/profile', handleAccountProfileUpdate)
+app.post('/api/accounts/profile', handleAccountProfileUpdate)
 
 app.post('/api/accounts/register', (c) => {
   return c.json(
@@ -2808,6 +2811,7 @@ function apiError(
     | 'cipher_folder_not_found'
     | 'cipher_not_found'
     | 'collection_not_found'
+    | 'account_not_found'
     | 'current_device_revoke_forbidden'
     | 'database_unavailable'
     | 'device_not_found'
@@ -2899,6 +2903,65 @@ async function handleDeviceKeysUpdate(c: AppContext) {
         c.get('requestId'),
         'database_unavailable',
         'Device key update failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function handleAccountProfileUpdate(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const profileRequest = parseAccountProfileUpdateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!profileRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Account profile payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const now = new Date().toISOString()
+    const result = await updateAccountProfile(c.env.DB, {
+      userId: auth.user.id,
+      displayName: profileRequest.name,
+      revisionDate: now,
+      updatedAt: now,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'account_not_found',
+          'Account was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json(
+      buildAccountProfileResponse({
+        ...auth.user,
+        displayName: result.displayName,
+        revisionDate: result.revisionDate,
+      }),
+    )
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account profile update failed.',
       ),
       503,
     )
@@ -3224,6 +3287,24 @@ function parseDeviceKeysUpdateRequestBody(body: unknown):
     encryptedUserKey,
     encryptedPublicKey,
     encryptedPrivateKey,
+  }
+}
+
+function parseAccountProfileUpdateRequestBody(
+  body: unknown,
+): { ok: true; name: string } | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const name = parseRequiredString(body.name) ?? parseRequiredString(body.Name)
+  if (!name) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    name,
   }
 }
 

@@ -9,6 +9,23 @@ export type CreateBootstrapUserResult =
       status: 'duplicate'
     }
 
+export type AccountProfileUpdateInput = {
+  userId: string
+  displayName: string
+  revisionDate: string
+  updatedAt: string
+}
+
+export type AccountProfileUpdateResult =
+  | {
+      status: 'updated'
+      displayName: string
+      revisionDate: string
+    }
+  | {
+      status: 'not_found'
+    }
+
 type UserRepositoryDatabase = Pick<D1Database, 'prepare'>
 
 type AccountRevisionRow = {
@@ -96,4 +113,36 @@ export async function getAccountRevisionDate(
     .first<AccountRevisionRow>()
 
   return row?.revisionDate ?? null
+}
+
+export async function updateAccountProfile(
+  database: UserRepositoryDatabase,
+  input: AccountProfileUpdateInput,
+): Promise<AccountProfileUpdateResult> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE users
+        SET
+          display_name = ?,
+          revision_date = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND disabled_at IS NULL
+      `,
+    )
+    .bind(input.displayName, input.revisionDate, input.updatedAt, input.userId)
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  return {
+    status: 'updated',
+    displayName: input.displayName,
+    revisionDate: input.revisionDate,
+  }
 }

@@ -13,9 +13,9 @@ In scope:
 - Cloudflare Worker API implemented in `src/app.ts`
 - D1 schema and repository access patterns
 - R2 binding reserved for encrypted object storage
-- account bootstrap, login, refresh, sync, folder, cipher, device listing,
-  identifier lookup, metadata update, encrypted-key update, device revoke, TOTP,
-  backup/restore, audit logging, and compatibility fixtures
+- account bootstrap, profile mutation, login, refresh, sync, folder, cipher,
+  device listing, identifier lookup, metadata update, encrypted-key update,
+  device revoke, TOTP, backup/restore, audit logging, and compatibility fixtures
 - Wrangler environment separation and local CI gates
 
 Out of scope for the initial product:
@@ -71,6 +71,7 @@ Out of scope for the initial product:
 - public health/config routes: `/`, `/health`, `/healthz`, `/health/db`,
   `/api/config`, `/config`
 - account bootstrap route: `/api/accounts/bootstrap`
+- account profile routes: `/api/accounts/profile`
 - disabled public registration routes
 - prelogin route: `/identity/accounts/prelogin`
 - token route: `/identity/connect/token`

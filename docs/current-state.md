@@ -817,12 +817,16 @@ Implemented:
   organization placeholders, and key-connector defaults as `/api/sync`
 - response includes master-password unlock metadata in `UserDecryptionOptions`
   to match the token response contract
+- authenticated `PUT` and `POST /api/accounts/profile`
+- owner-scoped display-name mutation with account `revision_date` update
+- `name`/`Name` request payload aliases with stable invalid-request handling
 - compatibility fixture flow `account_profile` under
   `compat/fixtures/accounts/profile-success.json`
+- compatibility fixture flow `account_profile_update` under
+  `compat/fixtures/accounts/profile-update-success.json`
 
 Not implemented:
 
-- account profile mutation APIs
 - email change, password change, or account deletion flows
 - live client evidence for the account profile endpoint
 

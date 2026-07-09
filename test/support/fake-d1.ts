@@ -33,6 +33,7 @@ type FakeD1DatabaseOptions = {
   refreshSession?: Record<string, unknown> | null
   refreshRotationChanges?: number
   userInsertChanges?: number
+  userUpdateChanges?: number
   userTotpInsertChanges?: number
   userTotpDeleteChanges?: number
   userTotpUpdateChanges?: number
@@ -242,6 +243,20 @@ export class FakeD1Database {
             meta: {
               ...fakeMeta,
               changes: options.userInsertChanges ?? 1,
+            },
+          }
+        }
+
+        if (
+          /UPDATE\s+users/.test(query) &&
+          query.includes('display_name = ?')
+        ) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.userUpdateChanges ?? 1,
             },
           }
         }

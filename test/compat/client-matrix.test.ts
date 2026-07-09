@@ -64,6 +64,7 @@ const requiredFlows = [
   'refresh_grant',
   'empty_sync',
   'account_profile',
+  'account_profile_update',
   'account_revision',
   'direct_read',
   'metadata_read',
