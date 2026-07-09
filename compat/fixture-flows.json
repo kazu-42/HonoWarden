@@ -26,6 +26,10 @@
       "fixtures": ["accounts/profile-success.json"]
     },
     {
+      "id": "account_profile_update",
+      "fixtures": ["accounts/profile-update-success.json"]
+    },
+    {
       "id": "account_revision",
       "fixtures": ["accounts/revision-date-success.json"]
     },

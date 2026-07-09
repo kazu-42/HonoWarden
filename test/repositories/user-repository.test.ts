@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import type { BootstrapUserRecord } from '../../src/domain/bootstrap'
-import { createBootstrapUser } from '../../src/repositories/user-repository'
+import {
+  createBootstrapUser,
+  updateAccountProfile,
+} from '../../src/repositories/user-repository'
 
 const fakeMeta = {
   duration: 0,
@@ -46,6 +49,51 @@ describe('createBootstrapUser', () => {
       createBootstrapUser(new RecordingD1Database(0), userRecord()),
     ).resolves.toEqual({
       status: 'duplicate',
+    })
+  })
+})
+
+describe('updateAccountProfile', () => {
+  it('updates display name and account revision for an active account', async () => {
+    const database = new RecordingD1Database(1)
+
+    await expect(
+      updateAccountProfile(database, {
+        userId: 'user-id',
+        displayName: 'Renamed Person',
+        revisionDate: '2026-07-09T10:30:00.000Z',
+        updatedAt: '2026-07-09T10:30:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'updated',
+      displayName: 'Renamed Person',
+      revisionDate: '2026-07-09T10:30:00.000Z',
+    })
+
+    expect(database.query).toContain('UPDATE users')
+    expect(database.query).toContain('display_name = ?')
+    expect(database.query).toContain('revision_date = ?')
+    expect(database.query).toContain('disabled_at IS NULL')
+    expect(database.values).toEqual([
+      'Renamed Person',
+      '2026-07-09T10:30:00.000Z',
+      '2026-07-09T10:30:00.000Z',
+      'user-id',
+    ])
+  })
+
+  it('returns not found when no active account is updated', async () => {
+    const database = new RecordingD1Database(0)
+
+    await expect(
+      updateAccountProfile(database, {
+        userId: 'user-id',
+        displayName: 'Renamed Person',
+        revisionDate: '2026-07-09T10:30:00.000Z',
+        updatedAt: '2026-07-09T10:30:00.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'not_found',
     })
   })
 })

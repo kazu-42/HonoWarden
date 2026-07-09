@@ -211,6 +211,15 @@ const replayFixtures = [
     path: 'accounts/profile-success.json',
   },
   {
+    path: 'accounts/profile-update-success.json',
+    allowMutatingFixtures: true,
+    systemTime: new Date('2026-07-09T10:30:00.000Z'),
+    database: {
+      authUser: replayUser,
+      userUpdateChanges: 1,
+    },
+  },
+  {
     path: 'accounts/revision-date-success.json',
   },
   {

@@ -1,0 +1,88 @@
+{
+  "name": "account-profile-update-success",
+  "endpoint": {
+    "method": "PUT",
+    "path": "/api/accounts/profile"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    },
+    "body": {
+      "Name": "Renamed Fixture User"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "profile",
+      "Id": "00000000-0000-4000-8000-000000000001",
+      "Name": "Renamed Fixture User",
+      "Email": "person@example.test",
+      "EmailVerified": true,
+      "Premium": false,
+      "PremiumFromOrganization": false,
+      "Culture": "en-US",
+      "TwoFactorEnabled": false,
+      "Key": "2.c3ludGhldGljLXVzZXIta2V5",
+      "AccountKeys": {
+        "publicKeyEncryptionKeyPair": {
+          "publicKey": "synthetic-public-key",
+          "wrappedPrivateKey": "2.synthetic-private-key"
+        }
+      },
+      "AvatarColor": "#3366cc",
+      "CreationDate": "2026-07-06T00:00:00.000Z",
+      "PrivateKey": "2.synthetic-private-key",
+      "SecurityStamp": "fixture-security-stamp",
+      "ForcePasswordReset": false,
+      "UsesKeyConnector": false,
+      "VerifyDevices": false,
+      "Organizations": [],
+      "OrganizationsNew": [],
+      "Providers": [],
+      "ProviderOrganizations": [],
+      "UserDecryptionOptions": {
+        "HasMasterPassword": true,
+        "MasterPasswordUnlock": {
+          "Salt": "person@example.test",
+          "Kdf": {
+            "KdfType": 0,
+            "Iterations": 600000
+          },
+          "MasterKeyEncryptedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
+        }
+      },
+      "KeyConnectorUrl": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "profile"
+    },
+    {
+      "path": "$.Id",
+      "type": "string"
+    },
+    {
+      "path": "$.Name",
+      "type": "string",
+      "value": "Renamed Fixture User"
+    },
+    {
+      "path": "$.Email",
+      "type": "string",
+      "value": "person@example.test"
+    },
+    {
+      "path": "$.SecurityStamp",
+      "type": "string"
+    },
+    {
+      "path": "$.TwoFactorEnabled",
+      "type": "boolean"
+    }
+  ]
+}
