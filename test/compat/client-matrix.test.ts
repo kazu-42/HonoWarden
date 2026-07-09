@@ -71,6 +71,7 @@ const requiredFlows = [
   'device_read',
   'device_update',
   'device_keys_update',
+  'device_bulk_trust_update',
   'known_device_preflight',
   'folder_crud',
   'cipher_create',

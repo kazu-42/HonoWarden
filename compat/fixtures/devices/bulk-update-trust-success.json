@@ -1,0 +1,95 @@
+{
+  "name": "device-bulk-update-trust-success",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/devices/update-trust"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    },
+    "body": {
+      "Devices": [
+        {
+          "Id": "fixture-device",
+          "EncryptedUserKey": "2.bulk-encrypted-user-key",
+          "EncryptedPublicKey": "2.bulk-encrypted-public-key",
+          "EncryptedPrivateKey": "2.bulk-encrypted-private-key"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "object": "device",
+          "id": "user-id:fixture-device",
+          "userId": "user-id",
+          "name": "CLI",
+          "identifier": "fixture-device",
+          "type": 8,
+          "creationDate": "2026-07-06T00:00:00.000Z",
+          "revisionDate": "2026-07-07T18:06:30.000Z",
+          "isTrusted": true,
+          "encryptedUserKey": "2.bulk-encrypted-user-key",
+          "encryptedPublicKey": "2.bulk-encrypted-public-key",
+          "devicePendingAuthRequest": null,
+          "lastActivityDate": "2026-07-06T00:10:00.000Z"
+        }
+      ],
+      "continuationToken": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "list"
+    },
+    {
+      "path": "$.data",
+      "type": "array",
+      "length": 1
+    },
+    {
+      "path": "$.data.0.object",
+      "type": "string",
+      "value": "device"
+    },
+    {
+      "path": "$.data.0.id",
+      "type": "string",
+      "value": "user-id:fixture-device"
+    },
+    {
+      "path": "$.data.0.isTrusted",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "path": "$.data.0.encryptedUserKey",
+      "type": "string",
+      "value": "2.bulk-encrypted-user-key"
+    },
+    {
+      "path": "$.data.0.encryptedPublicKey",
+      "type": "string",
+      "value": "2.bulk-encrypted-public-key"
+    },
+    {
+      "path": "$.data.0.encryptedPrivateKey",
+      "absent": true
+    },
+    {
+      "path": "$.data.0.devicePendingAuthRequest",
+      "type": "null"
+    },
+    {
+      "path": "$.continuationToken",
+      "type": "null"
+    }
+  ]
+}

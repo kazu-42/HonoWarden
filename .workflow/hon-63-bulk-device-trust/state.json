@@ -1,0 +1,88 @@
+{
+  "title": "HON-63 bulk device trust",
+  "slug": "hon-63-bulk-device-trust",
+  "created_at": "2026-07-09T19:44:54+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, docs, tests, PR, CI, and Linear updates only. No production deploy, live D1 mutation, or push/auth-request enablement."
+  },
+  "packets": [
+    {
+      "id": "A",
+      "status": "completed",
+      "objective": "Repository bulk trusted-device update."
+    },
+    {
+      "id": "B",
+      "status": "completed",
+      "objective": "HTTP route, parser, and explicit auth-request unsupported guards."
+    },
+    {
+      "id": "C",
+      "status": "completed",
+      "objective": "Compatibility fixture, matrix, and docs updates."
+    },
+    {
+      "id": "D",
+      "status": "in_progress",
+      "objective": "Broad verification, PR, CI, merge, and Linear closeout."
+    }
+  ],
+  "verification": {
+    "status": "in_progress",
+    "checks": [
+      {
+        "command": "pnpm test -- test/repositories/auth-repository.test.ts test/app.test.ts",
+        "status": "passed",
+        "notes": "Red before implementation with missing repository function and 404 route, green after implementation."
+      },
+      {
+        "command": "pnpm compat:test",
+        "status": "passed",
+        "notes": "5 compat files and 112 tests passed."
+      },
+      {
+        "command": "pnpm test -- test/repositories/auth-repository.test.ts test/app.test.ts test/compat/client-matrix.test.ts test/compat/compat-fixtures.test.ts test/compat/fixture-route-replay.test.ts test/security-docs.test.ts",
+        "status": "passed",
+        "notes": "Focused integration and docs suite passed with 839 tests."
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed",
+        "notes": "Prettier check passed after formatting markdown docs."
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed",
+        "notes": "TypeScript no-emit check passed."
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed",
+        "notes": "ESLint passed."
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "notes": "97 test files and 839 tests passed after removing a workflow brand-policy offender."
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "notes": "Release gate reported overall ready."
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/hon-63-bulk-device-trust",
+        "status": "passed",
+        "notes": "Workflow artifact completeness check passed."
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed",
+        "notes": "No whitespace errors."
+      }
+    ]
+  }
+}

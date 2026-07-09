@@ -23,6 +23,7 @@ import {
   rotateRefreshToken,
   updateDeviceKeys,
   updateDeviceMetadata,
+  updateTrustedDeviceKeys,
 } from '../../src/repositories/auth-repository'
 
 const fakeMeta = {
@@ -439,6 +440,142 @@ describe('auth repository', () => {
       status: 'not_found',
     })
 
+    expect(database.queries.join('\n')).not.toContain('UPDATE devices')
+  })
+
+  it('bulk updates trusted keys for active owner-scoped current and other devices', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 0, null, [
+      {
+        id: 'user-id:current-device',
+        userId: 'user-id',
+        identifier: 'current-device',
+        name: 'Current CLI',
+        type: 8,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+      {
+        id: 'user-id:other-device',
+        userId: 'user-id',
+        identifier: 'other-device',
+        name: 'Other Browser',
+        type: 3,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
+        lastSeenAt: '2026-07-06T00:20:00.000Z',
+        createdAt: '2026-07-06T00:01:00.000Z',
+        updatedAt: '2026-07-06T00:20:00.000Z',
+      },
+    ])
+
+    await expect(
+      updateTrustedDeviceKeys(database, {
+        userId: 'user-id',
+        updatedAt: '2026-07-07T18:06:30.000Z',
+        devices: [
+          {
+            deviceIdOrIdentifier: 'current-device',
+            encryptedUserKey: '2.current-user-key',
+            encryptedPublicKey: '2.current-public-key',
+            encryptedPrivateKey: '2.current-private-key',
+          },
+          {
+            deviceIdOrIdentifier: 'user-id:other-device',
+            encryptedUserKey: '2.other-user-key',
+            encryptedPublicKey: '2.other-public-key',
+            encryptedPrivateKey: '2.other-private-key',
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      status: 'updated',
+      devices: [
+        {
+          id: 'user-id:current-device',
+          userId: 'user-id',
+          identifier: 'current-device',
+          name: 'Current CLI',
+          type: 8,
+          encryptedUserKey: '2.current-user-key',
+          encryptedPublicKey: '2.current-public-key',
+          encryptedPrivateKey: '2.current-private-key',
+          lastSeenAt: '2026-07-06T00:10:00.000Z',
+          createdAt: '2026-07-06T00:00:00.000Z',
+          updatedAt: '2026-07-07T18:06:30.000Z',
+        },
+        {
+          id: 'user-id:other-device',
+          userId: 'user-id',
+          identifier: 'other-device',
+          name: 'Other Browser',
+          type: 3,
+          encryptedUserKey: '2.other-user-key',
+          encryptedPublicKey: '2.other-public-key',
+          encryptedPrivateKey: '2.other-private-key',
+          lastSeenAt: '2026-07-06T00:20:00.000Z',
+          createdAt: '2026-07-06T00:01:00.000Z',
+          updatedAt: '2026-07-07T18:06:30.000Z',
+        },
+      ],
+    })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('identifier = ?')
+    expect(query).toContain('id = ?')
+    expect(query).toContain('UPDATE devices')
+    expect(query).toContain('encrypted_user_key = ?')
+    expect(database.batchStatements).toHaveLength(2)
+    expect(database.boundValues).toContain('2.current-private-key')
+    expect(database.boundValues).toContain('2.other-private-key')
+  })
+
+  it('does not bulk update trusted keys when any requested device is missing', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 0, null, [
+      {
+        id: 'user-id:current-device',
+        userId: 'user-id',
+        identifier: 'current-device',
+        name: 'Current CLI',
+        type: 8,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+    ])
+
+    await expect(
+      updateTrustedDeviceKeys(database, {
+        userId: 'user-id',
+        updatedAt: '2026-07-07T18:06:30.000Z',
+        devices: [
+          {
+            deviceIdOrIdentifier: 'current-device',
+            encryptedUserKey: '2.current-user-key',
+            encryptedPublicKey: '2.current-public-key',
+            encryptedPrivateKey: '2.current-private-key',
+          },
+          {
+            deviceIdOrIdentifier: 'missing-device',
+            encryptedUserKey: '2.missing-user-key',
+            encryptedPublicKey: '2.missing-public-key',
+            encryptedPrivateKey: '2.missing-private-key',
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      status: 'not_found',
+      missingDeviceIdOrIdentifier: 'missing-device',
+    })
+
+    expect(database.batchStatements).toHaveLength(0)
     expect(database.queries.join('\n')).not.toContain('UPDATE devices')
   })
 
