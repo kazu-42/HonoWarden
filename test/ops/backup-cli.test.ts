@@ -44,6 +44,12 @@ describe('backup CLI', () => {
       objectList,
     ])
     const output = JSON.parse(result.stdout) as {
+      audit: {
+        name: string
+        outcome: string
+        manifestId: string
+        resultStatus: string
+      }
       executed: boolean
       commands: string[][]
     }
@@ -58,6 +64,14 @@ describe('backup CLI', () => {
     }
 
     expect(output.executed).toBe(false)
+    expect(output.audit).toEqual({
+      name: 'backup.export',
+      outcome: 'success',
+      manifestId: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      resultStatus: 'planned',
+    })
+    expect(JSON.stringify(output.audit)).not.toContain(objectOneKey)
+    expect(JSON.stringify(output.audit)).not.toContain('honowarden-vault')
     expect(manifest.database).toBe('honowarden')
     expect(manifest.bucket).toBe('honowarden-vault-objects')
     expect(manifest.r2.objects.map((object) => object.key)).toEqual([
@@ -390,11 +404,25 @@ describe('backup CLI', () => {
       'local',
     ])
     const output = JSON.parse(result.stdout) as {
+      audit: {
+        name: string
+        outcome: string
+        manifestId: string
+        resultStatus: string
+      }
       executed: boolean
       commands: string[][]
     }
 
     expect(output.executed).toBe(false)
+    expect(output.audit).toEqual({
+      name: 'backup.restore',
+      outcome: 'success',
+      manifestId: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      resultStatus: 'planned',
+    })
+    expect(JSON.stringify(output.audit)).not.toContain(objectOneKey)
+    expect(JSON.stringify(output.audit)).not.toContain('fresh-honowarden')
     expect(output.commands).toEqual([
       [
         'wrangler',

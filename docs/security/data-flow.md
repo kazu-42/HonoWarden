@@ -173,6 +173,9 @@ Current event coverage:
 - password-grant failures that reach credential validation
 - refresh-token reuse
 - user backup export success and database-failure outcomes
+- folder create, update, and delete
+- cipher create, update, trash, restore, and permanent delete
+- attachment upload and delete
 - device revoke success and not-found outcomes
 - revoke-all-other-sessions success
 - TOTP disable success and not-enabled outcomes
@@ -212,5 +215,7 @@ data.
 5. Restore validates manifest schema, deterministic R2 key/file mapping,
    relative paths, R2 path containment, and SHA-256 hashes.
 6. Restore execution requires `--confirm-fresh-target`.
+7. CLI stdout includes a secret-safe audit packet with action, result status,
+   and manifest SHA-256 id only.
 
 Backup directories remain sensitive even when vault payloads are encrypted.

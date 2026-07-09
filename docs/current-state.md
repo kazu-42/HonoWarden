@@ -340,9 +340,9 @@ Implemented:
 Not implemented:
 
 - external log sink integration
-- audit events for every vault CRUD route
 - live log-retention verification
-- automated backup audit ingestion beyond the Week 20 runbook evidence
+- automated backup audit ingestion beyond the CLI audit packet and Week 20
+  runbook evidence
 
 ## Week 26 Audit Event Persistence
 
@@ -368,7 +368,28 @@ Not implemented:
 - production migration/deploy for `0007_audit_events.sql`
 - enabling audit logging in staging or production
 - external log sink integration and Cloudflare log retention evidence
-- audit events for every vault CRUD route
+- audit events for unsupported organization and public sharing surfaces
+
+## Week 26 Vault Audit Coverage
+
+Implemented:
+
+- opt-in `folder.create`, `folder.update`, and `folder.delete` audit events
+- opt-in `cipher.create`, `cipher.update`, `cipher.delete`,
+  `cipher.restore`, and `cipher.permanent_delete` audit events
+- opt-in `attachment.create` and `attachment.delete` audit events
+- route audit contexts limited to enum-like result status, IDs, booleans, type,
+  and size metadata; no encrypted folder names, cipher JSON, attachment keys,
+  R2 object keys, request bodies, response bodies, bearer tokens, or secrets
+- backup CLI stdout `audit` packet for export and restore with action name,
+  result status, and manifest SHA-256 id only
+- route and CLI tests proving secret-safe event/payload boundaries
+
+Not implemented:
+
+- live backup/restore execution audit evidence
+- external log sink ingestion
+- audit coverage for organization/shared-vault and public sharing surfaces
 
 ## Week 26 User Backup Export API
 

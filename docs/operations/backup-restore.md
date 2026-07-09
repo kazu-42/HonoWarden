@@ -23,6 +23,22 @@ Both commands are dry-run by default. They print the commands that would run and
 write or read `backup-manifest.json`. Add `--execute` only when the target is
 correct and the operation is safe.
 
+The JSON stdout also contains a secret-safe `audit` packet:
+
+```json
+{
+  "name": "backup.export",
+  "outcome": "success",
+  "manifestId": "sha256:<manifest-sha256>",
+  "resultStatus": "planned"
+}
+```
+
+For restore, `name` is `backup.restore`. `resultStatus` is `planned` for dry-run
+and `executed` only after `--execute` commands complete. The audit packet does
+not include database names, bucket names, object keys, command arguments, or
+backup file contents.
+
 ## What The Backup Contains
 
 The backup directory contains:

@@ -99,11 +99,17 @@ async function runExport(options) {
     await addManifestHashes(outDir, manifest)
     await writeManifest(outDir, manifest)
   }
+  const manifestPath = join(outDir, manifestFileName)
 
   writeJson({
     action: 'export',
+    audit: await buildBackupAuditPacket({
+      name: 'backup.export',
+      manifestPath,
+      resultStatus: execute ? 'executed' : 'planned',
+    }),
     executed: execute,
-    manifest: join(outDir, manifestFileName),
+    manifest: manifestPath,
     commands,
   })
 }
@@ -135,13 +141,28 @@ async function runRestore(options) {
     await verifyBackupFiles(fromDir, manifest)
     await runCommands(commands)
   }
+  const manifestPath = join(fromDir, manifestFileName)
 
   writeJson({
     action: 'restore',
+    audit: await buildBackupAuditPacket({
+      name: 'backup.restore',
+      manifestPath,
+      resultStatus: execute ? 'executed' : 'planned',
+    }),
     executed: execute,
-    manifest: join(fromDir, manifestFileName),
+    manifest: manifestPath,
     commands,
   })
+}
+
+async function buildBackupAuditPacket({ name, manifestPath, resultStatus }) {
+  return {
+    name,
+    outcome: 'success',
+    manifestId: `sha256:${await sha256File(manifestPath)}`,
+    resultStatus,
+  }
 }
 
 function buildD1ExportCommand({ database, d1File, mode, options }) {
