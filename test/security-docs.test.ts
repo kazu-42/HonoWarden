@@ -35,6 +35,8 @@ describe('security review materials', () => {
     expect(threatModel).toContain('## STRIDE Summary')
     expect(threatModel).toContain('Public-link abuse or unauthorized sharing')
     expect(threatModel).toContain('ADR 0003')
+    expect(threatModel).toContain('Shared vault privilege escalation')
+    expect(threatModel).toContain('ADR 0005')
     expect(threatModel).toContain('Delegated recovery privilege escalation')
     expect(threatModel).toContain('ADR 0004')
 
@@ -80,6 +82,7 @@ describe('security review materials', () => {
     const knownLimitations = readSecurityDoc('known-limitations.md')
     expect(knownLimitations).toContain('pre-alpha')
     expect(knownLimitations).toContain('browser-delivered vault UI')
+    expect(knownLimitations).toContain('cross-user isolation')
     expect(knownLimitations).toContain('public access-token entropy')
     expect(knownLimitations).toContain('delayed access')
     expect(knownLimitations).toContain('no independent security audit')

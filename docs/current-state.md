@@ -193,6 +193,9 @@ Implemented:
 - explicit known issues per client surface
 - explicit Web Vault exclusion and API-only compatibility boundary in ADR and
   compatibility docs
+- explicit Organizations/shared-vault exclusion and future membership, role,
+  collection-access, cross-user isolation, migration, and rollback gates in ADR
+  0005, threat model, and compatibility docs
 - explicit Send/public-sharing exclusion and future design gates in ADR 0003,
   threat model, and compatibility docs
 - explicit Emergency Access exclusion and future delegated-recovery design gates
@@ -869,7 +872,8 @@ Implemented:
 
 Not implemented:
 
-- organization or shared-vault functionality
+- organization membership, roles, shared-vault functionality, or shared
+  collection assignment
 - public file-sharing functionality
 - collection or emergency-access functionality
 - login-with-device approval, push notification, or pending auth-request flows

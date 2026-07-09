@@ -42,6 +42,15 @@ Vault would require a new ADR, a dedicated compatibility row, browser security
 review, CSP and static-asset provenance rules, deployment/rollback separation,
 and live evidence before any support claim.
 
+## Organizations And Shared Vault Boundary
+
+HonoWarden does not expose Organizations or shared vaults in the alpha
+personal-vault product line. Shared vault support would add membership,
+ownership, role, collection-access, cross-user isolation, encrypted key sharing,
+audit, migration, and rollback requirements. ADR 0005 defines the scope as a
+non-goal for this product line and the minimum gates before any future shared or
+team-vault support claim.
+
 ## Send And Public Sharing Boundary
 
 HonoWarden does not expose Send or public file-sharing in the alpha release.

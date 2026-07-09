@@ -232,6 +232,30 @@ describe('client compatibility matrix', () => {
     )
   })
 
+  it('keeps Organizations and shared vaults outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain(
+      '## Organizations And Shared Vault Boundary',
+    )
+    expect(compatibilityDoc).toContain('ADR 0005')
+    expect(compatibilityDoc).toContain('membership')
+    expect(compatibilityDoc).toContain('cross-user isolation')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Organizations or shared vault row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'organizations',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'shared_vault',
+    )
+  })
+
   it('keeps Send and public sharing outside the alpha compatibility surface', () => {
     const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
     const compatibilityMatrixDoc = readFileSync(
