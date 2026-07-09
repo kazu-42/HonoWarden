@@ -98,6 +98,10 @@ Explicitly excluded public sharing surface:
   implemented in this product line unless ADR 0005's membership, role,
   collection-access, cross-user isolation, encrypted key sharing, audit,
   migration, and rollback controls are designed and verified.
+- Policy metadata reads return authenticated empty list responses for personal
+  vaults. Policy mutation or organization policy enforcement must not be
+  implemented until ADR 0006's schema, enforcement-point, default-behavior,
+  audit, rollback, and compatibility controls are designed and verified.
 - `/api/sends` and `/api/sends/*` return typed unsupported-feature errors.
 - Top-level `/api/attachments` and `/api/attachments/*` return typed
   unsupported-feature errors.
@@ -112,14 +116,14 @@ Explicitly excluded public sharing surface:
 
 ## STRIDE Summary
 
-| Threat                 | Current Controls                                                                                                                                                                                                                       | Residual Risk                                                                                                                                |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                                                                                                                              | no asymmetric token keys; bulk trusted-device approval is not implemented                                                                    |
-| Tampering              | D1 owner predicates, attachment metadata predicates, revision conflict checks, backup checksum validation                                                                                                                              | no live restore drill evidence yet                                                                                                           |
-| Repudiation            | opt-in D1-persisted audit events for bootstrap, auth failures, refresh reuse, backup export, folder/cipher/attachment mutations, device revoke, revoke-all-other-sessions, TOTP change, and TOTP disable; Worker runtime Logpush to R2 | audit coverage does not yet include unsupported organization/public-sharing surfaces; automated log-retention deletion is still operator-run |
-| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering; organization and public sharing routes remain unsupported                                          | platform logs/backups/user exports remain sensitive operational data                                                                         |
-| Denial of service      | password-grant IP and account lockouts, bounded fixture tests; organization and public sharing routes remain unsupported                                                                                                               | no global request quota, queue, export-specific throttle, public-link abuse dashboard, or Send-specific rate limit                           |
-| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions, dry-run-first account lifecycle CLI; Organizations and Emergency Access remain unsupported                 | no admin console, shared-vault role model, delegated recovery security model, or live production lifecycle evidence yet                      |
+| Threat                 | Current Controls                                                                                                                                                                                                                               | Residual Risk                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                                                                                                                                      | no asymmetric token keys; bulk trusted-device approval is not implemented                                                                    |
+| Tampering              | D1 owner predicates, attachment metadata predicates, revision conflict checks, backup checksum validation; organization policy mutation remains unsupported                                                                                    | no live restore drill evidence yet                                                                                                           |
+| Repudiation            | opt-in D1-persisted audit events for bootstrap, auth failures, refresh reuse, backup export, folder/cipher/attachment mutations, device revoke, revoke-all-other-sessions, TOTP change, and TOTP disable; Worker runtime Logpush to R2         | audit coverage does not yet include unsupported organization/public-sharing surfaces; automated log-retention deletion is still operator-run |
+| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering; organization and public sharing routes remain unsupported                                                  | platform logs/backups/user exports remain sensitive operational data                                                                         |
+| Denial of service      | password-grant IP and account lockouts, bounded fixture tests; organization and public sharing routes remain unsupported                                                                                                                       | no global request quota, queue, export-specific throttle, public-link abuse dashboard, or Send-specific rate limit                           |
+| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions, dry-run-first account lifecycle CLI; Organizations, organization policies, and Emergency Access remain unsupported | no admin console, shared-vault role model, delegated recovery security model, or live production lifecycle evidence yet                      |
 
 ## High-Risk Abuse Paths
 
@@ -156,17 +160,23 @@ Explicitly excluded public sharing surface:
    isolation, encrypted key sharing, audit, migration, rollback, and
    compatibility fixture design before implementation.
 
-8. Public-link abuse or unauthorized sharing.
+8. Policy bypass through unenforced organization rules.
+   Current mitigation: policy metadata reads are empty personal-vault metadata
+   only; policy mutation and organization enforcement are unsupported. ADR 0006
+   requires schema, enforcement points, default behavior, audit, rollback, and
+   compatibility fixture design before implementation.
+
+9. Public-link abuse or unauthorized sharing.
    Current mitigation: Send and top-level public attachment routes remain
    unsupported. ADR 0003 requires access-token entropy, expiration, revocation,
    rate limits, abuse reporting, cache policy, encrypted/opaque object handling,
    and retention/deletion design before implementation.
 
-9. Delegated recovery privilege escalation.
-   Current mitigation: Emergency Access routes remain unsupported. ADR 0004
-   requires grantee identity, invitation, delay, cancellation, timeout,
-   notification, cryptographic handoff, audit, abuse, rollback, and incident
-   response design before implementation.
+10. Delegated recovery privilege escalation.
+    Current mitigation: Emergency Access routes remain unsupported. ADR 0004
+    requires grantee identity, invitation, delay, cancellation, timeout,
+    notification, cryptographic handoff, audit, abuse, rollback, and incident
+    response design before implementation.
 
 ## Required Follow-Up Before Real Secrets
 

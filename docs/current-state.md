@@ -196,6 +196,8 @@ Implemented:
 - explicit Organizations/shared-vault exclusion and future membership, role,
   collection-access, cross-user isolation, migration, and rollback gates in ADR
   0005, threat model, and compatibility docs
+- explicit policy management/enforcement exclusion and personal-vault empty
+  policy metadata default in ADR 0006, threat model, and compatibility docs
 - explicit Send/public-sharing exclusion and future design gates in ADR 0003,
   threat model, and compatibility docs
 - explicit Emergency Access exclusion and future delegated-recovery design gates
@@ -1097,12 +1099,14 @@ Implemented:
 - authenticated `GET /api/settings/domains`
 - policy endpoints return empty list responses for the alpha personal-vault
   scope
+- policy mutation and organization policy enforcement are excluded by ADR 0006;
+  no organization policy applies to personal-vault users
 - domain endpoints reuse the same empty equivalent-domain metadata as `/api/sync`
 - compatibility fixture flow `metadata_read` for policy and domain responses
 
 Not implemented:
 
-- policy management or organization policy enforcement
+- policy management, policy mutation, or organization policy enforcement
 - custom equivalent-domain configuration
 - live client evidence for metadata read endpoints
 

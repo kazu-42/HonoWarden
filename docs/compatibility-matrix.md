@@ -45,6 +45,12 @@ support would require ADR 0005's membership, ownership, role, collection-access,
 cross-user isolation, encrypted key sharing, audit, migration, rollback, and
 compatibility fixture gates before compatibility can be claimed.
 
+Policy metadata remains fixture-covered as authenticated empty list responses
+for personal vaults. Policy mutation and organization policy enforcement are
+not compatibility claims; ADR 0006 requires policy schema, enforcement points,
+default behavior, audit, rollback, and compatibility fixture design before
+support can be claimed.
+
 There is intentionally no Send or public file-sharing row. Cipher-scoped
 attachments are authenticated owner-scoped vault operations; public sharing
 would require ADR 0003's access-token, expiration, revocation, rate-limit,

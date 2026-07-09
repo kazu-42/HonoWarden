@@ -256,6 +256,27 @@ describe('client compatibility matrix', () => {
     )
   })
 
+  it('keeps policy management outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Policy Management Boundary')
+    expect(compatibilityDoc).toContain('ADR 0006')
+    expect(compatibilityDoc).toContain('empty policy metadata reads')
+    expect(compatibilityMatrixDoc).toContain(
+      'Policy metadata remains fixture-covered',
+    )
+    expect(compatibilityMatrixDoc).toMatch(
+      /Policy mutation and organization policy enforcement are\s+not compatibility claims/,
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'policy_management',
+    )
+  })
+
   it('keeps Send and public sharing outside the alpha compatibility surface', () => {
     const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
     const compatibilityMatrixDoc = readFileSync(
