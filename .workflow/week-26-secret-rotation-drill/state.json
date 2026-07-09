@@ -1,0 +1,74 @@
+{
+  "title": "Week 26 Formal secret rotation dry-run",
+  "slug": "week-26-secret-rotation-drill",
+  "created_at": "2026-07-09T17:44:04+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Repository-local dry-run only. Real credential rotation is explicitly out of scope for this pass."
+  },
+  "packets": [
+    {
+      "id": "01-cli",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "02-docs",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "03-tests",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "04-closeout",
+      "status": "local_verification_completed",
+      "owner": "codex"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm secret:rotation:drill -- dry-run --strict",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm secret:rotation:drill -- dry-run --strict --out test/.tmp/secret-rotation-drill.json",
+        "status": "passed_ready_9_classes"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/secret-rotation-drill.test.ts test/security-docs.test.ts",
+        "status": "passed_3_files_7_tests"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed_92_files_794_tests"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-secret-rotation-drill",
+        "status": "passed"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      }
+    ]
+  }
+}

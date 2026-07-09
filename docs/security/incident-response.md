@@ -99,9 +99,13 @@ References:
 - [Authentication State Machine](auth-state-machine.md)
 - [Access Token Key Rotation](../operations/access-token-key-rotation.md)
 - [TOTP Secret Rotation](../operations/totp-secret-rotation.md)
+- [Formal Secret Rotation Drill](../operations/secret-rotation-drill.md)
 - [Account Lifecycle Operator Runbook](../operations/account-lifecycle.md)
 
-Formal rotation execution is tracked separately by `HON-60`.
+Formal dry-run rotation coverage is recorded in
+[Secret Rotation Drill Evidence](../release/secret-rotation-drill-evidence.md).
+Live credential rotation still requires a separate operator-owned change
+window.
 
 ### Vault Data Exposure Suspicion
 

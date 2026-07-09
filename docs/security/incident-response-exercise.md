@@ -4,9 +4,9 @@ Exercise date: 2026-07-09.
 
 Status: passed.
 
-Mode: tabletop and read-only dry-run evidence. No real secret rotation,
-production account mutation, mailbox content review, or vault-data access was
-performed.
+Mode: tabletop, read-only dry-run evidence, and formal secret rotation dry-run
+boundary. No real secret rotation, production account mutation, mailbox content
+review, or vault-data access was performed.
 
 ## Scenario
 
@@ -51,6 +51,8 @@ Read-only checks used during the exercise:
   commands for account containment.
 - `docs/operations/backup-restore.md` confirms restore should target fresh
   resources only.
+- `docs/operations/secret-rotation-drill.md` provides the formal dry-run
+  credential-class matrix without rotating live secrets.
 - `direnv exec . pnpm ops:readiness:packet -- --strict --tag-workflow-run-id
 28863312935 --tag-workflow-url
 https://github.com/kazu-42/HonoWarden/actions/runs/28863312935` returned
@@ -117,18 +119,19 @@ The exercise requires these checks before closing a real incident:
 
 ## Gaps And Follow-Up Issues
 
-| Gap found during tabletop                                                                 | Follow-up                        |
-| ----------------------------------------------------------------------------------------- | -------------------------------- |
-| Formal secret rotation was intentionally not executed                                     | `HON-60`                         |
-| Cloudflare account scoped-token rollout is complete, but 2FA/global-key hardening remains | access-control review / `HON-60` |
-| Independent security audit and external penetration test are not complete                 | `HON-57`                         |
-| External log sink and Cloudflare log retention access are not implemented                 | `HON-49`                         |
-| Inquiry mailbox retention/redaction workflow is not implemented                           | `HON-24` through `HON-27`        |
-| Live two-user disabled-account lifecycle evidence is not recorded                         | `HON-61`                         |
+| Gap found during tabletop                                                                             | Follow-up                                  |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Formal secret rotation dry-run is complete; live credential rotation remains intentionally unexecuted | future live rotation window                |
+| Cloudflare account scoped-token rollout is complete, but 2FA/global-key hardening remains             | access-control review / operator hardening |
+| Independent security audit and external penetration test are not complete                             | `HON-57`                                   |
+| External log sink and Cloudflare log retention access are not implemented                             | `HON-49`                                   |
+| Inquiry mailbox retention/redaction workflow is not implemented                                       | `HON-24` through `HON-27`                  |
+| Live two-user disabled-account lifecycle evidence is not recorded                                     | `HON-61`                                   |
 
-No new issue was required for the tabletop itself because the gaps already exist
-as open Linear issues. If any gap recurs without an existing issue, create the
-issue before closing the incident.
+No new issue was required for the tabletop itself. Rows above either map to
+existing follow-up issues or to explicit operator-owned future windows where
+live mutation was intentionally deferred. If any gap recurs without an existing
+issue or an intentional deferral, create the issue before closing the incident.
 
 ## Outcome
 

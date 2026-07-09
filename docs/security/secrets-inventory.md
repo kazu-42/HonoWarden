@@ -43,6 +43,13 @@ Do not commit real secret values to the repository.
 
 ## Rotation Notes
 
+- Formal multi-credential drill coverage is recorded in
+  [Formal Secret Rotation Drill](../operations/secret-rotation-drill.md), with
+  dry-run evidence in
+  [Secret Rotation Drill Evidence](../release/secret-rotation-drill-evidence.md).
+  The drill records environment variable names, configured/missing booleans,
+  blast radius, verification commands, and rollback paths only; it does not
+  rotate or print real secrets.
 - Access-token key rotation should use
   [Access Token Key Rotation](../operations/access-token-key-rotation.md).
   The active key signs new tokens with a JWT `kid`, previous keys verify tokens
