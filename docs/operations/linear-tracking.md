@@ -23,7 +23,7 @@ pnpm linear:preflight -- --strict
 ```
 
 `linear:preflight` is read-only. It checks the Linear GraphQL organization
-`urlKey`, the `HW` / `HonoWarden` team, and the workflow state types needed by
+`urlKey`, the `HON` / `HonoWarden` team, and the workflow state types needed by
 the seed before reporting `status: "ready"`. It rejects custom GraphQL
 endpoints before attaching the API key, and it treats local workspace slug
 environment overrides as a mismatch unless they match the checked-in seed.
@@ -77,7 +77,7 @@ credentials, or execute writes.
 
 The seed defines:
 
-- one team: `HW` / `HonoWarden`
+- one team: `HON` / `HonoWarden`
 - one initiative: `HonoWarden Alpha Launch`
 - three projects: alpha API, operations readiness, and website/domain, updated
   to reflect that the website repository and HTTPS domains are live while Email
@@ -148,7 +148,8 @@ Safe verification steps:
 
 ## Recommended Apply Order
 
-1. Create the `HonoWarden` team with key `HW` if it does not exist.
+1. Use the existing `HonoWarden` team with key `HON`, or create it with that key
+   if it does not exist.
 2. Create labels from the seed.
 3. Create the `HonoWarden Alpha Launch` initiative.
 4. Create the three projects and associate them with the initiative where the UI

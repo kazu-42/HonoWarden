@@ -108,7 +108,7 @@ describe('Linear apply plan', () => {
       blockingReason: 'linear_api_key_missing',
       expected: {
         workspaceSlug: 'honowarden',
-        team: { key: 'HW', name: 'HonoWarden' },
+        team: { key: 'HON', name: 'HonoWarden' },
       },
     })
 
@@ -141,7 +141,7 @@ describe('Linear apply plan', () => {
     expect(report.status).toBe('ready')
     expect(report.blockingReason).toBeNull()
     expect(report.preflight?.workspaceSlug).toBe('honowarden')
-    expect(report.preflight?.team.id).toBe('team-hw')
+    expect(report.preflight?.team.id).toBe('team-hon')
     expect(report.summary.byAction).toEqual({
       confirm_existing: 21,
       create: 5,
@@ -264,7 +264,7 @@ describe('Linear apply plan', () => {
     const preflightPath = await writeJsonFixture(
       'missing-team-preflight',
       await readyPreflightReport({
-        team: { id: null, key: 'HW', name: 'HonoWarden' },
+        team: { id: null, key: 'HON', name: 'HonoWarden' },
       }),
     )
 
@@ -396,10 +396,10 @@ async function readyPreflightReport(overrides: Record<string, unknown> = {}) {
     seedFingerprint: fingerprintJson(seed),
     expected: {
       workspaceSlug: 'honowarden',
-      team: { key: 'HW', name: 'HonoWarden' },
+      team: { key: 'HON', name: 'HonoWarden' },
     },
     workspace: { id: 'org-hw', name: 'HonoWarden', urlKey: 'honowarden' },
-    team: { id: 'team-hw', key: 'HW', name: 'HonoWarden' },
+    team: { id: 'team-hon', key: 'HON', name: 'HonoWarden' },
     inventory: {
       labels: {
         complete: true,

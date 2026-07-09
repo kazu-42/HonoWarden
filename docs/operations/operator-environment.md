@@ -161,7 +161,7 @@ Use one of these before Linear writes:
 `pnpm linear:preflight` calls the Linear GraphQL API read-only. It does not
 create issues, projects, labels, documents, views, comments, or Pulse updates.
 It fails closed when `LINEAR_API_KEY` is missing, when the API key resolves to a
-workspace whose `urlKey` is not `honowarden`, when the `HW` / `HonoWarden` team
+workspace whose `urlKey` is not `honowarden`, when the `HON` / `HonoWarden` team
 is absent, or when the team's workflow state types cannot represent the seed's
 issue `stateType` values. It also rejects custom GraphQL endpoints before
 sending the API key, so local endpoint overrides cannot exfiltrate the token. If
