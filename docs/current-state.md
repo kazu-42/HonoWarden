@@ -193,6 +193,8 @@ Implemented:
 - explicit known issues per client surface
 - explicit Web Vault exclusion and API-only compatibility boundary in ADR and
   compatibility docs
+- explicit Send/public-sharing exclusion and future design gates in ADR 0003,
+  threat model, and compatibility docs
 - compatibility matrix validation in `pnpm compat:test`
 
 Not implemented:

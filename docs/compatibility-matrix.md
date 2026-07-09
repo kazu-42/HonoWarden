@@ -39,6 +39,11 @@ embedded vault UI. Adding a Web Vault row requires a new ADR, browser security
 review, CSP/static-asset provenance rules, deployment and rollback boundaries,
 and live evidence.
 
+There is intentionally no Send or public file-sharing row. Cipher-scoped
+attachments are authenticated owner-scoped vault operations; public sharing
+would require ADR 0003's access-token, expiration, revocation, rate-limit,
+abuse, cache, and retention controls before compatibility can be claimed.
+
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
 Live official-client attachment upload, download, and delete evidence is still
 not recorded for any tracked client surface.

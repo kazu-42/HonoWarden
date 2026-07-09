@@ -24,7 +24,7 @@ Out of scope for the initial product:
 - Web Vault
 - public account registration
 - Organizations and shared vaults
-- Send
+- Send and public file-sharing
 - browser-side cryptography review of third-party clients
 - Cloudflare account hardening outside repository-controlled configuration
 - bulk trusted-device approval and login-with-device push workflows
@@ -90,6 +90,15 @@ Out of scope for the initial product:
 - operator backup/restore and account lifecycle CLIs
 - audit log stream
 
+Explicitly excluded public sharing surface:
+
+- `/api/sends` and `/api/sends/*` return typed unsupported-feature errors.
+- Top-level `/api/attachments` and `/api/attachments/*` return typed
+  unsupported-feature errors.
+- Public sharing must not be implemented until ADR 0003's expiration,
+  revocation, rate-limit, abuse, cache, audit, and retention controls are
+  designed and verified.
+
 ## STRIDE Summary
 
 | Threat                 | Current Controls                                                                                                                                                                                                                       | Residual Risk                                                                                                                                |
@@ -97,8 +106,8 @@ Out of scope for the initial product:
 | Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                                                                                                                              | no asymmetric token keys; bulk trusted-device approval is not implemented                                                                    |
 | Tampering              | D1 owner predicates, attachment metadata predicates, revision conflict checks, backup checksum validation                                                                                                                              | no live restore drill evidence yet                                                                                                           |
 | Repudiation            | opt-in D1-persisted audit events for bootstrap, auth failures, refresh reuse, backup export, folder/cipher/attachment mutations, device revoke, revoke-all-other-sessions, TOTP change, and TOTP disable; Worker runtime Logpush to R2 | audit coverage does not yet include unsupported organization/public-sharing surfaces; automated log-retention deletion is still operator-run |
-| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering                                                                                                     | platform logs/backups/user exports remain sensitive operational data                                                                         |
-| Denial of service      | password-grant IP and account lockouts, bounded fixture tests                                                                                                                                                                          | no global request quota, queue, export-specific throttle, or abuse dashboard                                                                 |
+| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering; public sharing routes remain unsupported                                                           | platform logs/backups/user exports remain sensitive operational data                                                                         |
+| Denial of service      | password-grant IP and account lockouts, bounded fixture tests; public sharing routes remain unsupported                                                                                                                                | no global request quota, queue, export-specific throttle, public-link abuse dashboard, or Send-specific rate limit                           |
 | Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions, dry-run-first account lifecycle CLI                                                                        | no admin console or live production lifecycle evidence yet                                                                                   |
 
 ## High-Risk Abuse Paths
@@ -129,6 +138,12 @@ Out of scope for the initial product:
    Current mitigation: audit logging is opt-in, event context filtering removes
    secret-like fields, D1 persistence uses explicit metadata columns plus
    sanitized context, and docs prohibit request/response body logging.
+
+7. Public-link abuse or unauthorized sharing.
+   Current mitigation: Send and top-level public attachment routes remain
+   unsupported. ADR 0003 requires access-token entropy, expiration, revocation,
+   rate limits, abuse reporting, cache policy, encrypted/opaque object handling,
+   and retention/deletion design before implementation.
 
 ## Required Follow-Up Before Real Secrets
 

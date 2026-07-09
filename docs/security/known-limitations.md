@@ -27,7 +27,10 @@ inputs, not minor documentation notes.
   supply chain in the alpha scope.
 - Public registration is disabled.
 - Organizations and shared vaults are not implemented.
-- Send is not implemented.
+- Send and public file-sharing are intentionally not implemented; ADR 0003
+  requires public access-token entropy, expiration, revocation, rate limits,
+  abuse reporting, cache policy, audit, and retention/deletion design before
+  any public sharing support claim.
 - Cipher-scoped attachment upload, download, delete, and sync metadata are
   implemented for opaque client-encrypted payloads, but no live official-client
   attachment run has been captured yet.

@@ -69,6 +69,7 @@ describe('release feature-freeze docs', () => {
     expect(releaseNotes).toContain('Web Vault')
     expect(releaseNotes).toContain('browser session surface')
     expect(releaseNotes).toContain('public registration')
+    expect(releaseNotes).toContain('public file-sharing')
     expect(releaseNotes).toContain('independent security audit')
     expect(releaseNotes).toContain('fixture_only')
     expect(releaseNotes).toContain('D1 audit-event persistence')
