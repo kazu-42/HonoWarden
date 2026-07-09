@@ -667,11 +667,21 @@ Implemented:
 - retention cleanup runbook under `docs/operations/retention-cleanup.md`
 - tests for bounded and idempotent auth-defense, TOTP challenge cleanup,
   scheduled handler execution, and cron configuration
+- staging and production Cloudflare deploys applying the hourly Cron Trigger
+  from source commit `b1270b557c604a868091ec3b4252c9b7566c958b`
+- staging and production D1 migrations `0004` and `0005` applied, with
+  `/health/db` reporting schema version `0005`
+- retention Cron evidence under `docs/release/retention-cron-evidence.md`,
+  including deployment IDs, Worker version IDs, synthetic cleanup row setup, and
+  rollback/disable procedure
+- Wrangler tail captured staging and production scheduled events with
+  `outcome: ok` at `2026-07-09T16:00:08Z`
+- post-hour D1 readback confirmed the synthetic `hon-51-cron-smoke`
+  `auth_attempts` and `auth_failure_buckets` rows were deleted in both staging
+  and production
 
 Not implemented:
 
-- live Cloudflare deploy applying the Cron Trigger
-- Cron Events monitoring evidence
 - cleanup metrics or alerting
 - dedicated cleanup-only indexes for larger production datasets
 
@@ -1507,11 +1517,13 @@ Implemented:
   Cron Trigger workflow
 - `week-26-retention-cleanup-cron-trigger` records passing CI run `28886935393`
 - release gate tests assert the retention Cron workflow evidence path
+- HON-51 live closeout deploys have now applied the Cron Trigger to staging and
+  production, and `docs/release/retention-cron-evidence.md` records the
+  scheduled event and synthetic cleanup deletion readback
 
 Not implemented:
 
 - self-referential gating of this coverage workflow's own future CI run
-- live Cloudflare deploy applying the Cron Trigger
 - GitHub release publication
 - deployment from a tag or release
 

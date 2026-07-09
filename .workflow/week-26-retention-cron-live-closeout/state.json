@@ -1,0 +1,118 @@
+{
+  "title": "Week 26 Retention Cron Live Closeout",
+  "slug": "week-26-retention-cron-live-closeout",
+  "created_at": "2026-07-09T15:26:46Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "The user approved database changes, routing/deploy work, and retention closeout. Credential rotation remains out of scope."
+  },
+  "packets": [
+    {
+      "id": "01-staging-deploy",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "02-production-deploy",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "03-cron-readback",
+      "status": "completed",
+      "owner": "codex"
+    },
+    {
+      "id": "04-docs-linear-closeout",
+      "status": "completed",
+      "owner": "codex"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/scheduled.test.ts test/wrangler-environments.test.ts test/app.test.ts test/repositories/auth-repository.test.ts test/repositories/totp-repository.test.ts",
+        "status": "passed_9_files_311_tests"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed_ready"
+      },
+      {
+        "command": "wrangler deploy --env staging --dry-run",
+        "status": "passed"
+      },
+      {
+        "command": "wrangler d1 migrations apply honowarden-staging --env staging --remote",
+        "status": "passed_0004_0005"
+      },
+      {
+        "command": "wrangler deploy --env staging",
+        "status": "passed_version_35702116-2232-4236-9d81-dcc648ed2374"
+      },
+      {
+        "command": "staging health smoke",
+        "status": "passed"
+      },
+      {
+        "command": "wrangler deploy --env production --dry-run",
+        "status": "passed"
+      },
+      {
+        "command": "wrangler d1 migrations apply honowarden --env production --remote",
+        "status": "passed_0004_0005"
+      },
+      {
+        "command": "wrangler deploy --env production",
+        "status": "passed_version_96a2c5d1-7fce-42cf-8ab1-5709b69fe83c"
+      },
+      {
+        "command": "production health smoke",
+        "status": "passed"
+      },
+      {
+        "command": "synthetic cleanup row insertion",
+        "status": "passed_staging_1_1_production_1_1"
+      },
+      {
+        "command": "post-hour cron deletion readback",
+        "status": "passed_staging_0_0_production_0_0"
+      },
+      {
+        "command": "wrangler tail scheduled event readback",
+        "status": "passed_staging_ok_production_ok"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-retention-cron-live-closeout",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/ops/retention-cron-evidence.test.ts test/release-docs.test.ts",
+        "status": "passed_3_files_14_tests"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed_87_files_767_tests"
+      },
+      {
+        "command": "evidence/docs secret scan",
+        "status": "passed"
+      }
+    ]
+  }
+}
