@@ -1,13 +1,23 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-07-06T11:35:37Z",
+  "checkedAt": "2026-07-09T21:22:47Z",
   "sourceKind": "official-upstream-release-metadata",
+  "metadataRefresh": {
+    "cadenceDays": 14,
+    "requiredBeforeRelease": true,
+    "staleAfterDays": 21
+  },
   "entries": [
     {
       "surface": "browser_extension",
       "version": "2026.6.1",
       "releaseTag": "browser-v2026.6.1",
       "releasePublishedAt": "2026-06-30T17:07:46Z",
+      "metadataSource": {
+        "kind": "official-upstream-github-release",
+        "repositoryRef": "client-apps",
+        "releaseSelector": "latest non-draft, non-prerelease release whose tag starts with browser-v"
+      },
       "verificationLevel": "fixture_only",
       "coveredFlows": [
         "config",
@@ -47,6 +57,11 @@
       "version": "2026.6.1",
       "releaseTag": "desktop-v2026.6.1",
       "releasePublishedAt": "2026-06-30T16:09:04Z",
+      "metadataSource": {
+        "kind": "official-upstream-github-release",
+        "repositoryRef": "client-apps",
+        "releaseSelector": "latest non-draft, non-prerelease release whose tag starts with desktop-v"
+      },
       "verificationLevel": "fixture_only",
       "coveredFlows": [
         "config",
@@ -83,10 +98,15 @@
     },
     {
       "surface": "mobile_android",
-      "version": "2026.6.0",
-      "build": "21686",
-      "releaseTag": "v2026.6.0-bwpm",
-      "releasePublishedAt": "2026-06-25T21:37:09Z",
+      "version": "2026.6.1",
+      "build": "21713",
+      "releaseTag": "v2026.6.1-bwpm",
+      "releasePublishedAt": "2026-07-09T16:57:30Z",
+      "metadataSource": {
+        "kind": "official-upstream-github-release",
+        "repositoryRef": "android-mobile-apps",
+        "releaseSelector": "latest non-draft, non-prerelease Password Manager release whose tag ends with -bwpm"
+      },
       "verificationLevel": "fixture_only",
       "coveredFlows": [
         "config",
@@ -116,6 +136,7 @@
       ],
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
+        "Release metadata advanced from 2026.6.0 build 21686 to 2026.6.1 build 21713 on 2026-07-09; live mobile evidence must be re-run before any promotion.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
@@ -127,6 +148,11 @@
       "build": "3325",
       "releaseTag": "v2026.6.0-bwpm",
       "releasePublishedAt": "2026-06-26T15:03:00Z",
+      "metadataSource": {
+        "kind": "official-upstream-github-release",
+        "repositoryRef": "ios-mobile-apps",
+        "releaseSelector": "latest non-draft, non-prerelease Password Manager release whose tag ends with -bwpm"
+      },
       "verificationLevel": "fixture_only",
       "coveredFlows": [
         "config",
@@ -166,6 +192,11 @@
       "version": "2026.6.0",
       "releaseTag": "cli-v2026.6.0",
       "releasePublishedAt": "2026-06-25T18:32:52Z",
+      "metadataSource": {
+        "kind": "official-upstream-github-release",
+        "repositoryRef": "client-apps",
+        "releaseSelector": "latest non-draft, non-prerelease release whose tag starts with cli-v"
+      },
       "verificationLevel": "live_smoke",
       "liveEvidence": {
         "path": "docs/release/live-client-evidence.md",

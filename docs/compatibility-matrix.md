@@ -1,20 +1,37 @@
 # Client Compatibility Matrix
 
-Last release metadata check: 2026-07-06T11:35:37Z.
+Last release metadata check: 2026-07-09T21:22:47Z.
 
 This matrix records the exact client versions currently tracked by HonoWarden. It is intentionally conservative: rows stay at `fixture_only` until a live client run is captured with request and response evidence. The structured source of truth is [`compat/client-matrix.json`](../compat/client-matrix.json).
 
 Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compat/fixture-flows.json). CI verifies that every `coveredFlows` value in the matrix maps to at least one fixture file. CI also route-replays every JSON fixture under `compat/fixtures` against the Hono app and compares that replay set with the fixture-flow manifest, so fixture assertions exercise real route behavior instead of only static JSON shape.
 
+## Metadata Refresh Policy
+
+- Refresh cadence: every 14 days and before every release candidate.
+- Stale threshold: treat metadata older than 21 days as stale for release
+  planning.
+- Source kind: official upstream GitHub release metadata.
+- Source refs:
+  - `client-apps`: browser extension, desktop, and CLI releases.
+  - `android-mobile-apps`: Android Password Manager releases.
+  - `ios-mobile-apps`: iOS Password Manager releases.
+- Refresh rule: select the latest non-draft, non-prerelease release matching
+  the row selector in `compat/client-matrix.json`.
+- Promotion rule: updating version/build metadata never promotes
+  `verificationLevel`; live request/response evidence is still required.
+- Drift rule: when a tracked version advances, re-evaluate the relevant live
+  evidence issue before release planning and keep known issues explicit.
+
 ## Current Matrix
 
-| Surface           | Version  | Build | Release Tag       | Release Published    | Verification | Known Issues                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------- | -------- | ----- | ----------------- | -------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| browser_extension | 2026.6.1 |       | browser-v2026.6.1 | 2026-06-30T17:07:46Z | fixture_only | No live client login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                       |
-| desktop           | 2026.6.1 |       | desktop-v2026.6.1 | 2026-06-30T16:09:04Z | fixture_only | No live client login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                       |
-| mobile_android    | 2026.6.0 | 21686 | v2026.6.0-bwpm    | 2026-06-25T21:37:09Z | fixture_only | No live mobile login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                       |
-| mobile_ios        | 2026.6.0 | 3325  | v2026.6.0-bwpm    | 2026-06-26T15:03:00Z | fixture_only | No live mobile login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                       |
-| cli               | 2026.6.0 |       | cli-v2026.6.0     | 2026-06-25T18:32:52Z | live_smoke   | Live CLI smoke covers config, password login, empty sync, and revision lookup only; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only. |
+| Surface           | Version  | Build | Release Tag       | Release Published    | Verification | Known Issues                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | -------- | ----- | ----------------- | -------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| browser_extension | 2026.6.1 |       | browser-v2026.6.1 | 2026-06-30T17:07:46Z | fixture_only | No live client login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                |
+| desktop           | 2026.6.1 |       | desktop-v2026.6.1 | 2026-06-30T16:09:04Z | fixture_only | No live client login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                |
+| mobile_android    | 2026.6.1 | 21713 | v2026.6.1-bwpm    | 2026-07-09T16:57:30Z | fixture_only | No live mobile login or sync run is recorded for this exact version; release metadata advanced from 2026.6.0 build 21686 to 2026.6.1 build 21713 on 2026-07-09, so live mobile evidence must be re-run before any promotion; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only. |
+| mobile_ios        | 2026.6.0 | 3325  | v2026.6.0-bwpm    | 2026-06-26T15:03:00Z | fixture_only | No live mobile login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                |
+| cli               | 2026.6.0 |       | cli-v2026.6.0     | 2026-06-25T18:32:52Z | live_smoke   | Live CLI smoke covers config, password login, empty sync, and revision lookup only; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                          |
 
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
 Live official-client attachment upload, download, and delete evidence is still
@@ -32,6 +49,23 @@ not recorded for any tracked client surface.
 2. Record exact client version, build number where available, local server commit, test date, and known issues.
 3. Do not capture real secrets, vault exports, passwords, token values, or personal vault data.
 4. Keep unsupported feature behavior explicit; do not mark a client as broadly compatible when a required flow is untested.
+5. When upstream release metadata advances, update the exact row metadata first,
+   then decide whether existing live evidence is still valid. If the client
+   version changed, stale live evidence must not be reused for promotion.
+
+## Refresh Procedure
+
+1. Query the official upstream GitHub releases for the source refs listed in
+   `compat/client-matrix.json`.
+2. For each row, select the latest non-draft, non-prerelease release matching
+   the row selector.
+3. Update `version`, `build` when present, `releaseTag`,
+   `releasePublishedAt`, and root `checkedAt`.
+4. Keep `verificationLevel` unchanged unless new live request/response evidence
+   is captured and linked.
+5. Add a known issue when a version advances without corresponding live
+   evidence.
+6. Run `pnpm compat:test`, `pnpm test`, and `pnpm brand:scan` before merging.
 
 ## Fixture-Covered Flows
 

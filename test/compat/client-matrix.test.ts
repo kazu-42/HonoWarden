@@ -8,6 +8,11 @@ type ClientMatrix = {
   schemaVersion: number
   checkedAt: string
   sourceKind: string
+  metadataRefresh: {
+    cadenceDays: number
+    requiredBeforeRelease: boolean
+    staleAfterDays: number
+  }
   entries: ClientMatrixEntry[]
 }
 
@@ -17,6 +22,11 @@ type ClientMatrixEntry = {
   build?: string
   releaseTag: string
   releasePublishedAt: string
+  metadataSource: {
+    kind: string
+    repositoryRef: string
+    releaseSelector: string
+  }
   verificationLevel: string
   liveEvidence?: {
     path: string
@@ -92,6 +102,11 @@ describe('client compatibility matrix', () => {
     expect(matrix.schemaVersion).toBe(1)
     expect(matrix.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
     expect(matrix.sourceKind).toBe('official-upstream-release-metadata')
+    expect(matrix.metadataRefresh).toEqual({
+      cadenceDays: 14,
+      requiredBeforeRelease: true,
+      staleAfterDays: 21,
+    })
   })
 
   it('covers required client surfaces with exact versions', () => {
@@ -104,6 +119,13 @@ describe('client compatibility matrix', () => {
       expect(entry.releaseTag).toContain(entry.version)
       expect(entry.releasePublishedAt).toMatch(
         /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+      )
+      expect(Date.parse(entry.releasePublishedAt)).toBeLessThanOrEqual(
+        Date.parse(matrix.checkedAt),
+      )
+      expect(entry.metadataSource.kind).toBe('official-upstream-github-release')
+      expect(entry.metadataSource.releaseSelector).toMatch(
+        /latest non-draft, non-prerelease/,
       )
       expect(['fixture_only', 'live_smoke']).toContain(entry.verificationLevel)
       expect(entry.knownIssues.length).toBeGreaterThanOrEqual(1)
@@ -166,6 +188,40 @@ describe('client compatibility matrix', () => {
     for (const entry of mobileEntries) {
       expect(entry.build).toMatch(/^\d+$/)
     }
+  })
+
+  it('records release source refs for every tracked surface', () => {
+    expect(
+      Object.fromEntries(
+        matrix.entries.map((entry) => [
+          entry.surface,
+          entry.metadataSource.repositoryRef,
+        ]),
+      ),
+    ).toEqual({
+      browser_extension: 'client-apps',
+      desktop: 'client-apps',
+      mobile_android: 'android-mobile-apps',
+      mobile_ios: 'ios-mobile-apps',
+      cli: 'client-apps',
+    })
+  })
+
+  it('re-evaluates live evidence requirements when metadata advances', () => {
+    const androidEntry = matrix.entries.find(
+      (entry) => entry.surface === 'mobile_android',
+    )
+
+    expect(androidEntry).toMatchObject({
+      version: '2026.6.1',
+      build: '21713',
+      releaseTag: 'v2026.6.1-bwpm',
+      releasePublishedAt: '2026-07-09T16:57:30Z',
+      verificationLevel: 'fixture_only',
+    })
+    expect(androidEntry?.knownIssues.join('\n')).toContain(
+      'live mobile evidence must be re-run before any promotion',
+    )
   })
 
   it('records the alpha CLI live smoke while keeping other surfaces conservative', () => {
