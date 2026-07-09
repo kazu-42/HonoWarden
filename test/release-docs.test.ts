@@ -177,9 +177,13 @@ describe('release feature-freeze docs', () => {
     expect(emailEvidence).toContain('c303ee9d52e94355a6a5c0680163927c')
     expect(emailEvidence).toContain('905639146eeaf7449af796d7bef2a8ab')
     expect(emailEvidence).toContain('Inbound smoke')
-    expect(emailEvidence).toContain('Status: `sent_pending_receipt`')
+    expect(emailEvidence).toContain(
+      'Status: `cloudflare_delivered_pending_inbox_visibility`',
+    )
     expect(emailEvidence).toContain('redacted external mailbox')
     expect(emailEvidence).toContain('Subject: `テスト`')
+    expect(emailEvidence).toContain('Cloudflare status for all six')
+    expect(emailEvidence).toContain('Message ID hash tag')
     expect(emailEvidence).toContain('rollback')
 
     expect(rollbackEvidence).toContain('Status: partial')

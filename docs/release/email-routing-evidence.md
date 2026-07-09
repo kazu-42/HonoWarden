@@ -140,7 +140,7 @@ Local preflight:
 
 Inbound smoke:
 
-- Status: `sent_pending_receipt`
+- Status: `cloudflare_delivered_pending_inbox_visibility`
 - Send attempt reported by operator at `2026-07-09 22:40 JST`.
 - Sender: redacted external mailbox on the `ghive.jp` domain.
 - Subject: `テスト`
@@ -150,8 +150,21 @@ Inbound smoke:
 - Cloudflare route readback after the send attempt still reported
   `enabled: true`, status `ready`, six enabled forwarding rules, and one
   verified destination tag.
-- Required before `Status: passed`: confirm receipt at the verified destination
-  for each required route and record only redacted timestamps or message ids.
+- Cloudflare Email Routing activity log readback for
+  `2026-07-09T13:40:21Z` through `2026-07-09T13:40:22Z` returned six events:
+  one for each required route.
+- Cloudflare status for all six activity events: `delivered`.
+- Cloudflare action for all six activity events: `forward`.
+- Message ID hash tag for the shared test message: `3d0d15372730`.
+- Sender hash tag for the redacted external mailbox: `9c725de34b0e`.
+- SPF/DKIM/DMARC readback: `spf: pass`, `dkim: pass`, `dmarc: none`.
+- Spam readback: `isSpam: 0`, `spamScore: 1`.
+- Error readback: empty `errorDetail`.
+- Operator reported that the forwarded mail was not visible in the checked
+  destination inbox at the time of readback.
+- Required before `Status: passed`: confirm mailbox visibility or record the
+  destination-side quarantine/filter reason without exposing private mailbox
+  contents.
 - `security@honowarden.com` should not be advertised as an active disclosure
   mailbox until inbound delivery for that route is confirmed.
 
@@ -232,7 +245,8 @@ that could read and write Email Routing. That blocker was resolved on
 
 ## Not Performed
 
-- Inbound receipt confirmation has not been recorded by this evidence file.
+- Destination inbox visibility confirmation has not been recorded by this
+  evidence file.
 - Security contact metadata has not been published from this evidence file.
 - No message body, attachment, private forwarding destination, operator email,
   token, or global key value has been stored by this evidence file.
