@@ -31,6 +31,10 @@ inputs, not minor documentation notes.
   requires public access-token entropy, expiration, revocation, rate limits,
   abuse reporting, cache policy, audit, and retention/deletion design before
   any public sharing support claim.
+- Emergency Access is intentionally not implemented; ADR 0004 requires grantee
+  identity, delayed access, cancellation, notification delivery, cryptographic
+  handoff, transition audit, abuse controls, rollback, and incident-response
+  design before any delegated recovery support claim.
 - Cipher-scoped attachment upload, download, delete, and sync metadata are
   implemented for opaque client-encrypted payloads, but no live official-client
   attachment run has been captured yet.

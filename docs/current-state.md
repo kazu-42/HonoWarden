@@ -195,6 +195,8 @@ Implemented:
   compatibility docs
 - explicit Send/public-sharing exclusion and future design gates in ADR 0003,
   threat model, and compatibility docs
+- explicit Emergency Access exclusion and future delegated-recovery design gates
+  in ADR 0004, threat model, and compatibility docs
 - compatibility matrix validation in `pnpm compat:test`
 
 Not implemented:

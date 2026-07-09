@@ -249,6 +249,25 @@ describe('client compatibility matrix', () => {
     expect(matrix.entries.map((entry) => entry.surface)).not.toContain('send')
   })
 
+  it('keeps Emergency Access outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Emergency Access Boundary')
+    expect(compatibilityDoc).toContain('ADR 0004')
+    expect(compatibilityDoc).toMatch(/Delegated\s+recovery/i)
+    expect(compatibilityDoc).toContain('cryptographic handoff')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Emergency Access row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'emergency_access',
+    )
+  })
+
   it('re-evaluates live evidence requirements when metadata advances', () => {
     const androidEntry = matrix.entries.find(
       (entry) => entry.surface === 'mobile_android',

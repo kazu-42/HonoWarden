@@ -25,6 +25,7 @@ Out of scope for the initial product:
 - public account registration
 - Organizations and shared vaults
 - Send and public file-sharing
+- Emergency Access
 - browser-side cryptography review of third-party clients
 - Cloudflare account hardening outside repository-controlled configuration
 - bulk trusted-device approval and login-with-device push workflows
@@ -98,6 +99,11 @@ Explicitly excluded public sharing surface:
 - Public sharing must not be implemented until ADR 0003's expiration,
   revocation, rate-limit, abuse, cache, audit, and retention controls are
   designed and verified.
+- `/api/emergency-access` and `/api/emergency-access/*` return typed
+  unsupported-feature errors. Emergency Access must not be implemented until ADR
+  0004's identity, delay, cancellation, notification, cryptographic handoff,
+  abuse, audit, rollback, and incident-response controls are designed and
+  verified.
 
 ## STRIDE Summary
 
@@ -108,7 +114,7 @@ Explicitly excluded public sharing surface:
 | Repudiation            | opt-in D1-persisted audit events for bootstrap, auth failures, refresh reuse, backup export, folder/cipher/attachment mutations, device revoke, revoke-all-other-sessions, TOTP change, and TOTP disable; Worker runtime Logpush to R2 | audit coverage does not yet include unsupported organization/public-sharing surfaces; automated log-retention deletion is still operator-run |
 | Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering; public sharing routes remain unsupported                                                           | platform logs/backups/user exports remain sensitive operational data                                                                         |
 | Denial of service      | password-grant IP and account lockouts, bounded fixture tests; public sharing routes remain unsupported                                                                                                                                | no global request quota, queue, export-specific throttle, public-link abuse dashboard, or Send-specific rate limit                           |
-| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions, dry-run-first account lifecycle CLI                                                                        | no admin console or live production lifecycle evidence yet                                                                                   |
+| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions, dry-run-first account lifecycle CLI; Emergency Access remains unsupported                                  | no admin console, delegated recovery security model, or live production lifecycle evidence yet                                               |
 
 ## High-Risk Abuse Paths
 
@@ -144,6 +150,12 @@ Explicitly excluded public sharing surface:
    unsupported. ADR 0003 requires access-token entropy, expiration, revocation,
    rate limits, abuse reporting, cache policy, encrypted/opaque object handling,
    and retention/deletion design before implementation.
+
+8. Delegated recovery privilege escalation.
+   Current mitigation: Emergency Access routes remain unsupported. ADR 0004
+   requires grantee identity, invitation, delay, cancellation, timeout,
+   notification, cryptographic handoff, audit, abuse, rollback, and incident
+   response design before implementation.
 
 ## Required Follow-Up Before Real Secrets
 

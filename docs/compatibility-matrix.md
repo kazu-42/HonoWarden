@@ -44,6 +44,11 @@ attachments are authenticated owner-scoped vault operations; public sharing
 would require ADR 0003's access-token, expiration, revocation, rate-limit,
 abuse, cache, and retention controls before compatibility can be claimed.
 
+There is intentionally no Emergency Access row. Delegated recovery requires ADR
+0004's grantee identity, delay, cancellation, notification, cryptographic
+handoff, abuse-control, audit, rollback, and incident-response design before
+compatibility can be claimed.
+
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
 Live official-client attachment upload, download, and delete evidence is still
 not recorded for any tracked client surface.
