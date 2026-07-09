@@ -75,7 +75,8 @@ not recorded for any tracked client surface.
 
 - `fixture_only`: CI verifies protocol fixtures and route behavior using synthetic payloads, but no real client binary has been run for this exact version.
 - `live_smoke`: a real client run completed login and sync against a non-secret test vault, with request and response evidence captured.
-- `live_regression`: repeated real client runs cover login, sync, create, update, delete, refresh, and session revoke flows.
+- `live_regression`: repeated real client runs cover login, sync, create,
+  update, delete, refresh, session revoke, and selected auth lifecycle flows.
 
 ## Promotion Rules
 
@@ -83,7 +84,11 @@ not recorded for any tracked client surface.
 2. Record exact client version, build number where available, local server commit, test date, and known issues.
 3. Do not capture real secrets, vault exports, passwords, token values, or personal vault data.
 4. Keep unsupported feature behavior explicit; do not mark a client as broadly compatible when a required flow is untested.
-5. When upstream release metadata advances, update the exact row metadata first,
+5. Promote to `live_smoke` only for a narrow login/sync smoke. Promote to
+   `live_regression` only after `docs/release/live-regression-matrix.md` has a
+   ready packet and redacted evidence covering login, sync, item lifecycle,
+   refresh, session revoke, and selected auth lifecycle flows.
+6. When upstream release metadata advances, update the exact row metadata first,
    then decide whether existing live evidence is still valid. If the client
    version changed, stale live evidence must not be reused for promotion.
 
@@ -99,7 +104,9 @@ not recorded for any tracked client surface.
    is captured and linked.
 5. Add a known issue when a version advances without corresponding live
    evidence.
-6. Run `pnpm compat:test`, `pnpm test`, and `pnpm brand:scan` before merging.
+6. For regression promotion, run `pnpm live:regression:packet -- --strict`
+   with the recorded flow ids before editing the matrix row.
+7. Run `pnpm compat:test`, `pnpm test`, and `pnpm brand:scan` before merging.
 
 ## Fixture-Covered Flows
 

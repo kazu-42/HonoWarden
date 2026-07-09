@@ -16,6 +16,7 @@ const releaseDocs = [
   'tagging-runbook.md',
   'publication-gate.md',
   'live-client-evidence.md',
+  'live-regression-matrix.md',
   'backup-restore-drill-evidence.md',
   'remote-backup-evidence.md',
   'staging-deploy-evidence.md',
@@ -76,6 +77,7 @@ describe('release feature-freeze docs', () => {
     expect(releaseNotes).toContain('delegated recovery')
     expect(releaseNotes).toContain('independent security audit')
     expect(releaseNotes).toContain('fixture_only')
+    expect(releaseNotes).toContain('live_regression')
     expect(releaseNotes).toContain('D1 audit-event persistence')
     expect(releaseNotes).toContain('vault mutation audit event coverage')
   })

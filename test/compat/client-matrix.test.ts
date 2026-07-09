@@ -133,10 +133,15 @@ describe('client compatibility matrix', () => {
       expect(entry.metadataSource.releaseSelector).toMatch(
         /latest non-draft, non-prerelease/,
       )
-      expect(['fixture_only', 'live_smoke']).toContain(entry.verificationLevel)
+      expect(['fixture_only', 'live_smoke', 'live_regression']).toContain(
+        entry.verificationLevel,
+      )
       expect(entry.knownIssues.length).toBeGreaterThanOrEqual(1)
 
-      if (entry.verificationLevel === 'live_smoke') {
+      if (
+        entry.verificationLevel === 'live_smoke' ||
+        entry.verificationLevel === 'live_regression'
+      ) {
         expect(entry.liveEvidence).toMatchObject({
           status: 'passed',
           clientVersion: entry.version,
@@ -148,6 +153,27 @@ describe('client compatibility matrix', () => {
           /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
         )
         expect(entry.liveEvidence?.flows.length).toBeGreaterThan(0)
+      }
+
+      if (entry.verificationLevel === 'live_regression') {
+        expect(entry.liveEvidence?.path).toContain(
+          'docs/release/live-regression-evidence/',
+        )
+        expect(entry.liveEvidence?.flows).toEqual(
+          expect.arrayContaining([
+            'config',
+            'prelogin',
+            'password_grant',
+            'initial_sync',
+            'post_mutation_sync',
+            'cipher_create',
+            'cipher_update',
+            'cipher_soft_delete',
+            'cipher_permanent_delete',
+            'refresh_grant',
+            'session_revoke',
+          ]),
+        )
       }
 
       for (const issue of entry.knownIssues) {
@@ -365,6 +391,19 @@ describe('client compatibility matrix', () => {
     for (const entry of nonCliEntries) {
       expect(entry.verificationLevel).toBe('fixture_only')
     }
+  })
+
+  it('documents repeatable live regression promotion requirements', () => {
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityMatrixDoc).toContain('live_regression')
+    expect(compatibilityMatrixDoc).toContain('login, sync')
+    expect(compatibilityMatrixDoc).toContain('refresh, session revoke')
+    expect(compatibilityMatrixDoc).toContain('selected auth lifecycle')
+    expect(compatibilityMatrixDoc).toContain('live-regression-matrix.md')
   })
 })
 
