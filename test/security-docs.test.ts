@@ -75,6 +75,7 @@ describe('security review materials', () => {
 
     const knownLimitations = readSecurityDoc('known-limitations.md')
     expect(knownLimitations).toContain('pre-alpha')
+    expect(knownLimitations).toContain('browser-delivered vault UI')
     expect(knownLimitations).toContain('no independent security audit')
     expect(knownLimitations).toContain('incident response runbook')
     expect(knownLimitations).toContain('bulk trusted-device rotation')

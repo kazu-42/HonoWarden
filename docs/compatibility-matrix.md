@@ -33,6 +33,12 @@ Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compa
 | mobile_ios        | 2026.6.0 | 3325  | v2026.6.0-bwpm    | 2026-06-26T15:03:00Z | fixture_only | No live mobile login or sync run is recorded; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                |
 | cli               | 2026.6.0 |       | cli-v2026.6.0     | 2026-06-25T18:32:52Z | live_smoke   | Live CLI smoke covers config, password login, empty sync, and revision lookup only; TOTP login has local HTTP coverage only; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                          |
 
+There is intentionally no Web Vault row. HonoWarden's alpha compatibility
+target is API-only protocol support for tracked clients, not a hosted or
+embedded vault UI. Adding a Web Vault row requires a new ADR, browser security
+review, CSP/static-asset provenance rules, deployment and rollback boundaries,
+and live evidence.
+
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
 Live official-client attachment upload, download, and delete evidence is still
 not recorded for any tracked client surface.

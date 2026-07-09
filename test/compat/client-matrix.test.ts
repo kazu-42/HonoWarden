@@ -55,6 +55,12 @@ const matrixPath = fileURLToPath(
 const fixtureFlowsPath = fileURLToPath(
   new URL('../../compat/fixture-flows.json', import.meta.url).toString(),
 )
+const compatibilityDocPath = fileURLToPath(
+  new URL('../../docs/compatibility.md', import.meta.url).toString(),
+)
+const compatibilityMatrixDocPath = fileURLToPath(
+  new URL('../../docs/compatibility-matrix.md', import.meta.url).toString(),
+)
 const fixturesRoot = fileURLToPath(
   new URL('../../compat/fixtures', import.meta.url).toString(),
 )
@@ -205,6 +211,25 @@ describe('client compatibility matrix', () => {
       mobile_ios: 'ios-mobile-apps',
       cli: 'client-apps',
     })
+  })
+
+  it('keeps Web Vault outside the alpha compatibility surface', () => {
+    const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+
+    expect(compatibilityDoc).toContain('## Web Vault Boundary')
+    expect(compatibilityDoc).toContain('does not expose a Web Vault')
+    expect(compatibilityDoc).toContain('new ADR')
+    expect(compatibilityDoc).toContain('CSP')
+    expect(compatibilityMatrixDoc).toContain(
+      'There is intentionally no Web Vault row',
+    )
+    expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
+      'web_vault',
+    )
   })
 
   it('re-evaluates live evidence requirements when metadata advances', () => {

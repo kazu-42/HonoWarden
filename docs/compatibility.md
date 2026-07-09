@@ -5,6 +5,7 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 ## Initial Scope
 
 - API-only server for official upstream clients
+- no browser-delivered vault UI
 - self-hosted endpoint configuration
 - account login and token refresh flows required by official clients
 - personal vault sync for encrypted ciphers, folders, collections needed by small-team use, and attachments where required
@@ -14,6 +15,8 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 ## Explicitly Out of Scope Initially
 
 - Web Vault
+- hosted web app static assets
+- browser session or cookie-authenticated vault UI
 - public registration
 - Organizations administration
 - Send
@@ -29,6 +32,14 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - Add compatibility tests before implementing each API surface.
 - Keep executable JSON fixtures for client-facing response shapes under `compat/fixtures`.
 - Treat fixture regressions as compatibility regressions once a route has been implemented.
+
+## Web Vault Boundary
+
+HonoWarden does not expose a Web Vault compatibility surface in the alpha
+release. The compatibility matrix tracks protocol clients only. A future Web
+Vault would require a new ADR, a dedicated compatibility row, browser security
+review, CSP and static-asset provenance rules, deployment/rollback separation,
+and live evidence before any support claim.
 
 ## Explicit Unsupported Responses
 
