@@ -25,8 +25,25 @@ describe('abuse report CLI', () => {
       evidence: {
         plaintextClientAddresses: string
         bucketIdentifier: string
+        operatorIdentities: string
+        vaultPayloads: string
+      }
+      retention: {
+        authDefenseCleanupWindowSeconds: number
+        auditEventRetentionDays: number
+        requestQuotaCleanupRetentionSeconds: number
+        rowsPerCleanupSlice: number
       }
       queries: Array<{ id: string; sql: string }>
+      alerts: Array<{
+        id: string
+        metric: string
+        levels: {
+          warn: number
+          critical: number
+        }
+        firstResponse: string[]
+      }>
     }
 
     expect(output).toMatchObject({
@@ -35,6 +52,14 @@ describe('abuse report CLI', () => {
       evidence: {
         plaintextClientAddresses: 'excluded',
         bucketIdentifier: 'hashed_prefix_only',
+        operatorIdentities: 'excluded',
+        vaultPayloads: 'excluded',
+      },
+      retention: {
+        authDefenseCleanupWindowSeconds: 900,
+        auditEventRetentionDays: 365,
+        requestQuotaCleanupRetentionSeconds: 3600,
+        rowsPerCleanupSlice: 100,
       },
     })
     expect(output.commands[0]).toEqual([
@@ -51,10 +76,47 @@ describe('abuse report CLI', () => {
       'request_quota_top_buckets',
       'auth_failure_summary',
       'auth_failure_top_buckets',
+      'auth_attempt_cleanup_candidates',
+      'auth_failure_cleanup_candidates',
+      'totp_challenge_cleanup_candidates',
+      'audit_event_cleanup_candidates',
+      'request_quota_cleanup_candidates',
     ])
+    expect(
+      output.queries.find(
+        (query) => query.id === 'auth_attempt_cleanup_candidates',
+      )?.sql,
+    ).toContain('auth_attempts')
+    expect(
+      output.queries.find(
+        (query) => query.id === 'request_quota_cleanup_candidates',
+      )?.sql,
+    ).toContain('blocked_until')
+    expect(output.alerts.map((alert) => alert.id)).toEqual([
+      'request_quota_active_blocked_buckets',
+      'auth_failure_active_locked_buckets',
+      'cleanup_candidate_rows',
+      'scheduled_cleanup_failure',
+    ])
+    expect(output.alerts).toContainEqual(
+      expect.objectContaining({
+        id: 'cleanup_candidate_rows',
+        metric: 'cleanup candidate query row counts',
+        levels: {
+          warn: 1000,
+          critical: 5000,
+        },
+        firstResponse: expect.arrayContaining([
+          'Run pnpm abuse:report against the affected environment and keep only aggregate counts, hashed bucket tags, and timestamps in the incident record.',
+        ]),
+      }),
+    )
     const serialized = JSON.stringify(output)
     expect(serialized).not.toContain('203.0.113.10')
     expect(serialized).not.toContain('ip_address')
     expect(serialized).not.toContain('client_ip')
+    expect(serialized).not.toContain('email')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('encrypted_json')
   })
 })

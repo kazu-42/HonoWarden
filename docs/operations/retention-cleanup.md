@@ -69,6 +69,48 @@ the Cron Event failure and can retry according to platform behavior.
 This is intentional for the alpha scope: a missing cleanup table or incompatible
 schema means the deployed database is not at the expected migration level.
 
+## Operator Metrics And Alerts
+
+Use the dry-run-first abuse report to inspect cleanup pressure and alert
+thresholds:
+
+```sh
+pnpm abuse:report -- --database honowarden --mode local
+```
+
+For remote readback, review the target database name first, then run:
+
+```sh
+pnpm abuse:report -- --database honowarden --mode remote --execute
+```
+
+The report includes cleanup candidate queries for:
+
+- `auth_attempt_cleanup_candidates`
+- `auth_failure_cleanup_candidates`
+- `totp_challenge_cleanup_candidates`
+- `audit_event_cleanup_candidates`
+- `request_quota_cleanup_candidates`
+
+The alert packet classifies cleanup backlog pressure with the
+`cleanup_candidate_rows` signal:
+
+| Level    | Candidate rows across a cleanup query |
+| -------- | ------------------------------------- |
+| warning  | `1000` or more                        |
+| critical | `5000` or more                        |
+
+Repeated hourly cleanup failure is tracked separately through the
+`scheduled_cleanup_failure` signal. Treat any Cloudflare Cron Event failure as
+infrastructure drift until the deployed Worker version, D1 binding, and schema
+version have been read back. Three consecutive failures should be handled as a
+critical cleanup incident.
+
+When copying evidence into Linear, PRs, or incident notes, include only aggregate
+counts, hashed bucket tags, alert IDs, timestamps, schema versions, deployment
+versions, and runbook conclusions. Do not include plaintext client addresses,
+bearer tokens, operator identities, vault payloads, or private user data.
+
 ## Verification
 
 Local checks:
@@ -100,7 +142,7 @@ Live checks:
 
 ## Remaining Work
 
-- metrics for rows deleted and cleanup failures
 - production migration/deploy evidence for audit-event retention cleanup
 - explicit indexes beyond the audit-event incident indexes if production row
   counts justify them
+- external notification sink or dashboard wiring for the alert packet

@@ -4,6 +4,13 @@ import process from 'node:process'
 
 const allowedModes = new Set(['local', 'remote'])
 
+const retention = {
+  authDefenseCleanupWindowSeconds: 15 * 60,
+  auditEventRetentionDays: 365,
+  requestQuotaCleanupRetentionSeconds: 60 * 60,
+  rowsPerCleanupSlice: 100,
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   const queries = buildQueries(options.limit)
@@ -25,8 +32,12 @@ async function main() {
     evidence: {
       plaintextClientAddresses: 'excluded',
       bucketIdentifier: 'hashed_prefix_only',
+      operatorIdentities: 'excluded',
+      vaultPayloads: 'excluded',
     },
+    retention,
     queries,
+    alerts: buildAlerts(),
     commands: [command],
   })
 }
@@ -87,6 +98,118 @@ function buildQueries(limit) {
         'ORDER BY failed_count DESC, updated_at DESC',
         `LIMIT ${limit};`,
       ].join('\n'),
+    },
+    {
+      id: 'auth_attempt_cleanup_candidates',
+      sql: [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(occurred_at) AS oldest_candidate_at,',
+        '  MAX(occurred_at) AS newest_candidate_at',
+        'FROM auth_attempts',
+        `WHERE occurred_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${retention.authDefenseCleanupWindowSeconds} seconds');`,
+      ].join('\n'),
+    },
+    {
+      id: 'auth_failure_cleanup_candidates',
+      sql: [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(updated_at) AS oldest_candidate_at,',
+        '  MAX(updated_at) AS newest_candidate_at',
+        'FROM auth_failure_buckets',
+        `WHERE updated_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${retention.authDefenseCleanupWindowSeconds} seconds')`,
+        "  AND (locked_until IS NULL OR locked_until <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));",
+      ].join('\n'),
+    },
+    {
+      id: 'totp_challenge_cleanup_candidates',
+      sql: [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(expires_at) AS oldest_candidate_at,',
+        '  MAX(expires_at) AS newest_candidate_at',
+        'FROM totp_challenges',
+        "WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        '  OR consumed_at IS NOT NULL;',
+      ].join('\n'),
+    },
+    {
+      id: 'audit_event_cleanup_candidates',
+      sql: [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(occurred_at) AS oldest_candidate_at,',
+        '  MAX(occurred_at) AS newest_candidate_at',
+        'FROM audit_events',
+        `WHERE occurred_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${retention.auditEventRetentionDays} days');`,
+      ].join('\n'),
+    },
+    {
+      id: 'request_quota_cleanup_candidates',
+      sql: [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(updated_at) AS oldest_candidate_at,',
+        '  MAX(updated_at) AS newest_candidate_at',
+        'FROM request_quota_buckets',
+        `WHERE updated_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${retention.requestQuotaCleanupRetentionSeconds} seconds')`,
+        "  AND (blocked_until IS NULL OR blocked_until <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));",
+      ].join('\n'),
+    },
+  ]
+}
+
+function buildAlerts() {
+  return [
+    {
+      id: 'request_quota_active_blocked_buckets',
+      metric: 'request_quota_summary.active_blocked_buckets',
+      levels: {
+        warn: 10,
+        critical: 50,
+      },
+      firstResponse: [
+        'Separate anonymous from authenticated scope before deciding whether the signal is attack traffic or client retry pressure.',
+        'Preserve only aggregate counts, hashed bucket tags, timestamps, and response decisions in the incident record.',
+        'Leave HONOWARDEN_GLOBAL_REQUEST_QUOTA disabled unless the target D1 database has migration 0008 and the normal traffic baseline is understood.',
+      ],
+    },
+    {
+      id: 'auth_failure_active_locked_buckets',
+      metric: 'auth_failure_summary.active_locked_buckets',
+      levels: {
+        warn: 5,
+        critical: 20,
+      },
+      firstResponse: [
+        'Check whether locks are concentrated in account or client-address bucket scope before raising customer-impact severity.',
+        'Use existing password-grant logs and audit events to correlate outcomes without publishing bucket source values.',
+      ],
+    },
+    {
+      id: 'cleanup_candidate_rows',
+      metric: 'cleanup candidate query row counts',
+      levels: {
+        warn: 1000,
+        critical: 5000,
+      },
+      firstResponse: [
+        'Run pnpm abuse:report against the affected environment and keep only aggregate counts, hashed bucket tags, and timestamps in the incident record.',
+        'If candidate rows continue to rise after the next hourly Cron Trigger, inspect Worker Cron Event failures before increasing cleanup limits.',
+      ],
+    },
+    {
+      id: 'scheduled_cleanup_failure',
+      metric: 'Cloudflare Cron Event failure for the hourly cleanup handler',
+      levels: {
+        warn: 1,
+        critical: 3,
+      },
+      firstResponse: [
+        'Treat repeated scheduled cleanup failures as infrastructure drift until schema version, bindings, and Wrangler deploy version are read back.',
+        'Disable only the affected Cron Trigger if repeated cleanup failures create hot-path pressure; do not delete D1 rows manually without a reviewed SQL packet.',
+      ],
     },
   ]
 }
