@@ -511,6 +511,8 @@ describe('HonoWarden app', () => {
       { method: 'POST', path: '/api/collections/collection-id' },
       { method: 'POST', path: '/api/emergency-access' },
       { method: 'POST', path: '/api/emergency-access/invite' },
+      { method: 'POST', path: '/api/auth-requests' },
+      { method: 'POST', path: '/api/auth-requests/auth-request-id' },
       { method: 'POST', path: '/api/attachments' },
       { method: 'GET', path: '/api/attachments/attachment-id' },
       { method: 'PATCH', path: '/api/devices/device-id' },
@@ -3594,6 +3596,139 @@ describe('HonoWarden app', () => {
       isTrusted: true,
       encryptedUserKey: '2.alias-encrypted-user-key',
       encryptedPublicKey: '2.alias-encrypted-public-key',
+    })
+  })
+
+  it('bulk updates trusted device keys without returning encrypted private keys', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/update-trust',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-device-trust-request',
+        },
+        body: JSON.stringify({
+          Devices: [
+            {
+              Id: 'fixture-device',
+              EncryptedUserKey: '2.current-encrypted-user-key',
+              EncryptedPublicKey: '2.current-encrypted-public-key',
+              EncryptedPrivateKey: '2.current-encrypted-private-key',
+            },
+            {
+              Id: buildDevicePathId('other-device'),
+              EncryptedUserKey: '2.other-encrypted-user-key',
+              EncryptedPublicKey: '2.other-encrypted-public-key',
+              EncryptedPrivateKey: '2.other-encrypted-private-key',
+            },
+          ],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          deviceUpdateChanges: 1,
+          devices: [
+            {
+              id: buildDevicePathId('fixture-device'),
+              userId: 'user-id',
+              identifier: 'fixture-device',
+              name: 'CLI',
+              type: 8,
+              encryptedUserKey: null,
+              encryptedPublicKey: null,
+              encryptedPrivateKey: null,
+              lastSeenAt: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:10:00.000Z',
+            },
+            {
+              id: buildDevicePathId('other-device'),
+              userId: 'user-id',
+              identifier: 'other-device',
+              name: 'Browser',
+              type: 3,
+              encryptedUserKey: null,
+              encryptedPublicKey: null,
+              encryptedPrivateKey: null,
+              lastSeenAt: '2026-07-06T00:20:00.000Z',
+              createdAt: '2026-07-06T00:01:00.000Z',
+              updatedAt: '2026-07-06T00:20:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = await response.json<Record<string, unknown>>()
+    expect(body).toMatchObject({
+      object: 'list',
+      data: [
+        {
+          object: 'device',
+          id: buildDevicePathId('fixture-device'),
+          isTrusted: true,
+          encryptedUserKey: '2.current-encrypted-user-key',
+          encryptedPublicKey: '2.current-encrypted-public-key',
+        },
+        {
+          object: 'device',
+          id: buildDevicePathId('other-device'),
+          isTrusted: true,
+          encryptedUserKey: '2.other-encrypted-user-key',
+          encryptedPublicKey: '2.other-encrypted-public-key',
+        },
+      ],
+      continuationToken: null,
+    })
+    expect(JSON.stringify(body)).not.toContain('EncryptedPrivateKey')
+    expect(JSON.stringify(body)).not.toContain('encryptedPrivateKey')
+    expect(JSON.stringify(body)).not.toContain('current-encrypted-private-key')
+    expect(JSON.stringify(body)).not.toContain('other-encrypted-private-key')
+  })
+
+  it('fails closed when bulk trusted-device payloads are invalid', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/update-trust',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-bulk-device-trust-request',
+        },
+        body: JSON.stringify({
+          Devices: [
+            {
+              Id: 'fixture-device',
+              EncryptedUserKey: '2.current-encrypted-user-key',
+              EncryptedPublicKey: '2.current-encrypted-public-key',
+            },
+          ],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'invalid-bulk-device-trust-request',
     })
   })
 

@@ -849,6 +849,7 @@ Implemented:
 - explicit `501` JSON response for `/api/sends` and child paths
 - explicit `501` JSON response for collection, emergency-access, and top-level
   `/api/attachments` paths
+- explicit `501` JSON response for `/api/auth-requests` and child paths
 - request ID preservation on unsupported feature responses
 - route test coverage proving these paths do not fall through to generic `404`
 
@@ -857,6 +858,7 @@ Not implemented:
 - organization or shared-vault functionality
 - public file-sharing functionality
 - collection or emergency-access functionality
+- login-with-device approval, push notification, or pending auth-request flows
 - top-level attachment collection APIs outside the cipher-scoped upload,
   download, and delete routes
 
@@ -918,6 +920,8 @@ Implemented:
   public, and private key columns
 - authenticated `PUT`, `POST`, and `PATCH /api/devices/:id/keys`
 - authenticated `PUT` and `PATCH /api/devices/:id/trust` compatibility alias
+- authenticated bulk `POST /api/devices/update-trust` trusted-device rotation
+  workflow
 - owner-scoped active-device lookup by stable device ID or device identifier
 - required encrypted user/public/private key payload validation with
   upper-camel and lower-camel request aliases
@@ -926,15 +930,18 @@ Implemented:
   key payloads are all present
 - response shape returns encrypted user and public keys but never returns the
   encrypted private key
+- bulk update response shape returns a device list and never returns encrypted
+  private keys
 - stable `400`, `401`, `404`, and `503` JSON responses
 - compatibility fixture flow `device_keys_update` under
   `compat/fixtures/devices/keys-update-success.json`
+- compatibility fixture flow `device_bulk_trust_update` under
+  `compat/fixtures/devices/bulk-update-trust-success.json`
 
 Not implemented:
 
-- bulk `POST /api/devices/update-trust` trusted-device rotation workflow
 - login-with-device approval, push notification, or pending auth-request flows
-- live client evidence for encrypted device key update
+- live client evidence for encrypted device key and bulk trust update
 
 ## Week 26 Known-Device Preflight API
 

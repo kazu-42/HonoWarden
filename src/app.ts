@@ -104,6 +104,7 @@ import {
   rotateRefreshToken,
   updateDeviceKeys,
   updateDeviceMetadata,
+  updateTrustedDeviceKeys,
 } from './repositories/auth-repository'
 import { recordRequestQuotaHit } from './repositories/request-quota-repository'
 import type {
@@ -624,6 +625,8 @@ app.all('/api/collections', unsupportedAlphaFeature)
 app.all('/api/collections/*', unsupportedAlphaFeature)
 app.all('/api/emergency-access', unsupportedAlphaFeature)
 app.all('/api/emergency-access/*', unsupportedAlphaFeature)
+app.all('/api/auth-requests', unsupportedAlphaFeature)
+app.all('/api/auth-requests/*', unsupportedAlphaFeature)
 app.all('/api/attachments', unsupportedAlphaFeature)
 app.all('/api/attachments/*', unsupportedAlphaFeature)
 app.post('/api/ciphers/:id/attachment', async (c) => {
@@ -897,6 +900,7 @@ app.post('/api/devices/:id/keys', handleDeviceKeysUpdate)
 app.patch('/api/devices/:id/keys', handleDeviceKeysUpdate)
 app.put('/api/devices/:id/trust', handleDeviceKeysUpdate)
 app.patch('/api/devices/:id/trust', handleDeviceKeysUpdate)
+app.post('/api/devices/update-trust', handleTrustedDevicesUpdate)
 
 app.post('/api/accounts/bootstrap', async (c) => {
   if (!isBootstrapEnabled(c.env?.HONOWARDEN_BOOTSTRAP_ENABLED)) {
@@ -3890,6 +3894,57 @@ async function handleDeviceKeysUpdate(c: AppContext) {
   }
 }
 
+async function handleTrustedDevicesUpdate(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const trustRequest = parseTrustedDeviceUpdateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!trustRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Device trust payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const result = await updateTrustedDeviceKeys(c.env.DB, {
+      userId: auth.user.id,
+      devices: trustRequest.devices,
+      updatedAt: new Date().toISOString(),
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'device_not_found',
+          'Device was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json(buildDeviceListResponse(result.devices))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Device trust update failed.',
+      ),
+      503,
+    )
+  }
+}
+
 async function handleAccountProfileUpdate(c: AppContext) {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -4351,6 +4406,83 @@ function parseDeviceKeysUpdateRequestBody(body: unknown):
     encryptedUserKey,
     encryptedPublicKey,
     encryptedPrivateKey,
+  }
+}
+
+function parseTrustedDeviceUpdateRequestBody(body: unknown):
+  | {
+      ok: true
+      devices: {
+        deviceIdOrIdentifier: string
+        encryptedUserKey: string
+        encryptedPublicKey: string
+        encryptedPrivateKey: string
+      }[]
+    }
+  | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const devices = body.devices ?? body.Devices
+  if (!Array.isArray(devices) || devices.length < 1 || devices.length > 100) {
+    return { ok: false }
+  }
+
+  const parsedDevices: {
+    deviceIdOrIdentifier: string
+    encryptedUserKey: string
+    encryptedPublicKey: string
+    encryptedPrivateKey: string
+  }[] = []
+  const seenDeviceIds = new Set<string>()
+
+  for (const device of devices) {
+    if (!isPlainObject(device)) {
+      return { ok: false }
+    }
+
+    const deviceIdOrIdentifier =
+      parseRequiredString(device.id) ??
+      parseRequiredString(device.Id) ??
+      parseRequiredString(device.deviceId) ??
+      parseRequiredString(device.DeviceId) ??
+      parseRequiredString(device.identifier) ??
+      parseRequiredString(device.Identifier) ??
+      parseRequiredString(device.deviceIdentifier) ??
+      parseRequiredString(device.DeviceIdentifier)
+    const encryptedUserKey =
+      parseRequiredString(device.encryptedUserKey) ??
+      parseRequiredString(device.EncryptedUserKey)
+    const encryptedPublicKey =
+      parseRequiredString(device.encryptedPublicKey) ??
+      parseRequiredString(device.EncryptedPublicKey)
+    const encryptedPrivateKey =
+      parseRequiredString(device.encryptedPrivateKey) ??
+      parseRequiredString(device.EncryptedPrivateKey)
+
+    if (
+      !deviceIdOrIdentifier ||
+      !encryptedUserKey ||
+      !encryptedPublicKey ||
+      !encryptedPrivateKey ||
+      seenDeviceIds.has(deviceIdOrIdentifier)
+    ) {
+      return { ok: false }
+    }
+
+    seenDeviceIds.add(deviceIdOrIdentifier)
+    parsedDevices.push({
+      deviceIdOrIdentifier,
+      encryptedUserKey,
+      encryptedPublicKey,
+      encryptedPrivateKey,
+    })
+  }
+
+  return {
+    ok: true,
+    devices: parsedDevices,
   }
 }
 

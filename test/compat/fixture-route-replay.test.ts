@@ -303,6 +303,16 @@ const replayFixtures = [
     },
   },
   {
+    path: 'devices/bulk-update-trust-success.json',
+    allowMutatingFixtures: true,
+    systemTime: new Date('2026-07-07T18:06:30.000Z'),
+    database: {
+      authUser: deviceReplayUser,
+      devices: deviceRows,
+      deviceUpdateChanges: 1,
+    },
+  },
+  {
     path: 'devices/known-device-success.json',
     database: {
       authUsers: [deviceReplayUser],

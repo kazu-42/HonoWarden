@@ -135,6 +135,29 @@ export type DeviceKeysUpdateResult =
       status: 'not_found'
     }
 
+export type TrustedDeviceKeysUpdate = {
+  deviceIdOrIdentifier: string
+  encryptedUserKey: string
+  encryptedPublicKey: string
+  encryptedPrivateKey: string
+}
+
+export type TrustedDeviceKeysUpdateInput = {
+  userId: string
+  devices: TrustedDeviceKeysUpdate[]
+  updatedAt: string
+}
+
+export type TrustedDeviceKeysUpdateResult =
+  | {
+      status: 'updated'
+      devices: DeviceRecord[]
+    }
+  | {
+      status: 'not_found'
+      missingDeviceIdOrIdentifier: string
+    }
+
 export type KnownDeviceInput = {
   emailNormalized: string
   identifier: string
@@ -218,6 +241,7 @@ type AuthSessionRevokeDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceReadDatabase = Pick<D1Database, 'prepare'>
 type AuthDeviceMetadataDatabase = Pick<D1Database, 'prepare'>
 type AuthDeviceKeysDatabase = Pick<D1Database, 'prepare'>
+type AuthDeviceTrustDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type LoginDefenseDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
@@ -663,6 +687,79 @@ export async function updateDeviceKeys(
       encryptedPrivateKey: input.encryptedPrivateKey,
       updatedAt: input.updatedAt,
     },
+  }
+}
+
+export async function updateTrustedDeviceKeys(
+  database: AuthDeviceTrustDatabase,
+  input: TrustedDeviceKeysUpdateInput,
+): Promise<TrustedDeviceKeysUpdateResult> {
+  const resolvedDevices: {
+    existing: DeviceRecord
+    update: TrustedDeviceKeysUpdate
+  }[] = []
+
+  for (const update of input.devices) {
+    const existing = await findDeviceByIdOrIdentifier(database, {
+      userId: input.userId,
+      deviceIdOrIdentifier: update.deviceIdOrIdentifier,
+    })
+
+    if (!existing) {
+      return {
+        status: 'not_found',
+        missingDeviceIdOrIdentifier: update.deviceIdOrIdentifier,
+      }
+    }
+
+    resolvedDevices.push({ existing, update })
+  }
+
+  const results = await database.batch(
+    resolvedDevices.map(({ existing, update }) =>
+      database
+        .prepare(
+          `
+            UPDATE devices
+            SET
+              encrypted_user_key = ?,
+              encrypted_public_key = ?,
+              encrypted_private_key = ?,
+              updated_at = ?
+            WHERE user_id = ?
+              AND id = ?
+              AND revoked_at IS NULL
+          `,
+        )
+        .bind(
+          update.encryptedUserKey,
+          update.encryptedPublicKey,
+          update.encryptedPrivateKey,
+          input.updatedAt,
+          input.userId,
+          existing.id,
+        ),
+    ),
+  )
+
+  const failedIndex = results.findIndex((result) => result.meta.changes !== 1)
+  if (failedIndex !== -1) {
+    return {
+      status: 'not_found',
+      missingDeviceIdOrIdentifier:
+        resolvedDevices[failedIndex]?.update.deviceIdOrIdentifier ?? '',
+    }
+  }
+
+  return {
+    status: 'updated',
+    devices: resolvedDevices.map(({ existing, update }) => ({
+      ...existing,
+      encryptedUserKey: update.encryptedUserKey,
+      encryptedPublicKey: update.encryptedPublicKey,
+      encryptedPrivateKey: update.encryptedPrivateKey,
+      updatedAt: input.updatedAt,
+    })),
   }
 }
 

@@ -745,7 +745,10 @@ export class FakeD1Database {
     return statements.map(() => ({
       success: true,
       results: [],
-      meta: fakeMeta,
+      meta: {
+        ...fakeMeta,
+        changes: this.options.deviceUpdateChanges ?? 1,
+      },
     }))
   }
 }
