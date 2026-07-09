@@ -151,6 +151,8 @@ Secrets:
 - plaintext setup secret is returned only during setup
 - encrypted setup secret is wrapped by `HONOWARDEN_TOTP_SECRET`
 - pending TOTP change secret is wrapped by `HONOWARDEN_TOTP_SECRET`
+- operator TOTP wrapping-secret rotation can rewrap both active and pending
+  envelopes in memory without logging plaintext or encrypted envelopes
 - challenge plaintext is not stored
 
 ## Audit Logs

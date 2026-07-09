@@ -84,8 +84,9 @@ capture.
 4. For `HONOWARDEN_TOKEN_SECRET`, plan forced re-login because refresh-token
    hash lookup and legacy no-kid access-token fallback are invalidated by
    rotation.
-5. For `HONOWARDEN_TOTP_SECRET`, hold rotation until a re-enrollment or
-   re-wrapping plan exists; there is no migration tool yet.
+5. For `HONOWARDEN_TOTP_SECRET`, use the TOTP secret rotation runbook to choose
+   rewrap, backup restore, or force re-enrollment. Do not change the runtime
+   secret until the D1 envelope plan and rollback path are approved.
 6. For `HONOWARDEN_BOOTSTRAP_TOKEN`, rotate and keep bootstrap disabled unless
    the incident lead explicitly approves a short bootstrap window.
 7. Run the session/device invalidation path when tokens, refresh sessions, or
@@ -97,6 +98,7 @@ References:
 - [Secrets Inventory](secrets-inventory.md)
 - [Authentication State Machine](auth-state-machine.md)
 - [Access Token Key Rotation](../operations/access-token-key-rotation.md)
+- [TOTP Secret Rotation](../operations/totp-secret-rotation.md)
 - [Account Lifecycle Operator Runbook](../operations/account-lifecycle.md)
 
 Formal rotation execution is tracked separately by `HON-60`.

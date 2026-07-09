@@ -53,8 +53,10 @@ Do not commit real secret values to the repository.
   session invalidation when that secret is affected.
 - Partial or malformed access-token keyring configuration fails closed instead
   of silently falling back to `HONOWARDEN_TOKEN_SECRET`.
-- TOTP secret rotation requires re-wrapping or re-enrolling TOTP setup secrets.
-  There is no migration tool yet.
+- TOTP secret rotation should use
+  [TOTP Secret Rotation](../operations/totp-secret-rotation.md). Rewrap keeps
+  TOTP enabled by re-encrypting active and pending envelopes; force
+  re-enrollment deletes TOTP rows and requires explicit operator approval.
 - Bootstrap token should be short-lived operationally even if the route remains
   disabled by default.
 - Production secrets must be set with Wrangler secret commands, not

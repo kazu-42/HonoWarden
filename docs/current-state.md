@@ -1790,3 +1790,27 @@ Not implemented:
 - live staging or production access-token signing-key rotation drill
 - production secret rotation or forced re-login exercise
 - asymmetric signing keys or JWKS publication
+
+## Week 26 TOTP Wrapping-Secret Rotation Tooling
+
+Implemented:
+
+- `pnpm totp:rotate-secret` operator CLI
+- dry-run-first readback of `user_totp` rows with secret-safe summary counts
+- `rewrap` strategy for active and pending TOTP envelopes using local-only old
+  and new wrapping secret env vars
+- `force-reenrollment` strategy for cases where the old wrapping secret is
+  unavailable or envelope recovery is rejected
+- fail-closed handling for missing old/new rewrap secret inputs, corrupt active
+  envelopes, and corrupt pending envelopes
+- `--execute --confirm <database>:<strategy>` guard for mutating operations
+- redacted execution evidence that does not print plaintext TOTP secrets,
+  encrypted TOTP envelopes, or wrapping secret values
+- `docs/operations/totp-secret-rotation.md` runbook covering dry-run, execute,
+  rollback, partial failure, and evidence rules
+
+Not implemented:
+
+- live staging or production TOTP wrapping-secret rotation drill
+- Wrangler runtime secret write automation
+- user communication automation for force re-enrollment

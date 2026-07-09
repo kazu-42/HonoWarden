@@ -40,7 +40,8 @@ inputs, not minor documentation notes.
 - Backup/restore evidence is operator-runbook based; no scheduled job exists.
 - R2 object backup can auto-list remote buckets, but there is no scheduled
   production backup job or remote production backup evidence yet.
-- TOTP wrapping-secret rotation has no migration tool.
+- TOTP wrapping-secret rotation tooling exists, but no live rotation or
+  force-re-enrollment drill has been run.
 - Access tokens still use symmetric HMAC keys. Key id based staged rotation is
   implemented, but no formal live access-token key rotation drill has been run.
 - Rate limiting focuses on password grant, not all authenticated routes.
