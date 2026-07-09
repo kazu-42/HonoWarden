@@ -108,6 +108,7 @@ pnpm linear:preflight
 pnpm linear:apply-plan
 pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan>
 pnpm linear:request-plan -- --mutation-packet <ready-mutation-packet>
+pnpm linear:resolution-plan -- --request-plan <ready-request-plan> --resolution-map <local-resolution-map>
 pnpm email:preflight
 ```
 
@@ -124,11 +125,14 @@ Before applying external changes:
    produces a reviewed packet before any guarded writer is used.
 5. `pnpm linear:request-plan -- --mutation-packet <ready-mutation-packet> --strict`
    produces a reviewed request contract before any guarded writer is used.
-6. `gh auth status` resolves to the intended GitHub user.
-7. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
-8. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
-9. Destination inboxes for email routing are verified in Cloudflare.
-10. The current worktree is clean or the pending diff is intentionally scoped.
+6. `pnpm linear:resolution-plan -- --request-plan <ready-request-plan> --resolution-map <local-resolution-map> --strict`
+   proves the reviewed local ID map is complete before any guarded writer is
+   used.
+7. `gh auth status` resolves to the intended GitHub user.
+8. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
+9. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
+10. Destination inboxes for email routing are verified in Cloudflare.
+11. The current worktree is clean or the pending diff is intentionally scoped.
 
 Use strict local preflight before requesting email-routing writes:
 
@@ -185,6 +189,11 @@ and emits request intents, unresolved ID requirements, confirmations, and manual
 confirmations for a future guarded writer. It uses local intent names instead of
 unverified live GraphQL mutation names. It does not read credentials, resolve
 Linear IDs, call GraphQL, or create or update Linear objects.
+
+`pnpm linear:resolution-plan` is the local ID-map completeness check. It reads a
+ready request plan and a supplied resolution map, then reports resolved and
+missing IDs for a future guarded writer. It does not read credentials, fetch ID
+data from Linear, call GraphQL, or create or update Linear objects.
 
 ## Missing Inputs
 
