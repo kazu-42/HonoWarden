@@ -16,6 +16,7 @@ changes and update this document in the same change.
 | `migrations/0002_login_defenses.sql` | `4cb168c368cf54ef2017bcbd8539ea44886c9b040cff63ae3ca6f05da5cc7466` |
 | `migrations/0003_totp_login.sql`     | `9d2e06deeb9aad154e46ebe50aa18d4ba10e971bcfcc7fb2e393d4f19be6c68c` |
 | `migrations/0004_totp_change.sql`    | `b03ccec7b6e9d689d4cb9b40c3d235844875ef5fab8050d43862e0953aff62fb` |
+| `migrations/0005_device_keys.sql`    | `97071b22d753636c4f9a0fe4c699f0c3802c47f30ae235fd45e9d76137d275e0` |
 
 ## Required Tables At Freeze
 

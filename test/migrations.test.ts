@@ -84,6 +84,19 @@ describe('initial D1 migration', () => {
     expect(allMigrations).toContain("VALUES ('0004')")
   })
 
+  it('adds encrypted device key columns for trusted-device compatibility', () => {
+    expect(allMigrations).toContain(
+      'ALTER TABLE devices\n  ADD COLUMN encrypted_user_key TEXT',
+    )
+    expect(allMigrations).toContain(
+      'ALTER TABLE devices\n  ADD COLUMN encrypted_public_key TEXT',
+    )
+    expect(allMigrations).toContain(
+      'ALTER TABLE devices\n  ADD COLUMN encrypted_private_key TEXT',
+    )
+    expect(allMigrations).toContain("VALUES ('0005')")
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -97,4 +110,5 @@ const allMigrations = [
   readFileSync('migrations/0002_login_defenses.sql', 'utf8'),
   readFileSync('migrations/0003_totp_login.sql', 'utf8'),
   readFileSync('migrations/0004_totp_change.sql', 'utf8'),
+  readFileSync('migrations/0005_device_keys.sql', 'utf8'),
 ].join('\n')

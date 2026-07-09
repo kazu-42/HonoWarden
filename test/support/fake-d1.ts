@@ -150,7 +150,11 @@ export class FakeD1Database {
         }
 
         if (query.includes('FROM devices')) {
-          return findDeviceRow(options.devices ?? [], boundValues) as T | null
+          return findDeviceRow(
+            options.devices ?? [],
+            boundValues,
+            query,
+          ) as T | null
         }
 
         if (query.includes('FROM user_totp')) {
@@ -494,6 +498,20 @@ export class FakeD1Database {
 
         if (
           /UPDATE\s+devices/.test(query) &&
+          query.includes('encrypted_user_key = ?')
+        ) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.deviceUpdateChanges ?? 1,
+            },
+          }
+        }
+
+        if (
+          /UPDATE\s+devices/.test(query) &&
           query.includes('revoked_at = ?')
         ) {
           return {
@@ -661,16 +679,21 @@ function findScopedRow(
 function findDeviceRow(
   rows: Record<string, unknown>[],
   boundValues: unknown[],
+  query: string,
 ): Record<string, unknown> | null {
   const lookupValue = String(boundValues[1] ?? '')
   const scopedRows = filterDeviceRows(rows, boundValues)
 
   if (lookupValue) {
-    return (
-      scopedRows.find(
-        (row) => row.identifier === lookupValue || row.id === lookupValue,
-      ) ?? null
-    )
+    if (query.includes('identifier = ?')) {
+      return scopedRows.find((row) => row.identifier === lookupValue) ?? null
+    }
+
+    if (query.includes('id = ?')) {
+      return scopedRows.find((row) => row.id === lookupValue) ?? null
+    }
+
+    return scopedRows.find((row) => row.id === lookupValue) ?? null
   }
 
   return scopedRows[0] ?? null

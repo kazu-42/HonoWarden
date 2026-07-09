@@ -61,6 +61,10 @@
       "fixtures": ["devices/update-success.json"]
     },
     {
+      "id": "device_keys_update",
+      "fixtures": ["devices/keys-update-success.json"]
+    },
+    {
       "id": "known_device_preflight",
       "fixtures": ["devices/known-device-success.json"]
     },
