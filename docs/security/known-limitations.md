@@ -22,7 +22,9 @@ inputs, not minor documentation notes.
 
 ## Current Product Gaps
 
-- Web Vault is intentionally not implemented.
+- Web Vault is intentionally not implemented; HonoWarden has no
+  browser-delivered vault UI, browser session boundary, or static app asset
+  supply chain in the alpha scope.
 - Public registration is disabled.
 - Organizations and shared vaults are not implemented.
 - Send is not implemented.

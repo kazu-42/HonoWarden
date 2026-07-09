@@ -191,6 +191,8 @@ Implemented:
   `docs/compatibility-matrix.md`
 - conservative `fixture_only` verification level for all rows at matrix creation
 - explicit known issues per client surface
+- explicit Web Vault exclusion and API-only compatibility boundary in ADR and
+  compatibility docs
 - compatibility matrix validation in `pnpm compat:test`
 
 Not implemented:
