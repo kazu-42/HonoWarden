@@ -30,9 +30,9 @@ triggers one bounded cleanup slice before login-defense bucket lookup.
 0 * * * *
 ```
 
-The repository change only defines the Worker handler and Wrangler
-configuration. Applying or changing the live Cron Trigger still requires an
-operator-approved Cloudflare deploy.
+The Worker handler and Wrangler configuration are deployed to staging and
+production. The live Cron Trigger evidence is recorded in
+`docs/release/retention-cron-evidence.md`.
 
 ## Bounds
 
@@ -81,9 +81,18 @@ pnpm format
 The repository tests assert that cleanup is bounded, idempotent, and does not
 delete active login-defense buckets.
 
+Live checks:
+
+- staging and production D1 schema readback report migrations `0001` through
+  `0005`
+- staging and production Worker deploy output includes `schedule: 0 * * * *`
+- staging and production `/health`, `/healthz`, `/health/db`, and `/api/config`
+  pass after deploy
+- synthetic prelogin denial remains HTTP `403`
+- synthetic `hon-51-cron-smoke` cleanup rows are deleted after the next hourly
+  scheduled execution
+
 ## Remaining Work
 
-- operator-approved Cloudflare deploy to apply the configured Cron Trigger
-- Cron Events monitoring evidence after deployment
 - metrics for rows deleted and cleanup failures
 - explicit indexes if production row counts justify them
