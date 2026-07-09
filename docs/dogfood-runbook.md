@@ -32,6 +32,7 @@ pnpm lint
 pnpm test
 pnpm compat:test
 pnpm format
+pnpm dogfood:evidence:packet -- --strict --environment local --server-url https://localhost:8791 --flow bootstrap_user_a --flow bootstrap_user_b --flow user_a_initial_sync --flow user_b_initial_sync --flow cross_user_sync_isolation --flow cross_user_read_denied --flow cross_user_mutation_denied --flow disable_user --flow disabled_password_grant_denied --flow disabled_refresh_grant_denied --flow disabled_sync_denied --flow disabled_vault_crud_denied --flow enable_user_rollback_plan
 ```
 
 Confirm:
@@ -91,3 +92,8 @@ Store future live evidence as a short Markdown or JSON artifact that records:
 - known issue link or note
 
 Do not store raw tokens, cookies, authorization headers, vault export files, or plaintext vault values.
+
+The repository-local HON-61 evidence packet lives in
+`docs/release/two-user-dogfood-evidence.md`. It is synthetic-only and does not
+claim production account disablement. Use it as the baseline format before any
+staging or production dogfood evidence is recorded.

@@ -23,6 +23,7 @@ const requiredReleaseDocs = [
   'publication-gate.md',
   'live-client-evidence.md',
   'live-regression-matrix.md',
+  'two-user-dogfood-evidence.md',
   'remote-backup-evidence.md',
   'v0.1.0-alpha-release-notes.md',
 ]
