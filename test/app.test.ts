@@ -1750,6 +1750,265 @@ describe('HonoWarden app', () => {
     expect(JSON.stringify(event)).not.toContain('test-token-secret')
   })
 
+  it('starts TOTP change after recent password authentication and current TOTP verification', async () => {
+    const currentSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const encryptedSecret = await encryptTotpSecret(
+      'test-totp-secret',
+      currentSecret,
+    )
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: encryptedSecret,
+      totpLastAcceptedStep: null,
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/change',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentCode: await currentTotpCode(currentSecret),
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userTotp: {
+            userId: 'user-id',
+            encryptedSecret,
+            enabled: 1,
+            verifiedAt: '2026-07-06T00:01:00.000Z',
+            lastAcceptedStep: null,
+            pendingEncryptedSecret: null,
+            pendingCreatedAt: null,
+            createdAt: '2026-07-06T00:00:00.000Z',
+            updatedAt: '2026-07-06T00:01:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'totpChange',
+      enabled: true,
+      pendingVerification: true,
+      secret: expect.stringMatching(/^[A-Z2-7]{32}$/),
+      uri: expect.stringContaining('otpauth://totp/'),
+    })
+  })
+
+  it('requires recent password authentication before changing TOTP', async () => {
+    const currentSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const encryptedSecret = await encryptTotpSecret(
+      'test-totp-secret',
+      currentSecret,
+    )
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: encryptedSecret,
+      totpLastAcceptedStep: null,
+    }
+    const accessToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/change',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'totp-change-reauth-request',
+        },
+        body: JSON.stringify({
+          currentCode: await currentTotpCode(currentSecret),
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'reauth_required',
+      },
+      requestId: 'totp-change-reauth-request',
+    })
+  })
+
+  it('rejects invalid current TOTP codes before starting TOTP change', async () => {
+    const currentSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const encryptedSecret = await encryptTotpSecret(
+      'test-totp-secret',
+      currentSecret,
+    )
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: encryptedSecret,
+      totpLastAcceptedStep: null,
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/change',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'totp-change-invalid-code-request',
+        },
+        body: JSON.stringify({
+          currentCode: '000000',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userTotp: {
+            userId: 'user-id',
+            encryptedSecret,
+            enabled: 1,
+            verifiedAt: '2026-07-06T00:01:00.000Z',
+            lastAcceptedStep: null,
+            pendingEncryptedSecret: null,
+            pendingCreatedAt: null,
+            createdAt: '2026-07-06T00:00:00.000Z',
+            updatedAt: '2026-07-06T00:01:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+        message: 'TOTP code is invalid.',
+      },
+      requestId: 'totp-change-invalid-code-request',
+    })
+  })
+
+  it('verifies and promotes a pending TOTP change', async () => {
+    const pendingSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXQ'
+    const pendingEncryptedSecret = await encryptTotpSecret(
+      'test-totp-secret',
+      pendingSecret,
+    )
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: 'v1.current-encrypted-secret',
+      totpLastAcceptedStep: 59440320,
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/change/verify',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: await currentTotpCode(pendingSecret),
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userTotp: {
+            userId: 'user-id',
+            encryptedSecret: 'v1.current-encrypted-secret',
+            enabled: 1,
+            verifiedAt: '2026-07-06T00:01:00.000Z',
+            lastAcceptedStep: 59440320,
+            pendingEncryptedSecret,
+            pendingCreatedAt: '2026-07-06T00:02:00.000Z',
+            createdAt: '2026-07-06T00:00:00.000Z',
+            updatedAt: '2026-07-06T00:02:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      object: 'totp',
+      enabled: true,
+    })
+  })
+
+  it('rejects TOTP change verify replay when no pending change remains', async () => {
+    const pendingSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXQ'
+    const user = {
+      ...authUserRecord(),
+      totpEnabled: true,
+      totpEncryptedSecret: 'v1.current-encrypted-secret',
+      totpLastAcceptedStep: 59440320,
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/identity/accounts/totp/change/verify',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'totp-change-replay-request',
+        },
+        body: JSON.stringify({
+          code: await currentTotpCode(pendingSecret),
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userTotp: {
+            userId: 'user-id',
+            encryptedSecret: 'v1.current-encrypted-secret',
+            enabled: 1,
+            verifiedAt: '2026-07-06T00:01:00.000Z',
+            lastAcceptedStep: 59440320,
+            pendingEncryptedSecret: null,
+            pendingCreatedAt: null,
+            createdAt: '2026-07-06T00:00:00.000Z',
+            updatedAt: '2026-07-06T00:02:00.000Z',
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+        message: 'TOTP change not found.',
+      },
+      requestId: 'totp-change-replay-request',
+    })
+  })
+
   it('returns an empty personal vault sync for a valid access token', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)

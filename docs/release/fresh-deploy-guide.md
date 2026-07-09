@@ -97,7 +97,7 @@ After migration, verify:
 pnpm wrangler d1 execute honowarden-staging --env staging --command "SELECT version FROM schema_migrations ORDER BY version;"
 ```
 
-The result must include `0001`, `0002`, and `0003`.
+The result must include `0001`, `0002`, `0003`, and `0004`.
 
 ## Deploy Worker
 

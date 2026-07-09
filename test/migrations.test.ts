@@ -74,6 +74,16 @@ describe('initial D1 migration', () => {
     expect(allMigrations).toContain("VALUES ('0003')")
   })
 
+  it('adds pending TOTP change state without modifying frozen migrations', () => {
+    expect(allMigrations).toContain(
+      'ALTER TABLE user_totp\n  ADD COLUMN pending_encrypted_secret TEXT',
+    )
+    expect(allMigrations).toContain(
+      'ALTER TABLE user_totp\n  ADD COLUMN pending_created_at TEXT',
+    )
+    expect(allMigrations).toContain("VALUES ('0004')")
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -86,4 +96,5 @@ const allMigrations = [
   readFileSync('migrations/0001_initial_schema.sql', 'utf8'),
   readFileSync('migrations/0002_login_defenses.sql', 'utf8'),
   readFileSync('migrations/0003_totp_login.sql', 'utf8'),
+  readFileSync('migrations/0004_totp_change.sql', 'utf8'),
 ].join('\n')

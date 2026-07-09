@@ -8,7 +8,9 @@ import {
   cleanupExpiredTotpChallenges,
   findActiveTotpChallengeByHash,
   findTotpSetupByUserId,
+  promotePendingTotpChange,
   recordAcceptedTotpStep,
+  startPendingTotpChange,
   upsertPendingTotpSetup,
 } from '../../src/repositories/totp-repository'
 
@@ -49,6 +51,8 @@ describe('totp repository', () => {
       enabled: 1,
       verifiedAt: '2026-07-06T00:01:00.000Z',
       lastAcceptedStep: 59440320,
+      pendingEncryptedSecret: 'v1.pending-encrypted-secret',
+      pendingCreatedAt: '2026-07-06T00:02:00.000Z',
       createdAt: '2026-07-06T00:00:00.000Z',
       updatedAt: '2026-07-06T00:01:00.000Z',
     })
@@ -59,6 +63,8 @@ describe('totp repository', () => {
       enabled: true,
       verifiedAt: '2026-07-06T00:01:00.000Z',
       lastAcceptedStep: 59440320,
+      pendingEncryptedSecret: 'v1.pending-encrypted-secret',
+      pendingCreatedAt: '2026-07-06T00:02:00.000Z',
       createdAt: '2026-07-06T00:00:00.000Z',
       updatedAt: '2026-07-06T00:01:00.000Z',
     })
@@ -99,6 +105,70 @@ describe('totp repository', () => {
     await expect(
       disableTotpSetup(new RecordingTotpD1Database(null, null, 0), {
         userId: 'missing-user-id',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('starts pending TOTP changes without replacing the active secret', async () => {
+    const database = new RecordingTotpD1Database(null, null, 1)
+
+    await expect(
+      startPendingTotpChange(database, {
+        userId: 'user-id',
+        encryptedSecret: 'v1.pending-encrypted-secret',
+        now: '2026-07-06T00:02:00.000Z',
+      }),
+    ).resolves.toBe(true)
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('UPDATE user_totp')
+    expect(query).toContain('pending_encrypted_secret = ?')
+    expect(query).toContain('pending_created_at = ?')
+    expect(query).toContain('enabled = 1')
+    expect(database.boundValues).toEqual([
+      'v1.pending-encrypted-secret',
+      '2026-07-06T00:02:00.000Z',
+      '2026-07-06T00:02:00.000Z',
+      'user-id',
+    ])
+
+    await expect(
+      startPendingTotpChange(new RecordingTotpD1Database(null, null, 0), {
+        userId: 'missing-user-id',
+        encryptedSecret: 'v1.pending-encrypted-secret',
+        now: '2026-07-06T00:02:00.000Z',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('promotes pending TOTP changes and clears pending state atomically', async () => {
+    const database = new RecordingTotpD1Database(null, null, 1)
+
+    await expect(
+      promotePendingTotpChange(database, {
+        userId: 'user-id',
+        acceptedStep: 59440321,
+        verifiedAt: '2026-07-06T00:02:00.000Z',
+      }),
+    ).resolves.toBe(true)
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('encrypted_secret = pending_encrypted_secret')
+    expect(query).toContain('pending_encrypted_secret = NULL')
+    expect(query).toContain('pending_created_at = NULL')
+    expect(query).toContain('pending_encrypted_secret IS NOT NULL')
+    expect(database.boundValues).toEqual([
+      '2026-07-06T00:02:00.000Z',
+      59440321,
+      '2026-07-06T00:02:00.000Z',
+      'user-id',
+    ])
+
+    await expect(
+      promotePendingTotpChange(new RecordingTotpD1Database(null, null, 0), {
+        userId: 'user-id',
+        acceptedStep: 59440321,
+        verifiedAt: '2026-07-06T00:02:00.000Z',
       }),
     ).resolves.toBe(false)
   })

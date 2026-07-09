@@ -105,9 +105,10 @@ Owner-scope invariant:
 ## TOTP
 
 1. Recent password authentication is required for TOTP setup, setup verify, and
-   disable.
-2. Setup rejects accounts that already have TOTP enabled; change remains a
-   separate unsupported route in alpha.
+   disable, plus TOTP change start and change verify.
+2. Setup rejects accounts that already have TOTP enabled; change is a separate
+   route that verifies the current TOTP code before creating a pending
+   replacement secret.
 3. Initial setup creates a generated base32 secret and stores an AES-GCM
    envelope in D1.
 4. Verify checks the presented code and records the accepted timestep to prevent
@@ -116,13 +117,17 @@ Owner-scope invariant:
    setup secret material and replay metadata (for example, last accepted
    timestep). The account profile then reports TOTP as disabled through the
    auth lookup left join.
-6. Login challenge records a hashed, expiring, single-use challenge bound to the
+6. Change stores the replacement secret in `pending_encrypted_secret` while the
+   current TOTP secret remains enabled. Change verify promotes the pending
+   secret, clears pending state, and records the new accepted timestep.
+7. Login challenge records a hashed, expiring, single-use challenge bound to the
    device identifier.
 
 Secrets:
 
 - plaintext setup secret is returned only during setup
 - encrypted setup secret is wrapped by `HONOWARDEN_TOTP_SECRET`
+- pending TOTP change secret is wrapped by `HONOWARDEN_TOTP_SECRET`
 - challenge plaintext is not stored
 
 ## Audit Logs

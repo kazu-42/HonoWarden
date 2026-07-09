@@ -52,8 +52,27 @@ recent-password-authenticated user
 
 Failure invariants:
 
-- setup reuse is rejected while the TOTP change route is not implemented
+- setup reuse is rejected while TOTP is already enabled
 - enabled TOTP rows must not be overwritten into pending state by setup
+
+## TOTP Change
+
+```text
+recent-password-authenticated user
+  -> active TOTP setup exists?
+  -> wrapping secret configured?
+  -> current TOTP code verifies and records accepted step?
+  -> generate pending replacement secret without disabling current TOTP
+  -> pending replacement code verifies?
+  -> promote pending secret, clear pending state, record new accepted step
+```
+
+Failure invariants:
+
+- change start and change verify both require recent password authentication
+- current TOTP code replay fails closed through accepted-step recording
+- pending change verify fails closed when no pending replacement secret remains
+- account profile remains TOTP-enabled while a replacement secret is pending
 
 ## Refresh Grant
 
