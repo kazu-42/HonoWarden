@@ -186,6 +186,9 @@ Implemented:
 - human-readable compatibility matrix under `docs/compatibility-matrix.md`
 - exact tracked versions for browser extension, desktop, mobile Android, mobile iOS, and CLI surfaces
 - mobile build number tracking for Android and iOS rows
+- metadata refresh cadence/source refs under `compat/client-matrix.json`
+- documented release metadata refresh procedure and stale threshold in
+  `docs/compatibility-matrix.md`
 - conservative `fixture_only` verification level for all rows at matrix creation
 - explicit known issues per client surface
 - compatibility matrix validation in `pnpm compat:test`
@@ -194,6 +197,7 @@ Not implemented:
 
 - refresh token reuse alerting
 - live client compatibility evidence for the tracked versions
+- automated network fetch of upstream release metadata in CI
 - any storage of real password-vault data
 
 ## Week 16 Increment
@@ -740,6 +744,8 @@ Implemented:
 - `compat/client-matrix.json` CLI row promoted to `live_smoke`
 - release evidence document under `docs/release/live-client-evidence.md`
 - release gate update requiring linked live evidence for promoted matrix rows
+- Android client release metadata refreshed to `2026.6.1` build `21713` while
+  keeping the row at `fixture_only`
 
 Not implemented:
 
