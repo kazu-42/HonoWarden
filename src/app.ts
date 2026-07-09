@@ -285,6 +285,27 @@ function emitTotpChangeAuditEvent(
   })
 }
 
+function emitBackupExportAuditEvent(
+  c: AppContext,
+  auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
+  outcome: AuditEventOutcome,
+  context: Record<string, string | number | boolean | null>,
+): void {
+  emitAuditEvent(c, {
+    name: 'backup.export',
+    outcome,
+    actor: {
+      userId: auth.user.id,
+      deviceIdentifier: auth.deviceIdentifier,
+    },
+    target: {
+      type: 'backup',
+      id: auth.user.id,
+    },
+    context,
+  })
+}
+
 function buildHealthResponse(requestIdValue: string, environment?: string) {
   return {
     status: 'ok',
@@ -1326,6 +1347,61 @@ app.get('/api/sync', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Vault sync failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/export', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const [folders, ciphers, attachments] = await Promise.all([
+      listFoldersByUser(c.env.DB, auth.user.id),
+      listCiphersByUser(c.env.DB, auth.user.id),
+      listCipherAttachmentsByUser(c.env.DB, auth.user.id),
+    ])
+    const generatedAt = new Date().toISOString()
+
+    emitBackupExportAuditEvent(c, auth, 'success', {
+      folderCount: folders.length,
+      cipherCount: ciphers.length,
+      attachmentCount: attachments.length,
+      rawR2ObjectBodiesIncluded: false,
+    })
+
+    c.header('Cache-Control', 'no-store')
+    c.header(
+      'Content-Disposition',
+      `attachment; filename="honowarden-export-${backupExportFilenameTimestamp(
+        generatedAt,
+      )}.json"`,
+    )
+
+    return c.json(
+      buildBackupExportResponse({
+        user: auth.user,
+        folders,
+        ciphers,
+        attachments,
+        generatedAt,
+        requestId: c.get('requestId'),
+      }),
+    )
+  } catch {
+    emitBackupExportAuditEvent(c, auth, 'failure', {
+      reason: 'database_unavailable',
+    })
+
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Backup export failed.',
       ),
       503,
     )
@@ -3008,6 +3084,60 @@ function buildSyncResponse(
   }
 }
 
+function buildBackupExportResponse(input: {
+  user: AuthUserRecord
+  folders: readonly FolderRecord[]
+  ciphers: readonly CipherRecord[]
+  attachments: readonly CipherAttachmentRecord[]
+  generatedAt: string
+  requestId: string
+}) {
+  const attachmentsByCipherId = buildAttachmentsByCipherId(input.attachments)
+
+  return {
+    object: 'backupExport',
+    schemaVersion: 1,
+    generatedAt: input.generatedAt,
+    requestId: input.requestId,
+    source: {
+      service: 'honowarden',
+      version: serviceVersion,
+    },
+    account: buildBackupAccountResponse(input.user),
+    folders: input.folders.map(buildFolderResponse),
+    ciphers: input.ciphers.map((cipher) =>
+      buildCipherResponse(cipher, attachmentsByCipherId.get(cipher.id) ?? []),
+    ),
+    attachments: input.attachments.map(buildBackupAttachmentResponse),
+    collections: [],
+    sends: [],
+    limits: {
+      rawR2ObjectBodies: 'excluded',
+      operatorBackupPath: 'pnpm backup:export',
+    },
+  }
+}
+
+function buildBackupAccountResponse(user: AuthUserRecord) {
+  return {
+    id: user.id,
+    email: user.emailNormalized,
+    name: user.displayName ?? user.emailNormalized,
+    revisionDate: user.revisionDate,
+    creationDate: user.createdAt,
+    twoFactorEnabled: user.totpEnabled,
+    key: user.userKey,
+    publicKey: user.publicKey,
+    privateKey: user.privateKey,
+    kdf: {
+      algorithm: user.kdfAlgorithm,
+      iterations: user.kdfIterations,
+      memory: user.kdfMemory,
+      parallelism: user.kdfParallelism,
+    },
+  }
+}
+
 function buildEmptyListResponse() {
   return {
     object: 'list',
@@ -3346,6 +3476,20 @@ function buildAttachmentMetadataResponse(attachment: CipherAttachmentRecord) {
     key: attachment.attachmentKey,
     size: attachment.size,
     sizeName: formatByteSize(attachment.size),
+  }
+}
+
+function buildBackupAttachmentResponse(attachment: CipherAttachmentRecord) {
+  return {
+    id: attachment.id,
+    cipherId: attachment.cipherId,
+    fileName: attachment.fileName,
+    key: attachment.attachmentKey,
+    size: attachment.size,
+    sizeName: formatByteSize(attachment.size),
+    contentType: attachment.contentType,
+    revisionDate: attachment.revisionDate,
+    creationDate: attachment.createdAt,
   }
 }
 
@@ -3798,6 +3942,10 @@ function readFormBlob(
 
 function buildAttachmentObjectKey(): string {
   return `attachments/${crypto.randomUUID()}`
+}
+
+function backupExportFilenameTimestamp(generatedAt: string): string {
+  return generatedAt.replace(/[:.]/g, '-')
 }
 
 function decodePathParam(value: string): string {

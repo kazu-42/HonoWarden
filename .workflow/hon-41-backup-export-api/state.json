@@ -1,0 +1,77 @@
+{
+  "title": "HON-41 Backup Export API",
+  "slug": "hon-41-backup-export-api",
+  "created_at": "2026-07-09T18:24:20+00:00",
+  "status": "local_verified",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, tests, docs, PR, and Linear closeout only. Cloudflare deploy, migrations, production backup/export, and live smoke remain approval-gated."
+  },
+  "packets": [
+    {
+      "id": "discovery",
+      "status": "completed",
+      "notes": "Read auth/recent-auth, sync, audit, backup docs, and fake D1 patterns."
+    },
+    {
+      "id": "tdd-implementation",
+      "status": "completed",
+      "notes": "Added RED app tests, implemented POST /api/accounts/export, audit event name, response builders, and docs."
+    },
+    {
+      "id": "docs-verification",
+      "status": "completed",
+      "notes": "Docs updated. Local broad verification passed."
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/app.test.ts --testNamePattern \"backup export\"",
+        "status": "failed_expected_red",
+        "notes": "Failed with 404 before route implementation."
+      },
+      {
+        "command": "pnpm exec vitest run test/app.test.ts --testNamePattern \"backup export|user backup\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/app.test.ts test/domain/audit.test.ts test/security-docs.test.ts test/release-docs.test.ts",
+        "status": "passed",
+        "notes": "8 files / 262 tests passed."
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "notes": "93 files / 810 tests passed."
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "notes": "overall ready."
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/hon-41-backup-export-api",
+        "status": "passed"
+      }
+    ]
+  }
+}

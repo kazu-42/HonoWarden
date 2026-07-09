@@ -1604,6 +1604,284 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('exports an owner-scoped user backup after recent password authentication', async () => {
+    const alice = {
+      ...authUserRecord(),
+      id: 'alice-id',
+      email: 'Alice@Example.Test',
+      emailNormalized: 'alice@example.test',
+      displayName: 'Alice',
+      userKey: '2.alice-user-key',
+      publicKey: 'alice-public-key',
+      privateKey: '2.alice-private-key',
+      securityStamp: 'alice-security-stamp',
+    }
+    const bob = {
+      ...authUserRecord(),
+      id: 'bob-id',
+      email: 'Bob@Example.Test',
+      emailNormalized: 'bob@example.test',
+      displayName: 'Bob',
+      userKey: '2.bob-user-key',
+      securityStamp: 'bob-security-stamp',
+    }
+    const accessToken = await recentPasswordAccessTokenFor(alice)
+    const response = await app.request(
+      '/api/accounts/export',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'backup-export-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUsers: [alice, bob],
+          folders: [
+            {
+              id: 'alice-folder-id',
+              userId: 'alice-id',
+              name: '2.alice-encrypted-folder',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+            {
+              id: 'bob-folder-id',
+              userId: 'bob-id',
+              name: '2.bob-encrypted-folder',
+              revisionDate: '2026-07-06T00:04:00.000Z',
+            },
+          ],
+          ciphers: [
+            {
+              id: 'alice-cipher-id',
+              userId: 'alice-id',
+              folderId: 'alice-folder-id',
+              type: 1,
+              favorite: 1,
+              encryptedJson: JSON.stringify({
+                ...cipherCreateBody(),
+                folderId: 'alice-folder-id',
+                name: '2.alice-encrypted-cipher',
+              }),
+              revisionDate: '2026-07-06T00:05:00.000Z',
+              createdAt: '2026-07-06T00:04:00.000Z',
+            },
+            {
+              id: 'bob-cipher-id',
+              userId: 'bob-id',
+              folderId: 'bob-folder-id',
+              type: 1,
+              favorite: 0,
+              encryptedJson: JSON.stringify({
+                ...cipherCreateBody(),
+                folderId: 'bob-folder-id',
+                name: '2.bob-encrypted-cipher',
+              }),
+              revisionDate: '2026-07-06T00:06:00.000Z',
+              createdAt: '2026-07-06T00:04:00.000Z',
+            },
+          ],
+          attachments: [
+            {
+              ...attachmentRecord(),
+              id: 'alice-attachment-id',
+              userId: 'alice-id',
+              cipherId: 'alice-cipher-id',
+              objectKey: 'attachments/alice-object-key',
+              fileName: '2.alice-encrypted-file',
+              attachmentKey: '2.alice-attachment-key',
+            },
+            {
+              ...attachmentRecord(),
+              id: 'bob-attachment-id',
+              userId: 'bob-id',
+              cipherId: 'bob-cipher-id',
+              objectKey: 'attachments/bob-object-key',
+              fileName: '2.bob-encrypted-file',
+              attachmentKey: '2.bob-attachment-key',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    expect(response.headers.get('Content-Disposition')).toContain(
+      'honowarden-export-',
+    )
+    const payload = (await response.json()) as Record<string, unknown>
+    expect(payload).toMatchObject({
+      object: 'backupExport',
+      schemaVersion: 1,
+      requestId: 'backup-export-request',
+      source: {
+        service: 'honowarden',
+        version: '0.1.0-alpha',
+      },
+      account: {
+        id: 'alice-id',
+        email: 'alice@example.test',
+        name: 'Alice',
+        key: '2.alice-user-key',
+        privateKey: '2.alice-private-key',
+        twoFactorEnabled: false,
+        kdf: {
+          algorithm: 'pbkdf2-sha256',
+          iterations: 600000,
+        },
+      },
+      folders: [
+        {
+          id: 'alice-folder-id',
+          name: '2.alice-encrypted-folder',
+        },
+      ],
+      ciphers: [
+        {
+          id: 'alice-cipher-id',
+          folderId: 'alice-folder-id',
+          name: '2.alice-encrypted-cipher',
+          attachments: [
+            {
+              id: 'alice-attachment-id',
+              fileName: '2.alice-encrypted-file',
+              key: '2.alice-attachment-key',
+            },
+          ],
+        },
+      ],
+      attachments: [
+        {
+          id: 'alice-attachment-id',
+          cipherId: 'alice-cipher-id',
+          fileName: '2.alice-encrypted-file',
+          key: '2.alice-attachment-key',
+        },
+      ],
+      limits: {
+        rawR2ObjectBodies: 'excluded',
+        operatorBackupPath: 'pnpm backup:export',
+      },
+    })
+    expect(payload).toHaveProperty('generatedAt')
+
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('bob')
+    expect(serialized).not.toContain('masterPasswordHash')
+    expect(serialized).not.toContain('synthetic-master-password-hash')
+    expect(serialized).not.toContain('test-token-secret')
+    expect(serialized).not.toContain('securityStamp')
+    expect(serialized).not.toContain('alice-security-stamp')
+    expect(serialized).not.toContain('objectKey')
+    expect(serialized).not.toContain('attachments/alice-object-key')
+  })
+
+  it('requires recent password authentication before user backup export', async () => {
+    const user = authUserRecord()
+    const accessToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/export',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'backup-export-reauth-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'reauth_required',
+      },
+      requestId: 'backup-export-reauth-request',
+    })
+  })
+
+  it('emits a secret-safe audit event for user backup export', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/export',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'audit-backup-export-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          folders: [
+            {
+              id: 'folder-id',
+              userId: 'user-id',
+              name: '2.encrypted-folder',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+          ],
+          ciphers: [
+            {
+              id: 'cipher-id',
+              userId: 'user-id',
+              folderId: 'folder-id',
+              type: 1,
+              favorite: 1,
+              encryptedJson: JSON.stringify(cipherCreateBody()),
+              revisionDate: '2026-07-06T00:05:00.000Z',
+              createdAt: '2026-07-06T00:04:00.000Z',
+            },
+          ],
+          attachments: [attachmentRecord()],
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const event = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
+    expect(event).toMatchObject({
+      object: 'auditEvent',
+      schemaVersion: 1,
+      name: 'backup.export',
+      outcome: 'success',
+      requestId: 'audit-backup-export-request',
+      actor: {
+        userId: 'user-id',
+        deviceIdentifier: 'fixture-device',
+      },
+      target: {
+        type: 'backup',
+        id: 'user-id',
+      },
+      context: {
+        folderCount: 1,
+        cipherCount: 1,
+        attachmentCount: 1,
+        rawR2ObjectBodiesIncluded: false,
+      },
+    })
+    const serialized = JSON.stringify(event)
+    expect(serialized).not.toContain(accessToken)
+    expect(serialized).not.toContain('test-token-secret')
+    expect(serialized).not.toContain('synthetic-master-password-hash')
+    expect(serialized).not.toContain('2.encrypted')
+  })
+
   it('sets up TOTP for an authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await recentPasswordAccessTokenFor(user)

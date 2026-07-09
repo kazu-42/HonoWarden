@@ -171,12 +171,31 @@ Current event coverage:
 - bootstrap success
 - password-grant failures that reach credential validation
 - refresh-token reuse
+- user backup export success and database-failure outcomes
 - device revoke success and not-found outcomes
 - revoke-all-other-sessions success
 - TOTP disable success and not-enabled outcomes
 
 Events must not include passwords, token plaintext, token hashes, encrypted
 payloads, request bodies, or response bodies.
+
+## User Backup Export API
+
+1. Client sends `POST /api/accounts/export` with a bearer access token.
+2. Worker verifies the access token and then requires recent password
+   authentication: `authMethod=password` and token age within five minutes.
+3. Worker loads folders, ciphers, and cipher attachment metadata using the same
+   owner-scoped repository helpers as sync.
+4. The response disables caching and returns `object: "backupExport"` with
+   account metadata, folders, ciphers, and attachment metadata.
+5. The response excludes master password hashes, refresh-token rows, TOTP setup
+   secrets, internal R2 object keys, raw R2 object bodies, and cross-user rows.
+6. When audit logging is enabled, Worker logs emit `backup.export` with
+   count-only context.
+
+The export still contains encrypted vault data and account key material already
+available to authenticated clients. Treat downloaded exports as sensitive user
+data.
 
 ## Backup And Restore
 

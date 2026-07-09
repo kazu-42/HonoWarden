@@ -277,9 +277,10 @@ Implemented:
 - tests for token claim validation, grant-specific token issuance, recent-auth success, stale-token rejection, refresh-token rejection, and legacy-token rejection
 - Week 19 dynamic workflow artifacts
 
-Not implemented:
+Deferred at that checkpoint:
 
-- backup export route or backup-export re-auth guard
+- server-side user export API (implemented later in
+  `Week 26 User Backup Export API`)
 - live client re-auth evidence
 
 The project remains pre-alpha and must not be used to store real secrets.
@@ -316,7 +317,6 @@ Not implemented:
 - scheduled backup job
 - remote production backup execution
 - live restore drill evidence
-- server-side public backup API
 
 The project remains pre-alpha and must not be used to store real secrets.
 
@@ -332,6 +332,7 @@ Implemented:
 - audit events for successful restricted account bootstrap
 - audit events for failed password-grant attempts that reach credential validation
 - audit event for refresh-token reuse detection
+- audit event for user backup export success and database-failure outcomes
 - audit events for successful and not-found device revoke attempts
 - docs for audit event shape, implemented event names, non-goals, and operator notes
 - tests proving audit builder sanitization and route-level opt-in event emission
@@ -343,6 +344,32 @@ Not implemented:
 - audit events for every vault CRUD route
 - live log-retention verification
 - automated backup audit ingestion beyond the Week 20 runbook evidence
+
+## Week 26 User Backup Export API
+
+Implemented:
+
+- recent password-authenticated `POST /api/accounts/export`
+- fail-closed reuse of the existing five-minute recent-auth guard
+- owner-scoped export of account metadata, active folders, ciphers, and cipher
+  attachment metadata
+- response cache prevention with `Cache-Control: no-store` and a
+  download-oriented `Content-Disposition` filename
+- export response excludes master password hashes, refresh-token rows, TOTP
+  setup secrets, internal R2 object keys, raw R2 object bodies, and cross-user
+  rows
+- `backup.export` audit event coverage with count-only context when
+  `HONOWARDEN_AUDIT_LOGS=true`
+- HTTP tests for owner-scope, recent-auth rejection, sensitive field omission,
+  no R2 object-key exposure, and audit-event secrecy
+- docs for rate-limit boundary, audit behavior, database-failure behavior, and
+  the separation between user export and operator disaster-recovery backup CLI
+
+Not implemented:
+
+- export-specific global request quota or abuse monitoring dashboard
+- live official-client user export evidence
+- Worker deploy or production smoke for the export route
 
 ## Week 22 Increment
 
