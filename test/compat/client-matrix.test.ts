@@ -378,7 +378,24 @@ describe('client compatibility matrix', () => {
     )
   })
 
-  it('records the alpha CLI live smoke while keeping other surfaces conservative', () => {
+  it('records live smoke rows while keeping unproven surfaces conservative', () => {
+    const browserEntry = matrix.entries.find(
+      (entry) => entry.surface === 'browser_extension',
+    )
+    expect(browserEntry?.verificationLevel).toBe('live_smoke')
+    expect(browserEntry?.liveEvidence?.path).toBe(
+      'docs/release/browser-extension-live-client-evidence.md',
+    )
+    expect(browserEntry?.liveEvidence?.flows).toEqual(
+      expect.arrayContaining([
+        'config',
+        'prelogin',
+        'password_grant',
+        'empty_sync',
+        'account_profile',
+      ]),
+    )
+
     const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
     expect(cliEntry?.verificationLevel).toBe('live_smoke')
     expect(cliEntry?.liveEvidence?.path).toBe(
@@ -386,11 +403,19 @@ describe('client compatibility matrix', () => {
     )
 
     const nonCliEntries = matrix.entries.filter(
-      (entry) => entry.surface !== 'cli',
+      (entry) => !['browser_extension', 'cli'].includes(entry.surface),
     )
     for (const entry of nonCliEntries) {
       expect(entry.verificationLevel).toBe('fixture_only')
     }
+
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+    expect(compatibilityMatrixDoc).toContain(
+      'browser-extension-live-client-evidence.md',
+    )
   })
 
   it('documents repeatable live regression promotion requirements', () => {

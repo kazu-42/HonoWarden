@@ -372,13 +372,34 @@ function checkCompatibilityMatrix() {
 
 function checkLiveClientEvidence() {
   const matrix = readJson('compat/client-matrix.json')
+  const promotedRows = matrix.entries.filter(
+    (entry) => entry.verificationLevel !== 'fixture_only',
+  )
+  const promotedRowsWithoutEvidence = promotedRows.filter(
+    (entry) => !hasMatrixLiveEvidence(entry),
+  )
+  const evidencePaths = Array.from(
+    new Set(
+      promotedRows
+        .map((entry) => entry.liveEvidence?.path)
+        .filter((entryPath) => typeof entryPath === 'string'),
+    ),
+  )
   const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
-  const evidencePath =
+  const cliEvidencePath =
     typeof cliEntry?.liveEvidence?.path === 'string'
       ? cliEntry.liveEvidence.path
       : 'docs/release/live-client-evidence.md'
+  const browserEntry = matrix.entries.find(
+    (entry) => entry.surface === 'browser_extension',
+  )
+  const browserEvidencePath =
+    typeof browserEntry?.liveEvidence?.path === 'string'
+      ? browserEntry.liveEvidence.path
+      : 'docs/release/browser-extension-live-client-evidence.md'
 
   if (
+    promotedRowsWithoutEvidence.length > 0 ||
     !cliEntry ||
     cliEntry.verificationLevel !== 'live_smoke' ||
     !hasMatrixLiveEvidence(cliEntry)
@@ -386,20 +407,22 @@ function checkLiveClientEvidence() {
     return {
       id: 'live_client_evidence',
       status: 'block',
-      title:
-        'Synthetic CLI live-client evidence is recorded before alpha tagging',
-      evidence: ['compat/client-matrix.json', evidencePath],
+      title: 'Synthetic live-client evidence is recorded before alpha tagging',
+      evidence: ['compat/client-matrix.json', ...evidencePaths],
       details: {
+        promotedRowsWithoutEvidence: promotedRowsWithoutEvidence.map(
+          (entry) => entry.surface,
+        ),
         cliVerificationLevel: cliEntry?.verificationLevel ?? null,
         liveEvidence: cliEntry?.liveEvidence ?? null,
       },
       nextAction:
-        'Run the synthetic CLI login and sync smoke, then link redacted evidence before tagging.',
+        'Run the required synthetic live-client smoke, then link redacted evidence before tagging.',
     }
   }
 
-  const evidenceDoc = readText(evidencePath)
-  const requiredEvidence = [
+  const cliEvidenceDoc = readText(cliEvidencePath)
+  const requiredCliEvidence = [
     'Status: passed',
     'Mode: local synthetic CLI live smoke',
     'Client surface: `cli`',
@@ -416,18 +439,41 @@ function checkLiveClientEvidence() {
     'Non-TLS stderr lines: `0`',
     'Real secrets: none',
   ]
-  const missingEvidence = requiredEvidence.filter(
-    (required) => !evidenceDoc.includes(required),
+  const missingCliEvidence = requiredCliEvidence.filter(
+    (required) => !cliEvidenceDoc.includes(required),
+  )
+  const browserEvidenceDoc =
+    browserEntry?.verificationLevel === 'live_smoke'
+      ? readText(browserEvidencePath)
+      : ''
+  const requiredBrowserEvidence =
+    browserEntry?.verificationLevel === 'live_smoke'
+      ? [
+          'Status: passed',
+          'Mode: local synthetic browser-extension live smoke',
+          'Client surface: `browser_extension`',
+          'Client version: `2026.6.1`',
+          'Server: local wrangler dev worker',
+          'Flow: self-hosted environment selection',
+          'Flow: `/identity/accounts/prelogin/password`',
+          'Flow: `/identity/connect/token`',
+          'Flow: `/api/sync`',
+          'Flow: `/api/accounts/profile`',
+          'Console and runtime exceptions: `0`',
+          'Real secrets: none',
+        ]
+      : []
+  const missingBrowserEvidence = requiredBrowserEvidence.filter(
+    (required) => !browserEvidenceDoc.includes(required),
   )
 
-  if (missingEvidence.length > 0) {
+  if (missingCliEvidence.length > 0 || missingBrowserEvidence.length > 0) {
     return {
       id: 'live_client_evidence',
       status: 'block',
-      title:
-        'Synthetic CLI live-client evidence is recorded before alpha tagging',
-      evidence: ['compat/client-matrix.json', evidencePath],
-      details: { missingEvidence },
+      title: 'Synthetic live-client evidence is recorded before alpha tagging',
+      evidence: ['compat/client-matrix.json', ...evidencePaths],
+      details: { missingCliEvidence, missingBrowserEvidence },
       nextAction:
         'Complete the live-client evidence with flow, client, server, redaction, and result fields.',
     }
@@ -436,9 +482,8 @@ function checkLiveClientEvidence() {
   return {
     id: 'live_client_evidence',
     status: 'pass',
-    title:
-      'Synthetic CLI live-client evidence is recorded before alpha tagging',
-    evidence: ['compat/client-matrix.json', evidencePath],
+    title: 'Synthetic live-client evidence is recorded before alpha tagging',
+    evidence: ['compat/client-matrix.json', ...evidencePaths],
   }
 }
 

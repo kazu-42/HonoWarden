@@ -710,13 +710,14 @@ Implemented:
 
 Current blockers reported by the preflight:
 
-- none after CLI live-client evidence was recorded locally
+- none after CLI and browser-extension live-client evidence was recorded
+  locally
 
 Not implemented:
 
 - real Cloudflare staging deploy
 - deployed Worker HTTP health smoke
-- non-CLI live client evidence
+- desktop/mobile live client evidence
 
 ## Week 26 Cloudflare Resource Evidence
 
@@ -735,7 +736,8 @@ Implemented:
 
 Current blockers reported by the preflight:
 
-- none after CLI live-client evidence was recorded locally
+- none after CLI and browser-extension live-client evidence was recorded
+  locally
 
 Not implemented:
 
@@ -744,7 +746,7 @@ Not implemented:
 - route writes
 - production migration apply
 - deployed Worker HTTP health smoke
-- non-CLI live client evidence
+- desktop/mobile live client evidence
 
 ## Week 26 Live Client Evidence
 
@@ -764,14 +766,21 @@ Implemented:
 - release gate update requiring linked live evidence for promoted matrix rows
 - Android client release metadata refreshed to `2026.6.1` build `21713` while
   keeping the row at `fixture_only`
+- official browser extension `2026.6.1` asset provenance and SHA-256 evidence
+- browser-extension self-hosted host selection against local wrangler dev
+- browser-extension password login, `/api/sync`, account profile reads, and
+  empty-vault render with redacted evidence
+- `compat/client-matrix.json` browser extension row promoted to `live_smoke`
+- browser-extension release evidence document under
+  `docs/release/browser-extension-live-client-evidence.md`
+- release gate update listing all promoted row live-evidence paths
 
 Not implemented:
 
-- browser extension live evidence
 - desktop live evidence
 - mobile live evidence
 - live TOTP login evidence
-- live item mutation evidence
+- live item mutation evidence beyond the existing CLI smoke
 
 ## Week 26 Server Config Fixture Coverage
 
