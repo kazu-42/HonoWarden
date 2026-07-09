@@ -1762,3 +1762,31 @@ Not implemented:
   passed health checks and no incident required rollback
 - production secret writes, public registration enablement, or real vault-data
   dogfood
+
+## Week 26 Access Token Key Rotation Support
+
+Implemented:
+
+- access-token signing accepts an explicit signing key and emits a JWT `kid`
+  when `HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID` and
+  `HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET` are configured
+- access-token verification accepts an active key, previous keys, and legacy
+  no-kid fallback while preserving the existing `HONOWARDEN_TOKEN_SECRET`
+  refresh-token hash behavior
+- unknown `kid` values fail closed and do not fall back to legacy verification
+- partial active-key config, malformed previous-key JSON, and duplicate key ids
+  fail closed with `server_misconfigured`
+- token exchange signs both password-grant and refresh-grant access tokens with
+  the active key when staged rotation is enabled
+- authenticated routes accept tokens from previous keys and legacy no-kid tokens
+  during the migration window
+- `docs/operations/access-token-key-rotation.md` records staged rollout,
+  verification, rollback, and evidence rules
+- security docs and local operator env placeholders now distinguish
+  access-token signing-key rotation from `HONOWARDEN_TOKEN_SECRET` rotation
+
+Not implemented:
+
+- live staging or production access-token signing-key rotation drill
+- production secret rotation or forced re-login exercise
+- asymmetric signing keys or JWKS publication

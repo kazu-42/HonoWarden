@@ -47,7 +47,9 @@ Security notes:
 6. TOTP-enabled users receive a device-bound challenge before token issuance.
 7. Successful password grant resets login defenses, inserts a device row, stores
    a secret-bound refresh-token hash, and returns an access token plus refresh
-   token.
+   token. If an active access-token signing key is configured, the access token
+   is signed with that key and carries its JWT `kid`; otherwise it uses the
+   legacy no-kid token secret path.
 
 Data stored:
 
@@ -62,14 +64,19 @@ Data stored:
 3. D1 session row must exist, be unrevoked, be unexpired, belong to an active
    user, and belong to an active device.
 4. Worker revokes the current token and inserts a child refresh token.
-5. Reuse detection invalidates the session and emits an audit event when
+5. Worker issues the new access token with the active access-token signing key
+   when configured, while refresh-token hashing remains bound to
+   `HONOWARDEN_TOKEN_SECRET`.
+6. Reuse detection invalidates the session and emits an audit event when
    enabled.
 
 ## Sync And Vault CRUD
 
 1. Client sends bearer access token to `/api/sync` or vault mutation routes.
 2. Worker verifies token signature, expiry, subject, device claim, and security
-   stamp.
+   stamp. JWT `kid` values must match the active or previous access-token
+   keyring; legacy no-kid tokens are accepted only through the configured
+   fallback window.
 3. Worker loads the active user and rejects disabled users.
 4. Folder and cipher repository calls bind `auth.user.id`.
 5. Cipher and folder payloads remain opaque encrypted strings to the server.

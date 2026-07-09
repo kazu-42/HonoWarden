@@ -696,6 +696,59 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('signs password-grant access tokens with the configured active key id', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+          'Device-Name': 'Fixture Device',
+          'Device-Type': '9',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'Person@Example.Test',
+          password: 'synthetic-master-password-hash',
+          scope: 'api offline_access',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'legacy-token-secret',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID: '2026-07-active',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET: 'active-access-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { access_token: string }
+    expect(decodeJwtHeader(body.access_token)).toMatchObject({
+      kid: '2026-07-active',
+    })
+    await expect(
+      verifyAccessToken(
+        {
+          active: {
+            id: '2026-07-active',
+            secret: 'active-access-secret',
+          },
+          legacySecrets: ['legacy-token-secret'],
+        },
+        body.access_token,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      keyId: '2026-07-active',
+      claims: {
+        authMethod: 'password',
+      },
+    })
+  })
+
   it('returns a TOTP challenge instead of tokens after primary password succeeds', async () => {
     const encryptedSecret = await encryptTotpSecret(
       'test-totp-secret',
@@ -865,6 +918,77 @@ describe('HonoWarden app', () => {
         password: 'synthetic-master-password-hash',
       }),
     })
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+      },
+    })
+  })
+
+  it('fails token exchange closed when active access-token key config is partial', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID: '2026-07-active',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+      },
+    })
+  })
+
+  it('fails token exchange closed when access-token key ids are duplicated', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID: '2026-07-active',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET: 'active-access-secret',
+        HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS: JSON.stringify([
+          {
+            kid: '2026-07-active',
+            secret: 'previous-access-secret',
+          },
+        ]),
+      },
+    )
 
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toMatchObject({
@@ -1146,6 +1270,55 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('signs refresh-grant access tokens with the configured active key id', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          refreshSession: refreshTokenSessionRecord(),
+          refreshRotationChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID: '2026-07-active',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET: 'active-access-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { access_token: string }
+    expect(decodeJwtHeader(body.access_token)).toMatchObject({
+      kid: '2026-07-active',
+    })
+    await expect(
+      verifyAccessToken(
+        {
+          active: {
+            id: '2026-07-active',
+            secret: 'active-access-secret',
+          },
+          legacySecrets: ['test-token-secret'],
+        },
+        body.access_token,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      keyId: '2026-07-active',
+      claims: {
+        authMethod: 'refresh',
+      },
+    })
+  })
+
   it('invalidates a refresh token session when a revoked token is reused', async () => {
     const response = await app.request(
       '/identity/connect/token',
@@ -1282,6 +1455,111 @@ describe('HonoWarden app', () => {
         code: 'server_misconfigured',
       },
       requestId: 'sync-missing-secret-request',
+    })
+  })
+
+  it('accepts previous access-token signing keys during staged rotation', async () => {
+    const user = authUserRecord()
+    const accessToken = await signAccessToken(
+      { id: '2026-06-previous', secret: 'previous-access-secret' },
+      {
+        sub: user.id,
+        email: user.emailNormalized,
+        device: 'fixture-device',
+        securityStamp: user.securityStamp,
+        iat: 1,
+        exp: 4_102_444_800,
+      },
+    )
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID: '2026-07-active',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET: 'active-access-secret',
+        HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS: JSON.stringify([
+          {
+            kid: '2026-06-previous',
+            secret: 'previous-access-secret',
+          },
+        ]),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'sync',
+      Profile: {
+        Id: user.id,
+      },
+    })
+  })
+
+  it('keeps legacy no-kid access tokens valid during staged rotation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID: '2026-07-active',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET: 'active-access-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'sync',
+      Profile: {
+        Id: user.id,
+      },
+    })
+  })
+
+  it('fails authenticated routes closed when previous access-token keys are malformed', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'sync-malformed-previous-keys-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID: '2026-07-active',
+        HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET: 'active-access-secret',
+        HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS: 'not-json',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+      },
+      requestId: 'sync-malformed-previous-keys-request',
     })
   })
 
@@ -5219,6 +5497,15 @@ function buildDevicePathId(deviceIdentifier: string): string {
 
 function base64UrlEncode(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url')
+}
+
+function decodeJwtHeader(token: string): Record<string, unknown> {
+  const [encodedHeader] = token.split('.')
+  expect(encodedHeader).toBeDefined()
+
+  return JSON.parse(
+    Buffer.from(encodedHeader ?? '', 'base64url').toString('utf8'),
+  ) as Record<string, unknown>
 }
 
 async function accessTokenFor(

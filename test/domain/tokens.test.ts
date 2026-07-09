@@ -157,6 +157,26 @@ describe('token domain', () => {
     expect(token.split('.')).toHaveLength(3)
   })
 
+  it('signs access tokens with a key id when a signing key is configured', async () => {
+    const token = await signAccessToken(
+      { id: '2026-07-active', secret: 'active-secret' },
+      {
+        sub: 'user-id',
+        email: 'person@example.test',
+        device: 'device-id',
+        securityStamp: 'security-stamp',
+        iat: 1,
+        exp: 2,
+      },
+    )
+
+    expect(decodeSegment(token.split('.')[0])).toMatchObject({
+      alg: 'HS256',
+      typ: 'JWT',
+      kid: '2026-07-active',
+    })
+  })
+
   it('verifies signed access tokens', async () => {
     const token = await signAccessToken('secret', {
       sub: 'user-id',
@@ -177,6 +197,118 @@ describe('token domain', () => {
         iat: 1,
         exp: 100,
       },
+    })
+  })
+
+  it('verifies active and previous key ids from a staged access-token keyring', async () => {
+    const activeToken = await signAccessToken(
+      { id: '2026-07-active', secret: 'active-secret' },
+      {
+        sub: 'active-user-id',
+        email: 'person@example.test',
+        device: 'device-id',
+        securityStamp: 'security-stamp',
+        iat: 1,
+        exp: 100,
+      },
+    )
+    const previousToken = await signAccessToken(
+      { id: '2026-07-previous', secret: 'previous-secret' },
+      {
+        sub: 'previous-user-id',
+        email: 'person@example.test',
+        device: 'device-id',
+        securityStamp: 'security-stamp',
+        iat: 1,
+        exp: 100,
+      },
+    )
+
+    const keyring = {
+      active: { id: '2026-07-active', secret: 'active-secret' },
+      previous: [{ id: '2026-07-previous', secret: 'previous-secret' }],
+    }
+
+    await expect(verifyAccessToken(keyring, activeToken, 2)).resolves.toEqual({
+      ok: true,
+      keyId: '2026-07-active',
+      claims: {
+        sub: 'active-user-id',
+        email: 'person@example.test',
+        device: 'device-id',
+        securityStamp: 'security-stamp',
+        iat: 1,
+        exp: 100,
+      },
+    })
+    await expect(verifyAccessToken(keyring, previousToken, 2)).resolves.toEqual(
+      {
+        ok: true,
+        keyId: '2026-07-previous',
+        claims: {
+          sub: 'previous-user-id',
+          email: 'person@example.test',
+          device: 'device-id',
+          securityStamp: 'security-stamp',
+          iat: 1,
+          exp: 100,
+        },
+      },
+    )
+  })
+
+  it('keeps legacy no-kid access tokens valid during staged rotation', async () => {
+    const legacyToken = await signAccessToken('legacy-secret', {
+      sub: 'legacy-user-id',
+      email: 'person@example.test',
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+    })
+
+    await expect(
+      verifyAccessToken(
+        {
+          active: { id: '2026-07-active', secret: 'active-secret' },
+          previous: [{ id: '2026-07-previous', secret: 'previous-secret' }],
+          legacySecrets: ['legacy-secret'],
+        },
+        legacyToken,
+        2,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        sub: 'legacy-user-id',
+      },
+    })
+  })
+
+  it('rejects access tokens with unknown key ids', async () => {
+    const token = await signAccessToken(
+      { id: 'unknown-key', secret: 'active-secret' },
+      {
+        sub: 'user-id',
+        email: 'person@example.test',
+        device: 'device-id',
+        securityStamp: 'security-stamp',
+        iat: 1,
+        exp: 100,
+      },
+    )
+
+    await expect(
+      verifyAccessToken(
+        {
+          active: { id: '2026-07-active', secret: 'active-secret' },
+        },
+        token,
+        2,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'invalid',
     })
   })
 
@@ -276,3 +408,10 @@ describe('token domain', () => {
     })
   })
 })
+
+function decodeSegment(value: string | undefined): Record<string, unknown> {
+  expect(value).toBeDefined()
+
+  return JSON.parse(Buffer.from(value ?? '', 'base64url').toString('utf8')) as
+    Record<string, unknown> | never
+}

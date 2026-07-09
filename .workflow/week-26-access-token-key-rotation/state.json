@@ -1,0 +1,31 @@
+{
+  "title": "Week 26 Access Token Key Rotation",
+  "slug": "week-26-access-token-key-rotation",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "reason": "Code, tests, docs, and workflow evidence only. Live secret rotation remains out of scope for HON-45."
+  },
+  "packets": [
+    {
+      "id": "implementation",
+      "status": "completed",
+      "path": "packets/implementation.md"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "commands": [
+      "pnpm exec vitest run test/domain/tokens.test.ts test/app.test.ts",
+      "pnpm exec vitest run test/ops/access-token-key-rotation.test.ts",
+      "pnpm exec vitest run test/ops/ops-readiness-packet.test.ts",
+      "pnpm check",
+      "pnpm format",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm release:gate -- --strict",
+      "git diff --check"
+    ],
+    "remaining": []
+  }
+}

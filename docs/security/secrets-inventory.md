@@ -1,26 +1,29 @@
 # Secrets Inventory
 
-Last reviewed: 2026-07-06.
+Last reviewed: 2026-07-09.
 
 This inventory distinguishes true secrets from sensitive operational artifacts.
 Do not commit real secret values to the repository.
 
 ## Runtime Secrets
 
-| Name                         | Required For                                   | Storage                      | Rotation Trigger                                                 | Failure Mode                                        |
-| ---------------------------- | ---------------------------------------------- | ---------------------------- | ---------------------------------------------------------------- | --------------------------------------------------- |
-| `HONOWARDEN_BOOTSTRAP_TOKEN` | restricted account bootstrap                   | Wrangler secret or local env | suspected exposure, operator change, after bootstrap window      | bootstrap returns forbidden or disabled             |
-| `HONOWARDEN_TOKEN_SECRET`    | access-token signing and refresh-token hashing | Wrangler secret or local env | suspected exposure, release key rotation, environment compromise | token exchange and authenticated routes fail closed |
-| `HONOWARDEN_TOTP_SECRET`     | AES-GCM wrapping of TOTP setup secrets         | Wrangler secret or local env | suspected exposure or planned TOTP re-enrollment event           | TOTP setup/login fails closed                       |
+| Name                                    | Required For                                                                  | Storage                      | Rotation Trigger                                                 | Failure Mode                                        |
+| --------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------- | --------------------------------------------------- |
+| `HONOWARDEN_BOOTSTRAP_TOKEN`            | restricted account bootstrap                                                  | Wrangler secret or local env | suspected exposure, operator change, after bootstrap window      | bootstrap returns forbidden or disabled             |
+| `HONOWARDEN_TOKEN_SECRET`               | refresh-token hashing and legacy no-kid access-token fallback                 | Wrangler secret or local env | suspected exposure, release key rotation, environment compromise | token exchange and authenticated routes fail closed |
+| `HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET` | active key-id access-token signing when staged key rotation is enabled        | Wrangler secret or local env | suspected exposure, staged access-token key rotation             | token exchange and authenticated routes fail closed |
+| `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS` | previous key-id access-token verification during a staged access-token rotate | Wrangler secret or local env | previous key retirement after token TTL and safety window        | token exchange and authenticated routes fail closed |
+| `HONOWARDEN_TOTP_SECRET`                | AES-GCM wrapping of TOTP setup secrets                                        | Wrangler secret or local env | suspected exposure or planned TOTP re-enrollment event           | TOTP setup/login fails closed                       |
 
 ## Runtime Configuration
 
-| Name                           | Secret?                         | Security Role                                           |
-| ------------------------------ | ------------------------------- | ------------------------------------------------------- |
-| `HONOWARDEN_ALLOWED_EMAILS`    | no, but operationally sensitive | restricts bootstrap/prelogin account set                |
-| `HONOWARDEN_BOOTSTRAP_ENABLED` | no                              | keeps bootstrap default-off                             |
-| `HONOWARDEN_AUDIT_LOGS`        | no                              | controls audit JSON-line emission                       |
-| `HONOWARDEN_ENV`               | no                              | separates development, staging, and production behavior |
+| Name                                 | Secret?                                        | Security Role                                                 |
+| ------------------------------------ | ---------------------------------------------- | ------------------------------------------------------------- |
+| `HONOWARDEN_ALLOWED_EMAILS`          | no, but operationally sensitive                | restricts bootstrap/prelogin account set                      |
+| `HONOWARDEN_BOOTSTRAP_ENABLED`       | no                                             | keeps bootstrap default-off                                   |
+| `HONOWARDEN_AUDIT_LOGS`              | no                                             | controls audit JSON-line emission                             |
+| `HONOWARDEN_ENV`                     | no                                             | separates development, staging, and production behavior       |
+| `HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID` | no, but rotate with the matching active secret | identifies the active access-token signing key in JWT headers |
 
 ## Sensitive Stored Data
 
@@ -40,8 +43,16 @@ Do not commit real secret values to the repository.
 
 ## Rotation Notes
 
-- Token secret rotation invalidates existing access tokens and refresh-token
-  hash lookups. Plan a forced re-login window.
+- Access-token key rotation should use
+  [Access Token Key Rotation](../operations/access-token-key-rotation.md).
+  The active key signs new tokens with a JWT `kid`, previous keys verify tokens
+  issued before the rotate, and `HONOWARDEN_TOKEN_SECRET` remains the legacy
+  no-kid fallback while refresh-token hashes are preserved.
+- `HONOWARDEN_TOKEN_SECRET` rotation invalidates existing refresh-token hash
+  lookups and legacy no-kid access-token fallback. Plan forced re-login and
+  session invalidation when that secret is affected.
+- Partial or malformed access-token keyring configuration fails closed instead
+  of silently falling back to `HONOWARDEN_TOKEN_SECRET`.
 - TOTP secret rotation requires re-wrapping or re-enrolling TOTP setup secrets.
   There is no migration tool yet.
 - Bootstrap token should be short-lived operationally even if the route remains

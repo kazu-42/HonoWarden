@@ -13,13 +13,13 @@ documents.
 
 ## Incident Classes
 
-| Class                                   | Examples                                                                                                       | Initial severity |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------- |
-| Token or secret exposure                | `HONOWARDEN_TOKEN_SECRET`, `HONOWARDEN_TOTP_SECRET`, bootstrap token, Cloudflare key, Linear key, GitHub token | high             |
-| Vault data exposure suspicion           | public logs, backup directory leak, D1/R2 object exposure, accidental response-body capture                    | high             |
-| Email abuse or disclosure inbox failure | forged report flood, route disabled, destination unavailable, metadata published while delivery fails          | medium           |
-| Cloudflare account compromise           | unauthorized deploy, DNS/MX change, Worker route change, D1/R2 mutation, account member change                 | critical         |
-| Availability regression                 | unhealthy Worker deploy, migration mismatch, website outage, Email Routing outage                              | medium           |
+| Class                                   | Examples                                                                                                                                  | Initial severity |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Token or secret exposure                | `HONOWARDEN_TOKEN_SECRET`, access-token signing keys, `HONOWARDEN_TOTP_SECRET`, bootstrap token, Cloudflare key, Linear key, GitHub token | high             |
+| Vault data exposure suspicion           | public logs, backup directory leak, D1/R2 object exposure, accidental response-body capture                                               | high             |
+| Email abuse or disclosure inbox failure | forged report flood, route disabled, destination unavailable, metadata published while delivery fails                                     | medium           |
+| Cloudflare account compromise           | unauthorized deploy, DNS/MX change, Worker route change, D1/R2 mutation, account member change                                            | critical         |
+| Availability regression                 | unhealthy Worker deploy, migration mismatch, website outage, Email Routing outage                                                         | medium           |
 
 Escalate severity when user data, secrets, or account control may be affected.
 Downgrade only after readback proves the affected boundary is isolated.
@@ -75,13 +75,20 @@ capture.
 
 1. Stop new deploys and disable any automation using the exposed credential.
 2. Revoke or rotate the exposed credential in its source system.
-3. For `HONOWARDEN_TOKEN_SECRET`, plan forced re-login because access-token
-   signing and refresh-token hash lookup are invalidated by rotation.
-4. For `HONOWARDEN_TOTP_SECRET`, hold rotation until a re-enrollment or
+3. For access-token signing key exposure
+   (`HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET` or a key inside
+   `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS`), remove the exposed `kid` from the
+   verifier set or replace it with a new active key, then verify old tokens with
+   that `kid` fail while unaffected previous or legacy tokens still follow the
+   intended staged-rotation window.
+4. For `HONOWARDEN_TOKEN_SECRET`, plan forced re-login because refresh-token
+   hash lookup and legacy no-kid access-token fallback are invalidated by
+   rotation.
+5. For `HONOWARDEN_TOTP_SECRET`, hold rotation until a re-enrollment or
    re-wrapping plan exists; there is no migration tool yet.
-5. For `HONOWARDEN_BOOTSTRAP_TOKEN`, rotate and keep bootstrap disabled unless
+6. For `HONOWARDEN_BOOTSTRAP_TOKEN`, rotate and keep bootstrap disabled unless
    the incident lead explicitly approves a short bootstrap window.
-6. Run the session/device invalidation path when tokens, refresh sessions, or
+7. Run the session/device invalidation path when tokens, refresh sessions, or
    device credentials may be exposed. Use user/device-scoped revoke routes or
    account lifecycle disablement before considering broad database edits.
 
@@ -89,6 +96,7 @@ References:
 
 - [Secrets Inventory](secrets-inventory.md)
 - [Authentication State Machine](auth-state-machine.md)
+- [Access Token Key Rotation](../operations/access-token-key-rotation.md)
 - [Account Lifecycle Operator Runbook](../operations/account-lifecycle.md)
 
 Formal rotation execution is tracked separately by `HON-60`.

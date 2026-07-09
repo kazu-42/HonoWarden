@@ -36,6 +36,11 @@ import {
   verifyAccessToken,
   verifyPresentedPasswordHash,
 } from './domain/tokens'
+import type {
+  AccessTokenSigningKey,
+  AccessTokenSigner,
+  AccessTokenVerifier,
+} from './domain/tokens'
 import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
 import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
@@ -151,6 +156,17 @@ type AuthenticatedVaultRequest =
   | {
       ok: false
       response: Response
+    }
+
+type AccessTokenRuntimeConfig =
+  | {
+      ok: true
+      refreshTokenSecret: string
+      signer: AccessTokenSigner
+      verifier: AccessTokenVerifier
+    }
+  | {
+      ok: false
     }
 
 const serviceDescription =
@@ -656,8 +672,8 @@ app.post('/api/accounts/bootstrap', async (c) => {
 })
 
 app.post('/identity/connect/token', async (c) => {
-  const tokenSecret = c.env?.HONOWARDEN_TOKEN_SECRET
-  if (!tokenSecret) {
+  const accessTokenConfig = resolveAccessTokenRuntimeConfig(c.env)
+  if (!accessTokenConfig.ok) {
     return c.json(
       {
         error: {
@@ -669,6 +685,7 @@ app.post('/identity/connect/token', async (c) => {
       503,
     )
   }
+  const tokenSecret = accessTokenConfig.refreshTokenSecret
 
   const form = await readFormBody(c.req.raw)
 
@@ -757,7 +774,7 @@ app.post('/identity/connect/token', async (c) => {
         return c.json(tokenErrorResponse(invalidGrantError()), 400)
       }
 
-      const accessToken = await signAccessToken(tokenSecret, {
+      const accessToken = await signAccessToken(accessTokenConfig.signer, {
         sub: session.user.id,
         email: session.user.emailNormalized,
         device: session.deviceIdentifier,
@@ -1083,7 +1100,7 @@ app.post('/identity/connect/token', async (c) => {
       now,
     })
 
-    const accessToken = await signAccessToken(tokenSecret, {
+    const accessToken = await signAccessToken(accessTokenConfig.signer, {
       sub: user.id,
       email: user.emailNormalized,
       device: device.identifier,
@@ -2505,6 +2522,132 @@ app.notFound((c) => {
   )
 })
 
+function resolveAccessTokenRuntimeConfig(
+  env: Bindings | undefined,
+): AccessTokenRuntimeConfig {
+  const refreshTokenSecret = normalizeSecret(env?.HONOWARDEN_TOKEN_SECRET)
+  if (!refreshTokenSecret) {
+    return { ok: false }
+  }
+
+  const activeKid = normalizeKeyId(env?.HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID)
+  const activeSecret = normalizeSecret(
+    env?.HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET,
+  )
+  const previousKeysRaw = normalizeOptionalString(
+    env?.HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS,
+  )
+
+  if (!activeKid && !activeSecret && !previousKeysRaw) {
+    return {
+      ok: true,
+      refreshTokenSecret,
+      signer: refreshTokenSecret,
+      verifier: refreshTokenSecret,
+    }
+  }
+
+  if (!activeKid || !activeSecret) {
+    return { ok: false }
+  }
+
+  const previousKeys = parsePreviousAccessTokenKeys(previousKeysRaw)
+  if (!previousKeys.ok) {
+    return { ok: false }
+  }
+
+  const activeKey = {
+    id: activeKid,
+    secret: activeSecret,
+  }
+  if (hasDuplicateAccessTokenKeyIds(activeKey, previousKeys.keys)) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    refreshTokenSecret,
+    signer: activeKey,
+    verifier: {
+      active: activeKey,
+      previous: previousKeys.keys,
+      legacySecrets: [refreshTokenSecret],
+    },
+  }
+}
+
+function parsePreviousAccessTokenKeys(
+  raw: string | null,
+): { ok: true; keys: AccessTokenSigningKey[] } | { ok: false } {
+  if (!raw) {
+    return { ok: true, keys: [] }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { ok: false }
+  }
+
+  if (!Array.isArray(parsed)) {
+    return { ok: false }
+  }
+
+  const keys: AccessTokenSigningKey[] = []
+  for (const entry of parsed) {
+    if (!isRecord(entry)) {
+      return { ok: false }
+    }
+
+    const id = normalizeKeyId(entry.kid)
+    const secret = normalizeSecret(entry.secret)
+    if (!id || !secret) {
+      return { ok: false }
+    }
+
+    keys.push({ id, secret })
+  }
+
+  return { ok: true, keys }
+}
+
+function hasDuplicateAccessTokenKeyIds(
+  activeKey: AccessTokenSigningKey,
+  previousKeys: readonly AccessTokenSigningKey[],
+): boolean {
+  const seenIds = new Set([activeKey.id])
+
+  for (const key of previousKeys) {
+    if (seenIds.has(key.id)) {
+      return true
+    }
+    seenIds.add(key.id)
+  }
+
+  return false
+}
+
+function normalizeKeyId(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null
+}
+
+function normalizeSecret(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 function buildTokenResponse(
   user: AuthUserRecord,
   accessToken: string,
@@ -3180,8 +3323,8 @@ function revisionConflictError(requestIdValue: string) {
 async function authenticateVaultRequest(
   c: AppContext,
 ): Promise<AuthenticatedVaultRequest> {
-  const tokenSecret = c.env?.HONOWARDEN_TOKEN_SECRET
-  if (!tokenSecret) {
+  const accessTokenConfig = resolveAccessTokenRuntimeConfig(c.env)
+  if (!accessTokenConfig.ok) {
     return {
       ok: false,
       response: c.json(
@@ -3210,7 +3353,10 @@ async function authenticateVaultRequest(
     }
   }
 
-  const verification = await verifyAccessToken(tokenSecret, accessToken)
+  const verification = await verifyAccessToken(
+    accessTokenConfig.verifier,
+    accessToken,
+  )
   if (!verification.ok) {
     return {
       ok: false,

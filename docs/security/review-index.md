@@ -9,6 +9,7 @@ Use these documents together when reviewing alpha readiness:
 - [Authentication State Machine](auth-state-machine.md)
 - [Secrets Inventory](secrets-inventory.md)
 - [Incident Response Runbook](incident-response.md)
+- [Access Token Key Rotation Runbook](../operations/access-token-key-rotation.md)
 - [Incident Response Exercise Evidence](incident-response-exercise.md)
 - [Known Limitations](known-limitations.md)
 - [Dependency Audit Evidence](dependency-audit.md)
