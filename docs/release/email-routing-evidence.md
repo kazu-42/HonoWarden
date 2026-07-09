@@ -140,10 +140,18 @@ Local preflight:
 
 Inbound smoke:
 
-- Status: `not_performed`
-- Required before `Status: passed`: send an external test message to each
-  required route, confirm receipt at the verified destination, and record only
-  redacted timestamps or message ids.
+- Status: `sent_pending_receipt`
+- Send attempt reported by operator at `2026-07-09 22:40 JST`.
+- Sender: redacted external mailbox on the `ghive.jp` domain.
+- Subject: `テスト`
+- Body: empty
+- Reported recipients: all six required routes:
+  `security`, `support`, `hello`, `admin`, `postmaster`, and `abuse`.
+- Cloudflare route readback after the send attempt still reported
+  `enabled: true`, status `ready`, six enabled forwarding rules, and one
+  verified destination tag.
+- Required before `Status: passed`: confirm receipt at the verified destination
+  for each required route and record only redacted timestamps or message ids.
 - `security@honowarden.com` should not be advertised as an active disclosure
   mailbox until inbound delivery for that route is confirmed.
 
@@ -224,7 +232,7 @@ that could read and write Email Routing. That blocker was resolved on
 
 ## Not Performed
 
-- Inbound email smoke has not been performed by this evidence file.
+- Inbound receipt confirmation has not been recorded by this evidence file.
 - Security contact metadata has not been published from this evidence file.
 - No message body, attachment, private forwarding destination, operator email,
   token, or global key value has been stored by this evidence file.
