@@ -166,9 +166,11 @@ payloads, request bodies, or response bodies.
 
 1. Operator runs the backup CLI.
 2. Dry-run is default.
-3. Executed export writes D1 SQL, optional R2 object files, and manifest data.
-4. Restore validates manifest schema, relative paths, R2 path containment, and
-   SHA-256 hashes.
-5. Restore execution requires `--confirm-fresh-target`.
+3. Remote R2 backup can discover object keys through the S3-compatible
+   `ListObjectsV2` API without downloading object bodies during dry-run.
+4. Executed export writes D1 SQL, optional R2 object files, and manifest data.
+5. Restore validates manifest schema, deterministic R2 key/file mapping,
+   relative paths, R2 path containment, and SHA-256 hashes.
+6. Restore execution requires `--confirm-fresh-target`.
 
 Backup directories remain sensitive even when vault payloads are encrypted.

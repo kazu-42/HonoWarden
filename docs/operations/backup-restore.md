@@ -19,8 +19,9 @@ correct and the operation is safe.
 
 The backup directory contains:
 
-- `backup-manifest.json`: schema version, source resource names, object list,
-  planned commands, and file checksums after an executed export
+- `backup-manifest.json`: schema version, source resource names, object list
+  source, object list, planned commands, and file checksums after an executed
+  export
 - `d1.sql`: D1 SQL export
 - `r2/`: object files named by base64url-encoded object keys
 
@@ -28,11 +29,19 @@ The backup still contains sensitive encrypted application data and operational
 metadata. Store it as sensitive data even though HonoWarden never decrypts vault
 payloads server-side.
 
-## R2 Object List
+## R2 Object Discovery
 
 Wrangler's `r2 object get` and `put` commands operate on a single object path.
-The wrapper therefore requires an explicit object key list when R2 objects need
-to be captured:
+Wrangler 4.107 does not expose an `r2 object list` command, so the wrapper has
+two object discovery modes:
+
+1. `--r2-objects <file>` for local/offline drills with a reviewed object key
+   list.
+2. `--r2-list` for remote object discovery through Cloudflare R2's
+   S3-compatible `ListObjectsV2` API.
+
+Use an explicit object key list when R2 objects need to be captured in local
+mode:
 
 ```text
 attachments/object-one
@@ -52,6 +61,34 @@ pnpm backup:export -- \
 
 Blank lines and `#` comments are ignored. Duplicate keys are de-duplicated while
 preserving first-seen order.
+
+Use automatic listing for remote backups:
+
+```sh
+R2_ACCESS_KEY_ID=... \
+R2_SECRET_ACCESS_KEY=... \
+CLOUDFLARE_ACCOUNT_ID=... \
+pnpm backup:export -- \
+  --out backups/20260706T000000Z \
+  --database honowarden \
+  --bucket honowarden-vault-objects \
+  --mode remote \
+  --env production \
+  --r2-list \
+  --r2-prefix attachments/
+```
+
+`--r2-list` is remote-only. It requires R2 S3 API credentials through
+`R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`; `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` are accepted aliases for S3-compatible tooling. The
+endpoint defaults to
+`https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`, or can be
+overridden with `--r2-list-endpoint` for controlled drills.
+
+The default list page size is 1000. Use `--r2-list-page-size <1-1000>` when a
+smaller page size is needed for pagination testing. During dry-run, the script
+performs only the listing read so it can plan exact `r2 object get` commands; it
+does not download object bodies unless `--execute` is present.
 
 ## Local Backup
 
@@ -98,7 +135,7 @@ pnpm backup:export -- \
   --bucket honowarden-vault-objects \
   --mode remote \
   --env production \
-  --r2-objects object-keys.txt
+  --r2-list
 ```
 
 Execute only after reviewing the printed commands:
@@ -110,7 +147,7 @@ pnpm backup:export -- \
   --bucket honowarden-vault-objects \
   --mode remote \
   --env production \
-  --r2-objects object-keys.txt \
+  --r2-list \
   --execute
 ```
 
@@ -147,6 +184,8 @@ Before executing any Wrangler command, restore checks:
 - manifest schema version and required fields
 - manifest file paths are relative and cannot escape the backup directory
 - R2 object files stay under `r2/`
+- R2 object file names match the deterministic base64url encoding of their
+  object keys
 - every required file exists
 - every required SHA-256 hash exists and matches the local file
 
