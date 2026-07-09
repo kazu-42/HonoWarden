@@ -31,7 +31,8 @@ inputs, not minor documentation notes.
   controls in D1.
 - Audit event coverage does not include every vault CRUD route.
 - Backup/restore evidence is operator-runbook based; no scheduled job exists.
-- R2 object backup requires an explicit object list.
+- R2 object backup can auto-list remote buckets, but there is no scheduled
+  production backup job or remote production backup evidence yet.
 - TOTP wrapping-secret rotation has no migration tool.
 - Access tokens use a symmetric HMAC secret; there is no key id or staged key
   rotation support yet.

@@ -83,7 +83,10 @@ pnpm backup:export -- --out backups/example --database honowarden --bucket honow
 pnpm backup:restore -- --from backups/example --database honowarden-restore --bucket honowarden-restore-vault-objects --mode local
 ```
 
-They are dry-run by default. See [docs/operations/backup-restore.md](docs/operations/backup-restore.md) before using `--execute`.
+They are dry-run by default. Remote R2 backups can add `--r2-list` to discover
+object keys through the S3-compatible R2 API before planning object downloads.
+See [docs/operations/backup-restore.md](docs/operations/backup-restore.md)
+before using `--execute`.
 
 Generate Cloudflare binding types after editing `wrangler.jsonc`:
 

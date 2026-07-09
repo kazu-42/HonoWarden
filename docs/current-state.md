@@ -293,19 +293,26 @@ Implemented:
 - dry-run default behavior for export and restore planning
 - D1 export planning through `wrangler d1 export`
 - D1 restore planning through `wrangler d1 execute --file`
-- R2 object get/put planning from an explicit object key list
-- backup manifest with schema version, source resource names, object list, planned commands, and restore hint
+- R2 object get/put planning from either an explicit object key list or
+  automatic remote R2 listing
+- automatic remote R2 object discovery through the R2 S3-compatible
+  `ListObjectsV2` API, with prefix filtering and bounded pagination
+- backup manifest with schema version, source resource names, object list
+  source, planned commands, and restore hint
 - SHA-256 file hashes added to the manifest after executed export
-- restore execution preflight for manifest schema, safe relative paths, required checksums, and checksum matches
+- restore execution preflight for manifest schema, deterministic R2 key/file
+  mapping, safe relative paths, required checksums, and checksum matches
 - restore `--execute` guard requiring `--confirm-fresh-target`
 - local-only `--persist-to` handling for commands that support it
 - backup/restore runbook under `docs/operations/backup-restore.md`
-- tests for export planning, restore planning, flag scoping, path traversal rejection, fresh-target confirmation, and checksum mismatch rejection
+- tests for export planning, automatic R2 listing, empty and paginated object
+  lists, duplicate listed keys, restore planning, flag scoping, path traversal
+  rejection, object key/file mismatch rejection, fresh-target confirmation, and
+  checksum mismatch rejection
 - Week 20 dynamic workflow artifacts
 
 Not implemented:
 
-- automatic R2 object listing
 - scheduled backup job
 - remote production backup execution
 - live restore drill evidence
