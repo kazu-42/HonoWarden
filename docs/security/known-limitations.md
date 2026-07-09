@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-06.
+Last reviewed: 2026-07-09.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -12,7 +12,8 @@ inputs, not minor documentation notes.
   exists yet
 - no production backup restore drill has been recorded
 - no Cloudflare account access-control review is documented
-- no incident response runbook exists
+- incident response runbook and tabletop evidence exist, but no live incident,
+  real secret rotation, or external communications drill has been executed
 - no formal secret rotation drill has been run
 
 ## Current Product Gaps
@@ -56,8 +57,6 @@ inputs, not minor documentation notes.
 - Cloudflare log retention and access rules must be decided before enabling
   audit logs in production.
 - Backup directories and manifests need an operator-owned retention policy.
-- Vulnerability disclosure depends on GitHub private vulnerability reporting or
-  a temporary private channel.
-- `security@honowarden.com` inbound routing is smoke-tested, but real
-  vulnerability-report handling still needs the inquiry inbox
-  retention/redaction rules.
+- `security@honowarden.com` inbound routing and public metadata are
+  smoke-tested, but real vulnerability-report handling still needs the inquiry
+  inbox retention/redaction rules.
