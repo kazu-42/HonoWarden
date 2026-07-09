@@ -26,7 +26,10 @@ inputs, not minor documentation notes.
   browser-delivered vault UI, browser session boundary, or static app asset
   supply chain in the alpha scope.
 - Public registration is disabled.
-- Organizations and shared vaults are not implemented.
+- Organizations and shared vaults are intentionally not implemented; ADR 0005
+  keeps them out of the alpha personal-vault product line unless membership,
+  ownership, role, collection-access, cross-user isolation, encrypted key
+  sharing, audit, migration, and rollback design is completed first.
 - Send and public file-sharing are intentionally not implemented; ADR 0003
   requires public access-token entropy, expiration, revocation, rate limits,
   abuse reporting, cache policy, audit, and retention/deletion design before

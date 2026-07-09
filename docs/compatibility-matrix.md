@@ -39,6 +39,12 @@ embedded vault UI. Adding a Web Vault row requires a new ADR, browser security
 review, CSP/static-asset provenance rules, deployment and rollback boundaries,
 and live evidence.
 
+There is intentionally no Organizations or shared vault row. HonoWarden's alpha
+compatibility target is the personal-vault protocol surface. Shared vault
+support would require ADR 0005's membership, ownership, role, collection-access,
+cross-user isolation, encrypted key sharing, audit, migration, rollback, and
+compatibility fixture gates before compatibility can be claimed.
+
 There is intentionally no Send or public file-sharing row. Cipher-scoped
 attachments are authenticated owner-scoped vault operations; public sharing
 would require ADR 0003's access-token, expiration, revocation, rate-limit,
