@@ -1,6 +1,6 @@
 # Security Review Index
 
-Last reviewed: 2026-07-06.
+Last reviewed: 2026-07-09.
 
 Use these documents together when reviewing alpha readiness:
 
@@ -8,6 +8,8 @@ Use these documents together when reviewing alpha readiness:
 - [Data Flow](data-flow.md)
 - [Authentication State Machine](auth-state-machine.md)
 - [Secrets Inventory](secrets-inventory.md)
+- [Incident Response Runbook](incident-response.md)
+- [Incident Response Exercise Evidence](incident-response-exercise.md)
 - [Known Limitations](known-limitations.md)
 - [Dependency Audit Evidence](dependency-audit.md)
 
@@ -31,3 +33,5 @@ Use these documents together when reviewing alpha readiness:
   explicitly approved.
 - Do not use real secrets or real personal vault data during alpha dogfood.
 - Do not treat encrypted payloads, backups, or platform logs as low sensitivity.
+- Do not treat the incident response tabletop as a completed secret rotation,
+  Cloudflare account review, external audit, or production incident drill.

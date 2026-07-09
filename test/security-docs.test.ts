@@ -8,6 +8,8 @@ const securityDocPaths = [
   'data-flow.md',
   'auth-state-machine.md',
   'secrets-inventory.md',
+  'incident-response.md',
+  'incident-response-exercise.md',
   'known-limitations.md',
   'dependency-audit.md',
   'review-index.md',
@@ -46,9 +48,30 @@ describe('security review materials', () => {
     expect(secretsInventory).toContain('HONOWARDEN_TOTP_SECRET')
     expect(secretsInventory).toContain('HONOWARDEN_BOOTSTRAP_TOKEN')
 
+    const incidentResponse = readSecurityDoc('incident-response.md')
+    expect(incidentResponse).toContain('## Detection')
+    expect(incidentResponse).toContain('## Triage')
+    expect(incidentResponse).toContain('## Containment')
+    expect(incidentResponse).toContain('## Communication')
+    expect(incidentResponse).toContain('## Recovery')
+    expect(incidentResponse).toContain('## Postmortem')
+    expect(incidentResponse).toContain('HONOWARDEN_TOKEN_SECRET')
+    expect(incidentResponse).toContain('Operations Rollback Evidence')
+    expect(incidentResponse).toContain('Backup And Restore Runbook')
+    expect(incidentResponse).toContain('Account Lifecycle Operator Runbook')
+
+    const incidentExercise = readSecurityDoc('incident-response-exercise.md')
+    expect(incidentExercise).toContain('Status: passed')
+    expect(incidentExercise).toContain('Simulated combined incident')
+    expect(incidentExercise).toContain('HON-60')
+    expect(incidentExercise).toContain('HON-58')
+    expect(incidentExercise).toContain('HON-57')
+    expect(incidentExercise).toContain('HON-49')
+
     const knownLimitations = readSecurityDoc('known-limitations.md')
     expect(knownLimitations).toContain('pre-alpha')
     expect(knownLimitations).toContain('no independent security audit')
+    expect(knownLimitations).toContain('incident response runbook')
 
     const dependencyAudit = readSecurityDoc('dependency-audit.md')
     expect(dependencyAudit).toContain('pnpm audit --audit-level low')
