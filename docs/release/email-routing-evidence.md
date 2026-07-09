@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Status: partial.
+Status: passed.
 
 Mode: Cloudflare Email Routing setup and inbound smoke evidence.
 
@@ -140,7 +140,7 @@ Local preflight:
 
 Inbound smoke:
 
-- Status: `cloudflare_delivered_pending_inbox_visibility`
+- Status: `passed`
 - Send attempt reported by operator at `2026-07-09 22:40 JST`.
 - Sender: redacted external mailbox on the `ghive.jp` domain.
 - Subject: `テスト`
@@ -160,13 +160,13 @@ Inbound smoke:
 - SPF/DKIM/DMARC readback: `spf: pass`, `dkim: pass`, `dmarc: none`.
 - Spam readback: `isSpam: 0`, `spamScore: 1`.
 - Error readback: empty `errorDetail`.
-- Operator reported that the forwarded mail was not visible in the checked
-  destination inbox at the time of readback.
-- Required before `Status: passed`: confirm mailbox visibility or record the
-  destination-side quarantine/filter reason without exposing private mailbox
-  contents.
-- `security@honowarden.com` should not be advertised as an active disclosure
-  mailbox until inbound delivery for that route is confirmed.
+- Operator confirmed that the forwarded test mail was visible in the verified
+  destination inbox at `2026-07-09 22:59 JST`.
+- Mailbox visibility was confirmed without recording message bodies, mailbox
+  contents, or the private destination address.
+- `security@honowarden.com` may now be referenced by future security metadata
+  work, but real vulnerability-report handling still depends on the separate
+  retention and redaction controls tracked for the inquiry inbox.
 
 ## Previous Readback: 2026-07-08
 
@@ -245,8 +245,6 @@ that could read and write Email Routing. That blocker was resolved on
 
 ## Not Performed
 
-- Destination inbox visibility confirmation has not been recorded by this
-  evidence file.
 - Security contact metadata has not been published from this evidence file.
 - No message body, attachment, private forwarding destination, operator email,
   token, or global key value has been stored by this evidence file.

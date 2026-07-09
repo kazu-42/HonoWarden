@@ -165,8 +165,7 @@ describe('release feature-freeze docs', () => {
       'pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes',
     )
 
-    expect(emailEvidence).toContain('Status: partial')
-    expect(emailEvidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(emailEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
     expect(emailEvidence).toContain('approval')
     expect(emailEvidence).toContain('Current Readback: 2026-07-09')
     expect(emailEvidence).toMatch(/Cloudflare[\s\S]+global\s+API key auth/)
@@ -177,13 +176,12 @@ describe('release feature-freeze docs', () => {
     expect(emailEvidence).toContain('c303ee9d52e94355a6a5c0680163927c')
     expect(emailEvidence).toContain('905639146eeaf7449af796d7bef2a8ab')
     expect(emailEvidence).toContain('Inbound smoke')
-    expect(emailEvidence).toContain(
-      'Status: `cloudflare_delivered_pending_inbox_visibility`',
-    )
+    expect(emailEvidence).toContain('Status: `passed`')
     expect(emailEvidence).toContain('redacted external mailbox')
     expect(emailEvidence).toContain('Subject: `テスト`')
     expect(emailEvidence).toContain('Cloudflare status for all six')
     expect(emailEvidence).toContain('Message ID hash tag')
+    expect(emailEvidence).toContain('visible in the verified')
     expect(emailEvidence).toContain('rollback')
 
     expect(rollbackEvidence).toContain('Status: partial')

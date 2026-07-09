@@ -514,7 +514,8 @@ Implemented:
 Not implemented:
 
 - live Linear API writes with a HonoWarden workspace key
-- inbound email smoke confirmation for the configured project mail routes
+- security metadata publication and AI inquiry inbox implementation after
+  verified Email Routing
 
 ## Week 26 Release Gate Preflight
 
@@ -1704,6 +1705,9 @@ Implemented:
   `docs/release/email-routing-evidence.md`
 - DNS readback for `honowarden.com` now shows Cloudflare-managed MX records and
   SPF TXT for Email Routing
+- inbound smoke passed for the six configured routes: Cloudflare Email Routing
+  activity logs show `delivered`/`forward`, and the operator confirmed mailbox
+  visibility without recording private mailbox contents
 - `docs/release/ops-rollback-evidence.md` records Email Routing rule IDs and
   DNS record IDs for rollback handling
 - AI-driven inquiry inbox architecture is documented in
@@ -1715,7 +1719,6 @@ Implemented:
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- inbound delivery smoke evidence for the configured Email Routing routes
 - AI inquiry inbox Worker, mailbox UI, body or attachment storage, AI triage,
   approved outbound replies, and Linear issue creation automation
 - verified safe rollback target selection for the API Worker

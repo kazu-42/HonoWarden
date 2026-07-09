@@ -168,9 +168,12 @@ Email:
   `postmaster`, and `abuse`.
 - The configured destination count is `1` and the destination is verified in
   Cloudflare.
-- Inbound smoke has not yet been recorded for all required routes.
-- `security@honowarden.com` should not be advertised as an active disclosure
-  mailbox until an inbound test succeeds.
+- Inbound smoke has passed for all required routes, with Cloudflare activity
+  logs showing delivered forwarding events and operator-confirmed mailbox
+  visibility.
+- `security@honowarden.com` can be referenced by future security metadata work,
+  but real vulnerability-report handling still depends on the inquiry inbox
+  retention and redaction controls.
 
 ## Rollback
 

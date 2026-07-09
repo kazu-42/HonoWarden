@@ -58,6 +58,6 @@ inputs, not minor documentation notes.
 - Backup directories and manifests need an operator-owned retention policy.
 - Vulnerability disclosure depends on GitHub private vulnerability reporting or
   a temporary private channel.
-- `security@honowarden.com` must not accept real vulnerability-report content
-  until inbound smoke evidence and the inquiry inbox retention/redaction rules
-  are implemented.
+- `security@honowarden.com` inbound routing is smoke-tested, but real
+  vulnerability-report handling still needs the inquiry inbox
+  retention/redaction rules.
