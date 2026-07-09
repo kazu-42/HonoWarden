@@ -37,7 +37,70 @@ describe('HonoWarden scheduled maintenance', () => {
     ).resolves.toBeUndefined()
 
     expect(cleanup).toHaveBeenCalledTimes(1)
-    expect(cleanup).toHaveBeenCalledWith(db, '2026-07-08T00:00:00.000Z')
+    expect(cleanup).toHaveBeenCalledWith(db, '2026-07-08T00:00:00.000Z', {
+      auditEvents: false,
+    })
+    expect(context.waitUntil).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs bounded audit-event retention cleanup from the scheduled handler', async () => {
+    const db = new FakeD1Database('0007', [])
+    const context = {
+      waitUntil: vi.fn(),
+      passThroughOnException: vi.fn(),
+    } as unknown as ExecutionContext
+
+    await expect(
+      worker.scheduled(
+        {
+          scheduledTime: Date.UTC(2026, 6, 9, 0, 0, 0),
+          cron: '0 * * * *',
+          type: 'scheduled',
+          noRetry: vi.fn(),
+        } as ScheduledController,
+        {
+          DB: db as unknown as D1Database,
+          HONOWARDEN_AUDIT_LOGS: 'true',
+          VAULT_OBJECTS: {} as unknown as R2Bucket,
+        },
+        context,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(db.auditEventCleanupDeletes).toEqual([
+      {
+        expiredBefore: '2025-07-09T00:00:00.000Z',
+        limit: 100,
+      },
+    ])
+    expect(context.waitUntil).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips audit-event cleanup while audit logging is disabled', async () => {
+    const db = new FakeD1Database('0006', [])
+    const context = {
+      waitUntil: vi.fn(),
+      passThroughOnException: vi.fn(),
+    } as unknown as ExecutionContext
+
+    await expect(
+      worker.scheduled(
+        {
+          scheduledTime: Date.UTC(2026, 6, 9, 0, 0, 0),
+          cron: '0 * * * *',
+          type: 'scheduled',
+          noRetry: vi.fn(),
+        } as ScheduledController,
+        {
+          DB: db as unknown as D1Database,
+          HONOWARDEN_AUDIT_LOGS: 'false',
+          VAULT_OBJECTS: {} as unknown as R2Bucket,
+        },
+        context,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(db.auditEventCleanupDeletes).toEqual([])
     expect(context.waitUntil).toHaveBeenCalledTimes(1)
   })
 })

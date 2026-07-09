@@ -52,6 +52,7 @@ import {
   findCipherAttachment,
   listCipherAttachmentsByUser,
 } from './repositories/attachment-repository'
+import { persistAuditEvent } from './repositories/audit-event-repository'
 import type { CipherAttachmentRecord } from './repositories/attachment-repository'
 import {
   createCipher,
@@ -244,30 +245,30 @@ function isExtensionOrigin(origin: string): boolean {
   )
 }
 
-function emitAuditEvent(c: AppContext, input: AuditInput): void {
+async function emitAuditEvent(c: AppContext, input: AuditInput): Promise<void> {
   if (!isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
     return
   }
 
-  console.info(
-    serializeAuditEvent(
-      buildAuditEvent({
-        ...input,
-        requestId: c.get('requestId'),
-        occurredAt: new Date().toISOString(),
-      }),
-    ),
-  )
+  const event = buildAuditEvent({
+    ...input,
+    requestId: c.get('requestId'),
+    occurredAt: new Date().toISOString(),
+  })
+
+  console.info(serializeAuditEvent(event))
+
+  await persistAuditEvent(c.env.DB, event)
 }
 
-function emitTotpChangeAuditEvent(
+async function emitTotpChangeAuditEvent(
   c: AppContext,
   auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
   outcome: AuditEventOutcome,
   stage: 'start' | 'verify',
   context: Record<string, string | number | boolean | null> = {},
-): void {
-  emitAuditEvent(c, {
+): Promise<void> {
+  await emitAuditEvent(c, {
     name: 'totp.change',
     outcome,
     actor: {
@@ -285,13 +286,13 @@ function emitTotpChangeAuditEvent(
   })
 }
 
-function emitBackupExportAuditEvent(
+async function emitBackupExportAuditEvent(
   c: AppContext,
   auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
   outcome: AuditEventOutcome,
   context: Record<string, string | number | boolean | null>,
-): void {
-  emitAuditEvent(c, {
+): Promise<void> {
+  await emitAuditEvent(c, {
     name: 'backup.export',
     outcome,
     actor: {
@@ -841,7 +842,7 @@ app.post('/api/accounts/bootstrap', async (c) => {
       )
     }
 
-    emitAuditEvent(c, {
+    await emitAuditEvent(c, {
       name: 'admin.bootstrap',
       outcome: 'success',
       target: {
@@ -957,7 +958,7 @@ app.post('/identity/connect/token', async (c) => {
       })
 
       if (rotation.status === 'reuse_detected') {
-        emitAuditEvent(c, {
+        await emitAuditEvent(c, {
           name: 'auth.refresh_reuse',
           outcome: 'failure',
           actor: {
@@ -1021,7 +1022,9 @@ app.post('/identity/connect/token', async (c) => {
   try {
     const issuedAt = Math.floor(Date.now() / 1000)
     const now = new Date(issuedAt * 1000).toISOString()
-    await cleanupTransientAuthData(c.env.DB, now)
+    await cleanupTransientAuthData(c.env.DB, now, {
+      auditEvents: isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS),
+    })
 
     const ipBucketKey = await buildAuthAttemptBucketKey(
       'ip',
@@ -1112,7 +1115,7 @@ app.post('/identity/connect/token', async (c) => {
     )
 
     if (!user || user.disabledAt) {
-      emitAuditEvent(c, {
+      await emitAuditEvent(c, {
         name: 'auth.password_grant',
         outcome: 'failure',
         actor: {
@@ -1130,7 +1133,7 @@ app.post('/identity/connect/token', async (c) => {
     }
 
     const recordAccountFailure = async () => {
-      emitAuditEvent(c, {
+      await emitAuditEvent(c, {
         name: 'auth.password_grant',
         outcome: 'failure',
         actor: {
@@ -1176,7 +1179,7 @@ app.post('/identity/connect/token', async (c) => {
         grantDecision.grant.password,
       )
     ) {
-      return recordAccountFailure()
+      return await recordAccountFailure()
     }
 
     if (user.totpEnabled) {
@@ -1212,7 +1215,7 @@ app.post('/identity/connect/token', async (c) => {
         !grantDecision.grant.twoFactorToken ||
         !grantDecision.grant.twoFactorCode
       ) {
-        return recordAccountFailure()
+        return await recordAccountFailure()
       }
 
       const challengeHash = await hashTotpChallengeToken(
@@ -1230,7 +1233,7 @@ app.post('/identity/connect/token', async (c) => {
         challenge.userId !== user.id ||
         challenge.deviceIdentifier !== device.identifier
       ) {
-        return recordAccountFailure()
+        return await recordAccountFailure()
       }
 
       const challengeConsumed = await consumeTotpChallenge(c.env.DB, {
@@ -1239,7 +1242,7 @@ app.post('/identity/connect/token', async (c) => {
       })
 
       if (!challengeConsumed) {
-        return recordAccountFailure()
+        return await recordAccountFailure()
       }
 
       const secretBase32 = await decryptTotpSecret(
@@ -1266,7 +1269,7 @@ app.post('/identity/connect/token', async (c) => {
       })
 
       if (!verification.ok) {
-        return recordAccountFailure()
+        return await recordAccountFailure()
       }
 
       const stepRecorded = await recordAcceptedTotpStep(c.env.DB, {
@@ -1276,7 +1279,7 @@ app.post('/identity/connect/token', async (c) => {
       })
 
       if (!stepRecorded) {
-        return recordAccountFailure()
+        return await recordAccountFailure()
       }
     }
 
@@ -1367,7 +1370,7 @@ app.post('/api/accounts/export', async (c) => {
     ])
     const generatedAt = new Date().toISOString()
 
-    emitBackupExportAuditEvent(c, auth, 'success', {
+    await emitBackupExportAuditEvent(c, auth, 'success', {
       folderCount: folders.length,
       cipherCount: ciphers.length,
       attachmentCount: attachments.length,
@@ -1393,7 +1396,7 @@ app.post('/api/accounts/export', async (c) => {
       }),
     )
   } catch {
-    emitBackupExportAuditEvent(c, auth, 'failure', {
+    await emitBackupExportAuditEvent(c, auth, 'failure', {
       reason: 'database_unavailable',
     })
 
@@ -1692,7 +1695,7 @@ app.post('/identity/accounts/totp/disable', async (c) => {
   }
 
   if (!auth.user.totpEnabled) {
-    emitAuditEvent(c, {
+    await emitAuditEvent(c, {
       name: 'totp.disable',
       outcome: 'failure',
       actor: {
@@ -1720,7 +1723,7 @@ app.post('/identity/accounts/totp/disable', async (c) => {
     })
 
     if (!disabled) {
-      emitAuditEvent(c, {
+      await emitAuditEvent(c, {
         name: 'totp.disable',
         outcome: 'failure',
         actor: {
@@ -1746,7 +1749,7 @@ app.post('/identity/accounts/totp/disable', async (c) => {
       )
     }
 
-    emitAuditEvent(c, {
+    await emitAuditEvent(c, {
       name: 'totp.disable',
       outcome: 'success',
       actor: {
@@ -1805,7 +1808,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
   }
 
   if (!auth.user.totpEnabled) {
-    emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+    await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
       reason: 'not_enabled',
     })
 
@@ -1821,7 +1824,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
   try {
     const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
     if (!setup?.enabled) {
-      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+      await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
         reason: 'not_found',
       })
 
@@ -1858,7 +1861,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
     })
 
     if (!currentVerification.ok) {
-      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+      await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
         reason: 'invalid_current_code',
       })
 
@@ -1878,7 +1881,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
       now: nowIso,
     })
     if (!stepRecorded) {
-      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+      await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
         reason: 'replayed_current_code',
       })
 
@@ -1900,7 +1903,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
     })
 
     if (!started) {
-      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+      await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
         reason: 'not_found',
       })
 
@@ -1914,7 +1917,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
       )
     }
 
-    emitTotpChangeAuditEvent(c, auth, 'success', 'start', {
+    await emitTotpChangeAuditEvent(c, auth, 'success', 'start', {
       enabled: true,
       pendingVerification: true,
     })
@@ -1970,7 +1973,7 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
   try {
     const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
     if (!setup?.enabled || !setup.pendingEncryptedSecret) {
-      emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
+      await emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
         reason: 'not_found',
       })
 
@@ -2007,7 +2010,7 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
     })
 
     if (!verification.ok) {
-      emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
+      await emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
         reason: 'invalid_pending_code',
       })
 
@@ -2028,7 +2031,7 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
     })
 
     if (!promoted) {
-      emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
+      await emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
         reason: 'not_found',
       })
 
@@ -2042,7 +2045,7 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
       )
     }
 
-    emitTotpChangeAuditEvent(c, auth, 'success', 'verify', {
+    await emitTotpChangeAuditEvent(c, auth, 'success', 'verify', {
       enabled: true,
     })
 
@@ -2098,7 +2101,7 @@ app.post('/api/devices/:id/revoke', async (c) => {
     })
 
     if (result.status === 'not_found') {
-      emitAuditEvent(c, {
+      await emitAuditEvent(c, {
         name: 'device.revoke',
         outcome: 'failure',
         actor: {
@@ -2124,7 +2127,7 @@ app.post('/api/devices/:id/revoke', async (c) => {
       )
     }
 
-    emitAuditEvent(c, {
+    await emitAuditEvent(c, {
       name: 'device.revoke',
       outcome: 'success',
       actor: {
@@ -2170,7 +2173,7 @@ app.post('/api/devices/revoke-all', async (c) => {
       revokedAt,
     })
 
-    emitAuditEvent(c, {
+    await emitAuditEvent(c, {
       name: 'session.revoke_all',
       outcome: 'success',
       actor: {

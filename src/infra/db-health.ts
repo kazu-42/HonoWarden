@@ -8,6 +8,7 @@ export const requiredSchemaTables = [
   'folders',
   'ciphers',
   'cipher_attachments',
+  'audit_events',
   'user_totp',
   'totp_challenges',
 ] as const

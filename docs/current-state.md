@@ -339,11 +339,36 @@ Implemented:
 
 Not implemented:
 
-- D1 audit-event persistence
 - external log sink integration
 - audit events for every vault CRUD route
 - live log-retention verification
 - automated backup audit ingestion beyond the Week 20 runbook evidence
+
+## Week 26 Audit Event Persistence
+
+Implemented:
+
+- forward-only D1 migration `migrations/0007_audit_events.sql`
+- `audit_events` table with explicit event metadata columns and sanitized
+  `context_json`
+- request ID, event name, actor, and timestamp indexes for incident review
+- opt-in D1 persistence behind the existing `HONOWARDEN_AUDIT_LOGS=true` gate
+- preservation of console JSON-line audit output
+- fail-loud behavior when opt-in audit persistence cannot write to D1
+- 365-day audit row retention with bounded cleanup of at most 100 rows per
+  inline password-grant maintenance slice or scheduled Worker run when audit
+  logging is enabled
+- docs for retention, operator-only access, incident export query shape, and
+  deletion policy
+- tests for migration shape, repository sanitization, route persistence, audit
+  persistence failure behavior, and scheduled retention cleanup
+
+Not implemented:
+
+- production migration/deploy for `0007_audit_events.sql`
+- enabling audit logging in staging or production
+- external log sink integration and Cloudflare log retention evidence
+- audit events for every vault CRUD route
 
 ## Week 26 User Backup Export API
 

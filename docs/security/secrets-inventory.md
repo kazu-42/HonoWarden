@@ -40,7 +40,7 @@ Do not commit real secret values to the repository.
 | encrypted TOTP setup secret   | D1 `user_totp.encrypted_secret`          | AES-GCM envelope under TOTP secret                    |
 | TOTP challenge hash           | D1 `totp_challenges.challenge_hash`      | single-use, expiring, device-bound                    |
 | auth failure bucket keys      | D1 `auth_*` tables                       | hashed bucket metadata, not raw IP                    |
-| audit event lines             | Cloudflare logs                          | sensitive operational metadata                        |
+| audit event rows and lines    | D1 `audit_events`, Cloudflare logs       | sensitive operational metadata                        |
 | backup directories            | operator filesystem                      | include D1 dump, manifest, and optional R2 objects    |
 
 ## Rotation Notes

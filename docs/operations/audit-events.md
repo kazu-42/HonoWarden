@@ -1,8 +1,9 @@
 # Audit Events
 
-HonoWarden emits structured JSON audit lines only when
-`HONOWARDEN_AUDIT_LOGS=true`. The default is `false` in all Wrangler
-environments to keep local development quiet and avoid accidental log volume.
+HonoWarden emits structured JSON audit lines and persists matching D1 audit
+rows only when `HONOWARDEN_AUDIT_LOGS=true`. The default is `false` in all
+Wrangler environments to keep local development quiet and avoid accidental log
+volume.
 
 Audit events are designed to be secret-safe. Event builders drop context fields
 whose keys contain sensitive fragments such as `password`, `token`, `secret`,
@@ -54,9 +55,66 @@ Fields:
 - `totp.change`: TOTP change start and verify outcomes
 - `totp.disable`: successful and not-enabled TOTP disable attempts
 
+## D1 Persistence
+
+When audit logging is enabled, each built audit event is written to
+`audit_events` after the console JSON line is emitted. Persistence uses explicit
+columns for `schema_version`, `name`, `outcome`, `request_id`, `occurred_at`,
+actor identifiers, target identifiers, and sanitized `context_json`; it does
+not store a full request, response, token, password hash, TOTP secret, plaintext
+IP address, raw vault payload, or encrypted vault value.
+
+Indexes support incident review by timestamp, event name, actor user, and
+request ID:
+
+- `idx_audit_events_occurred_at`
+- `idx_audit_events_name_occurred`
+- `idx_audit_events_actor_occurred`
+- `idx_audit_events_request_id`
+
+If `HONOWARDEN_AUDIT_LOGS=true` and D1 persistence fails, the request fails with
+the same structured `database_unavailable` response used for other D1-backed
+security paths. This is intentional: an operator must not receive a successful
+security-sensitive response while the configured audit evidence sink silently
+drops the row.
+
+## Retention, Access, Export, And Deletion
+
+Audit rows retain for 365 days. When audit logging is enabled, the shared
+bounded cleanup path deletes at most 100 expired `audit_events` rows per inline
+password-grant maintenance slice or scheduled Worker run. Deletion is
+idempotent and ordered by `occurred_at` then `id` so repeated cron executions
+drain old rows gradually.
+
+Access is operator-only through Cloudflare D1 credentials. There is no public or
+authenticated product API for audit search in the alpha scope.
+
+For incident review, export only the columns needed for the incident window.
+Keep `context_json` in the export only when the incident requires it:
+
+```sql
+SELECT
+  id,
+  name,
+  outcome,
+  request_id,
+  occurred_at,
+  actor_user_id,
+  target_type,
+  target_id,
+  context_json
+FROM audit_events
+WHERE occurred_at >= '2026-07-09T00:00:00.000Z'
+ORDER BY occurred_at ASC, id ASC
+LIMIT 100;
+```
+
+Manual deletion should use the same retention boundary unless an incident
+response or legal hold explicitly requires a narrower scope. Do not delete rows
+by actor or target as a substitute for a reviewed retention decision.
+
 ## Non-Goals In This Slice
 
-- Persisting audit events to D1
 - Shipping logs to a vendor-specific sink
 - Logging request/response bodies
 - Logging passwords, refresh tokens, token hashes, encrypted vault payloads, or
@@ -71,15 +129,17 @@ controls are understood:
 pnpm wrangler secret put HONOWARDEN_AUDIT_LOGS --env staging
 ```
 
-Use `true` to enable and `false` to disable. Treat logs as sensitive operational
-metadata even though event builders omit known secret fields.
+Use `true` to enable and `false` to disable. Treat audit rows and logs as
+sensitive operational metadata even though event builders omit known secret
+fields. Apply `migrations/0007_audit_events.sql` before enabling audit logging
+in an environment that should persist rows.
 
 Operator backup and restore audit evidence is still runbook-based in the alpha
 scope. Each backup/restore drill should record the manifest path, commands,
 target resources, and verification result in the project update. The
 user-triggered `POST /api/accounts/export` route emits the `backup.export`
-Worker audit event when audit logging is enabled, but that event is not a
-substitute for an operator disaster-recovery backup record.
+Worker audit event and persists it to D1 when audit logging is enabled, but that
+event is not a substitute for an operator disaster-recovery backup record.
 
 Account lifecycle audit evidence is also runbook-based. `pnpm account:lifecycle`
 prints a secret-safe packet with the action, reason, generated timestamp, target

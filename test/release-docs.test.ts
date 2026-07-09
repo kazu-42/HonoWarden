@@ -68,6 +68,7 @@ describe('release feature-freeze docs', () => {
     expect(releaseNotes).toContain('public registration')
     expect(releaseNotes).toContain('independent security audit')
     expect(releaseNotes).toContain('fixture_only')
+    expect(releaseNotes).toContain('D1 audit-event persistence')
   })
 
   it('aligns the package version with the alpha target', () => {
