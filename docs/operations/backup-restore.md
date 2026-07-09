@@ -3,8 +3,14 @@
 HonoWarden stores structured account and vault-sync state in D1. R2 is reserved
 for larger object payloads, including cipher attachment bodies stored under
 opaque `attachments/<uuid>` keys. Backup and restore operations are
-intentionally operator-driven in the alpha scope; there is no authenticated
-public backup API.
+intentionally operator-driven in the alpha scope.
+
+HonoWarden also exposes a separate user-initiated export API:
+`POST /api/accounts/export`. That route is not a disaster-recovery backup. It
+returns only the authenticated user's account metadata, folders, ciphers, and
+cipher attachment metadata after recent password authentication. It does not
+export D1 SQL, refresh-token tables, password hashes, raw R2 attachment object
+bodies, or internal R2 object keys.
 
 The wrapper script plans and optionally executes Wrangler commands:
 
@@ -34,6 +40,46 @@ and every referenced `attachments/` R2 object.
 The backup still contains sensitive encrypted application data and operational
 metadata. Store it as sensitive data even though HonoWarden never decrypts vault
 payloads server-side.
+
+## User Export API
+
+Use `POST /api/accounts/export` for a user-triggered encrypted vault export.
+This route requires the same bearer token validation as `/api/sync` plus the
+recent password-auth guard used by sensitive account operations:
+
+- `authMethod` must be `password`
+- token issue time must be within five minutes
+- refresh-auth, stale password-auth, and legacy claimless tokens receive
+  `reauth_required`
+
+The response has `Cache-Control: no-store` and a download-oriented
+`Content-Disposition` filename. The JSON object has `object: "backupExport"`
+and `schemaVersion: 1`. It contains:
+
+- account metadata needed by the user export
+- active folders
+- owner-scoped ciphers, including deleted ciphers when the sync read model
+  returns them
+- cipher attachment metadata with encrypted file name and attachment key fields
+
+The response intentionally excludes:
+
+- master password hashes
+- refresh-token rows or token hashes
+- TOTP encrypted setup secrets
+- internal R2 `object_key` values
+- raw R2 object bodies
+- rows belonging to another user
+
+Audit logging emits `backup.export` success and database-failure events when
+`HONOWARDEN_AUDIT_LOGS=true`. Event context is count-only and does not include
+request or response bodies.
+
+There is no export-specific global quota yet. Current abuse controls are bearer
+authentication, recent password authentication, password-grant login defense,
+Cloudflare platform limits, and the future HON-46 global request quota work.
+Database failures return `503 database_unavailable`; the route performs no
+partial writes and can be retried after the underlying D1 issue is resolved.
 
 ## R2 Object Discovery
 

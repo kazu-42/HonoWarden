@@ -3,6 +3,7 @@ export type AuditEventName =
   | 'auth.password_grant'
   | 'auth.refresh_grant'
   | 'auth.refresh_reuse'
+  | 'backup.export'
   | 'device.revoke'
   | 'session.revoke_all'
   | 'totp.change'

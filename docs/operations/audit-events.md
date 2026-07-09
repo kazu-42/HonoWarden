@@ -47,6 +47,8 @@ Fields:
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection
+- `backup.export`: user export success and database-failure outcomes, with
+  count-only context and no request or response bodies
 - `device.revoke`: successful and not-found device revoke attempts
 - `session.revoke_all`: successful revoke-all-other-sessions attempts
 - `totp.change`: TOTP change start and verify outcomes
@@ -72,9 +74,12 @@ pnpm wrangler secret put HONOWARDEN_AUDIT_LOGS --env staging
 Use `true` to enable and `false` to disable. Treat logs as sensitive operational
 metadata even though event builders omit known secret fields.
 
-Backup and restore audit evidence is still runbook-based in the alpha scope.
-Each backup/restore drill should record the manifest path, commands, target
-resources, and verification result in the project update.
+Operator backup and restore audit evidence is still runbook-based in the alpha
+scope. Each backup/restore drill should record the manifest path, commands,
+target resources, and verification result in the project update. The
+user-triggered `POST /api/accounts/export` route emits the `backup.export`
+Worker audit event when audit logging is enabled, but that event is not a
+substitute for an operator disaster-recovery backup record.
 
 Account lifecycle audit evidence is also runbook-based. `pnpm account:lifecycle`
 prints a secret-safe packet with the action, reason, generated timestamp, target

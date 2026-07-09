@@ -28,6 +28,9 @@ inputs, not minor documentation notes.
 - Cipher-scoped attachment upload, download, delete, and sync metadata are
   implemented for opaque client-encrypted payloads, but no live official-client
   attachment run has been captured yet.
+- User-triggered server-side export is implemented at
+  `POST /api/accounts/export` behind recent password authentication, but no
+  live official-client export run has been captured yet.
 - read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, and device encrypted-key update routes are implemented; bulk trusted-device approval and login-with-device workflows are not.
 - account disable/enable operator CLI is dry-run-first, but no admin UI or live
   production lifecycle evidence is recorded yet.
@@ -40,7 +43,7 @@ inputs, not minor documentation notes.
 - Audit events are platform log lines only; they are not persisted with retention
   controls in D1.
 - Audit event coverage does not include every vault CRUD route.
-- Backup/restore evidence is operator-runbook based; no scheduled job exists.
+- Operator backup/restore evidence is runbook based; no scheduled job exists.
 - R2 object backup can auto-list remote buckets, but there is no scheduled
   production backup job or remote production backup evidence yet.
 - TOTP wrapping-secret rotation tooling exists, but no live rotation or
@@ -50,7 +53,8 @@ inputs, not minor documentation notes.
 - The formal secret rotation drill is dry-run-only and must not be treated as
   live credential rotation, account 2FA enforcement, stale-token retirement, or
   external communications readiness.
-- Rate limiting focuses on password grant, not all authenticated routes.
+- Rate limiting focuses on password grant and recent-auth gates, not all
+  authenticated routes or export-specific quotas.
 - There is no global request quota or abuse monitoring dashboard.
 
 ## Testing Gaps
