@@ -1,0 +1,49 @@
+{
+  "title": "Week 26 Two-User Dogfood Evidence",
+  "slug": "week-26-two-user-dogfood-evidence",
+  "created_at": "2026-07-09T22:25:00Z",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "The user requested sustained autonomous issue resolution. This slice uses local synthetic data and does not mutate production DBs, Cloudflare routing, or real user accounts."
+  },
+  "packets": [
+    {
+      "id": "01-stateful-fake-d1-bootstrap",
+      "status": "completed"
+    },
+    {
+      "id": "02-dogfood-evidence-packet",
+      "status": "completed"
+    },
+    {
+      "id": "03-synthetic-lifecycle-app-test",
+      "status": "completed"
+    },
+    {
+      "id": "04-docs-and-release-gate",
+      "status": "completed"
+    },
+    {
+      "id": "05-verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm format",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm vitest run test/ops/dogfood-evidence-packet.test.ts test/ops/dogfood-synthetic-lifecycle.test.ts test/ops/account-lifecycle-cli.test.ts",
+      "pnpm vitest run test/app.test.ts test/ops/release-gate.test.ts test/release-docs.test.ts",
+      "pnpm vitest run test/ops/dogfood-evidence-packet.test.ts test/ops/dogfood-synthetic-lifecycle.test.ts test/ops/account-lifecycle-cli.test.ts test/ops/release-gate.test.ts test/release-docs.test.ts",
+      "pnpm test",
+      "pnpm release:gate -- --strict",
+      "pnpm brand:scan",
+      "git diff --check",
+      "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/week-26-two-user-dogfood-evidence"
+    ]
+  }
+}

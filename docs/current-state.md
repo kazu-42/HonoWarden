@@ -506,8 +506,8 @@ Implemented:
 
 Not implemented:
 
-- live two-user dogfood evidence
-- live disabled-user lifecycle operation
+- production two-user dogfood evidence
+- production disabled-user lifecycle operation
 - shared vault or Organization isolation
 - account lifecycle admin UI
 
@@ -1025,8 +1025,32 @@ Implemented:
 Not implemented:
 
 - admin UI for account lifecycle operations
-- live production disabled-user lifecycle evidence beyond automated regression
-  coverage
+- production disabled-user lifecycle execution beyond dry-run planning and
+  synthetic local evidence
+
+## Week 26 Two-User Dogfood Evidence
+
+Implemented:
+
+- `pnpm dogfood:evidence:packet` synthetic evidence packet generator
+- strict required-flow coverage for two synthetic bootstraps, two-user sync,
+  cross-user read and mutation denials, disabled password grant, disabled
+  refresh grant, disabled sync, disabled vault CRUD, and enable rollback
+  planning
+- URL redaction, safe evidence directory checks, exactly-two synthetic user tag
+  checks, and synthetic-only policy checks
+- stateful FakeD1 account bootstrap support for tests that need inserted users
+  to be visible to later auth lookups
+- focused app-level test that bootstraps two synthetic users in the same fake
+  database, proves owner-scoped sync/read/mutation behavior, disables one user,
+  and verifies password grant, refresh grant, sync, and vault CRUD denial
+- release evidence document under
+  `docs/release/two-user-dogfood-evidence.md`
+
+Not implemented:
+
+- production account disable/enable execution for non-operator accounts
+- real official-client dogfood run for browser, desktop, or mobile surfaces
 
 ## Week 26 Account Revision API
 

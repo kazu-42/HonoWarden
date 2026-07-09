@@ -49,6 +49,9 @@ describe('release gate preflight', () => {
     expect(checkById(report, 'release_docs_present')?.evidence).toContain(
       'docs/release/live-regression-matrix.md',
     )
+    expect(checkById(report, 'release_docs_present')?.evidence).toContain(
+      'docs/release/two-user-dogfood-evidence.md',
+    )
 
     const workflowEvidence = checkById(report, 'workflow_evidence')?.evidence
     expect(workflowEvidence).toContain(
