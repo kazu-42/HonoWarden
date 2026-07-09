@@ -75,3 +75,9 @@ metadata even though event builders omit known secret fields.
 Backup and restore audit evidence is still runbook-based in the alpha scope.
 Each backup/restore drill should record the manifest path, commands, target
 resources, and verification result in the project update.
+
+Account lifecycle audit evidence is also runbook-based. `pnpm account:lifecycle`
+prints a secret-safe packet with the action, reason, generated timestamp, target
+hash, readback commands, mutation command, and rollback command. It is not a
+persisted Worker audit event, and it must be attached to the approved Linear
+issue or incident record after an executed disable/enable operation.

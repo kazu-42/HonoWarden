@@ -376,7 +376,7 @@ Not implemented:
 - live two-user dogfood evidence
 - live disabled-user lifecycle operation
 - shared vault or Organization isolation
-- production admin tooling for disabling users
+- account lifecycle admin UI
 
 ## Week 24 Increment
 
@@ -829,6 +829,26 @@ Not implemented:
 
 - email change, password change, or account deletion flows
 - live client evidence for the account profile endpoint
+
+## Week 26 Account Lifecycle Operator CLI
+
+Implemented:
+
+- `pnpm account:lifecycle -- disable` and `pnpm account:lifecycle -- enable`
+  wrappers around `wrangler d1 execute`
+- dry-run by default JSON packet with pre-operation readback, guarded mutation,
+  post-operation readback, inverse rollback command, reason, and target hash
+- exact `--confirm <target>` requirement before `--execute`
+- email or user-id selectors with SQL literal escaping and normalized-email
+  handling
+- local and remote D1 modes, including `--env` and local-only `--persist-to`
+- operator runbook under `docs/operations/account-lifecycle.md`
+
+Not implemented:
+
+- admin UI for account lifecycle operations
+- live production disabled-user lifecycle evidence beyond automated regression
+  coverage
 
 ## Week 26 Account Revision API
 

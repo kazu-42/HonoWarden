@@ -1,6 +1,6 @@
 # Security Data Flow
 
-Last reviewed: 2026-07-06.
+Last reviewed: 2026-07-09.
 
 This document describes where sensitive data enters, moves, and persists.
 
@@ -16,6 +16,7 @@ client applications
 operator CLI
   -> local backup directory
   -> Wrangler D1/R2 commands
+  -> Wrangler D1 account lifecycle commands
 ```
 
 ## Account Bootstrap
@@ -78,6 +79,21 @@ Owner-scope invariant:
 - a caller can only list, update, delete, restore, or permanently delete rows
   whose `user_id` equals the authenticated user id
 - cipher create/update with a folder id first verifies folder ownership
+
+## Account Lifecycle Operator CLI
+
+1. Operator runs `pnpm account:lifecycle` in dry-run mode first.
+2. The CLI builds a D1 readback command, guarded lifecycle mutation, post-readback
+   command, rollback command, and secret-safe audit packet.
+3. `--execute` requires exact `--confirm <target>` matching the normalized email
+   or user id.
+4. Disable sets `users.disabled_at`, `updated_at`, and `revision_date` only when
+   the account is active.
+5. Enable clears `users.disabled_at` and updates account revision metadata only
+   when the account is disabled.
+
+The CLI does not query, print, or mutate vault payloads, encryption keys,
+password hashes, token hashes, device rows, or cipher/folder rows.
 
 ## Device List Read
 

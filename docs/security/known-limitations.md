@@ -22,8 +22,8 @@ inputs, not minor documentation notes.
 - Organizations and shared vaults are not implemented.
 - Send is not implemented.
 - read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, and device encrypted-key update routes are implemented; bulk trusted-device approval and login-with-device workflows are not.
-- account disable/enable is represented in data and tests but lacks operator
-  tooling.
+- account disable/enable operator CLI is dry-run-first, but no admin UI or live
+  production lifecycle evidence is recorded yet.
 
 ## Security Control Gaps
 

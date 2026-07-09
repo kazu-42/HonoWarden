@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "check": "tsc --noEmit",
+    "account:lifecycle": "node scripts/honowarden-account-lifecycle.mjs",
     "backup:export": "node scripts/honowarden-backup.mjs export",
     "backup:restore": "node scripts/honowarden-backup.mjs restore",
     "cf:typegen": "wrangler types",
