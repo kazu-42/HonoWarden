@@ -117,14 +117,14 @@ The exercise requires these checks before closing a real incident:
 
 ## Gaps And Follow-Up Issues
 
-| Gap found during tabletop                                                 | Follow-up                 |
-| ------------------------------------------------------------------------- | ------------------------- |
-| Formal secret rotation was intentionally not executed                     | `HON-60`                  |
-| Cloudflare account least-privilege remediation is still pending           | `HON-64`                  |
-| Independent security audit and external penetration test are not complete | `HON-57`                  |
-| External log sink and Cloudflare log retention access are not implemented | `HON-49`                  |
-| Inquiry mailbox retention/redaction workflow is not implemented           | `HON-24` through `HON-27` |
-| Live two-user disabled-account lifecycle evidence is not recorded         | `HON-61`                  |
+| Gap found during tabletop                                                                 | Follow-up                        |
+| ----------------------------------------------------------------------------------------- | -------------------------------- |
+| Formal secret rotation was intentionally not executed                                     | `HON-60`                         |
+| Cloudflare account scoped-token rollout is complete, but 2FA/global-key hardening remains | access-control review / `HON-60` |
+| Independent security audit and external penetration test are not complete                 | `HON-57`                         |
+| External log sink and Cloudflare log retention access are not implemented                 | `HON-49`                         |
+| Inquiry mailbox retention/redaction workflow is not implemented                           | `HON-24` through `HON-27`        |
+| Live two-user disabled-account lifecycle evidence is not recorded                         | `HON-61`                         |
 
 No new issue was required for the tabletop itself because the gaps already exist
 as open Linear issues. If any gap recurs without an existing issue, create the

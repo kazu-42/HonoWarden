@@ -86,25 +86,60 @@ The current operator setup uses this pattern for local-only Cloudflare global
 key auth. Do not commit the home env file, `.envrc.local`, or any rendered
 Cloudflare key value.
 
+Scoped HonoWarden Cloudflare account tokens are generated and verified with:
+
+```sh
+pnpm cloudflare:tokens -- plan
+pnpm cloudflare:tokens -- apply --auth global
+pnpm cloudflare:tokens -- apply --auth global --execute
+pnpm cloudflare:tokens -- verify
+```
+
+`apply` without `--execute` performs live permission/readback planning only.
+`apply --execute` creates missing scoped account tokens and writes their
+one-time values to `~/.config/honowarden/cloudflare-scoped.env` with mode
+`0600`. The script prints token hash tags and verification status only; it does
+not print token values. Source that file from ignored `.envrc.local` once the
+tokens are created:
+
+```sh
+source_env_if_exists ~/.config/honowarden/cloudflare-scoped.env
+export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_HONOWARDEN_READONLY_TOKEN:-${CLOUDFLARE_API_TOKEN:-}}"
+```
+
+Use command-local overrides for write operations so the default environment
+stays read-only:
+
+```sh
+CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN" pnpm deploy
+CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN" pnpm wrangler d1 execute honowarden --remote --command "SELECT 1;"
+CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN" pnpm email:preflight -- --strict
+```
+
 ## Required Local Secrets
 
-| Variable                            | Required for                              | Notes                                                                      |
-| ----------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- |
-| `LINEAR_API_KEY`                    | Linear API apply                          | Must belong to an account with access to `https://linear.app/honowarden/`. |
-| `GITHUB_TOKEN`                      | Website repository automation             | Optional if `gh auth status` already has the required repo permissions.    |
-| `CLOUDFLARE_API_TOKEN`              | Cloudflare API automation                 | Prefer a scoped token over a global key.                                   |
-| `CLOUDFLARE_API_KEY`                | Cloudflare API automation fallback        | Global key fallback; keep local-only and pair with account email.          |
-| `CLOUDFLARE_GLOBAL_API_KEY`         | Cloudflare API automation fallback        | Alias for the global key fallback; keep local-only.                        |
-| `CLOUDFLARE_EMAIL`                  | Cloudflare global key auth                | Required when using a global key.                                          |
-| `CLOUDFLARE_API_EMAIL`              | Cloudflare global key auth                | Alias for the account email used by global key auth.                       |
-| `CLOUDFLARE_ACCOUNT_ID`             | Worker deploys and account resources      | Non-secret but operationally sensitive.                                    |
-| `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` | DNS and email routing on `honowarden.com` | Non-secret but operationally sensitive.                                    |
-| `HONOWARDEN_SECURITY_FORWARD_TO`    | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_SUPPORT_FORWARD_TO`     | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_GENERAL_FORWARD_TO`     | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_ADMIN_FORWARD_TO`       | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_POSTMASTER_FORWARD_TO`  | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
-| `HONOWARDEN_ABUSE_FORWARD_TO`       | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| Variable                                    | Required for                              | Notes                                                                      |
+| ------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- |
+| `LINEAR_API_KEY`                            | Linear API apply                          | Must belong to an account with access to `https://linear.app/honowarden/`. |
+| `GITHUB_TOKEN`                              | Website repository automation             | Optional if `gh auth status` already has the required repo permissions.    |
+| `CLOUDFLARE_API_TOKEN`                      | Cloudflare API automation                 | Prefer a scoped token over a global key.                                   |
+| `CLOUDFLARE_API_KEY`                        | Cloudflare API automation fallback        | Global key fallback; keep local-only and pair with account email.          |
+| `CLOUDFLARE_GLOBAL_API_KEY`                 | Cloudflare API automation fallback        | Alias for the global key fallback; keep local-only.                        |
+| `CLOUDFLARE_EMAIL`                          | Cloudflare global key auth                | Required when using a global key.                                          |
+| `CLOUDFLARE_API_EMAIL`                      | Cloudflare global key auth                | Alias for the account email used by global key auth.                       |
+| `CLOUDFLARE_ACCOUNT_ID`                     | Worker deploys and account resources      | Non-secret but operationally sensitive.                                    |
+| `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM`         | DNS and email routing on `honowarden.com` | Non-secret but operationally sensitive.                                    |
+| `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        | Worker deploy and route attach            | Scoped account token for HonoWarden deploys.                               |
+| `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    | DNS and Worker route changes              | Scoped account token for `honowarden.com` DNS/routes.                      |
+| `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` | Email Routing changes                     | Scoped account token for Email Routing rules and destination addresses.    |
+| `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         | D1/R2 operations                          | Scoped account token for migrations, readback, backup, and restore.        |
+| `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | Read-only evidence                        | Scoped account token for account/zone/resource evidence collection.        |
+| `HONOWARDEN_SECURITY_FORWARD_TO`            | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_SUPPORT_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_GENERAL_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_ADMIN_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_POSTMASTER_FORWARD_TO`          | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
+| `HONOWARDEN_ABUSE_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
 
 Local-only Worker smoke variables are also listed in `.env.example`, but
 staging and production must receive them through Wrangler secret commands:
