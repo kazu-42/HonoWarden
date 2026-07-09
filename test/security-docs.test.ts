@@ -79,6 +79,10 @@ describe('security review materials', () => {
     expect(knownLimitations).toContain('incident response runbook')
     expect(knownLimitations).toContain('global request quota is opt-in')
     expect(knownLimitations).toContain('request_quota_buckets')
+    expect(knownLimitations).toContain('secret-safe operator alert packet')
+    expect(knownLimitations).toContain(
+      'no external abuse notification sink or dashboard',
+    )
 
     const dependencyAudit = readSecurityDoc('dependency-audit.md')
     expect(dependencyAudit).toContain('pnpm audit --audit-level low')

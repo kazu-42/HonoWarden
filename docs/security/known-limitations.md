@@ -56,9 +56,9 @@ inputs, not minor documentation notes.
 - Password-grant login defense is always available. The global request quota is opt-in
   through `HONOWARDEN_GLOBAL_REQUEST_QUOTA` and stores hashed
   `request_quota_buckets`, but it has not been enabled in production yet.
-- There is no external abuse monitoring dashboard or alert routing yet; HON-50
-  tracks operator-facing alert integration beyond the secret-safe
-  `pnpm abuse:report` query packet.
+- `pnpm abuse:report` emits a secret-safe operator alert packet for request
+  quota pressure, auth-failure locks, cleanup backlog, and scheduled cleanup
+  failures, but no external abuse notification sink or dashboard is configured.
 
 ## Testing Gaps
 

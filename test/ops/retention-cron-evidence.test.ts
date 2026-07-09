@@ -31,10 +31,16 @@ describe('retention cron live evidence', () => {
 
     expect(runbook).toContain('docs/release/retention-cron-evidence.md')
     expect(runbook).toContain('synthetic `hon-51-cron-smoke` cleanup rows')
+    expect(runbook).toContain('pnpm abuse:report')
+    expect(runbook).toContain('cleanup_candidate_rows')
+    expect(runbook).toContain('scheduled_cleanup_failure')
 
     expect(currentState).toContain('retention-cron-evidence.md')
     expect(currentState).toContain('outcome: ok')
     expect(currentState).toContain('were deleted in both staging')
+    expect(currentState).toContain(
+      'operator alert thresholds for cleanup candidate backlog',
+    )
   })
 
   it('does not record operator identities, secrets, or real mailbox/user data', () => {

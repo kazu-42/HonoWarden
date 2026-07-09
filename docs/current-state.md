@@ -232,7 +232,6 @@ Implemented:
 Not implemented:
 
 - scheduled auth-attempt retention cleanup job
-- operator-facing rate-limit metrics or alerts
 - live D1 migration application
 - live client verification under lockout/rate-limit conditions
 
@@ -415,7 +414,7 @@ Not implemented:
 
 - live official-client user export evidence
 - production enablement of the opt-in global request quota
-- external abuse monitoring dashboard or alert routing
+- external abuse notification sink or dashboard
 - Worker deploy or production smoke for the export route
 
 ## Week 26 Global Request Quotas
@@ -436,12 +435,15 @@ Implemented:
   enabled
 - `pnpm abuse:report` dry-run-first query packet for request quota and auth
   failure bucket summaries without plaintext IP storage
+- operator-facing alert packet for active blocked quota buckets, active locked
+  auth-failure buckets, cleanup backlog pressure, and repeated scheduled
+  cleanup failures
 - docs under `docs/operations/request-quotas.md`
 
 Not implemented:
 
 - production enablement of `HONOWARDEN_GLOBAL_REQUEST_QUOTA`
-- external dashboard or alert routing; tracked separately by HON-50
+- external abuse notification sink or dashboard
 - per-user quota buckets beyond the current hashed client-address strategy
 
 ## Week 22 Increment
@@ -782,6 +784,10 @@ Implemented:
 - retention Cron evidence under `docs/release/retention-cron-evidence.md`,
   including deployment IDs, Worker version IDs, synthetic cleanup row setup, and
   rollback/disable procedure
+- `pnpm abuse:report` cleanup candidate queries for auth attempts, auth failure
+  buckets, TOTP challenges, audit events, and request quota buckets
+- operator alert thresholds for cleanup candidate backlog and repeated scheduled
+  cleanup failures
 - Wrangler tail captured staging and production scheduled events with
   `outcome: ok` at `2026-07-09T16:00:08Z`
 - post-hour D1 readback confirmed the synthetic `hon-51-cron-smoke`
@@ -790,8 +796,8 @@ Implemented:
 
 Not implemented:
 
-- cleanup metrics or alerting
 - dedicated cleanup-only indexes for larger production datasets
+- external notification sink or dashboard for cleanup alerts
 
 ## Week 26 TOTP Setup Guard
 

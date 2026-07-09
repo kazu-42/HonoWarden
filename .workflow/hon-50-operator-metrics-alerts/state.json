@@ -1,0 +1,88 @@
+{
+  "title": "HON-50 operator metrics alerts",
+  "slug": "hon-50-operator-metrics-alerts",
+  "created_at": "2026-07-09T19:30:40+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local code, docs, tests, PR, CI, and Linear updates only. No production deploy, live D1 mutation, or external alert sink setup."
+  },
+  "packets": [
+    {
+      "id": "A",
+      "status": "completed",
+      "objective": "Add cleanup candidate metric queries to the abuse report CLI."
+    },
+    {
+      "id": "B",
+      "status": "completed",
+      "objective": "Add alert classifications and first-response guidance."
+    },
+    {
+      "id": "C",
+      "status": "completed",
+      "objective": "Update request quota, retention cleanup, current-state, and known-limitations docs."
+    },
+    {
+      "id": "D",
+      "status": "in_progress",
+      "objective": "Run broad verification, publish PR, merge, and close Linear."
+    }
+  ],
+  "verification": {
+    "status": "in_progress",
+    "checks": [
+      {
+        "command": "pnpm test -- test/ops/abuse-report-cli.test.ts",
+        "status": "passed",
+        "notes": "Red before implementation, green after CLI update."
+      },
+      {
+        "command": "pnpm test -- test/ops/abuse-report-cli.test.ts test/ops/retention-cron-evidence.test.ts test/security-docs.test.ts",
+        "status": "passed",
+        "notes": "Focused docs and packet checks passed."
+      },
+      {
+        "command": "node scripts/honowarden-abuse-report.mjs --database honowarden --mode local",
+        "status": "passed",
+        "notes": "Dry-run emitted the expected query and alert IDs."
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed",
+        "notes": "Prettier check passed after formatting test/security-docs.test.ts."
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed",
+        "notes": "TypeScript no-emit check passed."
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed",
+        "notes": "ESLint passed."
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "notes": "97 test files and 833 tests passed."
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "notes": "Release gate reported overall ready."
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed",
+        "notes": "No whitespace errors."
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/hon-50-operator-metrics-alerts",
+        "status": "passed",
+        "notes": "Workflow artifact completeness check passed after packet and result files were added."
+      }
+    ]
+  }
+}
