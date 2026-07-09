@@ -31,6 +31,11 @@ Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compa
 
 ## Fixture-Covered Flows
 
+The `direct_read` route fixtures use small folder and cipher lists whose
+`continuationToken` remains `null`. Runtime route tests also cover paginated
+folder and cipher list behavior with bounded `pageSize`/`limit` values and
+opaque continuation tokens.
+
 - `config`
 - `prelogin`
 - `password_grant`

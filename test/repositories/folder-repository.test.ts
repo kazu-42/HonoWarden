@@ -6,6 +6,7 @@ import {
   findFolderById,
   folderBelongsToUser,
   listFoldersByUser,
+  listFoldersByUserPage,
   updateFolder,
 } from '../../src/repositories/folder-repository'
 
@@ -40,6 +41,55 @@ describe('folder repository', () => {
     ])
     expect(database.boundValues).toContain('user-id')
     expect(database.queries.join('\n')).toContain('deleted_at IS NULL')
+  })
+
+  it('lists a bounded page of active folders using a keyset cursor', async () => {
+    const database = new RecordingFolderD1Database([
+      {
+        id: 'folder-next',
+        userId: 'user-id',
+        name: '2.next-folder',
+        revisionDate: '2026-07-06T00:01:00.000Z',
+      },
+      {
+        id: 'folder-extra',
+        userId: 'user-id',
+        name: '2.extra-folder',
+        revisionDate: '2026-07-06T00:02:00.000Z',
+      },
+    ])
+
+    await expect(
+      listFoldersByUserPage(database, {
+        userId: 'user-id',
+        limit: 1,
+        cursor: {
+          revisionDate: '2026-07-06T00:00:00.000Z',
+          id: 'folder-current',
+        },
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 'folder-next',
+          userId: 'user-id',
+          name: '2.next-folder',
+          revisionDate: '2026-07-06T00:01:00.000Z',
+        },
+      ],
+      hasMore: true,
+    })
+    expect(database.boundValues).toEqual([
+      'user-id',
+      '2026-07-06T00:00:00.000Z',
+      '2026-07-06T00:00:00.000Z',
+      'folder-current',
+      2,
+    ])
+    expect(database.queries.join('\n')).toContain(
+      '(revision_date > ? OR (revision_date = ? AND id > ?))',
+    )
+    expect(database.queries.join('\n')).toContain('LIMIT ?')
   })
 
   it('finds one active folder for a user', async () => {

@@ -27,6 +27,22 @@ export type FolderOwnershipInput = {
   userId: string
 }
 
+export type FolderListCursor = {
+  revisionDate: string
+  id: string
+}
+
+export type FolderListPageInput = {
+  userId: string
+  limit: number
+  cursor: FolderListCursor | null
+}
+
+export type FolderListPage = {
+  items: FolderRecord[]
+  hasMore: boolean
+}
+
 export type FolderDeleteResult =
   | {
       status: 'deleted'
@@ -84,6 +100,48 @@ export async function listFoldersByUser(
     .all<FolderRow>()
 
   return result.results.map(folderFromRow)
+}
+
+export async function listFoldersByUserPage(
+  database: FolderDatabase,
+  input: FolderListPageInput,
+): Promise<FolderListPage> {
+  const cursorPredicate = input.cursor
+    ? 'AND (revision_date > ? OR (revision_date = ? AND id > ?))'
+    : ''
+  const result = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          encrypted_name as name,
+          revision_date as revisionDate
+        FROM folders
+        WHERE user_id = ? AND deleted_at IS NULL
+          ${cursorPredicate}
+        ORDER BY revision_date ASC, id ASC
+        LIMIT ?
+      `,
+    )
+    .bind(
+      input.userId,
+      ...(input.cursor
+        ? [
+            input.cursor.revisionDate,
+            input.cursor.revisionDate,
+            input.cursor.id,
+          ]
+        : []),
+      input.limit + 1,
+    )
+    .all<FolderRow>()
+  const rows = result.results.map(folderFromRow)
+
+  return {
+    items: rows.slice(0, input.limit),
+    hasMore: rows.length > input.limit,
+  }
 }
 
 export async function findFolderById(

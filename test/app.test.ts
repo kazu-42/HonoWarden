@@ -3295,6 +3295,103 @@ describe('HonoWarden app', () => {
     }
   })
 
+  it('paginates folders with stable continuation tokens', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      folders: [
+        {
+          id: 'folder-one',
+          userId: 'user-id',
+          name: '2.encrypted-folder-one',
+          revisionDate: '2026-07-06T00:01:00.000Z',
+        },
+        {
+          id: 'folder-two',
+          userId: 'user-id',
+          name: '2.encrypted-folder-two',
+          revisionDate: '2026-07-06T00:02:00.000Z',
+        },
+        {
+          id: 'folder-three',
+          userId: 'user-id',
+          name: '2.encrypted-folder-three',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+        {
+          id: 'deleted-folder',
+          userId: 'user-id',
+          name: '2.deleted-folder',
+          revisionDate: '2026-07-06T00:04:00.000Z',
+          deletedAt: '2026-07-06T00:04:00.000Z',
+        },
+      ],
+    })
+
+    const firstPage = await app.request(
+      '/api/folders?pageSize=1',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(firstPage.status).toBe(200)
+    const firstBody = (await firstPage.json()) as {
+      data: Array<{ id: string }>
+      continuationToken: string | null
+    }
+    expect(firstBody.data.map((folder) => folder.id)).toEqual(['folder-one'])
+    expect(firstBody.continuationToken).toEqual(expect.any(String))
+
+    const secondPage = await app.request(
+      `/api/folders?pageSize=1&continuationToken=${encodeURIComponent(firstBody.continuationToken ?? '')}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(secondPage.status).toBe(200)
+    const secondBody = (await secondPage.json()) as {
+      data: Array<{ id: string }>
+      continuationToken: string | null
+    }
+    expect(secondBody.data.map((folder) => folder.id)).toEqual(['folder-two'])
+    expect(secondBody.continuationToken).toEqual(expect.any(String))
+
+    const crossResourceToken = await app.request(
+      `/api/ciphers?pageSize=1&continuationToken=${encodeURIComponent(firstBody.continuationToken ?? '')}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(crossResourceToken.status).toBe(400)
+    await expect(crossResourceToken.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+    })
+  })
+
   it('gets a folder by id for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -3725,6 +3822,111 @@ describe('HonoWarden app', () => {
         },
       ],
       continuationToken: null,
+    })
+  })
+
+  it('paginates ciphers including trashed rows and rejects bad tokens', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers: [
+        {
+          id: 'cipher-one',
+          userId: 'user-id',
+          folderId: null,
+          type: 1,
+          favorite: 0,
+          encryptedJson: JSON.stringify(cipherCreateBody()),
+          revisionDate: '2026-07-06T00:01:00.000Z',
+          createdAt: '2026-07-06T00:01:00.000Z',
+        },
+        {
+          id: 'cipher-two',
+          userId: 'user-id',
+          folderId: null,
+          type: 2,
+          favorite: 0,
+          encryptedJson: JSON.stringify({
+            type: 2,
+            favorite: false,
+            name: '2.trashed-note',
+            secureNote: {
+              type: 0,
+            },
+          }),
+          revisionDate: '2026-07-06T00:02:00.000Z',
+          createdAt: '2026-07-06T00:02:00.000Z',
+          deletedAt: '2026-07-06T00:02:00.000Z',
+        },
+      ],
+    })
+
+    const firstPage = await app.request(
+      '/api/ciphers?pageSize=1',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(firstPage.status).toBe(200)
+    const firstBody = (await firstPage.json()) as {
+      data: Array<{ id: string; deletedDate?: string | null }>
+      continuationToken: string | null
+    }
+    expect(firstBody.data.map((cipher) => cipher.id)).toEqual(['cipher-one'])
+    expect(firstBody.continuationToken).toEqual(expect.any(String))
+
+    const secondPage = await app.request(
+      `/api/ciphers?pageSize=1&continuationToken=${encodeURIComponent(firstBody.continuationToken ?? '')}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(secondPage.status).toBe(200)
+    const secondBody = (await secondPage.json()) as {
+      data: Array<{ id: string; deletedDate?: string | null }>
+      continuationToken: string | null
+    }
+    expect(secondBody.data).toMatchObject([
+      {
+        id: 'cipher-two',
+        deletedDate: '2026-07-06T00:02:00.000Z',
+      },
+    ])
+    expect(secondBody.continuationToken).toBeNull()
+
+    const invalidToken = await app.request(
+      '/api/ciphers?continuationToken=not-valid',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(invalidToken.status).toBe(400)
+    await expect(invalidToken.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
     })
   })
 

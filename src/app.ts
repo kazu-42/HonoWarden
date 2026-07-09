@@ -45,6 +45,7 @@ import {
   createCipher,
   findCipherById,
   listCiphersByUser,
+  listCiphersByUserPage,
   permanentlyDeleteCipher,
   restoreCipher,
   softDeleteCipher,
@@ -57,6 +58,7 @@ import {
   findFolderById,
   folderBelongsToUser,
   listFoldersByUser,
+  listFoldersByUserPage,
   updateFolder,
 } from './repositories/folder-repository'
 import type { FolderRecord } from './repositories/folder-repository'
@@ -112,6 +114,18 @@ type Variables = {
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
+type ListResourceType = 'folder' | 'cipher'
+
+type ListCursor = {
+  revisionDate: string
+  id: string
+}
+
+type ListPagination = {
+  limit: number
+  cursor: ListCursor | null
+}
+
 type AuditInput = {
   name: AuditEventName
   outcome: AuditEventOutcome
@@ -147,6 +161,8 @@ const accessTokenTtlSeconds = 3600
 const refreshTokenTtlSeconds = 60 * 60 * 24 * 30
 const totpChallengeTtlSeconds = 5 * 60
 const recentPasswordAuthTtlSeconds = 5 * 60
+const defaultListPageSize = 100
+const maxListPageSize = 500
 
 const defaultCorsHeaders = [
   'Accept',
@@ -1961,10 +1977,30 @@ app.get('/api/folders', async (c) => {
     return auth.response
   }
 
-  try {
-    const folders = await listFoldersByUser(c.env.DB, auth.user.id)
+  const pagination = parseListPagination(c, 'folder')
+  if (!pagination.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'List pagination is invalid.',
+      ),
+      400,
+    )
+  }
 
-    return c.json(buildFolderListResponse(folders))
+  try {
+    const page = await listFoldersByUserPage(c.env.DB, {
+      userId: auth.user.id,
+      ...pagination.value,
+    })
+
+    return c.json(
+      buildFolderListResponse(
+        page.items,
+        buildContinuationToken('folder', page),
+      ),
+    )
   } catch {
     return c.json(
       apiError(
@@ -2179,10 +2215,30 @@ app.get('/api/ciphers', async (c) => {
     return auth.response
   }
 
-  try {
-    const ciphers = await listCiphersByUser(c.env.DB, auth.user.id)
+  const pagination = parseListPagination(c, 'cipher')
+  if (!pagination.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'List pagination is invalid.',
+      ),
+      400,
+    )
+  }
 
-    return c.json(buildCipherListResponse(ciphers))
+  try {
+    const page = await listCiphersByUserPage(c.env.DB, {
+      userId: auth.user.id,
+      ...pagination.value,
+    })
+
+    return c.json(
+      buildCipherListResponse(
+        page.items,
+        buildContinuationToken('cipher', page),
+      ),
+    )
   } catch {
     return c.json(
       apiError(
@@ -2619,6 +2675,137 @@ function buildEmptyListResponse() {
   }
 }
 
+function parseListPagination(
+  c: AppContext,
+  resourceType: ListResourceType,
+): { ok: true; value: ListPagination } | { ok: false } {
+  const rawPageSize = c.req.query('pageSize') ?? c.req.query('limit')
+  const limit = rawPageSize ? parsePageSize(rawPageSize) : defaultListPageSize
+
+  if (!limit) {
+    return { ok: false }
+  }
+
+  const rawContinuationToken = c.req.query('continuationToken')
+  if (!rawContinuationToken) {
+    return {
+      ok: true,
+      value: {
+        limit,
+        cursor: null,
+      },
+    }
+  }
+
+  const cursor = decodeContinuationToken(rawContinuationToken, resourceType)
+  if (!cursor) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    value: {
+      limit,
+      cursor,
+    },
+  }
+}
+
+function parsePageSize(value: string): number | null {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return null
+  }
+
+  const pageSize = Number(value)
+  if (!Number.isSafeInteger(pageSize) || pageSize > maxListPageSize) {
+    return null
+  }
+
+  return pageSize
+}
+
+function buildContinuationToken(
+  resourceType: ListResourceType,
+  page: {
+    items: readonly { id: string; revisionDate: string }[]
+    hasMore: boolean
+  },
+): string | null {
+  if (!page.hasMore) {
+    return null
+  }
+
+  const lastItem = page.items.at(-1)
+  if (!lastItem) {
+    return null
+  }
+
+  return encodeBase64UrlUtf8(
+    JSON.stringify({
+      v: 1,
+      type: resourceType,
+      revisionDate: lastItem.revisionDate,
+      id: lastItem.id,
+    }),
+  )
+}
+
+function decodeContinuationToken(
+  value: string,
+  resourceType: ListResourceType,
+): ListCursor | null {
+  const decoded = decodeBase64UrlUtf8(value)
+  if (!decoded) {
+    return null
+  }
+
+  try {
+    const token = JSON.parse(decoded) as unknown
+    if (!isContinuationToken(token, resourceType)) {
+      return null
+    }
+
+    return {
+      revisionDate: token.revisionDate,
+      id: token.id,
+    }
+  } catch {
+    return null
+  }
+}
+
+function isContinuationToken(
+  value: unknown,
+  resourceType: ListResourceType,
+): value is ListCursor & { v: 1; type: ListResourceType } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const token = value as Record<string, unknown>
+
+  return (
+    token.v === 1 &&
+    token.type === resourceType &&
+    typeof token.revisionDate === 'string' &&
+    token.revisionDate.length > 0 &&
+    !Number.isNaN(Date.parse(token.revisionDate)) &&
+    typeof token.id === 'string' &&
+    token.id.length > 0
+  )
+}
+
+function encodeBase64UrlUtf8(value: string): string {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 function buildDomainsResponse() {
   return {
     EquivalentDomains: [],
@@ -2676,19 +2863,25 @@ function buildDeviceListResponse(devices: readonly DeviceRecord[]) {
   }
 }
 
-function buildFolderListResponse(folders: readonly FolderRecord[]) {
+function buildFolderListResponse(
+  folders: readonly FolderRecord[],
+  continuationToken: string | null = null,
+) {
   return {
     object: 'list',
     data: folders.map(buildFolderResponse),
-    continuationToken: null,
+    continuationToken,
   }
 }
 
-function buildCipherListResponse(ciphers: readonly CipherRecord[]) {
+function buildCipherListResponse(
+  ciphers: readonly CipherRecord[],
+  continuationToken: string | null = null,
+) {
   return {
     object: 'list',
     data: ciphers.map(buildCipherResponse),
-    continuationToken: null,
+    continuationToken,
   }
 }
 

@@ -874,13 +874,16 @@ Implemented:
 - authenticated `GET /api/ciphers/:id`
 - folder reads are active-only and owner-scoped
 - cipher reads include active and trashed items, matching `/api/sync`
-- list responses use `object: "list"` with `data` and `continuationToken: null`
+- folder and cipher list responses use bounded keyset pagination with stable
+  `continuationToken` values
+- default direct list page size is 100 and explicit `pageSize`/`limit` values
+  must be between 1 and 500
+- malformed or cross-resource continuation tokens return `invalid_request`
 - compatibility fixture flow `direct_read` for folder and cipher list/get
   responses
 
 Not implemented:
 
-- paginated folder or cipher list responses
 - direct attachment read APIs
 - collection-scoped reads
 - live client evidence for direct folder or cipher read endpoints

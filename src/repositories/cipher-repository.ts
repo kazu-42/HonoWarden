@@ -34,6 +34,22 @@ export type CipherPermanentDeleteInput = {
   revisionDate: string
 }
 
+export type CipherListCursor = {
+  revisionDate: string
+  id: string
+}
+
+export type CipherListPageInput = {
+  userId: string
+  limit: number
+  cursor: CipherListCursor | null
+}
+
+export type CipherListPage = {
+  items: CipherRecord[]
+  hasMore: boolean
+}
+
 export type CipherSoftDeleteResult =
   | {
       status: 'deleted'
@@ -122,6 +138,53 @@ export async function listCiphersByUser(
     .all<CipherRow>()
 
   return result.results.map(cipherFromRow)
+}
+
+export async function listCiphersByUserPage(
+  database: CipherDatabase,
+  input: CipherListPageInput,
+): Promise<CipherListPage> {
+  const cursorPredicate = input.cursor
+    ? 'AND (revision_date > ? OR (revision_date = ? AND id > ?))'
+    : ''
+  const result = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          folder_id as folderId,
+          type,
+          favorite,
+          encrypted_json as encryptedJson,
+          revision_date as revisionDate,
+          created_at as createdAt,
+          deleted_at as deletedAt
+        FROM ciphers
+        WHERE user_id = ?
+          ${cursorPredicate}
+        ORDER BY revision_date ASC, id ASC
+        LIMIT ?
+      `,
+    )
+    .bind(
+      input.userId,
+      ...(input.cursor
+        ? [
+            input.cursor.revisionDate,
+            input.cursor.revisionDate,
+            input.cursor.id,
+          ]
+        : []),
+      input.limit + 1,
+    )
+    .all<CipherRow>()
+  const rows = result.results.map(cipherFromRow)
+
+  return {
+    items: rows.slice(0, input.limit),
+    hasMore: rows.length > input.limit,
+  }
 }
 
 export async function findCipherById(
