@@ -21,6 +21,7 @@ import {
   resetLoginDefenseState,
   revokeDeviceSession,
   rotateRefreshToken,
+  updateDeviceKeys,
   updateDeviceMetadata,
 } from '../../src/repositories/auth-repository'
 
@@ -185,6 +186,9 @@ describe('auth repository', () => {
         identifier: 'desktop-device',
         name: 'Desktop',
         type: 9,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
         lastSeenAt: '2026-07-06T00:10:00.000Z',
         createdAt: '2026-07-06T00:00:00.000Z',
         updatedAt: '2026-07-06T00:10:00.000Z',
@@ -275,6 +279,9 @@ describe('auth repository', () => {
         identifier: 'fixture-device',
         name: 'Renamed CLI',
         type: 9,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
         lastSeenAt: '2026-07-06T00:10:00.000Z',
         createdAt: '2026-07-06T00:00:00.000Z',
         updatedAt: '2026-07-07T18:06:30.000Z',
@@ -322,6 +329,110 @@ describe('auth repository', () => {
         deviceId: 'user-id:missing-device',
         name: 'Renamed CLI',
         type: 9,
+        updatedAt: '2026-07-07T18:06:30.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'not_found',
+    })
+
+    expect(database.queries.join('\n')).not.toContain('UPDATE devices')
+  })
+
+  it('updates active owner-scoped encrypted device keys', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 1, 0, null, [
+      {
+        id: 'user-id:fixture-device',
+        userId: 'user-id',
+        identifier: 'fixture-device',
+        name: 'CLI',
+        type: 8,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+    ])
+
+    await expect(
+      updateDeviceKeys(database, {
+        userId: 'user-id',
+        deviceIdOrIdentifier: 'fixture-device',
+        encryptedUserKey: '2.encrypted-user-key',
+        encryptedPublicKey: '2.encrypted-public-key',
+        encryptedPrivateKey: '2.encrypted-private-key',
+        updatedAt: '2026-07-07T18:06:30.000Z',
+      }),
+    ).resolves.toEqual({
+      status: 'updated',
+      device: {
+        id: 'user-id:fixture-device',
+        userId: 'user-id',
+        identifier: 'fixture-device',
+        name: 'CLI',
+        type: 8,
+        encryptedUserKey: '2.encrypted-user-key',
+        encryptedPublicKey: '2.encrypted-public-key',
+        encryptedPrivateKey: '2.encrypted-private-key',
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-07T18:06:30.000Z',
+      },
+    })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('FROM devices')
+    expect(query).toContain('identifier = ?')
+    expect(query).toContain('UPDATE devices')
+    expect(query).toContain('encrypted_user_key = ?')
+    expect(query).toContain('encrypted_public_key = ?')
+    expect(query).toContain('encrypted_private_key = ?')
+    expect(query).toContain('revoked_at IS NULL')
+    expect(database.boundValues).toContain('2.encrypted-user-key')
+    expect(database.boundValues).toContain('2.encrypted-public-key')
+    expect(database.boundValues).toContain('2.encrypted-private-key')
+    expect(database.boundValues).toContain('fixture-device')
+  })
+
+  it('does not update keys for missing, cross-user, or revoked devices', async () => {
+    const database = new RecordingAuthD1Database(null, null, 1, 0, 0, null, [
+      {
+        id: 'other-user:fixture-device',
+        userId: 'other-user',
+        identifier: 'fixture-device',
+        name: 'Other CLI',
+        type: 8,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:10:00.000Z',
+      },
+      {
+        id: 'user-id:revoked-device',
+        userId: 'user-id',
+        identifier: 'revoked-device',
+        name: 'Revoked',
+        type: 8,
+        encryptedUserKey: null,
+        encryptedPublicKey: null,
+        encryptedPrivateKey: null,
+        revokedAt: '2026-07-06T00:15:00.000Z',
+        lastSeenAt: '2026-07-06T00:10:00.000Z',
+        createdAt: '2026-07-06T00:00:00.000Z',
+        updatedAt: '2026-07-06T00:15:00.000Z',
+      },
+    ])
+
+    await expect(
+      updateDeviceKeys(database, {
+        userId: 'user-id',
+        deviceIdOrIdentifier: 'fixture-device',
+        encryptedUserKey: '2.encrypted-user-key',
+        encryptedPublicKey: '2.encrypted-public-key',
+        encryptedPrivateKey: '2.encrypted-private-key',
         updatedAt: '2026-07-07T18:06:30.000Z',
       }),
     ).resolves.toEqual({
@@ -870,9 +981,13 @@ class RecordingAuthD1Database {
             statementBoundValues,
           )
 
-          return (rows.find(
-            (row) => row.identifier === lookupValue || row.id === lookupValue,
-          ) ?? null) as T | null
+          if (query.includes('identifier = ?')) {
+            return (rows.find((row) => row.identifier === lookupValue) ??
+              null) as T | null
+          }
+
+          return (rows.find((row) => row.id === lookupValue) ??
+            null) as T | null
         }
 
         if (query.includes('FROM users')) {
@@ -915,7 +1030,9 @@ class RecordingAuthD1Database {
         }
 
         const changes =
-          /UPDATE\s+devices/.test(query) && query.includes('revoked_at = ?')
+          /UPDATE\s+devices/.test(query) &&
+          (query.includes('revoked_at = ?') ||
+            query.includes('encrypted_user_key = ?'))
             ? getDeviceUpdateChanges()
             : /UPDATE\s+refresh_tokens/.test(query)
               ? getUpdateChanges()

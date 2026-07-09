@@ -79,6 +79,7 @@ import {
   resetLoginDefenseState,
   revokeDeviceSession,
   rotateRefreshToken,
+  updateDeviceKeys,
   updateDeviceMetadata,
 } from './repositories/auth-repository'
 import type {
@@ -526,10 +527,11 @@ app.put('/api/devices/:id', async (c) => {
   }
 })
 app.patch('/api/devices/:id', unsupportedAlphaFeature)
-app.put('/api/devices/:id/keys', unsupportedAlphaFeature)
-app.patch('/api/devices/:id/keys', unsupportedAlphaFeature)
-app.put('/api/devices/:id/trust', unsupportedAlphaFeature)
-app.patch('/api/devices/:id/trust', unsupportedAlphaFeature)
+app.put('/api/devices/:id/keys', handleDeviceKeysUpdate)
+app.post('/api/devices/:id/keys', handleDeviceKeysUpdate)
+app.patch('/api/devices/:id/keys', handleDeviceKeysUpdate)
+app.put('/api/devices/:id/trust', handleDeviceKeysUpdate)
+app.patch('/api/devices/:id/trust', handleDeviceKeysUpdate)
 
 app.post('/api/accounts/bootstrap', async (c) => {
   if (!isBootstrapEnabled(c.env?.HONOWARDEN_BOOTSTRAP_ENABLED)) {
@@ -2697,12 +2699,20 @@ function buildDeviceResponse(device: DeviceRecord) {
     type: device.type,
     creationDate: device.createdAt,
     revisionDate: device.updatedAt,
-    isTrusted: false,
-    encryptedUserKey: null,
-    encryptedPublicKey: null,
+    isTrusted: isTrustedDevice(device),
+    encryptedUserKey: device.encryptedUserKey,
+    encryptedPublicKey: device.encryptedPublicKey,
     devicePendingAuthRequest: null,
     lastActivityDate: device.lastSeenAt ?? device.updatedAt,
   }
+}
+
+function isTrustedDevice(device: DeviceRecord): boolean {
+  return Boolean(
+    device.encryptedUserKey &&
+    device.encryptedPublicKey &&
+    device.encryptedPrivateKey,
+  )
 }
 
 function buildCipherResponse(cipher: CipherRecord) {
@@ -2831,6 +2841,68 @@ function unsupportedAlphaFeature(c: AppContext) {
     },
     501,
   )
+}
+
+async function handleDeviceKeysUpdate(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const deviceIdOrIdentifier = decodePathParam(c.req.param('id') ?? '').trim()
+  if (!deviceIdOrIdentifier) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'Device ID is required.'),
+      400,
+    )
+  }
+
+  const keyRequest = parseDeviceKeysUpdateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!keyRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Device key payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const result = await updateDeviceKeys(c.env.DB, {
+      userId: auth.user.id,
+      deviceIdOrIdentifier,
+      encryptedUserKey: keyRequest.encryptedUserKey,
+      encryptedPublicKey: keyRequest.encryptedPublicKey,
+      encryptedPrivateKey: keyRequest.encryptedPrivateKey,
+      updatedAt: new Date().toISOString(),
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'device_not_found',
+          'Device was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json(buildDeviceResponse(result.device))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Device key update failed.',
+      ),
+      503,
+    )
+  }
 }
 
 function cipherNotFoundError(requestIdValue: string) {
@@ -3118,6 +3190,40 @@ function parseDeviceMetadataUpdateRequestBody(
     ok: true,
     name,
     type,
+  }
+}
+
+function parseDeviceKeysUpdateRequestBody(body: unknown):
+  | {
+      ok: true
+      encryptedUserKey: string
+      encryptedPublicKey: string
+      encryptedPrivateKey: string
+    }
+  | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const encryptedUserKey =
+    parseRequiredString(body.encryptedUserKey) ??
+    parseRequiredString(body.EncryptedUserKey)
+  const encryptedPublicKey =
+    parseRequiredString(body.encryptedPublicKey) ??
+    parseRequiredString(body.EncryptedPublicKey)
+  const encryptedPrivateKey =
+    parseRequiredString(body.encryptedPrivateKey) ??
+    parseRequiredString(body.EncryptedPrivateKey)
+
+  if (!encryptedUserKey || !encryptedPublicKey || !encryptedPrivateKey) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    encryptedUserKey,
+    encryptedPublicKey,
+    encryptedPrivateKey,
   }
 }
 

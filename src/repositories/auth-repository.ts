@@ -82,6 +82,9 @@ export type DeviceRecord = {
   identifier: string
   name: string | null
   type: number | null
+  encryptedUserKey: string | null
+  encryptedPublicKey: string | null
+  encryptedPrivateKey: string | null
   lastSeenAt: string | null
   createdAt: string
   updatedAt: string
@@ -106,6 +109,24 @@ export type DeviceMetadataUpdateInput = {
 }
 
 export type DeviceMetadataUpdateResult =
+  | {
+      status: 'updated'
+      device: DeviceRecord
+    }
+  | {
+      status: 'not_found'
+    }
+
+export type DeviceKeysUpdateInput = {
+  userId: string
+  deviceIdOrIdentifier: string
+  encryptedUserKey: string
+  encryptedPublicKey: string
+  encryptedPrivateKey: string
+  updatedAt: string
+}
+
+export type DeviceKeysUpdateResult =
   | {
       status: 'updated'
       device: DeviceRecord
@@ -196,6 +217,7 @@ type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionRevokeDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceReadDatabase = Pick<D1Database, 'prepare'>
 type AuthDeviceMetadataDatabase = Pick<D1Database, 'prepare'>
+type AuthDeviceKeysDatabase = Pick<D1Database, 'prepare'>
 type LoginDefenseDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
@@ -272,6 +294,9 @@ type DeviceRow = {
   identifier: string
   name: string | null
   type: number | null
+  encryptedUserKey: string | null
+  encryptedPublicKey: string | null
+  encryptedPrivateKey: string | null
   lastSeenAt: string | null
   createdAt: string
   updatedAt: string
@@ -451,6 +476,9 @@ export async function listDevicesByUser(
           identifier,
           name,
           type,
+          encrypted_user_key as encryptedUserKey,
+          encrypted_public_key as encryptedPublicKey,
+          encrypted_private_key as encryptedPrivateKey,
           last_seen_at as lastSeenAt,
           created_at as createdAt,
           updated_at as updatedAt
@@ -482,6 +510,9 @@ export async function findDeviceByIdentifier(
           identifier,
           name,
           type,
+          encrypted_user_key as encryptedUserKey,
+          encrypted_public_key as encryptedPublicKey,
+          encrypted_private_key as encryptedPrivateKey,
           last_seen_at as lastSeenAt,
           created_at as createdAt,
           updated_at as updatedAt
@@ -511,6 +542,9 @@ export async function findDeviceById(
           identifier,
           name,
           type,
+          encrypted_user_key as encryptedUserKey,
+          encrypted_public_key as encryptedPublicKey,
+          encrypted_private_key as encryptedPrivateKey,
           last_seen_at as lastSeenAt,
           created_at as createdAt,
           updated_at as updatedAt
@@ -573,6 +607,85 @@ export async function updateDeviceMetadata(
       updatedAt: input.updatedAt,
     },
   }
+}
+
+export async function updateDeviceKeys(
+  database: AuthDeviceKeysDatabase,
+  input: DeviceKeysUpdateInput,
+): Promise<DeviceKeysUpdateResult> {
+  const existing = await findDeviceByIdOrIdentifier(database, {
+    userId: input.userId,
+    deviceIdOrIdentifier: input.deviceIdOrIdentifier,
+  })
+
+  if (!existing) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  const result = await database
+    .prepare(
+      `
+        UPDATE devices
+        SET
+          encrypted_user_key = ?,
+          encrypted_public_key = ?,
+          encrypted_private_key = ?,
+          updated_at = ?
+        WHERE user_id = ?
+          AND id = ?
+          AND revoked_at IS NULL
+      `,
+    )
+    .bind(
+      input.encryptedUserKey,
+      input.encryptedPublicKey,
+      input.encryptedPrivateKey,
+      input.updatedAt,
+      input.userId,
+      existing.id,
+    )
+    .run()
+
+  if (result.meta.changes !== 1) {
+    return {
+      status: 'not_found',
+    }
+  }
+
+  return {
+    status: 'updated',
+    device: {
+      ...existing,
+      encryptedUserKey: input.encryptedUserKey,
+      encryptedPublicKey: input.encryptedPublicKey,
+      encryptedPrivateKey: input.encryptedPrivateKey,
+      updatedAt: input.updatedAt,
+    },
+  }
+}
+
+async function findDeviceByIdOrIdentifier(
+  database: AuthDeviceReadDatabase,
+  input: {
+    userId: string
+    deviceIdOrIdentifier: string
+  },
+): Promise<DeviceRecord | null> {
+  const byId = await findDeviceById(database, {
+    userId: input.userId,
+    deviceId: input.deviceIdOrIdentifier,
+  })
+
+  if (byId) {
+    return byId
+  }
+
+  return findDeviceByIdentifier(database, {
+    userId: input.userId,
+    identifier: input.deviceIdOrIdentifier,
+  })
 }
 
 export async function knownActiveDeviceExists(
@@ -1183,6 +1296,9 @@ function deviceFromRow(row: DeviceRow): DeviceRecord {
     identifier: row.identifier,
     name: row.name,
     type: row.type,
+    encryptedUserKey: row.encryptedUserKey ?? null,
+    encryptedPublicKey: row.encryptedPublicKey ?? null,
+    encryptedPrivateKey: row.encryptedPrivateKey ?? null,
     lastSeenAt: row.lastSeenAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

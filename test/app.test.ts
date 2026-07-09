@@ -413,8 +413,6 @@ describe('HonoWarden app', () => {
         path: '/api/ciphers/cipher-id/attachment/attachment-id',
       },
       { method: 'PATCH', path: '/api/devices/device-id' },
-      { method: 'PATCH', path: '/api/devices/device-id/keys' },
-      { method: 'PUT', path: '/api/devices/device-id/trust' },
     ]) {
       const response = await app.request(request.path, {
         method: request.method,
@@ -2633,6 +2631,154 @@ describe('HonoWarden app', () => {
       encryptedPublicKey: null,
       devicePendingAuthRequest: null,
       lastActivityDate: '2026-07-06T00:10:00.000Z',
+    })
+  })
+
+  it('updates encrypted device keys for the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/fixture-device/keys',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'device-keys-update-request',
+        },
+        body: JSON.stringify({
+          EncryptedUserKey: '2.encrypted-user-key',
+          EncryptedPublicKey: '2.encrypted-public-key',
+          EncryptedPrivateKey: '2.encrypted-private-key',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          deviceUpdateChanges: 1,
+          devices: [
+            {
+              id: buildDevicePathId('fixture-device'),
+              userId: 'user-id',
+              identifier: 'fixture-device',
+              name: 'CLI',
+              type: 8,
+              encryptedUserKey: null,
+              encryptedPublicKey: null,
+              encryptedPrivateKey: null,
+              lastSeenAt: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:10:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = await response.json<Record<string, unknown>>()
+    expect(body).toMatchObject({
+      object: 'device',
+      id: buildDevicePathId('fixture-device'),
+      userId: 'user-id',
+      name: 'CLI',
+      identifier: 'fixture-device',
+      type: 8,
+      creationDate: '2026-07-06T00:00:00.000Z',
+      revisionDate: expect.any(String),
+      isTrusted: true,
+      encryptedUserKey: '2.encrypted-user-key',
+      encryptedPublicKey: '2.encrypted-public-key',
+      devicePendingAuthRequest: null,
+      lastActivityDate: '2026-07-06T00:10:00.000Z',
+    })
+    expect(body).not.toHaveProperty('encryptedPrivateKey')
+  })
+
+  it('updates encrypted device keys through the trust alias', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const deviceId = buildDevicePathId('fixture-device')
+    const response = await app.request(
+      `/api/devices/${encodeURIComponent(deviceId)}/trust`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          encryptedUserKey: '2.alias-encrypted-user-key',
+          encryptedPublicKey: '2.alias-encrypted-public-key',
+          encryptedPrivateKey: '2.alias-encrypted-private-key',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          deviceUpdateChanges: 1,
+          devices: [
+            {
+              id: deviceId,
+              userId: 'user-id',
+              identifier: 'fixture-device',
+              name: 'CLI',
+              type: 8,
+              encryptedUserKey: null,
+              encryptedPublicKey: null,
+              encryptedPrivateKey: null,
+              lastSeenAt: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              updatedAt: '2026-07-06T00:10:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'device',
+      id: deviceId,
+      isTrusted: true,
+      encryptedUserKey: '2.alias-encrypted-user-key',
+      encryptedPublicKey: '2.alias-encrypted-public-key',
+    })
+  })
+
+  it('rejects invalid encrypted device key payloads', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/fixture-device/keys',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-device-keys-request',
+        },
+        body: JSON.stringify({
+          EncryptedUserKey: '',
+          EncryptedPublicKey: '2.encrypted-public-key',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'invalid-device-keys-request',
     })
   })
 

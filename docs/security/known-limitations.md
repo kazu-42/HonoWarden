@@ -21,7 +21,7 @@ inputs, not minor documentation notes.
 - Public registration is disabled.
 - Organizations and shared vaults are not implemented.
 - Send is not implemented.
-- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`) and anonymous preflight (`GET /api/devices/knowndevice`) are implemented; device metadata mutation and trust/key update APIs are not.
+- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, and device encrypted-key update routes are implemented; bulk trusted-device approval and login-with-device workflows are not.
 - account disable/enable is represented in data and tests but lacks operator
   tooling.
 

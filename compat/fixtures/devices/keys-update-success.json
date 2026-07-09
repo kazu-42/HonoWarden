@@ -1,0 +1,105 @@
+{
+  "name": "device-keys-update-success",
+  "endpoint": {
+    "method": "PUT",
+    "path": "/api/devices/fixture-device/keys"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    },
+    "body": {
+      "EncryptedUserKey": "2.encrypted-user-key",
+      "EncryptedPublicKey": "2.encrypted-public-key",
+      "EncryptedPrivateKey": "2.encrypted-private-key"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "device",
+      "id": "user-id:fixture-device",
+      "userId": "user-id",
+      "name": "CLI",
+      "identifier": "fixture-device",
+      "type": 8,
+      "creationDate": "2026-07-06T00:00:00.000Z",
+      "revisionDate": "2026-07-07T18:06:30.000Z",
+      "isTrusted": true,
+      "encryptedUserKey": "2.encrypted-user-key",
+      "encryptedPublicKey": "2.encrypted-public-key",
+      "devicePendingAuthRequest": null,
+      "lastActivityDate": "2026-07-06T00:10:00.000Z"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "device"
+    },
+    {
+      "path": "$.id",
+      "type": "string",
+      "value": "user-id:fixture-device"
+    },
+    {
+      "path": "$.userId",
+      "type": "string",
+      "value": "user-id"
+    },
+    {
+      "path": "$.name",
+      "type": "string",
+      "value": "CLI"
+    },
+    {
+      "path": "$.identifier",
+      "type": "string",
+      "value": "fixture-device"
+    },
+    {
+      "path": "$.type",
+      "type": "number",
+      "value": 8
+    },
+    {
+      "path": "$.creationDate",
+      "type": "string",
+      "value": "2026-07-06T00:00:00.000Z"
+    },
+    {
+      "path": "$.revisionDate",
+      "type": "string",
+      "value": "2026-07-07T18:06:30.000Z"
+    },
+    {
+      "path": "$.isTrusted",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "path": "$.encryptedUserKey",
+      "type": "string",
+      "value": "2.encrypted-user-key"
+    },
+    {
+      "path": "$.encryptedPublicKey",
+      "type": "string",
+      "value": "2.encrypted-public-key"
+    },
+    {
+      "path": "$.encryptedPrivateKey",
+      "absent": true
+    },
+    {
+      "path": "$.devicePendingAuthRequest",
+      "type": "null"
+    },
+    {
+      "path": "$.lastActivityDate",
+      "type": "string",
+      "value": "2026-07-06T00:10:00.000Z"
+    }
+  ]
+}

@@ -193,8 +193,6 @@ Implemented:
 Not implemented:
 
 - refresh token reuse alerting
-- device trust/key update APIs (device read, metadata update, and known-device
-  preflight APIs are now implemented)
 - live client compatibility evidence for the tracked versions
 - any storage of real password-vault data
 
@@ -707,7 +705,7 @@ Implemented:
 - explicit `501` JSON response for `/api/organizations` and child paths
 - explicit `501` JSON response for `/api/sends` and child paths
 - explicit `501` JSON response for collection, emergency-access, attachment,
-  cipher-attachment, and device trust/key mutation paths
+  and cipher-attachment paths
 - request ID preservation on unsupported feature responses
 - route test coverage proving these paths do not fall through to generic `404`
 
@@ -717,7 +715,6 @@ Not implemented:
 - public file-sharing functionality
 - collection or emergency-access functionality
 - attachment object storage, download, or mutation functionality
-- device trust/key update functionality
 
 ## Week 26 Revoke Other Sessions
 
@@ -750,7 +747,7 @@ Implemented:
 
 Not implemented:
 
-- device trust/key update APIs
+- encrypted device key update live-client evidence
 
 ## Week 26 Device Metadata Update API
 
@@ -767,8 +764,33 @@ Implemented:
 Not implemented:
 
 - device identifier mutation
-- device trust/key update APIs
 - live client evidence for device metadata update
+
+## Week 26 Device Keys Update API
+
+Implemented:
+
+- forward-only D1 migration `0005_device_keys.sql` for encrypted device user,
+  public, and private key columns
+- authenticated `PUT`, `POST`, and `PATCH /api/devices/:id/keys`
+- authenticated `PUT` and `PATCH /api/devices/:id/trust` compatibility alias
+- owner-scoped active-device lookup by stable device ID or device identifier
+- required encrypted user/public/private key payload validation with
+  upper-camel and lower-camel request aliases
+- opaque encrypted key storage without server-side plaintext access
+- `isTrusted` response derivation only when encrypted user, public, and private
+  key payloads are all present
+- response shape returns encrypted user and public keys but never returns the
+  encrypted private key
+- stable `400`, `401`, `404`, and `503` JSON responses
+- compatibility fixture flow `device_keys_update` under
+  `compat/fixtures/devices/keys-update-success.json`
+
+Not implemented:
+
+- bulk `POST /api/devices/update-trust` trusted-device rotation workflow
+- login-with-device approval, push notification, or pending auth-request flows
+- live client evidence for encrypted device key update
 
 ## Week 26 Known-Device Preflight API
 
