@@ -177,7 +177,7 @@ describe('Linear API preflight', () => {
     const customSeedPath = await writeSeedFixture(
       'linear-preflight-workspace-seed',
       {
-        team: { key: 'HW', name: 'HonoWarden' },
+        team: { key: 'HON', name: 'HonoWarden' },
         issues: [{ stateType: 'started' }],
         views: [],
       },
@@ -258,10 +258,15 @@ describe('Linear API preflight', () => {
       await fixtureDir('linear-preflight-capture'),
       'auth',
     )
+    const captureQueriesPath = join(
+      await fixtureDir('linear-preflight-query-capture'),
+      'queries.json',
+    )
     const env = await mockedLinearEnv({
       status: 200,
       body: { data: linearData({ workspaceSlug: 'honowarden' }) },
       captureAuthorizationPath: capturePath,
+      captureQueriesPath,
     })
 
     const result = await execFileAsync(
@@ -273,15 +278,29 @@ describe('Linear API preflight', () => {
     )
     const report = JSON.parse(result.stdout) as LinearPreflightReport
     const authorizationHeader = await readFile(capturePath, 'utf8')
+    const capturedQueries = JSON.parse(
+      await readFile(captureQueriesPath, 'utf8'),
+    ) as string[]
 
     expect(authorizationHeader).toBe('test-linear-preflight-token')
+    expect(capturedQueries.length).toBeGreaterThan(1)
+    expect(
+      capturedQueries.some((query) => query.includes('workflowStates')),
+    ).toBe(true)
+    expect(
+      capturedQueries.some(
+        (query) =>
+          query.includes('teams(first: 250)') &&
+          query.includes('customViews(first: 250)'),
+      ),
+    ).toBe(false)
     expect(report.status).toBe('ready')
     expect(report.blockingReason).toBeNull()
     expect(report.seedFingerprint).toMatchObject({
       algorithm: 'sha256',
       value: expect.stringMatching(/^[a-f0-9]{64}$/),
     })
-    expect(report.team?.key).toBe('HW')
+    expect(report.team?.key).toBe('HON')
     expect(report.team?.missingStateTypes).toEqual([])
     expect(statusById(report, 'workflow_state_types')).toBe('pass')
     expect(report.inventory?.projects).toMatchObject({
@@ -318,6 +337,23 @@ describe('Linear API preflight', () => {
     expect(result.stdout).not.toContain('test-linear-preflight-token')
   })
 
+  it('paginates workflow states before deriving target team state types', async () => {
+    const env = await mockedPaginatedWorkflowStatesEnv()
+
+    const result = await execFileAsync(
+      'node',
+      [preflightScript, '--seed', seedFile],
+      { env },
+    )
+    const report = JSON.parse(result.stdout) as LinearPreflightReport
+
+    expect(report.status).toBe('ready')
+    expect(report.blockingReason).toBeNull()
+    expect(report.team?.key).toBe('HON')
+    expect(report.team?.missingStateTypes).toEqual([])
+    expect(statusById(report, 'workflow_state_types')).toBe('pass')
+  })
+
   it('exits non-zero in strict mode when not ready', async () => {
     await expect(
       execFileAsync('node', [preflightScript, '--', '--strict'], {
@@ -343,7 +379,7 @@ function cleanEnv() {
 
 function linearData({
   workspaceSlug,
-  teamKey = 'HW',
+  teamKey = 'HON',
   stateTypes = ['backlog', 'unstarted', 'started', 'completed', 'canceled'],
 }: {
   workspaceSlug: string
@@ -421,7 +457,7 @@ function linearData({
         'agent:codex',
         'agent:spark',
         'release:alpha',
-      ].map((name) => ({ id: `label-${name}`, name, team: { key: 'HW' } })),
+      ].map((name) => ({ id: `label-${name}`, name, team: { key: 'HON' } })),
     },
     documents: {
       pageInfo: { hasNextPage: false },
@@ -429,7 +465,7 @@ function linearData({
         {
           id: 'document-tracking',
           title: 'HonoWarden Tracking Overview',
-          team: { key: 'HW' },
+          team: { key: 'HON' },
           project: { name: 'HonoWarden v0.1.0-alpha' },
         },
       ],
@@ -444,8 +480,88 @@ function linearData({
         'Website and Domain',
         'Evidence Missing',
         'Published Alpha Evidence',
-      ].map((name) => ({ id: `view-${name}`, name, team: { key: 'HW' } })),
+      ].map((name) => ({ id: `view-${name}`, name, team: { key: 'HON' } })),
     },
+  }
+}
+
+async function mockedPaginatedWorkflowStatesEnv() {
+  const workDir = await fixtureDir('linear-preflight-paginated-states')
+  const mockPath = join(workDir, 'mock-fetch.mjs')
+  const data = linearData({ workspaceSlug: 'honowarden' })
+
+  await writeFile(
+    mockPath,
+    `const data = ${JSON.stringify(data)}
+
+globalThis.fetch = async (_url, options) => {
+  const request = JSON.parse(String(options?.body ?? '{}'))
+  const query = request.query ?? ''
+  const variables = request.variables ?? {}
+  let nextData = {}
+
+  if (query.includes('organization')) {
+    nextData = {
+      organization: data.organization,
+      viewer: data.viewer,
+    }
+  } else if (query.includes('teams(')) {
+    nextData = {
+      teams: {
+        pageInfo: data.teams.pageInfo ?? { hasNextPage: false },
+        nodes: data.teams.nodes.map(({ states, ...team }) => team),
+      },
+    }
+  } else if (query.includes('workflowStates')) {
+    if (!variables.after) {
+      nextData = {
+        workflowStates: {
+          pageInfo: { hasNextPage: true, endCursor: 'page-2' },
+          nodes: [
+            {
+              id: 'state-other-backlog',
+              name: 'Other Backlog',
+              type: 'backlog',
+              team: { key: 'OTHER', name: 'Other' },
+            },
+          ],
+        },
+      }
+    } else {
+      nextData = {
+        workflowStates: {
+          pageInfo: { hasNextPage: false, endCursor: null },
+          nodes: data.teams.nodes[0].states.nodes.map((state) => ({
+            ...state,
+            team: { key: 'HON', name: 'HonoWarden' },
+          })),
+        },
+      }
+    }
+  } else if (query.includes('projects')) {
+    nextData = { projects: data.projects }
+  } else if (query.includes('initiatives')) {
+    nextData = { initiatives: data.initiatives }
+  } else if (query.includes('issueLabels')) {
+    nextData = { issueLabels: data.issueLabels }
+  } else if (query.includes('documents')) {
+    nextData = { documents: data.documents }
+  } else if (query.includes('customViews')) {
+    nextData = { customViews: data.customViews }
+  }
+
+  return new Response(JSON.stringify({ data: nextData }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+`,
+  )
+
+  return {
+    ...cleanEnv(),
+    LINEAR_API_KEY: 'test-linear-preflight-token',
+    NODE_OPTIONS: `--import=${mockPath}`,
   }
 }
 
@@ -453,10 +569,12 @@ async function mockedLinearEnv({
   status,
   body,
   captureAuthorizationPath,
+  captureQueriesPath,
 }: {
   status: number
   body: unknown
   captureAuthorizationPath?: string
+  captureQueriesPath?: string
 }) {
   const workDir = await fixtureDir('linear-preflight-fetch')
   const mockPath = join(workDir, 'mock-fetch.mjs')
@@ -465,13 +583,22 @@ async function mockedLinearEnv({
         captureAuthorizationPath,
       )}, String(options?.headers?.authorization ?? ''))`
     : ''
+  const captureQueriesLine = captureQueriesPath
+    ? `const queriesPath = ${JSON.stringify(captureQueriesPath)}
+  const queries = existsSync(queriesPath)
+    ? JSON.parse(readFileSync(queriesPath, 'utf8'))
+    : []
+  queries.push(JSON.parse(String(options?.body ?? '{}')).query ?? '')
+  writeFileSync(queriesPath, JSON.stringify(queries, null, 2))`
+    : ''
 
   await writeFile(
     mockPath,
-    `import { writeFileSync } from 'node:fs'
+    `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 globalThis.fetch = async (_url, options) => {
   ${captureLine}
+  ${captureQueriesLine}
 
   return new Response(${JSON.stringify(JSON.stringify(body))}, {
     status: ${status},

@@ -9,8 +9,11 @@ import { URL } from 'node:url'
 const defaultSeedPath = 'ops/linear/honowarden.seed.json'
 const defaultEndpoint = 'https://api.linear.app/graphql'
 
-const linearPreflightQuery = `
-query HonoWardenLinearPreflight {
+const linearPreflightQueries = [
+  {
+    name: 'identity',
+    query: `
+query HonoWardenLinearPreflightIdentity {
   organization {
     id
     name
@@ -25,6 +28,13 @@ query HonoWardenLinearPreflight {
       urlKey
     }
   }
+}
+`,
+  },
+  {
+    name: 'teams',
+    query: `
+query HonoWardenLinearPreflightTeams {
   teams(first: 250) {
     pageInfo {
       hasNextPage
@@ -33,15 +43,39 @@ query HonoWardenLinearPreflight {
       id
       name
       key
-      states(first: 50) {
-        nodes {
-          id
-          name
-          type
-        }
+    }
+  }
+}
+`,
+  },
+  {
+    name: 'workflowStates',
+    connection: 'workflowStates',
+    paginated: true,
+    query: `
+query HonoWardenLinearPreflightWorkflowStates($after: String) {
+  workflowStates(first: 250, after: $after) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      id
+      name
+      type
+      team {
+        key
+        name
       }
     }
   }
+}
+`,
+  },
+  {
+    name: 'projects',
+    query: `
+query HonoWardenLinearPreflightProjects {
   projects(first: 50) {
     pageInfo {
       hasNextPage
@@ -51,6 +85,13 @@ query HonoWardenLinearPreflight {
       name
     }
   }
+}
+`,
+  },
+  {
+    name: 'initiatives',
+    query: `
+query HonoWardenLinearPreflightInitiatives {
   initiatives(first: 50) {
     pageInfo {
       hasNextPage
@@ -60,6 +101,13 @@ query HonoWardenLinearPreflight {
       name
     }
   }
+}
+`,
+  },
+  {
+    name: 'issueLabels',
+    query: `
+query HonoWardenLinearPreflightIssueLabels {
   issueLabels(first: 250) {
     pageInfo {
       hasNextPage
@@ -72,6 +120,13 @@ query HonoWardenLinearPreflight {
       }
     }
   }
+}
+`,
+  },
+  {
+    name: 'documents',
+    query: `
+query HonoWardenLinearPreflightDocuments {
   documents(first: 250) {
     pageInfo {
       hasNextPage
@@ -87,6 +142,13 @@ query HonoWardenLinearPreflight {
       }
     }
   }
+}
+`,
+  },
+  {
+    name: 'customViews',
+    query: `
+query HonoWardenLinearPreflightCustomViews {
   customViews(first: 250) {
     pageInfo {
       hasNextPage
@@ -100,7 +162,9 @@ query HonoWardenLinearPreflight {
     }
   }
 }
-`
+`,
+  },
+]
 
 async function main(argv = process.argv.slice(2), env = process.env) {
   const options = parseOptions(argv)
@@ -272,7 +336,7 @@ async function buildLinearPreflightReport(seed, env, options = {}) {
     ])
   }
 
-  const data = remote.data
+  const data = normalizeLinearPreflightData(remote.data)
   const organization = data.organization ?? data.viewer?.organization ?? null
   const teams = data.teams?.nodes ?? []
   const matchingTeam = findMatchingTeam(teams, expectedTeam)
@@ -370,6 +434,80 @@ async function buildLinearPreflightReport(seed, env, options = {}) {
 }
 
 async function fetchLinearGraphql(endpoint, apiKey) {
+  const data = {}
+
+  for (const request of linearPreflightQueries) {
+    const response = request.paginated
+      ? await fetchLinearGraphqlPages(endpoint, apiKey, request)
+      : await fetchLinearGraphqlRequest(endpoint, apiKey, request)
+    if (!response.ok) {
+      return response
+    }
+
+    Object.assign(data, response.data)
+  }
+
+  return { ok: true, data }
+}
+
+async function fetchLinearGraphqlPages(endpoint, apiKey, request) {
+  const nodes = []
+  let pageInfo = { hasNextPage: false, endCursor: null }
+  let after = null
+
+  for (let page = 0; page < 20; page += 1) {
+    const response = await fetchLinearGraphqlRequest(
+      endpoint,
+      apiKey,
+      request,
+      {
+        after,
+      },
+    )
+    if (!response.ok) {
+      return response
+    }
+
+    const connection = response.data[request.connection]
+    nodes.push(...(connection?.nodes ?? []))
+    pageInfo = connection?.pageInfo ?? pageInfo
+
+    if (!pageInfo.hasNextPage) {
+      return {
+        ok: true,
+        data: {
+          [request.connection]: {
+            ...connection,
+            pageInfo,
+            nodes,
+          },
+        },
+      }
+    }
+
+    after = stringValue(pageInfo.endCursor)
+    if (!after) {
+      return {
+        ok: false,
+        reason: 'linear_graphql_pagination_error',
+        detail: `Linear GraphQL ${request.name} pageInfo was missing endCursor`,
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    reason: 'linear_graphql_pagination_error',
+    detail: `Linear GraphQL ${request.name} exceeded pagination limit`,
+  }
+}
+
+async function fetchLinearGraphqlRequest(
+  endpoint,
+  apiKey,
+  request,
+  variables = {},
+) {
   let response
 
   try {
@@ -379,13 +517,15 @@ async function fetchLinearGraphql(endpoint, apiKey) {
         'content-type': 'application/json',
         authorization: apiKey,
       },
-      body: JSON.stringify({ query: linearPreflightQuery }),
+      body: JSON.stringify({ query: request.query, variables }),
     })
   } catch (error) {
     return {
       ok: false,
       reason: 'linear_graphql_request_failed',
-      detail: error instanceof Error ? error.message : 'request failed',
+      detail: `${request.name}: ${
+        error instanceof Error ? error.message : 'request failed'
+      }`,
     }
   }
 
@@ -396,7 +536,7 @@ async function fetchLinearGraphql(endpoint, apiKey) {
     return {
       ok: false,
       reason: 'linear_graphql_invalid_response',
-      detail: `Linear GraphQL returned HTTP ${response.status} with non-JSON body`,
+      detail: `Linear GraphQL ${request.name} returned HTTP ${response.status} with non-JSON body`,
     }
   }
 
@@ -407,7 +547,7 @@ async function fetchLinearGraphql(endpoint, apiKey) {
         response.status === 401
           ? 'linear_api_auth_failed'
           : 'linear_graphql_http_error',
-      detail: `Linear GraphQL returned HTTP ${response.status}`,
+      detail: `Linear GraphQL ${request.name} returned HTTP ${response.status}`,
     }
   }
 
@@ -415,11 +555,41 @@ async function fetchLinearGraphql(endpoint, apiKey) {
     return {
       ok: false,
       reason: 'linear_graphql_errors',
-      detail: `Linear GraphQL returned ${payload.errors.length} error(s)`,
+      detail: `Linear GraphQL ${request.name} returned ${payload.errors.length} error(s)`,
     }
   }
 
   return { ok: true, data: payload.data ?? {} }
+}
+
+function normalizeLinearPreflightData(data) {
+  const workflowStates = data.workflowStates?.nodes ?? []
+  const teams = data.teams?.nodes ?? []
+  const normalizedTeams = teams.map((team) => {
+    const embeddedStates = team.states?.nodes
+    if (Array.isArray(embeddedStates)) {
+      return team
+    }
+
+    return {
+      ...team,
+      states: {
+        nodes: workflowStates.filter(
+          (state) =>
+            (!team.key || state.team?.key === team.key) &&
+            (!team.name || state.team?.name === team.name),
+        ),
+      },
+    }
+  })
+
+  return {
+    ...data,
+    teams: {
+      ...(data.teams ?? {}),
+      nodes: normalizedTeams,
+    },
+  }
 }
 
 function validateLinearApiKey(apiKey) {
