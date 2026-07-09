@@ -206,11 +206,15 @@ Implemented:
 - explicit Emergency Access exclusion and future delegated-recovery design gates
   in ADR 0004, threat model, and compatibility docs
 - compatibility matrix validation in `pnpm compat:test`
+- repeatable live regression packet generator in
+  `scripts/honowarden-live-regression-packet.mjs` and release runbook in
+  `docs/release/live-regression-matrix.md`
 
 Not implemented:
 
 - refresh token reuse alerting
 - live client compatibility evidence for the tracked versions
+- actual `live_regression` matrix promotion for any tracked client row
 - automated network fetch of upstream release metadata in CI
 - any storage of real password-vault data
 
