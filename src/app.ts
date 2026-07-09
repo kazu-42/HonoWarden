@@ -92,7 +92,9 @@ import {
   enableTotpSetup,
   findActiveTotpChallengeByHash,
   findTotpSetupByUserId,
+  promotePendingTotpChange,
   recordAcceptedTotpStep,
+  startPendingTotpChange,
   upsertPendingTotpSetup,
 } from './repositories/totp-repository'
 import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
@@ -215,6 +217,31 @@ function emitAuditEvent(c: AppContext, input: AuditInput): void {
       }),
     ),
   )
+}
+
+function emitTotpChangeAuditEvent(
+  c: AppContext,
+  auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
+  outcome: AuditEventOutcome,
+  stage: 'start' | 'verify',
+  context: Record<string, string | number | boolean | null> = {},
+): void {
+  emitAuditEvent(c, {
+    name: 'totp.change',
+    outcome,
+    actor: {
+      userId: auth.user.id,
+      deviceIdentifier: auth.deviceIdentifier,
+    },
+    target: {
+      type: 'account',
+      id: auth.user.id,
+    },
+    context: {
+      stage,
+      ...context,
+    },
+  })
 }
 
 function buildHealthResponse(requestIdValue: string, environment?: string) {
@@ -1449,6 +1476,290 @@ app.post('/identity/accounts/totp/disable', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'TOTP disable failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/identity/accounts/totp/change', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
+  if (!totpSecret) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'TOTP change is not configured.',
+      ),
+      503,
+    )
+  }
+
+  const request = parseTotpChangeRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'TOTP code is required.'),
+      400,
+    )
+  }
+
+  if (!auth.user.totpEnabled) {
+    emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+      reason: 'not_enabled',
+    })
+
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'TOTP setup not found.'),
+      400,
+    )
+  }
+
+  const now = new Date()
+  const nowIso = now.toISOString()
+
+  try {
+    const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
+    if (!setup?.enabled) {
+      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+        reason: 'not_found',
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP setup not found.',
+        ),
+        400,
+      )
+    }
+
+    const currentSecretBase32 = await decryptTotpSecret(
+      totpSecret,
+      setup.encryptedSecret,
+    )
+    if (!currentSecretBase32) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'TOTP change is not configured.',
+        ),
+        503,
+      )
+    }
+
+    const currentVerification = await verifyTotpCode({
+      secretBase32: currentSecretBase32,
+      code: request.currentCode,
+      nowUnixSeconds: Math.floor(now.getTime() / 1000),
+      lastAcceptedStep: setup.lastAcceptedStep,
+    })
+
+    if (!currentVerification.ok) {
+      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+        reason: 'invalid_current_code',
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP code is invalid.',
+        ),
+        400,
+      )
+    }
+
+    const stepRecorded = await recordAcceptedTotpStep(c.env.DB, {
+      userId: auth.user.id,
+      acceptedStep: currentVerification.timeStep,
+      now: nowIso,
+    })
+    if (!stepRecorded) {
+      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+        reason: 'replayed_current_code',
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP code is invalid.',
+        ),
+        400,
+      )
+    }
+
+    const nextSecret = generateTotpSecret()
+    const started = await startPendingTotpChange(c.env.DB, {
+      userId: auth.user.id,
+      encryptedSecret: await encryptTotpSecret(totpSecret, nextSecret),
+      now: nowIso,
+    })
+
+    if (!started) {
+      emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
+        reason: 'not_found',
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP setup not found.',
+        ),
+        400,
+      )
+    }
+
+    emitTotpChangeAuditEvent(c, auth, 'success', 'start', {
+      enabled: true,
+      pendingVerification: true,
+    })
+
+    return c.json({
+      object: 'totpChange',
+      secret: nextSecret,
+      uri: buildTotpUri(auth.user.emailNormalized, nextSecret),
+      enabled: true,
+      pendingVerification: true,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'TOTP change failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/identity/accounts/totp/change/verify', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
+  if (!totpSecret) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'TOTP change is not configured.',
+      ),
+      503,
+    )
+  }
+
+  const request = parseTotpVerifyRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'TOTP code is required.'),
+      400,
+    )
+  }
+
+  const verifiedAt = new Date()
+  const verifiedAtIso = verifiedAt.toISOString()
+
+  try {
+    const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
+    if (!setup?.enabled || !setup.pendingEncryptedSecret) {
+      emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
+        reason: 'not_found',
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP change not found.',
+        ),
+        400,
+      )
+    }
+
+    const pendingSecretBase32 = await decryptTotpSecret(
+      totpSecret,
+      setup.pendingEncryptedSecret,
+    )
+    if (!pendingSecretBase32) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'TOTP change is not configured.',
+        ),
+        503,
+      )
+    }
+
+    const verification = await verifyTotpCode({
+      secretBase32: pendingSecretBase32,
+      code: request.code,
+      nowUnixSeconds: Math.floor(verifiedAt.getTime() / 1000),
+      lastAcceptedStep: null,
+    })
+
+    if (!verification.ok) {
+      emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
+        reason: 'invalid_pending_code',
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP code is invalid.',
+        ),
+        400,
+      )
+    }
+
+    const promoted = await promotePendingTotpChange(c.env.DB, {
+      userId: auth.user.id,
+      acceptedStep: verification.timeStep,
+      verifiedAt: verifiedAtIso,
+    })
+
+    if (!promoted) {
+      emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
+        reason: 'not_found',
+      })
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP change not found.',
+        ),
+        400,
+      )
+    }
+
+    emitTotpChangeAuditEvent(c, auth, 'success', 'verify', {
+      enabled: true,
+    })
+
+    return c.json({
+      object: 'totp',
+      enabled: true,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'TOTP change failed.',
       ),
       503,
     )
@@ -2745,6 +3056,24 @@ function parseTotpVerifyRequestBody(
     parseRequiredString(payload.twoFactorCode)
 
   return code ? { ok: true, code } : { ok: false }
+}
+
+function parseTotpChangeRequestBody(
+  body: unknown,
+): { ok: true; currentCode: string } | { ok: false } {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false }
+  }
+
+  const payload = body as Record<string, unknown>
+  const currentCode =
+    parseRequiredString(payload.currentCode) ??
+    parseRequiredString(payload.currentTotpCode) ??
+    parseRequiredString(payload.code) ??
+    parseRequiredString(payload.totpCode) ??
+    parseRequiredString(payload.twoFactorCode)
+
+  return currentCode ? { ok: true, currentCode } : { ok: false }
 }
 
 function parseFolderRequestBody(

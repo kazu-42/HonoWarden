@@ -282,7 +282,6 @@ Implemented:
 Not implemented:
 
 - backup export route or backup-export re-auth guard
-- TOTP change route
 - live client re-auth evidence
 
 The project remains pre-alpha and must not be used to store real secrets.
@@ -680,6 +679,26 @@ Implemented:
 - deletes the enabled TOTP setup row for the authenticated account
 - clears retained TOTP secret and replay state by removing that row
 - emits `totp.disable` audit events for route outcomes
+
+## Week 26 TOTP Change Route
+
+Implemented:
+
+- forward-only D1 migration `0004_totp_change.sql` with pending TOTP change
+  columns on `user_totp`
+- authenticated `POST /identity/accounts/totp/change`
+- authenticated `POST /identity/accounts/totp/change/verify`
+- recent-password-auth requirement (`authMethod=password` within five minutes)
+  for both change start and change verify
+- current TOTP code verification before pending replacement secret creation
+- pending replacement secret storage without disabling the active TOTP secret
+- accepted-step recording for the current code before change start, so current
+  code replay fails closed
+- pending secret promotion that clears pending state and stores the new accepted
+  timestep for replay protection
+- `totp.change` audit events for start and verify outcomes
+- tests for invalid current code, refresh-auth rejection, pending verify
+  promotion, and replay rejection when no pending change remains
 
 ## Week 26 Unsupported Surface Guards
 

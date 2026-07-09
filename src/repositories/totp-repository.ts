@@ -4,6 +4,8 @@ export type TotpSetupRecord = {
   enabled: boolean
   verifiedAt: string | null
   lastAcceptedStep: number | null
+  pendingEncryptedSecret: string | null
+  pendingCreatedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -21,6 +23,18 @@ export type EnableTotpSetupInput = {
 
 export type DisableTotpSetupInput = {
   userId: string
+}
+
+export type PendingTotpChangeInput = {
+  userId: string
+  encryptedSecret: string
+  now: string
+}
+
+export type PromoteTotpChangeInput = {
+  userId: string
+  acceptedStep: number
+  verifiedAt: string
 }
 
 export type AcceptTotpStepInput = {
@@ -70,6 +84,8 @@ type TotpSetupRow = {
   enabled: number
   verifiedAt: string | null
   lastAcceptedStep: number | null
+  pendingEncryptedSecret: string | null
+  pendingCreatedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -126,6 +142,8 @@ export async function findTotpSetupByUserId(
           enabled,
           verified_at as verifiedAt,
           last_accepted_step as lastAcceptedStep,
+          pending_encrypted_secret as pendingEncryptedSecret,
+          pending_created_at as pendingCreatedAt,
           created_at as createdAt,
           updated_at as updatedAt
         FROM user_totp
@@ -173,6 +191,54 @@ export async function disableTotpSetup(
       `,
     )
     .bind(input.userId)
+    .run()
+
+  return result.meta.changes === 1
+}
+
+export async function startPendingTotpChange(
+  database: TotpDatabase,
+  input: PendingTotpChangeInput,
+): Promise<boolean> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE user_totp
+        SET
+          pending_encrypted_secret = ?,
+          pending_created_at = ?,
+          updated_at = ?
+        WHERE user_id = ?
+          AND enabled = 1
+      `,
+    )
+    .bind(input.encryptedSecret, input.now, input.now, input.userId)
+    .run()
+
+  return result.meta.changes === 1
+}
+
+export async function promotePendingTotpChange(
+  database: TotpDatabase,
+  input: PromoteTotpChangeInput,
+): Promise<boolean> {
+  const result = await database
+    .prepare(
+      `
+        UPDATE user_totp
+        SET
+          encrypted_secret = pending_encrypted_secret,
+          verified_at = ?,
+          last_accepted_step = ?,
+          pending_encrypted_secret = NULL,
+          pending_created_at = NULL,
+          updated_at = ?
+        WHERE user_id = ?
+          AND enabled = 1
+          AND pending_encrypted_secret IS NOT NULL
+      `,
+    )
+    .bind(input.verifiedAt, input.acceptedStep, input.verifiedAt, input.userId)
     .run()
 
   return result.meta.changes === 1
@@ -309,6 +375,8 @@ function totpSetupFromRow(row: TotpSetupRow): TotpSetupRecord {
     enabled: row.enabled === 1,
     verifiedAt: row.verifiedAt,
     lastAcceptedStep: row.lastAcceptedStep ?? null,
+    pendingEncryptedSecret: row.pendingEncryptedSecret ?? null,
+    pendingCreatedAt: row.pendingCreatedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

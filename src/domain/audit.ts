@@ -5,6 +5,7 @@ export type AuditEventName =
   | 'auth.refresh_reuse'
   | 'device.revoke'
   | 'session.revoke_all'
+  | 'totp.change'
   | 'totp.disable'
 
 export type AuditEventOutcome = 'success' | 'failure'
