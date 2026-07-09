@@ -413,9 +413,36 @@ Implemented:
 
 Not implemented:
 
-- export-specific global request quota or abuse monitoring dashboard
 - live official-client user export evidence
+- production enablement of the opt-in global request quota
+- external abuse monitoring dashboard or alert routing
 - Worker deploy or production smoke for the export route
+
+## Week 26 Global Request Quotas
+
+Implemented:
+
+- opt-in global request quota middleware controlled by
+  `HONOWARDEN_GLOBAL_REQUEST_QUOTA`
+- separate D1 `request_quota_buckets` table with hashed bucket keys, scope,
+  request count, window start, blocked-until timestamp, and cleanup indexes
+- anonymous and bearer-present request scopes with one-minute quota windows
+- stable `429 rate_limited` responses with `Retry-After` only when quota is
+  exceeded
+- fail-loud `503 database_unavailable` behavior when quota persistence fails
+- health and CORS preflight bypasses so probes and browser preflights do not
+  consume quota
+- bounded scheduled cleanup of expired request quota buckets when the quota is
+  enabled
+- `pnpm abuse:report` dry-run-first query packet for request quota and auth
+  failure bucket summaries without plaintext IP storage
+- docs under `docs/operations/request-quotas.md`
+
+Not implemented:
+
+- production enablement of `HONOWARDEN_GLOBAL_REQUEST_QUOTA`
+- external dashboard or alert routing; tracked separately by HON-50
+- per-user quota buckets beyond the current hashed client-address strategy
 
 ## Week 22 Increment
 

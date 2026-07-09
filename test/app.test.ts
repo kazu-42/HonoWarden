@@ -5,6 +5,7 @@ import {
   buildAuthAttemptBucketKey,
   loginDefensePolicy,
 } from '../src/domain/login-defense'
+import { requestQuotaPolicy } from '../src/domain/request-quota'
 import { encryptTotpSecret } from '../src/domain/totp-secret'
 import { signAccessToken, verifyAccessToken } from '../src/domain/tokens'
 import { hotp } from '../src/domain/totp'
@@ -75,6 +76,110 @@ describe('HonoWarden app', () => {
       service: 'honowarden',
       environment: 'staging',
       requestId: 'staging-health-request',
+    })
+  })
+
+  it('records secret-safe global request quota buckets when enabled', async () => {
+    const database = new FakeD1Database(null, [], {
+      requestQuotaBucket: {
+        bucketKey: 'request:anonymous:existing-hash',
+        scope: 'anonymous',
+        requestCount: 1,
+        windowStartedAt: '2026-07-09T00:00:00.000Z',
+        blockedUntil: null,
+        updatedAt: '2026-07-09T00:00:00.000Z',
+      },
+    })
+
+    const response = await app.request(
+      '/api/config',
+      {
+        headers: {
+          'CF-Connecting-IP': '203.0.113.10',
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(database.requestQuotaWrites).toHaveLength(1)
+    expect(database.requestQuotaWrites[0]).toMatchObject({
+      scope: 'anonymous',
+      limit: requestQuotaPolicy.anonymousLimit,
+      windowSeconds: requestQuotaPolicy.windowSeconds,
+      blockSeconds: requestQuotaPolicy.blockSeconds,
+    })
+    expect(database.requestQuotaWrites[0]?.bucketKey).toMatch(
+      /^request:anonymous:[A-Za-z0-9_-]+$/,
+    )
+    expect(JSON.stringify(database.requestQuotaWrites)).not.toContain(
+      '203.0.113.10',
+    )
+  })
+
+  it('returns stable 429 responses for over-limit global request quota buckets', async () => {
+    const response = await app.request(
+      '/api/config',
+      {
+        headers: {
+          Authorization: 'Bearer opaque-access-token',
+          'CF-Connecting-IP': '203.0.113.10',
+          'X-Request-Id': 'quota-limited-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          requestQuotaBucket: {
+            bucketKey: 'request:authenticated:existing-hash',
+            scope: 'authenticated',
+            requestCount: requestQuotaPolicy.authenticatedLimit + 1,
+            windowStartedAt: '2026-07-09T00:00:00.000Z',
+            blockedUntil: '2999-01-01T00:00:00.000Z',
+            updatedAt: '2026-07-09T00:00:00.000Z',
+          },
+        }),
+        HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
+      },
+    )
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('Retry-After')).toBe(
+      String(requestQuotaPolicy.blockSeconds),
+    )
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'rate_limited',
+      },
+      requestId: 'quota-limited-request',
+    })
+  })
+
+  it('fails global request quota checks loudly on database errors', async () => {
+    const response = await app.request(
+      '/api/config',
+      {
+        headers: {
+          'CF-Connecting-IP': '203.0.113.10',
+          'X-Request-Id': 'quota-database-failure-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          requestQuotaInsertThrows: true,
+        }),
+        HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'database_unavailable',
+      },
+      requestId: 'quota-database-failure-request',
     })
   })
 

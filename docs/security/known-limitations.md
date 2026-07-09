@@ -53,9 +53,12 @@ inputs, not minor documentation notes.
 - The formal secret rotation drill is dry-run-only and must not be treated as
   live credential rotation, account 2FA enforcement, stale-token retirement, or
   external communications readiness.
-- Rate limiting focuses on password grant and recent-auth gates, not all
-  authenticated routes or export-specific quotas.
-- There is no global request quota or abuse monitoring dashboard.
+- Password-grant login defense is always available. The global request quota is opt-in
+  through `HONOWARDEN_GLOBAL_REQUEST_QUOTA` and stores hashed
+  `request_quota_buckets`, but it has not been enabled in production yet.
+- There is no external abuse monitoring dashboard or alert routing yet; HON-50
+  tracks operator-facing alert integration beyond the secret-safe
+  `pnpm abuse:report` query packet.
 
 ## Testing Gaps
 

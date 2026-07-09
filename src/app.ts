@@ -25,6 +25,14 @@ import {
   loginDefensePolicy,
 } from './domain/login-defense'
 import {
+  buildRequestQuotaBucketKey,
+  isGlobalRequestQuotaEnabled,
+  isRequestQuotaExceeded,
+  requestQuotaLimitForScope,
+  requestQuotaPolicy,
+  resolveRequestQuotaScope,
+} from './domain/request-quota'
+import {
   generateRefreshToken,
   hashRefreshToken,
   invalidGrantError,
@@ -97,6 +105,7 @@ import {
   updateDeviceKeys,
   updateDeviceMetadata,
 } from './repositories/auth-repository'
+import { recordRequestQuotaHit } from './repositories/request-quota-repository'
 import type {
   AuthUserRecord,
   DeviceRecord,
@@ -243,6 +252,53 @@ app.use('*', async (c, next) => {
   await next()
   c.res.headers.set('X-Request-Id', c.get('requestId'))
 })
+app.use('*', async (c, next) => {
+  if (
+    !isGlobalRequestQuotaEnabled(c.env?.HONOWARDEN_GLOBAL_REQUEST_QUOTA) ||
+    isRequestQuotaBypass(c)
+  ) {
+    await next()
+    return
+  }
+
+  const now = new Date().toISOString()
+  const scope = resolveRequestQuotaScope(c.req.raw.headers)
+  const bucketKey = await buildRequestQuotaBucketKey(
+    scope,
+    extractClientAddress(c.req.raw.headers),
+  )
+
+  try {
+    const bucket = await recordRequestQuotaHit(c.env.DB, {
+      bucketKey,
+      scope,
+      limit: requestQuotaLimitForScope(scope),
+      windowSeconds: requestQuotaPolicy.windowSeconds,
+      blockSeconds: requestQuotaPolicy.blockSeconds,
+      now,
+    })
+
+    if (isRequestQuotaExceeded(bucket, now)) {
+      c.header('Retry-After', String(requestQuotaPolicy.blockSeconds))
+
+      return c.json(
+        apiError(c.get('requestId'), 'rate_limited', 'Request quota exceeded.'),
+        429,
+      )
+    }
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Request quota check failed.',
+      ),
+      503,
+    )
+  }
+
+  await next()
+})
 
 function isExtensionOrigin(origin: string): boolean {
   return (
@@ -250,6 +306,16 @@ function isExtensionOrigin(origin: string): boolean {
     origin.startsWith('moz-extension://') ||
     origin.startsWith('safari-web-extension://')
   )
+}
+
+function isRequestQuotaBypass(c: AppContext): boolean {
+  if (c.req.method === 'OPTIONS') {
+    return true
+  }
+
+  const pathname = new URL(c.req.url).pathname
+
+  return pathname === '/health' || pathname === '/healthz'
 }
 
 async function emitAuditEvent(c: AppContext, input: AuditInput): Promise<void> {
@@ -3732,6 +3798,7 @@ function apiError(
     | 'invalid_request'
     | 'invalid_token'
     | 'missing_token'
+    | 'rate_limited'
     | 'reauth_required'
     | 'revision_conflict'
     | 'server_misconfigured'

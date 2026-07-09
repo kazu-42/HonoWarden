@@ -21,6 +21,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "account:lifecycle": "node scripts/honowarden-account-lifecycle.mjs",
+    "abuse:report": "node scripts/honowarden-abuse-report.mjs",
     "backup:export": "node scripts/honowarden-backup.mjs export",
     "backup:restore": "node scripts/honowarden-backup.mjs restore",
     "cf:typegen": "wrangler types",

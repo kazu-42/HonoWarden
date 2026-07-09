@@ -5,6 +5,7 @@ export const requiredSchemaTables = [
   'refresh_tokens',
   'auth_attempts',
   'auth_failure_buckets',
+  'request_quota_buckets',
   'folders',
   'ciphers',
   'cipher_attachments',

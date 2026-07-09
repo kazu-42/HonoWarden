@@ -15,6 +15,7 @@ describe('initial D1 migration', () => {
       'ciphers',
       'auth_attempts',
       'auth_failure_buckets',
+      'request_quota_buckets',
     ]) {
       expect(allMigrations).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`)
     }
@@ -37,6 +38,8 @@ describe('initial D1 migration', () => {
       'idx_auth_attempts_bucket_occurred',
       'idx_auth_attempts_subject_occurred',
       'idx_auth_failure_buckets_locked_until',
+      'idx_request_quota_buckets_blocked_until',
+      'idx_request_quota_buckets_scope_updated',
     ]) {
       expect(allMigrations).toContain(`CREATE INDEX IF NOT EXISTS ${indexName}`)
     }
@@ -49,6 +52,25 @@ describe('initial D1 migration', () => {
     expect(allMigrations).toContain('bucket_key TEXT NOT NULL')
     expect(allMigrations).toContain('failed_count INTEGER NOT NULL')
     expect(allMigrations).toContain('window_started_at TEXT NOT NULL')
+    expect(allMigrations).not.toContain('ip_address')
+    expect(allMigrations).not.toContain('client_ip')
+  })
+
+  it('adds request quota buckets without plaintext IP storage', () => {
+    expect(allMigrations).toContain(
+      'CREATE TABLE IF NOT EXISTS request_quota_buckets',
+    )
+    expect(allMigrations).toContain('scope TEXT NOT NULL')
+    expect(allMigrations).toContain('request_count INTEGER NOT NULL')
+    expect(allMigrations).toContain('window_started_at TEXT NOT NULL')
+    expect(allMigrations).toContain('blocked_until TEXT')
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_request_quota_buckets_blocked_until',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_request_quota_buckets_scope_updated',
+    )
+    expect(allMigrations).toContain("VALUES ('0008')")
     expect(allMigrations).not.toContain('ip_address')
     expect(allMigrations).not.toContain('client_ip')
   })
@@ -165,4 +187,5 @@ const allMigrations = [
   readFileSync('migrations/0005_device_keys.sql', 'utf8'),
   readFileSync('migrations/0006_cipher_attachments.sql', 'utf8'),
   readFileSync('migrations/0007_audit_events.sql', 'utf8'),
+  readFileSync('migrations/0008_request_quotas.sql', 'utf8'),
 ].join('\n')
