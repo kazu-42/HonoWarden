@@ -78,8 +78,9 @@ inputs, not minor documentation notes.
 - D1 audit-event persistence has a 365-day retention policy, but staging and
   production audit logging remain disabled by default until `0007` is migrated
   and operator access is explicitly approved.
-- External Cloudflare log retention/access and vendor log-sink integration are
-  still not verified.
+- External Worker runtime logs now ship to a dedicated Cloudflare R2 Logpush
+  sink with operator-only access, but downstream SIEM/vendor alerting and
+  automated retention deletion are still operator-run rather than productized.
 - Backup directories and manifests now have a documented short-retention
   encrypted GitHub artifact policy and a 35-day operator archive target, but
   long-term archive storage is still operator-owned rather than automated in
