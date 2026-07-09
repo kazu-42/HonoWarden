@@ -111,7 +111,16 @@ staging and production must receive them through Wrangler secret commands:
 
 - `HONOWARDEN_BOOTSTRAP_TOKEN`
 - `HONOWARDEN_TOKEN_SECRET`
+- `HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID`
+- `HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET`
+- `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS`
 - `HONOWARDEN_TOTP_SECRET`
+
+`HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID` is not secret by itself, but keep it in the
+same ignored local file as the matching active secret so partial staged-rotation
+config does not drift. `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS` is a JSON array
+of prior signing keys and must be handled as a secret. See
+[Access Token Key Rotation](access-token-key-rotation.md).
 
 ## External Write Gates
 

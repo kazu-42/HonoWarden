@@ -66,6 +66,17 @@ pnpm wrangler secret put HONOWARDEN_TOKEN_SECRET --env staging
 pnpm wrangler secret put HONOWARDEN_TOTP_SECRET --env staging
 ```
 
+Access-token key-id signing is optional on first deploy. If enabling staged
+access-token key rotation, set all three keyring variables together and keep
+`HONOWARDEN_TOKEN_SECRET` unchanged for refresh-token hashing and legacy no-kid
+fallback:
+
+```sh
+pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID --env staging
+pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET --env staging
+pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS --env staging
+```
+
 Set production secrets only after staging validation passes:
 
 ```sh
@@ -73,6 +84,10 @@ pnpm wrangler secret put HONOWARDEN_BOOTSTRAP_TOKEN --env production
 pnpm wrangler secret put HONOWARDEN_TOKEN_SECRET --env production
 pnpm wrangler secret put HONOWARDEN_TOTP_SECRET --env production
 ```
+
+For production staged access-token key rotation, repeat the same three keyring
+secret commands only after the staging runbook in
+`docs/operations/access-token-key-rotation.md` passes.
 
 `HONOWARDEN_AUDIT_LOGS` remains `false` until log retention and access controls
 are approved.

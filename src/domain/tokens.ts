@@ -54,10 +54,25 @@ export type AccessTokenClaims = {
   authMethod?: AccessTokenAuthMethod
 }
 
+export type AccessTokenSigningKey = {
+  id: string
+  secret: string
+}
+
+export type AccessTokenKeyring = {
+  active: AccessTokenSigningKey
+  previous?: AccessTokenSigningKey[]
+  legacySecrets?: string[]
+}
+
+export type AccessTokenSigner = string | AccessTokenSigningKey
+export type AccessTokenVerifier = string | AccessTokenKeyring
+
 export type AccessTokenVerification =
   | {
       ok: true
       claims: AccessTokenClaims
+      keyId?: string
     }
   | {
       ok: false
@@ -203,23 +218,24 @@ export function verifyPresentedPasswordHash(
 }
 
 export async function signAccessToken(
-  secret: string,
+  signer: AccessTokenSigner,
   claims: AccessTokenClaims,
 ): Promise<string> {
   const header = {
     alg: 'HS256',
     typ: 'JWT',
+    ...(typeof signer === 'string' ? {} : { kid: signer.id }),
   }
   const encodedHeader = encodeJson(header)
   const encodedPayload = encodeJson(claims)
   const signingInput = `${encodedHeader}.${encodedPayload}`
-  const signature = await hmacSha256(secret, signingInput)
+  const signature = await hmacSha256(signingSecret(signer), signingInput)
 
   return `${signingInput}.${base64UrlEncodeBytes(signature)}`
 }
 
 export async function verifyAccessToken(
-  secret: string,
+  verifier: AccessTokenVerifier,
   token: string,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<AccessTokenVerification> {
@@ -233,12 +249,19 @@ export async function verifyAccessToken(
     return { ok: false, code: 'invalid' }
   }
 
-  const signingInput = `${encodedHeader}.${encodedPayload}`
-  const expectedSignature = base64UrlEncodeBytes(
-    await hmacSha256(secret, signingInput),
-  )
+  const header = decodeJson<AccessTokenHeader>(encodedHeader)
+  if (!isAccessTokenHeader(header)) {
+    return { ok: false, code: 'invalid' }
+  }
 
-  if (!constantTimeEqual(expectedSignature, encodedSignature)) {
+  const signingInput = `${encodedHeader}.${encodedPayload}`
+  const verificationKey = await findVerificationKey({
+    verifier,
+    kid: header.kid,
+    signingInput,
+    encodedSignature,
+  })
+  if (!verificationKey) {
     return { ok: false, code: 'invalid' }
   }
 
@@ -254,6 +277,7 @@ export async function verifyAccessToken(
   return {
     ok: true,
     claims,
+    ...(verificationKey.id ? { keyId: verificationKey.id } : {}),
   }
 }
 
@@ -330,6 +354,101 @@ function isAccessTokenClaims(value: unknown): value is AccessTokenClaims {
       claims.authMethod === 'password' ||
       claims.authMethod === 'refresh')
   )
+}
+
+type AccessTokenHeader = {
+  alg: string
+  typ: string
+  kid?: string
+}
+
+function isAccessTokenHeader(value: unknown): value is AccessTokenHeader {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const header = value as Record<string, unknown>
+
+  return (
+    header.alg === 'HS256' &&
+    header.typ === 'JWT' &&
+    (header.kid === undefined ||
+      (typeof header.kid === 'string' && header.kid.length > 0))
+  )
+}
+
+function signingSecret(signer: AccessTokenSigner): string {
+  return typeof signer === 'string' ? signer : signer.secret
+}
+
+async function findVerificationKey(input: {
+  verifier: AccessTokenVerifier
+  kid: string | undefined
+  signingInput: string
+  encodedSignature: string
+}): Promise<{ id?: string; secret: string } | null> {
+  if (typeof input.verifier === 'string') {
+    return (await signatureMatches({
+      secret: input.verifier,
+      signingInput: input.signingInput,
+      encodedSignature: input.encodedSignature,
+    }))
+      ? { secret: input.verifier }
+      : null
+  }
+
+  const keyedCandidates = [
+    input.verifier.active,
+    ...(input.verifier.previous ?? []),
+  ]
+
+  if (input.kid) {
+    const keyedCandidate = keyedCandidates.find(
+      (candidate) => candidate.id === input.kid,
+    )
+    if (!keyedCandidate) {
+      return null
+    }
+
+    return (await signatureMatches({
+      secret: keyedCandidate.secret,
+      signingInput: input.signingInput,
+      encodedSignature: input.encodedSignature,
+    }))
+      ? keyedCandidate
+      : null
+  }
+
+  const legacyCandidates = [
+    ...keyedCandidates,
+    ...(input.verifier.legacySecrets ?? []).map((secret) => ({ secret })),
+  ]
+
+  for (const candidate of legacyCandidates) {
+    if (
+      await signatureMatches({
+        secret: candidate.secret,
+        signingInput: input.signingInput,
+        encodedSignature: input.encodedSignature,
+      })
+    ) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+async function signatureMatches(input: {
+  secret: string
+  signingInput: string
+  encodedSignature: string
+}): Promise<boolean> {
+  const expectedSignature = base64UrlEncodeBytes(
+    await hmacSha256(input.secret, input.signingInput),
+  )
+
+  return constantTimeEqual(expectedSignature, input.encodedSignature)
 }
 
 async function hmacSha256(secret: string, value: string): Promise<Uint8Array> {

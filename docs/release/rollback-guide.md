@@ -54,11 +54,20 @@ Do not restore over the original source database during alpha.
 
 If a secret is exposed:
 
+- access-token signing key: restore the last known-good access-token keyring or
+  remove the compromised `kid` from the verifier set, then verify that tokens
+  for that `kid` fail while unaffected tokens follow the approved rotation
+  window.
 - `HONOWARDEN_TOKEN_SECRET`: rotate and force re-login; existing refresh-token
-  hash lookups will fail after rotation.
+  hash lookups and legacy no-kid access-token fallback will fail after
+  rotation.
 - `HONOWARDEN_TOTP_SECRET`: rotate only with a TOTP re-enrollment plan; existing
   encrypted setup secrets cannot be decrypted by the new secret.
 - `HONOWARDEN_BOOTSTRAP_TOKEN`: rotate immediately and keep bootstrap disabled.
+
+Use [Access Token Key Rotation](../operations/access-token-key-rotation.md) for
+staged access-token signing-key rollback. Do not treat access-token keyring
+rollback as a complete `HONOWARDEN_TOKEN_SECRET` rotation drill.
 
 ## Evidence To Record
 

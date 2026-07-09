@@ -20,7 +20,8 @@ must remain stable for alpha.
 
 ```text
 request
-  -> token secret configured?
+  -> refresh-token secret configured?
+  -> access-token signer config valid?
   -> form grant_type=password?
   -> device information present?
   -> IP/account lockout open?
@@ -33,7 +34,8 @@ request
 
 Failure invariants:
 
-- missing token secret returns server misconfigured
+- missing token secret or malformed access-token keyring config returns server
+  misconfigured
 - missing device metadata returns invalid request
 - unknown, disabled, locked, or wrong-password account returns generic
   invalid-grant wording
@@ -78,7 +80,8 @@ Failure invariants:
 
 ```text
 request
-  -> token secret configured?
+  -> refresh-token secret configured?
+  -> access-token signer config valid?
   -> form grant_type=refresh_token?
   -> refresh token hash lookup succeeds?
   -> token is not revoked?
@@ -99,6 +102,9 @@ Failure invariants:
 
 ```text
 bearer token
+  -> access-token verifier config valid?
+  -> if JWT header has kid, matching active or previous key exists?
+  -> if JWT header has no kid, legacy no-kid fallback is allowed?
   -> HMAC signature valid?
   -> exp still valid?
   -> user exists?
@@ -109,6 +115,8 @@ bearer token
 
 Recent-auth invariant:
 
+- tokens with unknown `kid` fail closed and do not fall back to the legacy
+  no-kid secret
 - sensitive TOTP setup routes require `authMethod=password`
 - TOTP disable requires `authMethod=password`
 - revoke-all-other-sessions requires `authMethod=password`
