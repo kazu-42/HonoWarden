@@ -399,6 +399,9 @@ Implemented:
   suspicion, email abuse, and Cloudflare compromise
 - incident response tabletop evidence with follow-up gaps mapped to Linear
   issues
+- Cloudflare access-control review documenting redacted member/role/token
+  readback, least-privilege token plan, accepted temporary break-glass risk, and
+  review cadence; remediation is tracked by `HON-64`
 - known limitations document preserving pre-alpha and no-independent-audit warnings
 - dependency audit evidence with package manager output and lockfile SHA-256
 - `SECURITY.md` link to the security review materials
@@ -410,7 +413,8 @@ Not implemented:
 
 - independent security audit
 - external penetration test
-- Cloudflare account access-control review
+- Cloudflare account least-privilege remediation and break-glass rotation after
+  the recorded access-control review
 - live incident, real secret rotation, or external communications drill
 - secret rotation drill
 

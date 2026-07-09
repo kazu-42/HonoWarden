@@ -149,7 +149,9 @@ References:
 - [Cloudflare Resource Evidence](../release/cloudflare-resource-evidence.md)
 - [Operations Rollback Evidence](../release/ops-rollback-evidence.md)
 
-Cloudflare account access review is tracked separately by `HON-58`.
+Cloudflare account access review is documented in
+[Cloudflare Access-Control Review](../operations/cloudflare-access-control.md).
+Least-privilege token and 2FA remediation remain tracked by `HON-64`.
 
 ## Communication
 

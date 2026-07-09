@@ -76,8 +76,31 @@ describe('operator environment policy', () => {
     expect(operatorDocs).toContain('direnv Setup')
     expect(operatorDocs).toContain('LINEAR_API_KEY')
     expect(operatorDocs).toContain('CLOUDFLARE_API_TOKEN')
+    expect(operatorDocs).toContain('Cloudflare Access-Control Review')
     expect(operatorDocs).toContain('External Write Gates')
     expect(operatorDocs).toContain('Current Linear Access')
+  })
+
+  it('documents Cloudflare account access review without secret values', () => {
+    const accessReview = readRepoFile(
+      'docs/operations/cloudflare-access-control.md',
+    )
+
+    expect(accessReview).toContain('Status: reviewed')
+    expect(accessReview).toContain('Redacted Readback')
+    expect(accessReview).toContain('Super Administrator - All Privileges')
+    expect(accessReview).toContain('Least-Privilege Token Plan')
+    expect(accessReview).toContain('Break-Glass Process')
+    expect(accessReview).toContain('Stale Credential Decision')
+    expect(accessReview).toContain('Review Cadence And Owner')
+    expect(accessReview).toContain('HON-64')
+    expect(accessReview).toContain('HON-60')
+    expect(accessReview).toContain('global key')
+    expect(accessReview).not.toContain('X-Auth-Key')
+    expect(accessReview).not.toContain('CLOUDFLARE_GLOBAL_API_KEY=')
+    expect(accessReview).not.toMatch(
+      /[A-Z0-9._%+-]+@(?!honowarden\.com\b)[A-Z0-9.-]+\.[A-Z]{2,}/i,
+    )
   })
 })
 

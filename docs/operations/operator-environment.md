@@ -4,6 +4,10 @@ This document defines the local operator environment for HonoWarden automation.
 It keeps project URLs and non-secret defaults in git while keeping API keys,
 Cloudflare tokens, destination inboxes, and runtime secrets outside git.
 
+Cloudflare account access-control evidence and the least-privilege token plan
+are recorded in
+[Cloudflare Access-Control Review](cloudflare-access-control.md).
+
 ## Scope
 
 Use this environment for local automation only:
