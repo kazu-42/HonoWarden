@@ -107,6 +107,7 @@ pnpm linear:seed
 pnpm linear:preflight
 pnpm linear:apply-plan
 pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan>
+pnpm linear:request-plan -- --mutation-packet <ready-mutation-packet>
 pnpm email:preflight
 ```
 
@@ -121,11 +122,13 @@ Before applying external changes:
    produces a reviewed plan before Linear writes are attempted.
 4. `pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan> --strict`
    produces a reviewed packet before any guarded writer is used.
-5. `gh auth status` resolves to the intended GitHub user.
-6. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
-7. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
-8. Destination inboxes for email routing are verified in Cloudflare.
-9. The current worktree is clean or the pending diff is intentionally scoped.
+5. `pnpm linear:request-plan -- --mutation-packet <ready-mutation-packet> --strict`
+   produces a reviewed request contract before any guarded writer is used.
+6. `gh auth status` resolves to the intended GitHub user.
+7. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
+8. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
+9. Destination inboxes for email routing are verified in Cloudflare.
+10. The current worktree is clean or the pending diff is intentionally scoped.
 
 Use strict local preflight before requesting email-routing writes:
 
@@ -176,6 +179,12 @@ ready apply-plan JSON, emits mutation candidates, existing-object confirmations,
 and manual confirmations for review, and intentionally omits executable buckets
 when the input plan is blocked. It does not read credentials, resolve Linear
 IDs, call GraphQL, or create or update Linear objects.
+
+`pnpm linear:request-plan` is also local-only. It reads a ready mutation packet
+and emits request intents, unresolved ID requirements, confirmations, and manual
+confirmations for a future guarded writer. It uses local intent names instead of
+unverified live GraphQL mutation names. It does not read credentials, resolve
+Linear IDs, call GraphQL, or create or update Linear objects.
 
 ## Missing Inputs
 
