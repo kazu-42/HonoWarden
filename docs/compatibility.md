@@ -20,6 +20,7 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - public registration
 - Organizations administration
 - Send
+- Emergency Access
 - SSO
 - multi-tenant hosted operation
 - enterprise policy management
@@ -49,6 +50,14 @@ would add unauthenticated access, link enumeration risk, expiration, revocation,
 rate limiting, abuse reporting, cache policy, and separate retention/deletion
 semantics. ADR 0003 defines the minimum design gates before any support claim.
 
+## Emergency Access Boundary
+
+HonoWarden does not expose Emergency Access in the alpha release. Delegated
+recovery would add grantee identity proofing, delayed access, cancellation,
+notification delivery, cryptographic handoff, abuse controls, and transition
+auditing requirements. ADR 0004 defines the minimum design gates before any
+support claim.
+
 ## Explicit Unsupported Responses
 
 The alpha API returns typed `501` JSON errors for feature families that are
@@ -58,6 +67,8 @@ intentionally outside the initial scope:
 - `/api/organizations/*`
 - `/api/sends`
 - `/api/sends/*`
+- `/api/emergency-access`
+- `/api/emergency-access/*`
 
 Response shape:
 
