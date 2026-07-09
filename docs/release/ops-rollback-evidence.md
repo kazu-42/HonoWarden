@@ -134,21 +134,22 @@ newer verified safe target is selected and recorded.
 
 ## Website Previous-Version Handle
 
-Standing operator approval was provided on 2026-07-08. The website deployment
-was performed from `kazu-42/HonoWarden-website` after PR #1 passed CI and was
-merged.
+Standing operator approval was provided on 2026-07-08. The website was first
+deployed from `kazu-42/HonoWarden-website` after PR #1 passed CI and was
+merged. Security contact metadata was then published after PR #2 passed CI and
+Email Routing inbound smoke was verified.
 
-- Website merge commit: `36b8171f7afd55bf306e5482cca454a0b3822a39`
-- Current deployment: `0f398ae5-6d01-42a8-bbe4-35378661ce81`
-- Current version: `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91`
-- Current deployment readback: `2026-07-09T14:10Z`, version receiving `100%`
+- Website merge commit: `97095812384b47e5a1798108d77d8224f75509f2`
+- Current deployment: `1c3fc838-3e84-448a-ba36-a8181f3e6eed`
+- Current version: `b408a4e2-4279-4a57-8172-698b1c77c6ab`
+- Current deployment readback: `2026-07-09T14:22Z`, version receiving `100%`
   traffic
-- Previous deployment: `5b1f701c-4654-46e5-bca7-09de61316783`
-- Previous version: `3db432cb-6422-4311-b558-6eb2b0b5bb51`
-- Previous status: known-good public website deployment that did not advertise
-  an active unverified security mailbox
+- Previous deployment: `0f398ae5-6d01-42a8-bbe4-35378661ce81`
+- Previous version: `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91`
+- Previous status: known-good public website deployment before security
+  metadata publication
 - Rollback command:
-  `pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes`
+  `pnpm exec wrangler rollback eef4ab71-d6e8-401f-93c3-27e7bd2bcd91 --name honowarden-website --yes`
 - Rollback execution: not performed because post-deploy website smoke passed
 
 Website health recheck during rollback rehearsal:
@@ -161,8 +162,10 @@ Website health recheck during rollback rehearsal:
   `{"status":"ok","service":"honowarden-website"}`
 - `https://www.honowarden.com/health`: HTTP `200`,
   `{"status":"ok","service":"honowarden-website"}`
-- `/.well-known/security.txt`: HTTP `404` on apex and `www`, matching the
-  current security-contact visibility decision
+- `/.well-known/security.txt`: HTTP `200` on apex and `www`, with verified
+  public contact and security policy links
+- `/security.txt`: HTTP `308` on apex and `www`, redirecting to
+  `/.well-known/security.txt`
 
 ## Email Routing Rollback Handle
 
@@ -242,7 +245,7 @@ pnpm exec wrangler deploy --env production
 Website:
 
 ```sh
-pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes
+pnpm exec wrangler rollback eef4ab71-d6e8-401f-93c3-27e7bd2bcd91 --name honowarden-website --yes
 ```
 
 Email Routing:

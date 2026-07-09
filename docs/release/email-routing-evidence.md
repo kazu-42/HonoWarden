@@ -164,9 +164,10 @@ Inbound smoke:
   destination inbox at `2026-07-09 22:59 JST`.
 - Mailbox visibility was confirmed without recording message bodies, mailbox
   contents, or the private destination address.
-- `security@honowarden.com` may now be referenced by future security metadata
-  work, but real vulnerability-report handling still depends on the separate
-  retention and redaction controls tracked for the inquiry inbox.
+- `security@honowarden.com` is now published by the website and
+  machine-readable `security.txt`, but real vulnerability-report handling still
+  depends on the separate retention and redaction controls tracked for the
+  inquiry inbox.
 
 ## Previous Readback: 2026-07-08
 

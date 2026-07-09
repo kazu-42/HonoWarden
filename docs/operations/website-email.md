@@ -171,9 +171,9 @@ Email:
 - Inbound smoke has passed for all required routes, with Cloudflare activity
   logs showing delivered forwarding events and operator-confirmed mailbox
   visibility.
-- `security@honowarden.com` can be referenced by future security metadata work,
-  but real vulnerability-report handling still depends on the inquiry inbox
-  retention and redaction controls.
+- `security@honowarden.com` is now referenced by the public website and
+  `security.txt`, but real vulnerability-report handling still depends on the
+  inquiry inbox retention and redaction controls.
 
 ## Rollback
 

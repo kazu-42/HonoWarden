@@ -151,6 +151,11 @@ describe('release feature-freeze docs', () => {
     expect(websiteEvidence).toContain(
       '36b8171f7afd55bf306e5482cca454a0b3822a39',
     )
+    expect(websiteEvidence).toContain(
+      '97095812384b47e5a1798108d77d8224f75509f2',
+    )
+    expect(websiteEvidence).toContain('b408a4e2-4279-4a57-8172-698b1c77c6ab')
+    expect(websiteEvidence).toContain('1c3fc838-3e84-448a-ba36-a8181f3e6eed')
     expect(websiteEvidence).toContain('eef4ab71-d6e8-401f-93c3-27e7bd2bcd91')
     expect(websiteEvidence).toContain('0f398ae5-6d01-42a8-bbe4-35378661ce81')
     expect(websiteEvidence).toContain('HTTPS smoke')
@@ -160,10 +165,14 @@ describe('release feature-freeze docs', () => {
     expect(websiteEvidence).toContain(
       'https://github.com/kazu-42/HonoWarden/blob/main/SECURITY.md',
     )
-    expect(websiteEvidence).toContain('does not advertise')
-    expect(websiteEvidence).toContain('security.txt`: HTTP `404`')
+    expect(websiteEvidence).toContain('mailto:security@honowarden.com')
+    expect(websiteEvidence).toContain('Contact: mailto:security@honowarden.com')
+    expect(websiteEvidence).toContain('Preferred-Languages: en, ja')
+    expect(websiteEvidence).toContain('Expires: 2027-07-08T00:00:00Z')
+    expect(websiteEvidence).toContain('HTTP `308`, redirects')
+    expect(websiteEvidence).toMatch(/does\s+not record private forwarding/)
     expect(websiteEvidence).toContain(
-      'pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes',
+      'pnpm exec wrangler rollback eef4ab71-d6e8-401f-93c3-27e7bd2bcd91 --name honowarden-website --yes',
     )
 
     expect(emailEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
@@ -204,8 +213,10 @@ describe('release feature-freeze docs', () => {
     expect(rollbackEvidence).toContain('Decision: `continue`')
     expect(rollbackEvidence).toContain('schemaVersion=0003')
     expect(rollbackEvidence).toContain('error.code=prelogin_not_allowed')
+    expect(rollbackEvidence).toContain('b408a4e2-4279-4a57-8172-698b1c77c6ab')
+    expect(rollbackEvidence).toContain('1c3fc838-3e84-448a-ba36-a8181f3e6eed')
     expect(rollbackEvidence).toContain('eef4ab71-d6e8-401f-93c3-27e7bd2bcd91')
-    expect(rollbackEvidence).toContain('3db432cb-6422-4311-b558-6eb2b0b5bb51')
+    expect(rollbackEvidence).toContain('0f398ae5-6d01-42a8-bbe4-35378661ce81')
     expect(rollbackEvidence).toContain('Inbound smoke status: `passed`')
     expect(rollbackEvidence).toContain('Email Routing Rollback Handle')
     expect(rollbackEvidence).toContain('c303ee9d52e94355a6a5c0680163927c')
