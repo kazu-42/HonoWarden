@@ -73,6 +73,34 @@ describe('email routing preflight', () => {
     expect(result.stdout).not.toContain('support-destination@example.test')
   })
 
+  it('accepts Cloudflare global API key auth without printing secret values', async () => {
+    const env = {
+      ...cleanEnv(),
+      CLOUDFLARE_GLOBAL_API_KEY: 'cf-global-secret-key',
+      CLOUDFLARE_EMAIL: 'operator@example.test',
+      CLOUDFLARE_ACCOUNT_ID: 'account-id',
+      CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: 'zone-id',
+      HONOWARDEN_SECURITY_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_SUPPORT_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_GENERAL_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_ADMIN_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_POSTMASTER_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_ABUSE_FORWARD_TO: 'shared-destination@example.test',
+    }
+    const result = await execFileAsync('node', [preflightScript], { env })
+    const report = JSON.parse(result.stdout) as EmailPreflightReport
+
+    expect(report.status).toBe('ready')
+    expect(report.checks).toContainEqual({
+      id: 'cloudflare_api_token',
+      status: 'pass',
+      detail: 'Cloudflare global API key auth configured',
+    })
+    expect(result.stdout).not.toContain('cf-global-secret-key')
+    expect(result.stdout).not.toContain('operator@example.test')
+    expect(result.stdout).not.toContain('shared-destination@example.test')
+  })
+
   it('fails strict mode when required inputs are missing', async () => {
     await expect(
       execFileAsync('node', [preflightScript, '--strict'], {

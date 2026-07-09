@@ -62,6 +62,26 @@ tracked `.envrc` watches both ignored local files, loads `.env.local` with
 Changing local API keys or forwarding destinations prompts direnv to reload
 after the next `direnv allow`.
 
+For Cloudflare global API key auth, prefer a home-directory secret file instead
+of storing the value in the repository checkout:
+
+```sh
+mkdir -p ~/.config/honowarden
+chmod 700 ~/.config/honowarden
+$EDITOR ~/.config/honowarden/cloudflare.env
+chmod 600 ~/.config/honowarden/cloudflare.env
+```
+
+Then source it from ignored `.envrc.local`:
+
+```sh
+source_env_if_exists ~/.config/honowarden/cloudflare.env
+```
+
+The current operator setup uses this pattern for local-only Cloudflare global
+key auth. Do not commit the home env file, `.envrc.local`, or any rendered
+Cloudflare key value.
+
 ## Required Local Secrets
 
 | Variable                            | Required for                              | Notes                                                                      |
@@ -69,6 +89,10 @@ after the next `direnv allow`.
 | `LINEAR_API_KEY`                    | Linear API apply                          | Must belong to an account with access to `https://linear.app/honowarden/`. |
 | `GITHUB_TOKEN`                      | Website repository automation             | Optional if `gh auth status` already has the required repo permissions.    |
 | `CLOUDFLARE_API_TOKEN`              | Cloudflare API automation                 | Prefer a scoped token over a global key.                                   |
+| `CLOUDFLARE_API_KEY`                | Cloudflare API automation fallback        | Global key fallback; keep local-only and pair with account email.          |
+| `CLOUDFLARE_GLOBAL_API_KEY`         | Cloudflare API automation fallback        | Alias for the global key fallback; keep local-only.                        |
+| `CLOUDFLARE_EMAIL`                  | Cloudflare global key auth                | Required when using a global key.                                          |
+| `CLOUDFLARE_API_EMAIL`              | Cloudflare global key auth                | Alias for the account email used by global key auth.                       |
 | `CLOUDFLARE_ACCOUNT_ID`             | Worker deploys and account resources      | Non-secret but operationally sensitive.                                    |
 | `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` | DNS and email routing on `honowarden.com` | Non-secret but operationally sensitive.                                    |
 | `HONOWARDEN_SECURITY_FORWARD_TO`    | Email routing                             | Destination must be verified in Cloudflare before forwarding.              |
@@ -142,8 +166,10 @@ Use strict local preflight before requesting email-routing writes:
 pnpm email:preflight -- --strict
 ```
 
-The report prints only configured/missing status for API tokens and destination
-inboxes. It does not print token values or forwarding addresses.
+The report prints only configured/missing status for API auth and destination
+inboxes. It accepts either `CLOUDFLARE_API_TOKEN`, or a local-only global key
+with `CLOUDFLARE_EMAIL`. It does not print token values, global key values,
+operator emails, or forwarding addresses.
 
 ## Current Linear Access
 
@@ -204,9 +230,5 @@ values. External writes need the following from the operator:
 
 - a Linear API key for the `honowarden` workspace, or a fixed Linear MCP session
   that returns the HonoWarden team
-- a scoped Cloudflare API token that can manage Workers, DNS, and Email Routing
-  for `honowarden.com`
-- verified forwarding destination addresses for security, support, general,
-  admin, postmaster, and abuse project mail
-- approval to deploy `kazu-42/HonoWarden-website` changes or mutate
-  Cloudflare DNS and Email Routing
+- inbound smoke confirmation for the configured security, support, general,
+  admin, postmaster, and abuse project mail routes

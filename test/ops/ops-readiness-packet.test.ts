@@ -258,6 +258,54 @@ describe('ops readiness packet', () => {
     expect(result.stdout).not.toContain('support-destination@example.test')
   })
 
+  it('accepts Cloudflare global key email inputs without printing secret values', async () => {
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
+    const fakeBin = await createFakeReleaseBin({
+      isDraft: true,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl,
+    })
+    const env = {
+      ...fakeEnv(fakeBin),
+      CLOUDFLARE_GLOBAL_API_KEY: 'cf-global-secret-key',
+      CLOUDFLARE_EMAIL: 'operator@example.test',
+      CLOUDFLARE_ACCOUNT_ID: 'account-id',
+      CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: 'zone-id',
+      HONOWARDEN_SECURITY_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_SUPPORT_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_GENERAL_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_ADMIN_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_POSTMASTER_FORWARD_TO: 'shared-destination@example.test',
+      HONOWARDEN_ABUSE_FORWARD_TO: 'shared-destination@example.test',
+    }
+
+    const result = await execFileAsync(
+      'node',
+      [
+        readinessPacketScript,
+        '--tag-workflow-run-id',
+        '54321',
+        '--tag-workflow-url',
+        tagWorkflowUrl,
+      ],
+      { env },
+    )
+    const report = JSON.parse(result.stdout) as OpsReadinessPacket
+
+    expect(statusById(report, 'email_local_inputs_ready')).toBe('pass')
+    expect(report.email).toMatchObject({
+      localPreflightStatus: 'ready',
+      configuredRoutes: 6,
+      requiredRoutes: 6,
+      failedChecks: [],
+    })
+    expect(result.stdout).not.toContain('cf-global-secret-key')
+    expect(result.stdout).not.toContain('operator@example.test')
+    expect(result.stdout).not.toContain('shared-destination@example.test')
+  })
+
   it('keeps the Cloudflare API token as the precise blocker when route inputs are present', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'

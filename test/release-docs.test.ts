@@ -165,16 +165,23 @@ describe('release feature-freeze docs', () => {
       'pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes',
     )
 
-    expect(emailEvidence).toContain('Status: not_performed')
-    expect(emailEvidence).not.toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(emailEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
     expect(emailEvidence).toContain('approval')
-    expect(emailEvidence).toContain('Current Readback: 2026-07-08')
-    expect(emailEvidence).toContain('CLOUDFLARE_API_TOKEN` is missing')
+    expect(emailEvidence).toContain('Current Readback: 2026-07-09')
+    expect(emailEvidence).toMatch(/Cloudflare[\s\S]+global\s+API key auth/)
+    expect(emailEvidence).toContain('API readback: `enabled: true`')
+    expect(emailEvidence).toContain('API status: `ready`')
+    expect(emailEvidence).toContain('Destination hash tag: `e732fc786e52`')
     expect(emailEvidence).toContain('Configured routes: `6/6`')
-    expect(emailEvidence).toContain(
-      'Cloudflare API authentication error `10000`',
-    )
-    expect(emailEvidence).toContain('MX records: none returned')
+    expect(emailEvidence).toContain('c303ee9d52e94355a6a5c0680163927c')
+    expect(emailEvidence).toContain('905639146eeaf7449af796d7bef2a8ab')
+    expect(emailEvidence).toContain('Inbound smoke')
+    expect(emailEvidence).toContain('Status: `passed`')
+    expect(emailEvidence).toContain('redacted external mailbox')
+    expect(emailEvidence).toContain('Subject: `テスト`')
+    expect(emailEvidence).toContain('Cloudflare status for all six')
+    expect(emailEvidence).toContain('Message ID hash tag')
+    expect(emailEvidence).toContain('visible in the verified')
     expect(emailEvidence).toContain('rollback')
 
     expect(rollbackEvidence).toContain('Status: partial')
@@ -182,10 +189,10 @@ describe('release feature-freeze docs', () => {
     expect(rollbackEvidence).toContain('Approved rollback command: unresolved')
     expect(rollbackEvidence).toContain('eef4ab71-d6e8-401f-93c3-27e7bd2bcd91')
     expect(rollbackEvidence).toContain('3db432cb-6422-4311-b558-6eb2b0b5bb51')
-    expect(rollbackEvidence).toContain(
-      'Email Routing Pre-Change Rollback Handle',
-    )
-    expect(rollbackEvidence).toContain('missing `email_routing:write`')
+    expect(rollbackEvidence).toContain('Email Routing Rollback Handle')
+    expect(rollbackEvidence).toContain('c303ee9d52e94355a6a5c0680163927c')
+    expect(rollbackEvidence).toContain('905639146eeaf7449af796d7bef2a8ab')
+    expect(rollbackEvidence).toContain('Rollback execution: not performed')
     expect(rollbackEvidence).toContain('rollback')
   })
 })

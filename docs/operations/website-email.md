@@ -20,8 +20,8 @@ This document organizes the public website and email work around
 5. Keep CI, typecheck, lint, tests, and formatting green in the website
    repository.
 6. Verify `honowarden.com` and `www.honowarden.com` after each website deploy.
-7. Configure email routing for project contact addresses after Cloudflare Email
-   Routing scopes are available.
+7. Configure email routing for project contact addresses after Cloudflare API
+   write access and destination verification are available.
 8. Record DNS, email, deployment, and rollback evidence in this repository and
    the website repository.
 9. Mirror completed work into Linear issues and project updates once the Linear
@@ -131,9 +131,10 @@ pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-ur
 after `.workflow/week-26-release-tag-recovery/state.json` records the passed
 `Release Tag Verification` run; the packet revalidates that run before using it.
 
-The preflight is offline. It checks whether the Cloudflare token/account/zone
-inputs and forwarding-destination variables are present, but it does not call
-Cloudflare, create routes, send messages, or print token/destination values.
+The preflight is offline. It checks whether Cloudflare API auth,
+account/zone inputs, and forwarding-destination variables are present, but it
+does not call Cloudflare, create routes, send messages, or print token,
+global-key, operator-email, or destination values.
 
 The operations readiness packet is also read-only. It combines the alpha release
 completion audit, local email preflight, and recorded evidence files so deploy,
@@ -146,9 +147,9 @@ The evidence files are:
 - `docs/release/email-routing-evidence.md`
 - `docs/release/ops-rollback-evidence.md`
 
-They intentionally start as `Status: not_performed`; do not mark them `passed`
-until the approved operation, redacted smoke evidence, and rollback handle are
-recorded.
+They intentionally start as `Status: not_performed` or `Status: partial`; do
+not mark them `passed` until the approved operation, redacted smoke evidence,
+and rollback handle are recorded.
 
 ## Current Status
 
@@ -161,11 +162,18 @@ Website:
 
 Email:
 
-- Cloudflare Email Routing is not yet enabled for `honowarden.com`.
-- The current Wrangler OAuth session can manage Workers but is missing
-  `email_routing:write`.
-- `security@honowarden.com` should not be advertised as an active disclosure
-  mailbox until the destination address is verified and an inbound test succeeds.
+- Cloudflare Email Routing is enabled for `honowarden.com`.
+- Cloudflare-managed MX records and SPF TXT are present for the apex domain.
+- Forwarding routes exist for `security`, `support`, `hello`, `admin`,
+  `postmaster`, and `abuse`.
+- The configured destination count is `1` and the destination is verified in
+  Cloudflare.
+- Inbound smoke has passed for all required routes, with Cloudflare activity
+  logs showing delivered forwarding events and operator-confirmed mailbox
+  visibility.
+- `security@honowarden.com` can be referenced by future security metadata work,
+  but real vulnerability-report handling still depends on the inquiry inbox
+  retention and redaction controls.
 
 ## Rollback
 

@@ -7,9 +7,8 @@ Status: partial.
 Mode: post-alpha rollback handle and recovery evidence.
 
 This file records rollback readiness after Worker deploy, website route changes,
-or Email Routing changes. It remains `partial` until website and Email Routing
-rollback evidence is recorded and a rollback rehearsal or actual rollback has
-been verified.
+or Email Routing changes. It remains `partial` until API Worker rollback target
+selection and a rollback rehearsal or actual rollback have been verified.
 
 Rollback readiness is separate from release publication, CI success, and local
 dry-run output.
@@ -60,29 +59,46 @@ merged.
   `pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honowarden-website --yes`
 - Rollback execution: not performed because post-deploy website smoke passed
 
-## Email Routing Pre-Change Rollback Handle
+## Email Routing Rollback Handle
 
-Email Routing readback was performed on 2026-07-08 without mutating
-Cloudflare.
+Email Routing was enabled on 2026-07-09 after operator approval. Pre-change
+readback from 2026-07-08 showed no MX records and no apex TXT records for
+`honowarden.com`.
 
 - `honowarden.com` nameservers: `anna.ns.cloudflare.com`,
   `damon.ns.cloudflare.com`
-- Pre-change MX readback: no MX records returned
-- Pre-change apex TXT readback: no TXT records returned
-- Email Routing settings readback: blocked by Cloudflare API authentication
-  error `10000`
-- Email Routing rules readback: blocked by Cloudflare API authentication error
-  `10000`
-- Email Routing destination-address readback: blocked by Cloudflare API
-  authentication error `10000`
-- Wrangler OAuth blocker: missing `email_routing:write` and
-  `email_sending:write` scopes
-- Route rollback command: unresolved until a successful route create operation
-  records rule identifiers or dashboard state
-- DNS rollback command: unresolved until an approved DNS MX/SPF mutation records
-  the previous and new record state
-- Rollback execution: not performed because no Email Routing or DNS mutation was
-  performed
+- Current Email Routing state: `enabled: true`, API status `ready`
+- Current destination count: `1`, verified destination tag `e732fc786e52`
+- Destination address value is intentionally not recorded
+- Inbound smoke status: `not_performed`
+- Rollback execution: not performed because route/DNS readback passed and
+  inbound smoke is still pending
+
+Route rollback handles:
+
+| Address                     | Rule ID                            |
+| --------------------------- | ---------------------------------- |
+| `security@honowarden.com`   | `c303ee9d52e94355a6a5c0680163927c` |
+| `support@honowarden.com`    | `f9821e487f1d4e6e989f0fca1fb5ea6b` |
+| `hello@honowarden.com`      | `e9d2b80c19cf47038165b15282c68eb4` |
+| `admin@honowarden.com`      | `0d3aea1c4e13401085cf7c6be2b7ac00` |
+| `postmaster@honowarden.com` | `f44abae45fc749f9a99e8945ad46e994` |
+| `abuse@honowarden.com`      | `b9d2bf82f1bc41f688299e8be617c7dd` |
+
+DNS rollback handles:
+
+| Type | Record ID                          | Content                                        | Priority |
+| ---- | ---------------------------------- | ---------------------------------------------- | -------- |
+| MX   | `04fa6f6528ab56d9d2b3d6fbd8fa9ded` | `route3.mx.cloudflare.net`                     | `28`     |
+| MX   | `62a4125f5191bf644e1723cceb04839f` | `route2.mx.cloudflare.net`                     | `35`     |
+| MX   | `d1df42e54f0d39facf12ff0e4a6f0668` | `route1.mx.cloudflare.net`                     | `63`     |
+| TXT  | `905639146eeaf7449af796d7bef2a8ab` | `"v=spf1 include:_spf.mx.cloudflare.net ~all"` | n/a      |
+
+If inbound delivery fails and the decision is to revert to the pre-change email
+posture, disable the Email Routing rules first, then disable Email Routing for
+the zone. If the disable operation does not remove the MX/SPF records, delete
+the DNS records by the IDs above. Keep `security@honowarden.com` unadvertised
+until a successful inbound test is recorded.
 
 ## Evidence To Record
 
@@ -127,7 +143,14 @@ pnpm exec wrangler rollback 3db432cb-6422-4311-b558-6eb2b0b5bb51 --name honoward
 Email Routing:
 
 ```sh
-# Fill in the approved route disable or provider rollback step.
+# Disable or delete the six forwarding rules by rule id, then disable Email
+# Routing. If DNS remains after disabling Email Routing, delete the MX/SPF
+# records by DNS record id.
+#
+# Example API paths:
+# DELETE /zones/$CLOUDFLARE_ZONE_ID_HONOWARDEN_COM/email/routing/rules/<rule-id>
+# POST /zones/$CLOUDFLARE_ZONE_ID_HONOWARDEN_COM/email/routing/disable
+# DELETE /zones/$CLOUDFLARE_ZONE_ID_HONOWARDEN_COM/dns_records/<record-id>
 ```
 
 ## Not Performed

@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 ## Week 1 Status
 
@@ -504,15 +504,18 @@ Implemented:
 - CI-covered operator environment policy tests under
   `test/ops/operator-environment.test.ts`
 - read-only `pnpm email:preflight` for Email Routing readiness without printing
-  token or destination values
+  token, global key, operator email, or destination values
 - Email Routing preflight tests under `test/ops/email-preflight.test.ts`
-- ignored local Email Routing inputs are now configured for account id, zone id,
-  and all six destination variables; `CLOUDFLARE_API_TOKEN` remains missing
+- Cloudflare global API key auth is stored outside the repository under the
+  operator's home config and sourced through ignored `.envrc.local`
+- ignored local Email Routing inputs are now configured for Cloudflare auth,
+  account id, zone id, and all six destination variables
 
 Not implemented:
 
 - live Linear API writes with a HonoWarden workspace key
-- Cloudflare DNS or Email Routing writes through API tokens
+- security metadata publication and AI inquiry inbox implementation after
+  verified Email Routing
 
 ## Week 26 Release Gate Preflight
 
@@ -1691,12 +1694,22 @@ Implemented:
 - `docs/release/website-live-evidence.md` now records website deployment,
   route, HTTPS smoke, link target, security-contact visibility, and rollback
   handle evidence
-- Email Routing readback on 2026-07-08 confirmed Cloudflare OAuth is logged into
-  account `gHive`, but Wrangler still reports missing `email_routing:write` and
-  `email_sending:write`; settings, rules, and destination-address API calls
-  fail with Cloudflare authentication error `10000`
-- DNS readback for `honowarden.com` shows Cloudflare nameservers and website
-  A/AAAA records, but no MX or apex TXT records yet
+- Email Routing was enabled for `honowarden.com` on 2026-07-09 with local-only
+  Cloudflare global API key auth stored outside the repository
+- Cloudflare API readback reports Email Routing `enabled: true` and status
+  `ready`
+- one verified destination is configured, recorded only by the redacted hash tag
+  `e732fc786e52`
+- forwarding rules exist for `security`, `support`, `hello`, `admin`,
+  `postmaster`, and `abuse`, with rule identifiers recorded in
+  `docs/release/email-routing-evidence.md`
+- DNS readback for `honowarden.com` now shows Cloudflare-managed MX records and
+  SPF TXT for Email Routing
+- inbound smoke passed for the six configured routes: Cloudflare Email Routing
+  activity logs show `delivered`/`forward`, and the operator confirmed mailbox
+  visibility without recording private mailbox contents
+- `docs/release/ops-rollback-evidence.md` records Email Routing rule IDs and
+  DNS record IDs for rollback handling
 - AI-driven inquiry inbox architecture is documented in
   `docs/operations/ai-inquiry-inbox.md`, including trust boundaries,
   Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
@@ -1706,8 +1719,6 @@ Implemented:
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- Email Routing live route creation and inbound delivery evidence in
-  `docs/release/email-routing-evidence.md`
 - AI inquiry inbox Worker, mailbox UI, body or attachment storage, AI triage,
   approved outbound replies, and Linear issue creation automation
 - verified safe rollback target selection for the API Worker

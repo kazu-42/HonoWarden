@@ -51,13 +51,13 @@ inputs, not minor documentation notes.
 
 ## Operational Gaps
 
-- Production deployment remains blocked by placeholder D1 IDs and staging-first
-  evidence requirements.
+- Production usage remains blocked by pre-alpha safety limits, unsupported
+  surfaces, and lack of real-data dogfood evidence.
 - Cloudflare log retention and access rules must be decided before enabling
   audit logs in production.
 - Backup directories and manifests need an operator-owned retention policy.
 - Vulnerability disclosure depends on GitHub private vulnerability reporting or
   a temporary private channel.
-- `security@honowarden.com` must not accept real vulnerability-report content
-  until Email Routing, destination verification, inbound smoke evidence, and
-  the inquiry inbox retention/redaction rules are implemented.
+- `security@honowarden.com` inbound routing is smoke-tested, but real
+  vulnerability-report handling still needs the inquiry inbox
+  retention/redaction rules.
