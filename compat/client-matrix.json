@@ -18,7 +18,20 @@
         "repositoryRef": "client-apps",
         "releaseSelector": "latest non-draft, non-prerelease release whose tag starts with browser-v"
       },
-      "verificationLevel": "fixture_only",
+      "verificationLevel": "live_smoke",
+      "liveEvidence": {
+        "path": "docs/release/browser-extension-live-client-evidence.md",
+        "status": "passed",
+        "recordedAt": "2026-07-09T23:23:19Z",
+        "clientVersion": "2026.6.1",
+        "flows": [
+          "config",
+          "prelogin",
+          "password_grant",
+          "empty_sync",
+          "account_profile"
+        ]
+      },
       "coveredFlows": [
         "config",
         "prelogin",
@@ -46,7 +59,8 @@
         "totp_login"
       ],
       "knownIssues": [
-        "No live client login or sync run is recorded for this exact version.",
+        "Live browser-extension smoke covers self-hosted environment selection, password login, initial sync, account profile reads, and empty-vault render against a local synthetic account only.",
+        "The browser run used Brave's Chromium extension host because the installed branded Chrome build did not expose the unpacked extension under the local evidence flags.",
         "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
