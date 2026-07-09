@@ -7,6 +7,8 @@ This document organizes the public website and email work around
 
 - API repository: `https://github.com/kazu-42/HonoWarden`
 - Website repository: `https://github.com/kazu-42/HonoWarden-website`
+- Inquiry inbox repository:
+  `https://github.com/kazu-42/HonoWarden-inquiry-inbox`
 - Linear workspace: `https://linear.app/honowarden/`
 - Public domain: `honowarden.com`
 
@@ -86,7 +88,7 @@ Phase 2 can add an Email Worker when there is a concrete need:
 - reject obvious malformed or abusive senders
 - route by recipient address
 - add a rate-limited acknowledgment for `security@`
-- archive non-sensitive metadata in R2 for operational evidence
+- archive non-sensitive metadata in D1 for operational evidence
 
 Do not parse or store full message bodies or attachments in HonoWarden systems
 until retention, access control, and deletion policy are written down.
@@ -174,6 +176,19 @@ Email:
 - `security@honowarden.com` is now referenced by the public website and
   `security.txt`, but real vulnerability-report handling still depends on the
   inquiry inbox retention and redaction controls.
+- `HonoWarden-inquiry-inbox` exists as a separate public GitHub repository for
+  the HON-24 metadata-only inbound storage slice.
+- The inquiry inbox has separate staging and production Workers, D1 databases,
+  and R2 buckets from the vault API Worker.
+- The inquiry inbox production Worker is deployed as
+  `honowarden-inquiry-inbox`, and its D1 database is `honowarden-inquiry`.
+- The hidden smoke route `inquiry-smoke@honowarden.com` points to the inquiry
+  Worker for live Email Routing verification.
+- Public routes for `security`, `support`, `hello`, `admin`, `postmaster`, and
+  `abuse` remain forwarding-only; do not switch them to the Worker until hidden
+  smoke evidence and a reversible route migration are recorded.
+- HON-24 stores inbound metadata and audit events only. Raw MIME and attachment
+  object writes remain disabled, and attachment-bearing messages are rejected.
 
 ## Rollback
 
@@ -184,7 +199,8 @@ Website rollback:
 
 Email rollback:
 
-- disable the new route rule or Email Worker binding.
+- disable the hidden Worker route or switch any migrated public route back to
+  forwarding-only.
 - keep MX records unchanged if Email Routing remains the intended receiver.
 - if switching to a mailbox provider, apply the provider's MX records only after
   verifying DNS propagation and inbound delivery.

@@ -1,6 +1,7 @@
 # AI Inquiry Inbox Architecture
 
-Status: proposed for post-alpha implementation.
+Status: implemented for HON-24 metadata-only storage; follow-up phases remain
+open.
 
 This document defines the safe architecture for a HonoWarden contact,
 support, and security inquiry inbox. It is intentionally narrower than a full
@@ -18,6 +19,8 @@ general-purpose webmail client.
   [Email communication channel](https://developers.cloudflare.com/agents/communication-channels/email/)
 - Cloudflare Email Service route handler docs:
   [Workers API for route emails](https://developers.cloudflare.com/email-service/api/route-emails/email-handler/)
+- HonoWarden implementation repository:
+  [kazu-42/HonoWarden-inquiry-inbox](https://github.com/kazu-42/HonoWarden-inquiry-inbox)
 
 ## Decision
 
@@ -38,11 +41,23 @@ authorization. HonoWarden needs a stricter security/support workflow:
   or encrypted vault payloads
 - Linear issue creation with redacted summaries instead of raw email content
 
-The first implementation should live outside the vault API Worker blast radius.
-It may be implemented in the website repository or a new inbox Worker
-repository, but it must use separate Cloudflare bindings, secrets, and storage.
-This repository remains the source of truth for the design, operations evidence,
-and Linear tracking until a dedicated implementation repository exists.
+The implementation lives outside the vault API Worker blast radius in
+`kazu-42/HonoWarden-inquiry-inbox`. It uses separate Cloudflare bindings,
+secrets, D1, R2, Email Routing, and Worker deployment state. This repository
+remains the source of truth for the design, operations evidence, and Linear
+tracking, while the dedicated repository owns the Worker code.
+
+Current HON-24 boundary:
+
+- metadata-only D1 ingestion is implemented for accepted inbound messages
+- attachment-bearing messages are rejected before raw body or attachment
+  storage is enabled
+- mailbox-specific forwarding destinations are Worker secrets and are not
+  persisted in D1 or tracked evidence
+- existing public aliases remain forwarding-only until the hidden live smoke
+  route is verified
+- outbound replies, operator UI, AI triage, and Linear issue creation remain
+  follow-up work
 
 ## Context Diagram
 
@@ -90,9 +105,9 @@ Recommended initial split:
 
 | Component                   | Responsibility                                                               | Initial phase |
 | --------------------------- | ---------------------------------------------------------------------------- | ------------- |
-| Email handler               | Accept, reject, forward, and record inbound metadata.                        | HON-24        |
+| Email handler               | Accept, reject, forward, and record inbound metadata.                        | HON-24 done   |
 | Access-protected UI/API     | Review threads, drafts, and evidence without exposing raw secrets.           | HON-25        |
-| Inbox D1                    | Canonical thread/message/draft/event index.                                  | HON-24        |
+| Inbox D1                    | Canonical thread/message/event index for metadata-only receive records.      | HON-24 done   |
 | Inbox R2                    | Optional raw MIME and attachment storage after retention policy is active.   | HON-24+       |
 | Queue                       | Decouple SMTP event handling from parsing, redaction, AI, and Linear writes. | HON-26        |
 | InquiryAgent Durable Object | Stateful AI drafting session and tool boundary, not canonical storage.       | HON-26        |
@@ -159,6 +174,18 @@ Each object reference in D1 must include:
 Raw MIME and attachment storage starts disabled. Metadata-only ingestion plus
 forwarding remains the default until an operator explicitly enables storage and
 the deletion path is tested.
+
+Implemented HON-24 schema:
+
+- `inquiry_threads`
+- `inquiry_messages`
+- `inquiry_events`
+- `schema_migrations`
+
+The initial Worker records `raw_storage_state = "disabled"` and leaves
+`raw_r2_key` empty. R2 buckets exist so later phases can add object storage
+without changing the trust boundary, but HON-24 does not write raw MIME or
+attachment objects.
 
 ## Inbound Flow
 
@@ -255,7 +282,7 @@ The implementation Worker needs separate configuration from the vault API:
 | Binding or setting             | Purpose                                              | Secret?                       |
 | ------------------------------ | ---------------------------------------------------- | ----------------------------- |
 | `INQUIRY_DB`                   | inbox D1 tables                                      | no, but environment-specific  |
-| `INQUIRY_OBJECTS`              | raw MIME and attachments                             | no, but sensitive data store  |
+| `INQUIRY_OBJECTS`              | reserved raw MIME and attachment object store        | no, but sensitive data store  |
 | `EMAIL`                        | outbound Email Service binding                       | no secret value in repo       |
 | `HONOWARDEN_INQUIRY_MAILBOXES` | allowed local parts and mailbox roles                | operationally sensitive       |
 | `POLICY_AUD` / `TEAM_DOMAIN`   | Cloudflare Access validation when implemented in-app | secret or Worker secret       |
@@ -265,15 +292,28 @@ The implementation Worker needs separate configuration from the vault API:
 Do not reuse `HONOWARDEN_TOKEN_SECRET`, `HONOWARDEN_TOTP_SECRET`, or the vault
 API D1 binding in the inbox Worker.
 
+Current Cloudflare resources:
+
+| Environment | Worker                             | D1 database                  | R2 bucket                            |
+| ----------- | ---------------------------------- | ---------------------------- | ------------------------------------ |
+| staging     | `honowarden-inquiry-inbox-staging` | `honowarden-inquiry-staging` | `honowarden-inquiry-staging-objects` |
+| production  | `honowarden-inquiry-inbox`         | `honowarden-inquiry`         | `honowarden-inquiry-objects`         |
+
+The production hidden smoke route is `inquiry-smoke@honowarden.com` pointing to
+the `honowarden-inquiry-inbox` Worker. The public `security`, `support`,
+`hello`, `admin`, `postmaster`, and `abuse` routes remain forwarding-only until
+that route has live evidence and a separate reversible route migration is
+approved.
+
 ## Phased Implementation Map
 
-| Linear issue | Implementation boundary                                                                                                                 |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| HON-24       | Email handler, metadata-only D1 ingestion, generated R2 object references, retention flags, tests for reject/forward/storage-off paths. |
-| HON-25       | Access-protected operator review surface, draft approval records, Email Service send path, sent-event readback.                         |
-| HON-26       | AI triage and draft generation with redaction, prompt/version tracking, model failure states, no autonomous send.                       |
-| HON-27       | Human-approved Linear issue creation/update from redacted summaries.                                                                    |
-| HON-28       | Public security contact metadata only after inbound route, destination verification, and smoke evidence pass.                           |
+| Linear issue | Implementation boundary                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| HON-24       | Done: Email handler, metadata-only D1 ingestion, R2 storage disabled flags, retention deadlines, and tests for reject/forward/storage-off paths. |
+| HON-25       | Access-protected operator review surface, draft approval records, Email Service send path, sent-event readback.                                  |
+| HON-26       | AI triage and draft generation with redaction, prompt/version tracking, model failure states, no autonomous send.                                |
+| HON-27       | Human-approved Linear issue creation/update from redacted summaries.                                                                             |
+| HON-28       | Public security contact metadata only after inbound route, destination verification, and smoke evidence pass.                                    |
 
 ## Rollback
 
@@ -291,8 +331,6 @@ Rollback must be possible without affecting the vault API:
 
 ## Open Questions
 
-- Whether the implementation belongs in `HonoWarden-website` or a separate
-  `HonoWarden-inquiry-inbox` repository.
 - Whether Cloudflare Access JWT validation should be enforced only at the route
   level or also verified in the Worker for audit identity binding.
 - Exact retention periods for `security@` reports once real vulnerability

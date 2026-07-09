@@ -1752,12 +1752,26 @@ Implemented:
   Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
   Object state boundaries, human approval rules, retention/redaction controls,
   and follow-up implementation split for `HON-24` through `HON-27`
+- HON-24 metadata-only inquiry inbox storage is implemented in the separate
+  `https://github.com/kazu-42/HonoWarden-inquiry-inbox` repository
+- the inquiry inbox has separate staging and production Workers, D1 databases,
+  and R2 buckets from the vault API Worker:
+  `honowarden-inquiry-inbox-staging`, `honowarden-inquiry-inbox`,
+  `honowarden-inquiry-staging`, `honowarden-inquiry`, and dedicated inquiry R2
+  buckets
+- production Email Routing includes a hidden Worker smoke route for
+  `inquiry-smoke@honowarden.com`, while public `security`, `support`, `hello`,
+  `admin`, `postmaster`, and `abuse` aliases remain forwarding-only
+- inquiry inbox raw MIME and attachment object writes remain disabled; the
+  Worker records metadata and audit events in D1 and rejects attachment-bearing
+  messages until retention/deletion tooling is explicitly enabled
 
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- AI inquiry inbox Worker, mailbox UI, body or attachment storage, AI triage,
-  approved outbound replies, and Linear issue creation automation
+- public alias migration to the inquiry inbox Worker, mailbox UI, body or
+  attachment storage, AI triage, approved outbound replies, and Linear issue
+  creation automation
 - actual traffic-changing rollback execution, because the current live services
   passed health checks and no incident required rollback
 - production secret writes, public registration enablement, or real vault-data
