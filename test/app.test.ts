@@ -3249,6 +3249,52 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rejects vault mutations for disabled users', async () => {
+    const user = {
+      ...authUserRecord(),
+      disabledAt: '2026-07-06T00:00:00.000Z',
+    }
+    const accessToken = await accessTokenFor(user)
+
+    for (const request of [
+      {
+        path: '/api/folders',
+        body: {
+          name: '2.encrypted-folder-name',
+        },
+      },
+      {
+        path: '/api/ciphers',
+        body: cipherCreateBody(),
+      },
+    ]) {
+      const response = await app.request(
+        request.path,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request.body),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(401)
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'invalid_token',
+        },
+      })
+    }
+  })
+
   it('gets a folder by id for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)

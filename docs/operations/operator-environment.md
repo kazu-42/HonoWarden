@@ -94,6 +94,7 @@ agent performs them:
   updates
 - creating the `HonoWarden-website` repository
 - deploying Workers
+- executing account lifecycle D1 mutations with `pnpm account:lifecycle -- --execute`
 - changing Cloudflare DNS, routes, email routing, destinations, or MX records
 - setting or rotating Wrangler secrets
 - sending email or configuring auto-replies
@@ -110,6 +111,7 @@ pnpm linear:mutation-packet -- --apply-plan <ready-apply-plan>
 pnpm linear:request-plan -- --mutation-packet <ready-mutation-packet>
 pnpm linear:resolution-plan -- --request-plan <ready-request-plan> --resolution-map <local-resolution-map>
 pnpm email:preflight
+pnpm account:lifecycle -- disable --email <email> --database <database> --reason <reason>
 ```
 
 ## Validation Checklist

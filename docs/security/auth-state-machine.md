@@ -1,20 +1,20 @@
 # Authentication State Machine
 
-Last reviewed: 2026-07-06.
+Last reviewed: 2026-07-09.
 
 This document records the server-side authentication and session states that
 must remain stable for alpha.
 
 ## Account States
 
-| State              | Entered By                             | Allowed Actions                                        | Rejected Actions                                 |
-| ------------------ | -------------------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
-| no account         | default                                | prelogin metadata only                                 | password grant, sync, refresh                    |
-| active             | bootstrap                              | password grant, refresh, sync, vault CRUD              | none by account state                            |
-| temporarily locked | failed password attempts               | prelogin, eventual retry                               | password grant until lock expires                |
-| TOTP setup pending | authenticated setup                    | setup verify                                           | login without valid challenge if TOTP is enabled |
-| TOTP enabled       | setup verify                           | password grant followed by TOTP challenge verification | token issuance without TOTP code                 |
-| disabled           | future admin action or direct DB state | none for auth/session use                              | password grant, refresh grant, sync, vault CRUD  |
+| State              | Entered By                     | Allowed Actions                                        | Rejected Actions                                 |
+| ------------------ | ------------------------------ | ------------------------------------------------------ | ------------------------------------------------ |
+| no account         | default                        | prelogin metadata only                                 | password grant, sync, refresh                    |
+| active             | bootstrap                      | password grant, refresh, sync, vault CRUD              | none by account state                            |
+| temporarily locked | failed password attempts       | prelogin, eventual retry                               | password grant until lock expires                |
+| TOTP setup pending | authenticated setup            | setup verify                                           | login without valid challenge if TOTP is enabled |
+| TOTP enabled       | setup verify                   | password grant followed by TOTP challenge verification | token issuance without TOTP code                 |
+| disabled           | account lifecycle operator CLI | none for auth/session use                              | password grant, refresh grant, sync, vault CRUD  |
 
 ## Password Grant
 

@@ -1,6 +1,6 @@
 # Security Threat Model
 
-Last reviewed: 2026-07-06.
+Last reviewed: 2026-07-09.
 
 HonoWarden is pre-alpha. This model documents the current implementation and
 the controls that must be true before `v0.1.0-alpha` is tagged. It is not an
@@ -82,19 +82,19 @@ Out of scope for the initial product:
 - TOTP setup, setup verify, and disable routes
 - device revoke route
 - folder and cipher CRUD routes
-- operator backup/restore CLI
+- operator backup/restore and account lifecycle CLIs
 - audit log stream
 
 ## STRIDE Summary
 
-| Threat                 | Current Controls                                                                                                            | Residual Risk                                                                |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                   | no asymmetric token keys; bulk trusted-device approval is not implemented    |
-| Tampering              | D1 owner predicates, revision conflict checks, backup checksum validation                                                   | no live restore drill evidence yet                                           |
-| Repudiation            | opt-in audit events for bootstrap, auth failures, refresh reuse, device revoke, revoke-all-other-sessions, and TOTP disable | audit events are not persisted in D1 and do not cover every vault CRUD route |
-| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, secret-safe audit filtering                   | platform logs/backups remain sensitive operational data                      |
-| Denial of service      | password-grant IP and account lockouts, bounded fixture tests                                                               | no global request quota, queue, or abuse monitoring beyond login defenses    |
-| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions  | no admin console or full account lifecycle tooling yet                       |
+| Threat                 | Current Controls                                                                                                                                                | Residual Risk                                                                |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                                                       | no asymmetric token keys; bulk trusted-device approval is not implemented    |
+| Tampering              | D1 owner predicates, revision conflict checks, backup checksum validation                                                                                       | no live restore drill evidence yet                                           |
+| Repudiation            | opt-in audit events for bootstrap, auth failures, refresh reuse, device revoke, revoke-all-other-sessions, and TOTP disable                                     | audit events are not persisted in D1 and do not cover every vault CRUD route |
+| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, secret-safe audit filtering                                                       | platform logs/backups remain sensitive operational data                      |
+| Denial of service      | password-grant IP and account lockouts, bounded fixture tests                                                                                                   | no global request quota, queue, or abuse monitoring beyond login defenses    |
+| Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions, dry-run-first account lifecycle CLI | no admin console or live production lifecycle evidence yet                   |
 
 ## High-Risk Abuse Paths
 
