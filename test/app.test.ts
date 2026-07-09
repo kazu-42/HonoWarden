@@ -2883,6 +2883,168 @@ describe('HonoWarden app', () => {
     }
   })
 
+  it('returns configured equivalent domains consistently for metadata aliases and sync', async () => {
+    const user = {
+      ...authUserRecord(),
+      equivalentDomainsJson: JSON.stringify([
+        ['example.com', 'example.net'],
+        ['service.test', 'login.service.test'],
+      ]),
+      excludedGlobalEquivalentDomainsJson: JSON.stringify([1]),
+    }
+    const accessToken = await accessTokenFor(user)
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        authUser: user,
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    for (const path of ['/api/domains', '/api/settings/domains']) {
+      const response = await app.request(
+        path,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        env,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toEqual({
+        EquivalentDomains: [
+          ['example.com', 'example.net'],
+          ['service.test', 'login.service.test'],
+        ],
+        GlobalEquivalentDomains: [],
+      })
+    }
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      env,
+    )
+
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      Domains: {
+        EquivalentDomains: [
+          ['example.com', 'example.net'],
+          ['service.test', 'login.service.test'],
+        ],
+        GlobalEquivalentDomains: [],
+      },
+    })
+  })
+
+  it('creates and updates equivalent domains through the settings endpoint', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const method of ['POST', 'PUT']) {
+      const response = await app.request(
+        '/api/settings/domains',
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            equivalentDomains: [[' Example.COM ', 'example.net']],
+            excludedGlobalEquivalentDomains: [],
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            userUpdateChanges: 1,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toEqual({
+        EquivalentDomains: [['example.com', 'example.net']],
+        GlobalEquivalentDomains: [],
+      })
+    }
+  })
+
+  it('deletes custom equivalent domains by replacing settings with an empty list', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/settings/domains',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          EquivalentDomains: [],
+          ExcludedGlobalEquivalentDomains: [],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userUpdateChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      EquivalentDomains: [],
+      GlobalEquivalentDomains: [],
+    })
+  })
+
+  it('rejects invalid equivalent-domain settings without updating the user row', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/settings/domains',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-domain-settings-request',
+        },
+        body: JSON.stringify({
+          equivalentDomains: [['https://example.com', 'example.net']],
+          excludedGlobalEquivalentDomains: [],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          userUpdateChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'invalid-domain-settings-request',
+    })
+  })
+
   it('requires bearer authorization for metadata reads', async () => {
     for (const path of ['/api/policies', '/api/domains']) {
       const response = await app.request(

@@ -75,6 +75,20 @@ describe('initial D1 migration', () => {
     expect(allMigrations).not.toContain('client_ip')
   })
 
+  it('adds owner-scoped equivalent-domain metadata on user rows', () => {
+    expect(allMigrations).toContain(
+      'ALTER TABLE users\n  ADD COLUMN equivalent_domains TEXT NOT NULL DEFAULT',
+    )
+    expect(allMigrations).toContain(
+      'ALTER TABLE users\n  ADD COLUMN excluded_global_equivalent_domains TEXT NOT NULL DEFAULT',
+    )
+    expect(allMigrations).toContain('CHECK (json_valid(equivalent_domains))')
+    expect(allMigrations).toContain(
+      'CHECK (json_valid(excluded_global_equivalent_domains))',
+    )
+    expect(allMigrations).toContain("VALUES ('0010')")
+  })
+
   it('adds TOTP persistence tables for setup and challenge flow', () => {
     expect(allMigrations).toContain('CREATE TABLE IF NOT EXISTS user_totp')
     expect(allMigrations).toContain(
@@ -188,4 +202,5 @@ const allMigrations = [
   readFileSync('migrations/0006_cipher_attachments.sql', 'utf8'),
   readFileSync('migrations/0007_audit_events.sql', 'utf8'),
   readFileSync('migrations/0008_request_quotas.sql', 'utf8'),
+  readFileSync('migrations/0010_equivalent_domains.sql', 'utf8'),
 ].join('\n')

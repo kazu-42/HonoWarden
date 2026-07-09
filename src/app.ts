@@ -84,6 +84,11 @@ import {
 } from './repositories/folder-repository'
 import type { FolderRecord } from './repositories/folder-repository'
 import {
+  getDomainSettingsForUser,
+  updateDomainSettingsForUser,
+} from './repositories/domain-settings-repository'
+import type { DomainSettings } from './repositories/domain-settings-repository'
+import {
   buildDeviceId,
   createPasswordGrantSession,
   findAuthFailureBucket,
@@ -1468,13 +1473,22 @@ app.get('/api/sync', async (c) => {
   }
 
   try {
-    const [folders, ciphers, attachments] = await Promise.all([
+    const [folders, ciphers, attachments, domainSettings] = await Promise.all([
       listFoldersByUser(c.env.DB, auth.user.id),
       listCiphersByUser(c.env.DB, auth.user.id),
       listCipherAttachmentsByUser(c.env.DB, auth.user.id),
+      getDomainSettingsForUser(c.env.DB, auth.user.id),
     ])
 
-    return c.json(buildSyncResponse(auth.user, folders, ciphers, attachments))
+    return c.json(
+      buildSyncResponse(
+        auth.user,
+        folders,
+        ciphers,
+        attachments,
+        domainSettings,
+      ),
+    )
   } catch {
     return c.json(
       apiError(
@@ -1566,7 +1580,23 @@ app.get('/api/domains', async (c) => {
     return auth.response
   }
 
-  return c.json(buildDomainsResponse())
+  try {
+    const domainSettings = await getDomainSettingsForUser(
+      c.env.DB,
+      auth.user.id,
+    )
+
+    return c.json(buildDomainsResponse(domainSettings))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Domain metadata lookup failed.',
+      ),
+      503,
+    )
+  }
 })
 
 app.get('/api/settings/domains', async (c) => {
@@ -1575,8 +1605,27 @@ app.get('/api/settings/domains', async (c) => {
     return auth.response
   }
 
-  return c.json(buildDomainsResponse())
+  try {
+    const domainSettings = await getDomainSettingsForUser(
+      c.env.DB,
+      auth.user.id,
+    )
+
+    return c.json(buildDomainsResponse(domainSettings))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Domain settings lookup failed.',
+      ),
+      503,
+    )
+  }
 })
+
+app.post('/api/settings/domains', updateDomainSettingsRoute)
+app.put('/api/settings/domains', updateDomainSettingsRoute)
 
 app.get('/api/devices', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -3298,6 +3347,7 @@ function buildSyncResponse(
   folders: readonly FolderRecord[] = [],
   ciphers: readonly CipherRecord[] = [],
   attachments: readonly CipherAttachmentRecord[] = [],
+  domainSettings: DomainSettings = emptyDomainSettings,
 ) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const attachmentsByCipherId = buildAttachmentsByCipherId(attachments)
@@ -3310,7 +3360,7 @@ function buildSyncResponse(
     Ciphers: ciphers.map((cipher) =>
       buildCipherResponse(cipher, attachmentsByCipherId.get(cipher.id) ?? []),
     ),
-    Domains: buildDomainsResponse(),
+    Domains: buildDomainsResponse(domainSettings),
     Policies: [],
     PoliciesNew: [],
     Sends: [],
@@ -3515,9 +3565,14 @@ function encodeBase64UrlUtf8(value: string): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-function buildDomainsResponse() {
+const emptyDomainSettings: DomainSettings = {
+  equivalentDomains: [],
+  excludedGlobalEquivalentDomains: [],
+}
+
+function buildDomainsResponse(settings: DomainSettings = emptyDomainSettings) {
   return {
-    EquivalentDomains: [],
+    EquivalentDomains: settings.equivalentDomains,
     GlobalEquivalentDomains: [],
   }
 }
@@ -3830,6 +3885,61 @@ function unsupportedAlphaFeature(c: AppContext) {
     },
     501,
   )
+}
+
+async function updateDomainSettingsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const domainSettingsRequest = parseDomainSettingsRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!domainSettingsRequest.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Equivalent domain settings are invalid.',
+      ),
+      400,
+    )
+  }
+
+  const revisionDate = new Date().toISOString()
+
+  try {
+    const result = await updateDomainSettingsForUser(c.env.DB, {
+      userId: auth.user.id,
+      equivalentDomains: domainSettingsRequest.equivalentDomains,
+      excludedGlobalEquivalentDomains:
+        domainSettingsRequest.excludedGlobalEquivalentDomains,
+      revisionDate,
+    })
+
+    if (result.status === 'not_found') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'account_not_found',
+          'Account was not found.',
+        ),
+        404,
+      )
+    }
+
+    return c.json(buildDomainsResponse(result.settings))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Domain settings update failed.',
+      ),
+      503,
+    )
+  }
 }
 
 async function handleDeviceKeysUpdate(c: AppContext) {
@@ -4502,6 +4612,134 @@ function parseAccountProfileUpdateRequestBody(
     ok: true,
     name,
   }
+}
+
+function parseDomainSettingsRequestBody(body: unknown):
+  | {
+      ok: true
+      equivalentDomains: string[][]
+      excludedGlobalEquivalentDomains: number[]
+    }
+  | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const equivalentDomainsValue =
+    body.equivalentDomains ?? body.EquivalentDomains
+  const excludedGlobalDomainsValue =
+    body.excludedGlobalEquivalentDomains ??
+    body.ExcludedGlobalEquivalentDomains ??
+    []
+  const equivalentDomains = parseEquivalentDomainGroups(
+    equivalentDomainsValue ?? [],
+  )
+  const excludedGlobalEquivalentDomains =
+    parseExcludedGlobalEquivalentDomainTypes(excludedGlobalDomainsValue)
+
+  if (!equivalentDomains || !excludedGlobalEquivalentDomains) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    equivalentDomains,
+    excludedGlobalEquivalentDomains,
+  }
+}
+
+function parseEquivalentDomainGroups(value: unknown): string[][] | null {
+  if (!Array.isArray(value) || value.length > 100) {
+    return null
+  }
+
+  const groups: string[][] = []
+
+  for (const group of value) {
+    if (!Array.isArray(group) || group.length > 20) {
+      return null
+    }
+
+    const domains: string[] = []
+    const seenDomains = new Set<string>()
+    for (const rawDomain of group) {
+      const domain = normalizeEquivalentDomain(rawDomain)
+      if (!domain) {
+        return null
+      }
+
+      if (!seenDomains.has(domain)) {
+        domains.push(domain)
+        seenDomains.add(domain)
+      }
+    }
+
+    if (domains.length < 2) {
+      return null
+    }
+
+    groups.push(domains)
+  }
+
+  return groups
+}
+
+function normalizeEquivalentDomain(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const domain = value.trim().toLowerCase().replace(/\.$/, '')
+  if (
+    !domain ||
+    domain.length > 253 ||
+    domain.includes('/') ||
+    domain.includes(':') ||
+    domain.includes('@') ||
+    domain.includes('*') ||
+    domain.includes(' ')
+  ) {
+    return null
+  }
+
+  const labels = domain.split('.')
+  if (labels.some((label) => !isValidDomainLabel(label))) {
+    return null
+  }
+
+  return domain
+}
+
+function isValidDomainLabel(label: string): boolean {
+  return (
+    label.length >= 1 &&
+    label.length <= 63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+  )
+}
+
+function parseExcludedGlobalEquivalentDomainTypes(
+  value: unknown,
+): number[] | null {
+  if (!Array.isArray(value) || value.length > 200) {
+    return null
+  }
+
+  const excludedGlobalDomains: number[] = []
+  const seenTypes = new Set<number>()
+
+  for (const item of value) {
+    if (!Number.isInteger(item) || item < 0 || item > 255) {
+      return null
+    }
+
+    if (!seenTypes.has(item)) {
+      excludedGlobalDomains.push(item)
+      seenTypes.add(item)
+    }
+  }
+
+  return excludedGlobalDomains
 }
 
 function parseFolderUpdateRequestBody(

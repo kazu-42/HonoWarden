@@ -1128,17 +1128,25 @@ Implemented:
 - authenticated `GET /api/policies/new`
 - authenticated `GET /api/domains`
 - authenticated `GET /api/settings/domains`
+- authenticated `POST /api/settings/domains`
+- authenticated `PUT /api/settings/domains`
 - policy endpoints return empty list responses for the alpha personal-vault
   scope
 - policy mutation and organization policy enforcement are excluded by ADR 0006;
   no organization policy applies to personal-vault users
-- domain endpoints reuse the same empty equivalent-domain metadata as `/api/sync`
+- domain endpoints and `/api/sync` reuse the same owner-scoped custom
+  equivalent-domain metadata from the user row
+- custom equivalent-domain updates replace the owner-scoped `string[][]` set;
+  submitting an empty set deletes the custom domain rules
+- global equivalent-domain rules stay empty in the alpha scope, and
+  organization-scoped domain rules are intentionally not implemented until an
+  organization model exists
 - compatibility fixture flow `metadata_read` for policy and domain responses
 
 Not implemented:
 
 - policy management, policy mutation, or organization policy enforcement
-- custom equivalent-domain configuration
+- organization-scoped equivalent-domain configuration
 - live client evidence for metadata read endpoints
 
 ## Week 26 Collection Metadata Read API
