@@ -10,7 +10,8 @@ inputs, not minor documentation notes.
 - no independent security audit has been completed
 - only a CLI live smoke has been captured; no full live client regression suite
   exists yet
-- no production backup restore drill has been recorded
+- remote production backup and local fresh-target restore drill evidence exists,
+  but no remote disposable Cloudflare restore drill has been recorded
 - Cloudflare scoped account tokens exist for normal HonoWarden operations, but
   account-level two-factor enforcement, broad Super Administrator access,
   legacy no-expiry tokens, and global-key break-glass rotation remain operator
@@ -43,9 +44,12 @@ inputs, not minor documentation notes.
 - Audit events are platform log lines only; they are not persisted with retention
   controls in D1.
 - Audit event coverage does not include every vault CRUD route.
-- Operator backup/restore evidence is runbook based; no scheduled job exists.
-- R2 object backup can auto-list remote buckets, but there is no scheduled
-  production backup job or remote production backup evidence yet.
+- Operator backup/restore evidence now includes a scheduled GitHub Actions
+  workflow, remote D1/R2 backup evidence, and a local fresh-target restore
+  drill with a synthetic R2 object.
+- The scheduled remote backup workflow has not yet produced its first
+  post-merge cron artifact; until then, manual remote evidence remains the
+  current proof.
 - TOTP wrapping-secret rotation tooling exists, but no live rotation or
   force-re-enrollment drill has been run.
 - Access tokens still use symmetric HMAC keys. Key id based staged rotation is
@@ -76,7 +80,10 @@ inputs, not minor documentation notes.
   and operator access is explicitly approved.
 - External Cloudflare log retention/access and vendor log-sink integration are
   still not verified.
-- Backup directories and manifests need an operator-owned retention policy.
+- Backup directories and manifests now have a documented short-retention
+  encrypted GitHub artifact policy and a 35-day operator archive target, but
+  long-term archive storage is still operator-owned rather than automated in
+  the repository.
 - `security@honowarden.com` inbound routing and public metadata are
   smoke-tested, but real vulnerability-report handling still needs the inquiry
   inbox retention/redaction rules.

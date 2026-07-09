@@ -227,6 +227,85 @@ pnpm backup:export -- \
 
 `--persist-to` is local-only and is rejected with `--mode remote`.
 
+## Scheduled Remote Backup
+
+The reviewed scheduled job lives in
+`.github/workflows/remote-backup.yml`. It runs on manual
+`workflow_dispatch` and daily at `17 19 * * *` UTC. The job performs a remote
+D1 export, lists and downloads R2 objects under `attachments/`, emits a
+secret-safe evidence packet, encrypts the backup directory, uploads only the
+encrypted archive and evidence JSON as a short-retention GitHub Actions
+artifact, and removes the plaintext backup directory from the runner.
+
+Use the local packet command to review the schedule contract without reading or
+printing secret values:
+
+```sh
+pnpm backup:schedule:packet
+```
+
+Required GitHub Actions secrets:
+
+- `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE`
+
+The R2 S3-compatible access key ID and secret access key can be derived from
+the D1/R2 scoped Cloudflare token when that token was created through the
+Cloudflare token API:
+
+- Access key ID: the Cloudflare API token id
+- Secret access key: the SHA-256 hash of the Cloudflare API token value
+
+Store those derived values only in ignored local env files or GitHub Actions
+secrets. The current local operator setup stores them in
+`~/.config/honowarden/cloudflare-scoped.env`, which is sourced by ignored
+`.envrc.local`.
+
+The scheduled job's encrypted artifact retention is `7` days. If a backup must
+be retained beyond that window, copy the encrypted artifact to an
+operator-owned restricted archive within `35` days. Do not store plaintext
+backup archives in GitHub Actions artifacts, Linear, GitHub comments, or the
+repository checkout.
+
+Generate public evidence from an executed backup with:
+
+```sh
+pnpm backup:evidence -- \
+  --from backups/prod-20260709T201114Z \
+  --out test/.tmp/backup-evidence.json \
+  --source-commit <git-sha> \
+  --run-url <github-actions-run-url>
+```
+
+The evidence command verifies manifest checksums before emitting a JSON packet.
+It records only aggregate fields such as manifest id, D1 SQL checksum and byte
+size, R2 object count, R2 object digest id, and total R2 byte size. It does not
+emit database names, bucket names, object keys, SQL contents, object bodies, or
+secret values.
+
+Failure handling:
+
+1. Treat a scheduled workflow failure as an operator alert.
+2. Use manual `workflow_dispatch` only after checking Cloudflare auth, account
+   ID, R2 S3 credentials, D1 export health, and R2 listing health.
+3. If D1 export succeeds but an R2 download fails, discard the partial backup
+   directory and rerun after object access is fixed.
+4. Repeated failures should be checkpointed in Linear and routed to the
+   external alert sink once that sink exists.
+
+Restore and rollback:
+
+1. Do not restore over production during alpha.
+2. Restore only into a fresh D1/R2 target or a fresh local `--persist-to`
+   target.
+3. If restore partially applies, discard the restore target and recreate it from
+   the same backup instead of attempting in-place repair.
+4. Record manifest id, evidence file path, source commit, target names, and
+   verification results in the release or incident evidence.
+
 ## Restore Drill
 
 Restore should target fresh resources. The script cannot prove resource
