@@ -43,10 +43,33 @@ type FakeD1DatabaseOptions = {
   userTotpUpdateChanges?: number
   totpChallengeInsertChanges?: number
   totpChallengeUpdateChanges?: number
+  auditEventCleanupChanges?: number
+  auditEventInsertThrows?: boolean
+}
+
+export type FakeAuditEventInsert = {
+  id: string
+  schemaVersion: number
+  name: string
+  outcome: string
+  requestId: string
+  occurredAt: string
+  actorUserId: string | null
+  actorDeviceIdentifier: string | null
+  targetType: string | null
+  targetId: string | null
+  contextJson: string | null
+}
+
+export type FakeAuditEventCleanupDelete = {
+  expiredBefore: string
+  limit: number
 }
 
 export class FakeD1Database {
   readonly deletedAuthFailureBucketKeys: string[] = []
+  readonly auditEventInserts: FakeAuditEventInsert[] = []
+  readonly auditEventCleanupDeletes: FakeAuditEventCleanupDelete[] = []
 
   private readonly authFailureBuckets = new Map<
     string,
@@ -65,6 +88,8 @@ export class FakeD1Database {
     const options = this.options
     const authFailureBuckets = this.authFailureBuckets
     const deletedAuthFailureBucketKeys = this.deletedAuthFailureBucketKeys
+    const auditEventInserts = this.auditEventInserts
+    const auditEventCleanupDeletes = this.auditEventCleanupDeletes
     let boundValues: unknown[] = []
 
     const statement = {
@@ -528,6 +553,54 @@ export class FakeD1Database {
           }
         }
 
+        if (query.includes('INSERT INTO audit_events')) {
+          if (options.auditEventInsertThrows) {
+            throw new Error('audit event insert failed')
+          }
+
+          auditEventInserts.push({
+            id: String(boundValues[0]),
+            schemaVersion: Number(boundValues[1]),
+            name: String(boundValues[2]),
+            outcome: String(boundValues[3]),
+            requestId: String(boundValues[4]),
+            occurredAt: String(boundValues[5]),
+            actorUserId:
+              boundValues[6] === null ? null : String(boundValues[6]),
+            actorDeviceIdentifier:
+              boundValues[7] === null ? null : String(boundValues[7]),
+            targetType: boundValues[8] === null ? null : String(boundValues[8]),
+            targetId: boundValues[9] === null ? null : String(boundValues[9]),
+            contextJson:
+              boundValues[10] === null ? null : String(boundValues[10]),
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+audit_events/.test(query)) {
+          auditEventCleanupDeletes.push({
+            expiredBefore: String(boundValues[0]),
+            limit: Number(boundValues[1]),
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: options.auditEventCleanupChanges ?? 1,
+            },
+          }
+        }
+
         if (/DELETE\s+FROM\s+auth_failure_buckets/.test(query)) {
           const bucketKey = String(boundValues[0])
 
@@ -851,6 +924,7 @@ export const requiredTables = [
   'folders',
   'ciphers',
   'cipher_attachments',
+  'audit_events',
   'user_totp',
   'totp_challenges',
 ] as const

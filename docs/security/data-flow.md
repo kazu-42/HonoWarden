@@ -164,7 +164,8 @@ Secrets:
 
 ## Audit Logs
 
-Audit JSON lines are emitted only when `HONOWARDEN_AUDIT_LOGS=true`.
+Audit JSON lines and D1 `audit_events` rows are emitted only when
+`HONOWARDEN_AUDIT_LOGS=true`.
 
 Current event coverage:
 
@@ -176,8 +177,10 @@ Current event coverage:
 - revoke-all-other-sessions success
 - TOTP disable success and not-enabled outcomes
 
-Events must not include passwords, token plaintext, token hashes, encrypted
-payloads, request bodies, or response bodies.
+Events must not include passwords, token plaintext, token hashes, TOTP secrets,
+plaintext IP addresses, encrypted payloads, request bodies, or response bodies.
+The persisted row stores explicit metadata columns and sanitized `context_json`
+rather than a full HTTP payload.
 
 ## User Backup Export API
 
@@ -190,8 +193,8 @@ payloads, request bodies, or response bodies.
    account metadata, folders, ciphers, and attachment metadata.
 5. The response excludes master password hashes, refresh-token rows, TOTP setup
    secrets, internal R2 object keys, raw R2 object bodies, and cross-user rows.
-6. When audit logging is enabled, Worker logs emit `backup.export` with
-   count-only context.
+6. When audit logging is enabled, Worker logs and D1 audit persistence emit
+   `backup.export` with count-only context.
 
 The export still contains encrypted vault data and account key material already
 available to authenticated clients. Treat downloaded exports as sensitive user

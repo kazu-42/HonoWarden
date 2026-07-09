@@ -38,6 +38,7 @@ describe('security review materials', () => {
     expect(dataFlow).toContain('## Password Grant')
     expect(dataFlow).toContain('## Refresh Grant')
     expect(dataFlow).toContain('## Backup And Restore')
+    expect(dataFlow).toContain('D1 `audit_events`')
 
     const authStateMachine = readSecurityDoc('auth-state-machine.md')
     expect(authStateMachine).toContain('## Account States')
@@ -47,6 +48,7 @@ describe('security review materials', () => {
     expect(secretsInventory).toContain('HONOWARDEN_TOKEN_SECRET')
     expect(secretsInventory).toContain('HONOWARDEN_TOTP_SECRET')
     expect(secretsInventory).toContain('HONOWARDEN_BOOTSTRAP_TOKEN')
+    expect(secretsInventory).toContain('D1 `audit_events`')
 
     const incidentResponse = readSecurityDoc('incident-response.md')
     expect(incidentResponse).toContain('## Detection')

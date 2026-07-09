@@ -1,0 +1,76 @@
+{
+  "title": "HON-47 audit event persistence",
+  "slug": "hon-47-audit-event-persistence",
+  "created_at": "2026-07-09T18:42:06+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": "production migration/deploy only",
+    "granted": "local implementation and PR covered by user instruction",
+    "notes": "Do not run production migration or deploy for HON-47 without a separate explicit approval."
+  },
+  "packets": [
+    {
+      "id": "schema-repository",
+      "status": "completed"
+    },
+    {
+      "id": "app-integration",
+      "status": "completed"
+    },
+    {
+      "id": "retention-docs",
+      "status": "completed"
+    },
+    {
+      "id": "verification",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "command": "pnpm exec vitest run test/repositories/audit-event-repository.test.ts test/migrations.test.ts --testNamePattern \"audit event|migration\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/app.test.ts --testNamePattern \"audit persistence|failed password grants\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm exec vitest run test/scheduled.test.ts test/repositories/audit-event-repository.test.ts test/migrations.test.ts --testNamePattern \"audit|migration|scheduled\"",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm format",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm check",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm lint",
+        "status": "passed"
+      },
+      {
+        "command": "pnpm test",
+        "status": "passed",
+        "details": "94 files, 817 tests"
+      },
+      {
+        "command": "pnpm release:gate -- --strict",
+        "status": "passed",
+        "details": "overall ready"
+      },
+      {
+        "command": "python3 .codex/skills/codex-dynamic-workflows/scripts/verify_workflow.py .workflow/hon-47-audit-event-persistence",
+        "status": "passed"
+      },
+      {
+        "command": "git diff --check",
+        "status": "passed"
+      }
+    ]
+  }
+}

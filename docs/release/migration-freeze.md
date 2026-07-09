@@ -18,6 +18,7 @@ changes and update this document in the same change.
 | `migrations/0004_totp_change.sql`        | `b03ccec7b6e9d689d4cb9b40c3d235844875ef5fab8050d43862e0953aff62fb` |
 | `migrations/0005_device_keys.sql`        | `97071b22d753636c4f9a0fe4c699f0c3802c47f30ae235fd45e9d76137d275e0` |
 | `migrations/0006_cipher_attachments.sql` | `7b4328e31fc34c775c5971ada17c92ec44e89bc889a363c24b6beaa2d4b4e0c0` |
+| `migrations/0007_audit_events.sql`       | `34e1661295fc9f521d898bca587f167a280fa490681d83e327828d43d326239d` |
 
 ## Required Tables At Freeze
 
@@ -30,6 +31,7 @@ changes and update this document in the same change.
 - `folders`
 - `ciphers`
 - `cipher_attachments`
+- `audit_events`
 - `user_totp`
 - `totp_challenges`
 

@@ -122,6 +122,33 @@ describe('initial D1 migration', () => {
     expect(allMigrations).toContain("VALUES ('0006')")
   })
 
+  it('adds secret-safe audit event persistence without plaintext IP storage', () => {
+    expect(allMigrations).toContain('CREATE TABLE IF NOT EXISTS audit_events')
+    expect(allMigrations).toContain('schema_version INTEGER NOT NULL')
+    expect(allMigrations).toContain('name TEXT NOT NULL')
+    expect(allMigrations).toContain('outcome TEXT NOT NULL')
+    expect(allMigrations).toContain('request_id TEXT NOT NULL')
+    expect(allMigrations).toContain('actor_user_id TEXT')
+    expect(allMigrations).toContain('actor_device_identifier TEXT')
+    expect(allMigrations).toContain('target_type TEXT')
+    expect(allMigrations).toContain('context_json TEXT')
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_audit_events_occurred_at',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_audit_events_name_occurred',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_audit_events_actor_occurred',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_audit_events_request_id',
+    )
+    expect(allMigrations).toContain("VALUES ('0007')")
+    expect(allMigrations).not.toContain('ip_address')
+    expect(allMigrations).not.toContain('client_ip')
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -137,4 +164,5 @@ const allMigrations = [
   readFileSync('migrations/0004_totp_change.sql', 'utf8'),
   readFileSync('migrations/0005_device_keys.sql', 'utf8'),
   readFileSync('migrations/0006_cipher_attachments.sql', 'utf8'),
+  readFileSync('migrations/0007_audit_events.sql', 'utf8'),
 ].join('\n')

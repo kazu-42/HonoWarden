@@ -1,7 +1,7 @@
 # Retention Cleanup
 
 This runbook describes the alpha cleanup path for transient authentication
-defense rows.
+defense rows, TOTP challenges, and retained audit events.
 
 ## Scope
 
@@ -10,9 +10,10 @@ The cleanup path covers:
 - `auth_attempts`
 - `auth_failure_buckets`
 - `totp_challenges`
+- `audit_events`
 
-It does not delete users, devices, refresh tokens, folders, ciphers, audit log
-lines, backup manifests, or R2 objects.
+It does not delete users, devices, refresh tokens, folders, ciphers, backup
+manifests, or R2 objects.
 
 ## Schedule
 
@@ -47,6 +48,8 @@ Retention rules:
 - auth failure buckets older than the maximum login-defense window are eligible
   only when they are not locked, or the lock has already expired.
 - TOTP login challenges are eligible when they are expired or already consumed.
+- audit events older than 365 days are eligible for deletion when
+  `HONOWARDEN_AUDIT_LOGS=true`.
 
 The queries are idempotent. Re-running a cleanup slice after all eligible rows
 are gone deletes zero rows. This is required because Cloudflare Cron Triggers
@@ -71,20 +74,23 @@ schema means the deployed database is not at the expected migration level.
 Local checks:
 
 ```sh
-pnpm test -- test/repositories/auth-repository.test.ts test/repositories/totp-repository.test.ts
+pnpm test -- test/repositories/auth-repository.test.ts test/repositories/totp-repository.test.ts test/repositories/audit-event-repository.test.ts
 pnpm test -- test/app.test.ts test/scheduled.test.ts test/wrangler-environments.test.ts
 pnpm check
 pnpm lint
 pnpm format
 ```
 
-The repository tests assert that cleanup is bounded, idempotent, and does not
-delete active login-defense buckets.
+The repository tests assert that cleanup is bounded, idempotent, does not delete
+active login-defense buckets, and deletes audit rows only past the 365-day
+retention boundary.
 
 Live checks:
 
 - staging and production D1 schema readback report migrations `0001` through
-  `0005`
+  `0005` for the recorded HON-51 live evidence; audit-event cleanup is gated by
+  `HONOWARDEN_AUDIT_LOGS=true` and requires applying `0007` before audit logging
+  is enabled
 - staging and production Worker deploy output includes `schedule: 0 * * * *`
 - staging and production `/health`, `/healthz`, `/health/db`, and `/api/config`
   pass after deploy
@@ -95,4 +101,6 @@ Live checks:
 ## Remaining Work
 
 - metrics for rows deleted and cleanup failures
-- explicit indexes if production row counts justify them
+- production migration/deploy evidence for audit-event retention cleanup
+- explicit indexes beyond the audit-event incident indexes if production row
+  counts justify them

@@ -1061,6 +1061,9 @@ describe('HonoWarden app', () => {
     expect(cleanup).toHaveBeenCalledWith(
       expect.any(FakeD1Database),
       expect.any(String),
+      {
+        auditEvents: false,
+      },
     )
   })
 
@@ -1145,6 +1148,91 @@ describe('HonoWarden app', () => {
     })
     expect(JSON.stringify(event)).not.toContain('wrong-master-password-hash')
     expect(JSON.stringify(event)).not.toContain('test-token-secret')
+  })
+
+  it('persists a secret-safe audit event for failed password grants when enabled', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const database = new FakeD1Database(null, [], {
+      authUser: authUserRecord(),
+    })
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+          'X-Request-Id': 'audit-password-persist-request',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'wrong-master-password-hash',
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    expect(database.auditEventInserts).toHaveLength(1)
+    expect(database.auditEventInserts[0]).toMatchObject({
+      schemaVersion: 1,
+      name: 'auth.password_grant',
+      outcome: 'failure',
+      requestId: 'audit-password-persist-request',
+      actorUserId: 'user-id',
+      actorDeviceIdentifier: 'fixture-device',
+      targetType: null,
+      targetId: null,
+      contextJson: JSON.stringify({
+        reason: 'invalid_grant',
+      }),
+    })
+    const persisted = JSON.stringify(database.auditEventInserts[0])
+    expect(persisted).not.toContain('wrong-master-password-hash')
+    expect(persisted).not.toContain('test-token-secret')
+  })
+
+  it('fails loudly when opt-in audit persistence cannot write', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+          'X-Request-Id': 'audit-password-persist-failure-request',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'wrong-master-password-hash',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+          auditEventInsertThrows: true,
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'database_unavailable',
+      },
+      requestId: 'audit-password-persist-failure-request',
+    })
   })
 
   it('temporarily rate limits password grants from an over-limit client address', async () => {

@@ -68,8 +68,11 @@ inputs, not minor documentation notes.
 
 - Production usage remains blocked by pre-alpha safety limits, unsupported
   surfaces, and lack of real-data dogfood evidence.
-- Cloudflare log retention and access rules must be decided before enabling
-  audit logs in production.
+- D1 audit-event persistence has a 365-day retention policy, but staging and
+  production audit logging remain disabled by default until `0007` is migrated
+  and operator access is explicitly approved.
+- External Cloudflare log retention/access and vendor log-sink integration are
+  still not verified.
 - Backup directories and manifests need an operator-owned retention policy.
 - `security@honowarden.com` inbound routing and public metadata are
   smoke-tested, but real vulnerability-report handling still needs the inquiry
