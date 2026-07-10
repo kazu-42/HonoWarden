@@ -1,16 +1,21 @@
 # Auth Request Staging Evidence
 
-Status: passed for the HTTP lifecycle on 2026-07-11 JST.
+Status: passed for the HTTP and token-grant lifecycle on 2026-07-11 JST.
 
-This evidence covers `HON-82`, the feature-flagged login-with-device HTTP
-lifecycle. It does not promote token-grant consumption, notifications, or
-production compatibility.
+This evidence covers `HON-82` and `HON-83`: the feature-flagged
+login-with-device HTTP lifecycle and replay-safe token consumption. It does not
+promote notifications, official-client UI compatibility, or production.
 
 ## Deployment
 
 - Source merge commit: `7bd7890868515e6063e60cb4ba18f7dcedbb016b`
 - GitHub pull request: `#69`
 - Staging Worker version: `e655dde3-78d6-46e5-a417-573c2ab03243`
+- Token-grant implementation merge commit:
+  `87065accc56ebdad1dc5ba25e0f25046942ed49c`
+- Token-verifier repair merge commit: `f43ebe4`
+- Token-grant pull requests: `#71`, `#72`
+- Final staging Worker version: `ae3979f2-130b-498e-a7b2-575e08df95b2`
 - Staging URL: `https://honowarden-staging.ghive42.workers.dev`
 - Health readback: HTTP 200, environment `staging`, version `0.1.0-alpha`
 - D1 migration readback: no pending migrations through `0012`
@@ -45,6 +50,28 @@ The local verification before deployment passed 73 test files and 651 tests,
 typecheck, lint, formatting, brand scan, and the strict release gate with 11
 passes and no blocks.
 
+## Token Grant And Repair Loop
+
+The token grant used the public client form contract: `grant_type=password`,
+username, access code in the password field, auth-request id, and requester
+device metadata. The live checks passed after the final deployment:
+
+- an approved type `0` request was atomically consumed;
+- the conditional D1 batch inserted the requester device/session and changed
+  the request from approved to consumed;
+- the issued JWT carried `authMethod=auth_request` and the requester device;
+- the issued access token authenticated a live sync request;
+- replaying the same auth-request grant returned the generic invalid grant;
+- the issued refresh token rotated through the normal refresh-token path;
+- D1 readback showed consumed status, a consumed timestamp, and the expected
+  original plus rotated requester session rows before cleanup.
+
+The first staging attempt exposed a verifier allowlist defect: signing accepted
+the new auth method, but authenticated routes rejected the resulting token.
+PR `#72` added a sign-and-verify regression test and extended the verifier
+allowlist. The full lifecycle was then rerun from a fresh synthetic fixture and
+passed. Final local verification was 73 test files and 658 tests.
+
 ## Cleanup And Readback
 
 The synthetic user was deleted in a `finally` cleanup. D1 foreign keys removed
@@ -72,7 +99,5 @@ deployed or migrated by this operation.
 
 ## Remaining Gates
 
-- `HON-83`: replay-safe auth-request token grant and device-bound session
-  issuance;
 - `HON-80`: notification hint delivery and official-client lifecycle evidence;
 - production migration, secret configuration, enablement, and rollback drill.
