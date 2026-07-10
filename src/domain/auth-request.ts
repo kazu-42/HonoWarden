@@ -1,10 +1,160 @@
+import { normalizeEmail } from './prelogin'
+
 export const authRequestPolicy = {
   activeLifetimeSeconds: 15 * 60,
+  maxAccessCodeLength: 512,
+  maxDeviceIdentifierLength: 256,
+  maxDeviceType: 1000,
+  maxEmailLength: 254,
+  maxEncryptedResponseKeyLength: 65_536,
+  maxPublicKeyLength: 32_768,
+  minAccessCodeLength: 16,
   terminalRetentionDays: 30,
 } as const
 
+export type AuthRequestCreateInput = {
+  emailNormalized: string
+  requestPublicKey: string
+  requestDeviceIdentifier: string
+  requestDeviceType: number
+  accessCode: string
+  requestType: 0 | 1
+}
+
+export type AuthRequestResponseInput =
+  | { requestApproved: true; encryptedResponseKey: string }
+  | { requestApproved: false; encryptedResponseKey: null }
+
+type ParseResult<T> = { ok: true; value: T } | { ok: false }
+
 const verifierPrefix = 'hmac-sha256:'
 const minimumSecretBytes = 32
+
+export function isAuthRequestFeatureEnabled(
+  value: string | undefined,
+): boolean {
+  return value?.trim().toLowerCase() === 'true'
+}
+
+export function parseAuthRequestCreateBody(
+  body: unknown,
+): ParseResult<AuthRequestCreateInput> {
+  if (!isRecord(body)) {
+    return { ok: false }
+  }
+
+  const email = readTrimmedString(body, 'email', 'Email')
+  const requestPublicKey = readExactString(body, 'publicKey', 'PublicKey')
+  const requestDeviceIdentifier = readTrimmedString(
+    body,
+    'deviceIdentifier',
+    'DeviceIdentifier',
+  )
+  const requestDeviceType = readNumber(body, 'deviceType', 'DeviceType')
+  const accessCode = readExactString(body, 'accessCode', 'AccessCode')
+  const requestType = readNumber(body, 'type', 'Type')
+  const emailNormalized = email ? normalizeEmail(email) : null
+
+  if (
+    !emailNormalized ||
+    emailNormalized.length > authRequestPolicy.maxEmailLength ||
+    !isBoundedString(
+      requestPublicKey,
+      1,
+      authRequestPolicy.maxPublicKeyLength,
+    ) ||
+    !isBoundedString(
+      requestDeviceIdentifier,
+      1,
+      authRequestPolicy.maxDeviceIdentifierLength,
+    ) ||
+    !Number.isInteger(requestDeviceType) ||
+    requestDeviceType < 0 ||
+    requestDeviceType > authRequestPolicy.maxDeviceType ||
+    !isBoundedString(
+      accessCode,
+      authRequestPolicy.minAccessCodeLength,
+      authRequestPolicy.maxAccessCodeLength,
+    ) ||
+    (requestType !== 0 && requestType !== 1)
+  ) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    value: {
+      emailNormalized,
+      requestPublicKey,
+      requestDeviceIdentifier,
+      requestDeviceType,
+      accessCode,
+      requestType,
+    },
+  }
+}
+
+export function parseAuthRequestResponseBody(
+  body: unknown,
+): ParseResult<AuthRequestResponseInput> {
+  if (!isRecord(body)) {
+    return { ok: false }
+  }
+
+  const requestApproved = readBoolean(
+    body,
+    'requestApproved',
+    'RequestApproved',
+  )
+  const encryptedResponseKey = readOptionalValue(body, 'key', 'Key')
+
+  if (requestApproved === true) {
+    if (
+      !isBoundedString(
+        encryptedResponseKey,
+        1,
+        authRequestPolicy.maxEncryptedResponseKeyLength,
+      )
+    ) {
+      return { ok: false }
+    }
+
+    return {
+      ok: true,
+      value: { requestApproved: true, encryptedResponseKey },
+    }
+  }
+
+  if (
+    requestApproved === false &&
+    (encryptedResponseKey === undefined || encryptedResponseKey === null)
+  ) {
+    return {
+      ok: true,
+      value: { requestApproved: false, encryptedResponseKey: null },
+    }
+  }
+
+  return { ok: false }
+}
+
+export function buildAuthRequestTimestamps(createdAt: string): {
+  createdAt: string
+  expiresAt: string
+  retentionDeleteAfter: string
+} {
+  const createdAtMs = Date.parse(createdAt)
+
+  return {
+    createdAt,
+    expiresAt: new Date(
+      createdAtMs + authRequestPolicy.activeLifetimeSeconds * 1000,
+    ).toISOString(),
+    retentionDeleteAfter: new Date(
+      createdAtMs + authRequestPolicy.terminalRetentionDays * 86_400_000,
+    ).toISOString(),
+  }
+}
 
 export async function buildAuthRequestAccessCodeHash(
   secret: string,
@@ -104,4 +254,64 @@ function base64UrlEncode(bytes: Uint8Array): string {
 
 function encode(value: string): Uint8Array {
   return new TextEncoder().encode(value)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readOptionalValue(
+  body: Record<string, unknown>,
+  ...keys: string[]
+): unknown {
+  for (const key of keys) {
+    if (Object.hasOwn(body, key)) {
+      return body[key]
+    }
+  }
+
+  return undefined
+}
+
+function readExactString(
+  body: Record<string, unknown>,
+  ...keys: string[]
+): string | null {
+  const value = readOptionalValue(body, ...keys)
+
+  return typeof value === 'string' ? value : null
+}
+
+function readTrimmedString(
+  body: Record<string, unknown>,
+  ...keys: string[]
+): string | null {
+  return readExactString(body, ...keys)?.trim() ?? null
+}
+
+function readNumber(body: Record<string, unknown>, ...keys: string[]): number {
+  const value = readOptionalValue(body, ...keys)
+
+  return typeof value === 'number' ? value : Number.NaN
+}
+
+function readBoolean(
+  body: Record<string, unknown>,
+  ...keys: string[]
+): boolean | null {
+  const value = readOptionalValue(body, ...keys)
+
+  return typeof value === 'boolean' ? value : null
+}
+
+function isBoundedString(
+  value: unknown,
+  minimumLength: number,
+  maximumLength: number,
+): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= minimumLength &&
+    value.length <= maximumLength
+  )
 }
