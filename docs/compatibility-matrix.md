@@ -142,6 +142,7 @@ opaque continuation tokens.
 
 ## Live Evidence
 
+- Desktop `2026.6.1` transport-only partial evidence: [`docs/release/desktop-notification-transport-evidence.md`](release/desktop-notification-transport-evidence.md)
 - Browser extension `2026.6.1`: [`docs/release/browser-extension-live-client-evidence.md`](release/browser-extension-live-client-evidence.md)
 - Android `2026.6.1` build `21713`: [`docs/release/android-mobile-live-client-evidence.md`](release/android-mobile-live-client-evidence.md)
 - CLI `2026.6.0`: [`docs/release/live-client-evidence.md`](release/live-client-evidence.md)

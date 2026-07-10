@@ -210,6 +210,8 @@ const totpChallengeTtlSeconds = 5 * 60
 const recentPasswordAuthTtlSeconds = 5 * 60
 const defaultListPageSize = 100
 const maxListPageSize = 500
+const signalRHeartbeatIntervalMs = 15_000
+const signalRRecordSeparator = '\u001e'
 
 const defaultCorsHeaders = [
   'Accept',
@@ -543,6 +545,51 @@ app.get('/config', (c) => {
   const origin = resolvePublicOrigin(c.req.raw)
 
   return c.json(buildServerConfig(origin))
+})
+
+app.get('/notifications/hub', async (c) => {
+  if (!isWebSocketUpgrade(c.req.raw)) {
+    c.header('Upgrade', 'websocket')
+
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'websocket_required',
+        'Notification hub requires a WebSocket upgrade.',
+      ),
+      426,
+    )
+  }
+
+  const auth = await authenticateVaultRequestWithAccessToken(
+    c,
+    readNotificationHubAccessToken(c),
+  )
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  if (typeof WebSocketPair === 'undefined') {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Notification hub WebSocket runtime is unavailable.',
+      ),
+      503,
+    )
+  }
+
+  const pair = new WebSocketPair()
+  const client = pair[0]
+  const server = pair[1]
+
+  acceptNotificationHubWebSocket(server)
+
+  return new Response(null, {
+    status: 101,
+    webSocket: client,
+  })
 })
 
 async function handlePrelogin(c: AppContext) {
@@ -4172,7 +4219,8 @@ function apiError(
     | 'reauth_required'
     | 'revision_conflict'
     | 'server_misconfigured'
-    | 'storage_unavailable',
+    | 'storage_unavailable'
+    | 'websocket_required',
   message: string,
 ) {
   return {
@@ -4452,6 +4500,16 @@ function revisionConflictError(requestIdValue: string) {
 async function authenticateVaultRequest(
   c: AppContext,
 ): Promise<AuthenticatedVaultRequest> {
+  return authenticateVaultRequestWithAccessToken(
+    c,
+    readBearerToken(c.req.header('Authorization')),
+  )
+}
+
+async function authenticateVaultRequestWithAccessToken(
+  c: AppContext,
+  accessToken: string | null,
+): Promise<AuthenticatedVaultRequest> {
   const accessTokenConfig = resolveAccessTokenRuntimeConfig(c.env)
   if (!accessTokenConfig.ok) {
     return {
@@ -4467,7 +4525,6 @@ async function authenticateVaultRequest(
     }
   }
 
-  const accessToken = readBearerToken(c.req.header('Authorization'))
   if (!accessToken) {
     return {
       ok: false,
@@ -4541,6 +4598,118 @@ async function authenticateVaultRequest(
       ),
     }
   }
+}
+
+function readNotificationHubAccessToken(c: AppContext): string | null {
+  return (
+    readBearerToken(c.req.header('Authorization')) ??
+    readAccessTokenQuery(c.req.raw.url)
+  )
+}
+
+function readAccessTokenQuery(url: string): string | null {
+  const token = new URL(url).searchParams.get('access_token')?.trim()
+
+  return token || null
+}
+
+function isWebSocketUpgrade(request: Request): boolean {
+  return request.headers.get('Upgrade')?.toLowerCase() === 'websocket'
+}
+
+export function acceptNotificationHubWebSocket(server: WebSocket): void {
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null
+  const clearHeartbeat = () => {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval)
+      heartbeatInterval = null
+    }
+  }
+
+  server.accept()
+  server.addEventListener('message', (event) => {
+    const payload = readWebSocketMessage(event.data)
+    if (!payload) {
+      return
+    }
+
+    for (const frame of payload.split(signalRRecordSeparator)) {
+      if (!frame) {
+        continue
+      }
+
+      const message = parseSignalRFrame(frame)
+      if (!message) {
+        continue
+      }
+
+      if (isSignalRHandshake(message)) {
+        const protocol = readSignalRProtocol(message)
+        clearHeartbeat()
+        server.send(`{}${signalRRecordSeparator}`)
+        sendSignalRPing(server, protocol)
+        heartbeatInterval = setInterval(() => {
+          sendSignalRPing(server, protocol)
+        }, signalRHeartbeatIntervalMs)
+      }
+    }
+  })
+  server.addEventListener('close', clearHeartbeat)
+  server.addEventListener('error', clearHeartbeat)
+}
+
+function readWebSocketMessage(data: string | ArrayBuffer): string | null {
+  if (typeof data === 'string') {
+    return data
+  }
+
+  try {
+    return new TextDecoder().decode(data)
+  } catch {
+    return null
+  }
+}
+
+function parseSignalRFrame(frame: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(frame)
+    if (isPlainObject(parsed)) {
+      return parsed
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function isSignalRHandshake(message: Record<string, unknown>): boolean {
+  return (
+    (message.protocol === 'json' || message.protocol === 'messagepack') &&
+    message.version === 1
+  )
+}
+
+function readSignalRProtocol(
+  message: Record<string, unknown>,
+): 'json' | 'messagepack' {
+  return message.protocol === 'messagepack' ? 'messagepack' : 'json'
+}
+
+function sendSignalRPing(
+  server: WebSocket,
+  protocol: 'json' | 'messagepack',
+): void {
+  if (server.readyState !== WebSocket.OPEN) {
+    return
+  }
+
+  if (protocol === 'messagepack') {
+    server.send(new Uint8Array([0x02, 0x91, 0x06]).buffer)
+    return
+  }
+
+  server.send(`{"type":6}${signalRRecordSeparator}`)
 }
 
 async function authenticateRecentPasswordRequest(

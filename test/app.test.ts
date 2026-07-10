@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import app from '../src/app'
+import app, { acceptNotificationHubWebSocket } from '../src/app'
 import {
   buildAuthAttemptBucketKey,
   loginDefensePolicy,
@@ -12,6 +12,50 @@ import { hotp } from '../src/domain/totp'
 import * as retentionCleanup from '../src/maintenance/retention-cleanup'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 import { FakeR2Bucket } from './support/fake-r2'
+
+class FakeWebSocket {
+  accepted = false
+  readyState = 1
+  readonly sent: Array<string | ArrayBuffer> = []
+  private readonly listeners = new Map<string, Array<(event: Event) => void>>()
+
+  accept() {
+    this.accepted = true
+  }
+
+  send(value: string | ArrayBuffer) {
+    this.sent.push(value)
+  }
+
+  addEventListener(type: string, listener: EventListener) {
+    const listeners = this.listeners.get(type) ?? []
+    listeners.push(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  emitMessage(data: string | ArrayBuffer) {
+    this.emit('message', Object.assign(new Event('message'), { data }))
+  }
+
+  emitClose() {
+    this.emit('close', new Event('close'))
+  }
+
+  emitError() {
+    this.emit('error', new Event('error'))
+  }
+
+  private emit(type: string, event: Event) {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event)
+    }
+  }
+}
+
+function readBytes(value: string | ArrayBuffer | undefined): number[] {
+  expect(value).toBeInstanceOf(ArrayBuffer)
+  return [...new Uint8Array(value as ArrayBuffer)]
+}
 
 describe('HonoWarden app', () => {
   afterEach(() => {
@@ -7099,6 +7143,119 @@ describe('HonoWarden app', () => {
       },
       object: 'config',
     })
+  })
+
+  it('rejects notification hub requests that are not websocket upgrades', async () => {
+    const response = await app.request(
+      'https://vault.example.test/notifications/hub',
+      {
+        headers: {
+          Authorization: 'Bearer opaque-access-token',
+          'X-Request-Id': 'notification-hub-non-upgrade',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, []),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(426)
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'websocket_required',
+        message: 'Notification hub requires a WebSocket upgrade.',
+      },
+      requestId: 'notification-hub-non-upgrade',
+    })
+  })
+
+  it('requires an access token for notification websocket upgrades', async () => {
+    const response = await app.request(
+      'https://vault.example.test/notifications/hub',
+      {
+        headers: {
+          Upgrade: 'websocket',
+          'X-Request-Id': 'notification-hub-missing-token',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, []),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'missing_token',
+        message: 'Bearer authorization is required.',
+      },
+      requestId: 'notification-hub-missing-token',
+    })
+  })
+
+  it('rejects invalid SignalR access_token query authentication', async () => {
+    const response = await app.request(
+      'https://vault.example.test/notifications/hub?access_token=invalid',
+      {
+        headers: {
+          Upgrade: 'websocket',
+          'X-Request-Id': 'notification-hub-invalid-token',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, []),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'invalid_token' },
+      requestId: 'notification-hub-invalid-token',
+    })
+  })
+
+  it('acknowledges JSON SignalR handshakes and stops heartbeat on close', () => {
+    vi.useFakeTimers()
+    const socket = new FakeWebSocket()
+
+    acceptNotificationHubWebSocket(socket as unknown as WebSocket)
+    socket.emitMessage('{"protocol":"json","version":1}\u001e')
+
+    expect(socket.accepted).toBe(true)
+    expect(socket.sent).toEqual(['{}\u001e', '{"type":6}\u001e'])
+
+    vi.advanceTimersByTime(15_000)
+    expect(socket.sent).toHaveLength(3)
+
+    socket.emitClose()
+    vi.advanceTimersByTime(30_000)
+    expect(socket.sent).toHaveLength(3)
+    vi.useRealTimers()
+  })
+
+  it('uses length-prefixed MessagePack pings and replaces duplicate heartbeat timers', () => {
+    vi.useFakeTimers()
+    const socket = new FakeWebSocket()
+
+    acceptNotificationHubWebSocket(socket as unknown as WebSocket)
+    socket.emitMessage('{"protocol":"messagepack","version":1}\u001e')
+    socket.emitMessage('{"protocol":"messagepack","version":1}\u001e')
+
+    expect(socket.sent).toHaveLength(4)
+    expect(readBytes(socket.sent[1])).toEqual([0x02, 0x91, 0x06])
+    expect(readBytes(socket.sent[3])).toEqual([0x02, 0x91, 0x06])
+
+    vi.advanceTimersByTime(15_000)
+    expect(socket.sent).toHaveLength(5)
+    expect(readBytes(socket.sent[4])).toEqual([0x02, 0x91, 0x06])
+
+    socket.emitError()
+    vi.advanceTimersByTime(30_000)
+    expect(socket.sent).toHaveLength(5)
+    vi.useRealTimers()
   })
 
   it('keeps forwarded HTTPS origins in server config URLs', async () => {
