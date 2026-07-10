@@ -22,6 +22,7 @@ const requiredReleaseDocs = [
   'tagging-runbook.md',
   'publication-gate.md',
   'live-client-evidence.md',
+  'totp-recent-auth-live-evidence.md',
   'live-regression-matrix.md',
   'two-user-dogfood-evidence.md',
   'remote-backup-evidence.md',
@@ -379,17 +380,15 @@ function checkLiveClientEvidence() {
     (entry) => !hasMatrixLiveEvidence(entry),
   )
   const evidencePaths = Array.from(
-    new Set(
-      promotedRows
-        .map((entry) => entry.liveEvidence?.path)
-        .filter((entryPath) => typeof entryPath === 'string'),
-    ),
+    new Set(promotedRows.flatMap((entry) => matrixLiveEvidencePaths(entry))),
   )
   const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
   const cliEvidencePath =
     typeof cliEntry?.liveEvidence?.path === 'string'
       ? cliEntry.liveEvidence.path
       : 'docs/release/live-client-evidence.md'
+  const cliEvidencePaths = matrixLiveEvidencePaths(cliEntry)
+  const cliTotpEvidencePath = 'docs/release/totp-recent-auth-live-evidence.md'
   const browserEntry = matrix.entries.find(
     (entry) => entry.surface === 'browser_extension',
   )
@@ -442,6 +441,38 @@ function checkLiveClientEvidence() {
   const missingCliEvidence = requiredCliEvidence.filter(
     (required) => !cliEvidenceDoc.includes(required),
   )
+  const requiresCliTotpEvidence =
+    Array.isArray(cliEntry?.liveEvidence?.flows) &&
+    cliEntry.liveEvidence.flows.includes('totp_login')
+  const missingCliTotpEvidence = []
+  if (requiresCliTotpEvidence) {
+    if (!cliEvidencePaths.includes(cliTotpEvidencePath)) {
+      missingCliTotpEvidence.push(
+        `Linked evidence path: ${cliTotpEvidencePath}`,
+      )
+    } else {
+      const cliTotpEvidenceDoc = readText(cliTotpEvidencePath)
+      const requiredCliTotpEvidence = [
+        'Status: passed',
+        'Mode: local synthetic CLI plus HTTP auth lifecycle smoke',
+        'Client surface: `cli`',
+        'Client version: `2026.6.0`',
+        'Flow: official CLI one-step TOTP password grant',
+        'Flow: `/identity/accounts/totp/setup`',
+        'Flow: `/identity/accounts/totp/change`',
+        'Flow: `/identity/accounts/totp/disable`',
+        'Flow: `/api/devices/revoke-all`',
+        'Recent-auth rejection: refresh-auth token returned `reauth_required`',
+        'CLI login result: session key length 88',
+        'Real secrets: none',
+      ]
+      missingCliTotpEvidence.push(
+        ...requiredCliTotpEvidence.filter(
+          (required) => !cliTotpEvidenceDoc.includes(required),
+        ),
+      )
+    }
+  }
   const browserEvidenceDoc =
     browserEntry?.verificationLevel === 'live_smoke'
       ? readText(browserEvidencePath)
@@ -467,13 +498,21 @@ function checkLiveClientEvidence() {
     (required) => !browserEvidenceDoc.includes(required),
   )
 
-  if (missingCliEvidence.length > 0 || missingBrowserEvidence.length > 0) {
+  if (
+    missingCliEvidence.length > 0 ||
+    missingCliTotpEvidence.length > 0 ||
+    missingBrowserEvidence.length > 0
+  ) {
     return {
       id: 'live_client_evidence',
       status: 'block',
       title: 'Synthetic live-client evidence is recorded before alpha tagging',
       evidence: ['compat/client-matrix.json', ...evidencePaths],
-      details: { missingCliEvidence, missingBrowserEvidence },
+      details: {
+        missingCliEvidence,
+        missingCliTotpEvidence,
+        missingBrowserEvidence,
+      },
       nextAction:
         'Complete the live-client evidence with flow, client, server, redaction, and result fields.',
     }
@@ -487,8 +526,33 @@ function checkLiveClientEvidence() {
   }
 }
 
+function matrixLiveEvidencePaths(entry) {
+  const evidence = entry?.liveEvidence
+  if (!evidence || typeof evidence.path !== 'string') {
+    return []
+  }
+
+  const additionalPaths = Array.isArray(evidence.additionalPaths)
+    ? evidence.additionalPaths.filter(
+        (entryPath) => typeof entryPath === 'string',
+      )
+    : []
+
+  return [evidence.path, ...additionalPaths]
+}
+
 function hasMatrixLiveEvidence(entry) {
   const evidence = entry.liveEvidence
+  const additionalPaths =
+    evidence?.additionalPaths === undefined
+      ? []
+      : Array.isArray(evidence.additionalPaths)
+        ? evidence.additionalPaths
+        : null
+
+  if (!additionalPaths) {
+    return false
+  }
 
   return (
     evidence &&
@@ -496,6 +560,10 @@ function hasMatrixLiveEvidence(entry) {
     evidence.clientVersion === entry.version &&
     typeof evidence.path === 'string' &&
     existsSync(repoPath(evidence.path)) &&
+    additionalPaths.every(
+      (entryPath) =>
+        typeof entryPath === 'string' && existsSync(repoPath(entryPath)),
+    ) &&
     typeof evidence.recordedAt === 'string' &&
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(evidence.recordedAt) &&
     Array.isArray(evidence.flows) &&
