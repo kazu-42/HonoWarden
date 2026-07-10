@@ -240,6 +240,23 @@ describe('token domain', () => {
     })
   })
 
+  it('verifies auth-request access-token claims', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      device: 'requester-device',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+      authMethod: 'auth_request',
+    })
+
+    await expect(verifyAccessToken('secret', token, 2)).resolves.toMatchObject({
+      ok: true,
+      claims: { authMethod: 'auth_request' },
+    })
+  })
+
   it('verifies active and previous key ids from a staged access-token keyring', async () => {
     const activeToken = await signAccessToken(
       { id: '2026-07-active', secret: 'active-secret' },

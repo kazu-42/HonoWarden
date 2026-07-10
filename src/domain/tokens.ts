@@ -422,6 +422,7 @@ function isAccessTokenClaims(value: unknown): value is AccessTokenClaims {
     typeof claims.iat === 'number' &&
     typeof claims.exp === 'number' &&
     (claims.authMethod === undefined ||
+      claims.authMethod === 'auth_request' ||
       claims.authMethod === 'password' ||
       claims.authMethod === 'refresh')
   )
