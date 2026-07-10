@@ -932,8 +932,17 @@ Implemented:
 - verified a fresh local D1 applies all migrations through 0012 and contains
   both preserved legacy and current inquiry tables
 
-Staging and production migration mutation remains gated until the repair PR is
-merged. Production was not modified during discovery.
+Staging live reconciliation passed after PR #64 merged:
+
+- `0010a`, `0011`, and `0012` applied in order and migration readback reports
+  no pending files
+- `legacy_inquiry_messages_0009`, current `inquiry_threads`,
+  `inquiry_messages`, `inquiry_events`, and `auth_requests` coexist
+- legacy, current, and auth-request row counts were all zero at readback, so no
+  rows were lost or rewritten
+
+Production was not modified. Its reconciliation remains gated with the broader
+HON-79 production rollout after repository and route lifecycle evidence passes.
 
 ## Week 26 Unsupported Surface Guards
 
