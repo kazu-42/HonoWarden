@@ -718,7 +718,7 @@ Not implemented:
 
 - real Cloudflare staging deploy
 - deployed Worker HTTP health smoke
-- desktop/mobile live client evidence
+- desktop and iOS live client evidence
 
 ## Week 26 Cloudflare Resource Evidence
 
@@ -765,8 +765,7 @@ Implemented:
 - `compat/client-matrix.json` CLI row promoted to `live_smoke`
 - release evidence document under `docs/release/live-client-evidence.md`
 - release gate update requiring linked live evidence for promoted matrix rows
-- Android client release metadata refreshed to `2026.6.1` build `21713` while
-  keeping the row at `fixture_only`
+- Android client release metadata refreshed to `2026.6.1` build `21713`
 - official browser extension `2026.6.1` asset provenance and SHA-256 evidence
 - browser-extension self-hosted host selection against local wrangler dev
 - browser-extension password login, `/api/sync`, account profile reads, and
@@ -774,6 +773,22 @@ Implemented:
 - `compat/client-matrix.json` browser extension row promoted to `live_smoke`
 - browser-extension release evidence document under
   `docs/release/browser-extension-live-client-evidence.md`
+- official Android F-Droid APK `2026.6.1` build `21713` asset provenance and
+  SHA-256 evidence
+- Android self-hosted host selection through a temporary trycloudflare tunnel
+  against local wrangler dev
+- Android password login, `/api/sync`, billing subscription read, config
+  refresh, and empty-vault render with redacted evidence
+- official Android Retrofit live diagnostic for `/api/sync` response parsing
+- server response timestamp normalization from SQLite `CURRENT_TIMESTAMP`
+  format to UTC ISO-8601 for mobile compatibility
+- `compat/client-matrix.json` Android row promoted to `live_smoke`
+- Android release evidence document under
+  `docs/release/android-mobile-live-client-evidence.md`
+- iOS client release metadata refreshed to `2026.6.1` build `3376` while
+  keeping the row at `fixture_only`
+- iOS live smoke split to Linear `HON-65` because it requires a
+  physical/provisioned iOS run target or simulator-compatible signed artifact
 - release gate update listing all promoted row live-evidence paths
 - official CLI one-step TOTP password grant live evidence
 - direct HTTP TOTP setup, change, disable, refresh-grant recent-auth rejection,
@@ -786,7 +801,7 @@ Implemented:
 Not implemented:
 
 - desktop live evidence
-- mobile live evidence
+- iOS live evidence (`HON-65`)
 - browser-extension, desktop, Android, or iOS TOTP UX evidence
 - live item mutation evidence beyond the existing CLI smoke
 

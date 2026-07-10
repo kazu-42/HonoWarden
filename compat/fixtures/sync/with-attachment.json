@@ -13,35 +13,38 @@
     "status": 200,
     "body": {
       "object": "sync",
-      "Profile": {
-        "Id": "00000000-0000-4000-8000-000000000001",
-        "Name": "Fixture User",
-        "Email": "person@example.test",
-        "EmailVerified": true,
-        "Premium": false,
-        "PremiumFromOrganization": false,
-        "Culture": "en-US",
-        "TwoFactorEnabled": true,
-        "Key": "2.c3ludGhldGljLXVzZXIta2V5",
-        "AccountKeys": {
+      "profile": {
+        "providerOrganizations": [],
+        "premiumFromOrganization": false,
+        "forcePasswordReset": false,
+        "avatarColor": "#3366cc",
+        "emailVerified": true,
+        "twoFactorEnabled": true,
+        "privateKey": "2.synthetic-private-key",
+        "accountKeys": {
+          "signatureKeyPair": null,
           "publicKeyEncryptionKeyPair": {
             "publicKey": "synthetic-public-key",
-            "wrappedPrivateKey": "2.synthetic-private-key"
-          }
+            "wrappedPrivateKey": "2.synthetic-private-key",
+            "signedPublicKey": null
+          },
+          "securityState": null
         },
-        "AvatarColor": "#3366cc",
-        "CreationDate": "2026-07-06T00:00:00.000Z",
-        "PrivateKey": "2.synthetic-private-key",
-        "SecurityStamp": "fixture-security-stamp",
-        "ForcePasswordReset": false,
-        "UsesKeyConnector": false,
-        "VerifyDevices": false,
-        "Organizations": [],
-        "OrganizationsNew": [],
-        "Providers": [],
-        "ProviderOrganizations": []
+        "premium": false,
+        "culture": "en-US",
+        "name": "Fixture User",
+        "organizations": [],
+        "organizationsNew": [],
+        "usesKeyConnector": false,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "masterPasswordHint": null,
+        "email": "person@example.test",
+        "key": "2.c3ludGhldGljLXVzZXIta2V5",
+        "securityStamp": "fixture-security-stamp",
+        "providers": [],
+        "creationDate": "2026-07-06T00:00:00.000Z"
       },
-      "Folders": [
+      "folders": [
         {
           "object": "folder",
           "id": "folder-id",
@@ -49,8 +52,8 @@
           "revisionDate": "2026-07-06T00:03:00.000Z"
         }
       ],
-      "Collections": [],
-      "Ciphers": [
+      "collections": [],
+      "ciphers": [
         {
           "object": "cipher",
           "id": "cipher-id",
@@ -80,21 +83,23 @@
           "deletedDate": null
         }
       ],
-      "Domains": {
-        "EquivalentDomains": [],
-        "GlobalEquivalentDomains": []
+      "domains": {
+        "equivalentDomains": [],
+        "globalEquivalentDomains": []
       },
-      "Policies": [],
-      "PoliciesNew": [],
-      "Sends": [],
-      "UserDecryption": {
-        "MasterPasswordUnlock": {
-          "Salt": "person@example.test",
-          "Kdf": {
-            "KdfType": 0,
-            "Iterations": 600000
+      "policies": [],
+      "policiesNew": [],
+      "sends": [],
+      "userDecryption": {
+        "masterPasswordUnlock": {
+          "salt": "person@example.test",
+          "kdf": {
+            "kdfType": 0,
+            "iterations": 600000,
+            "memory": null,
+            "parallelism": null
           },
-          "MasterKeyEncryptedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
+          "masterKeyWrappedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
         }
       }
     }
@@ -106,42 +111,42 @@
       "value": "sync"
     },
     {
-      "path": "$.Ciphers",
+      "path": "$.ciphers",
       "type": "array",
       "length": 1
     },
     {
-      "path": "$.Ciphers.0.attachments",
+      "path": "$.ciphers.0.attachments",
       "type": "array",
       "length": 1
     },
     {
-      "path": "$.Ciphers.0.attachments.0.id",
+      "path": "$.ciphers.0.attachments.0.id",
       "type": "string",
       "value": "attachment-id"
     },
     {
-      "path": "$.Ciphers.0.attachments.0.url",
+      "path": "$.ciphers.0.attachments.0.url",
       "type": "string",
       "value": "/api/ciphers/cipher-id/attachment/attachment-id"
     },
     {
-      "path": "$.Ciphers.0.attachments.0.fileName",
+      "path": "$.ciphers.0.attachments.0.fileName",
       "type": "string",
       "value": "2.encrypted-file-name"
     },
     {
-      "path": "$.Ciphers.0.attachments.0.key",
+      "path": "$.ciphers.0.attachments.0.key",
       "type": "string",
       "value": "2.encrypted-attachment-key"
     },
     {
-      "path": "$.Ciphers.0.attachments.0.size",
+      "path": "$.ciphers.0.attachments.0.size",
       "type": "number",
       "value": 15
     },
     {
-      "path": "$.Ciphers.0.attachments.0.objectKey",
+      "path": "$.ciphers.0.attachments.0.objectKey",
       "absent": true
     }
   ]

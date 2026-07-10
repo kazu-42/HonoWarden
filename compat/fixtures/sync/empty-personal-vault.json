@@ -13,52 +13,57 @@
     "status": 200,
     "body": {
       "object": "sync",
-      "Profile": {
-        "Id": "00000000-0000-4000-8000-000000000001",
-        "Name": "Fixture User",
-        "Email": "person@example.test",
-        "EmailVerified": true,
-        "Premium": false,
-        "PremiumFromOrganization": false,
-        "Culture": "en-US",
-        "TwoFactorEnabled": false,
-        "Key": "2.c3ludGhldGljLXVzZXIta2V5",
-        "AccountKeys": {
+      "profile": {
+        "providerOrganizations": [],
+        "premiumFromOrganization": false,
+        "forcePasswordReset": false,
+        "avatarColor": "#3366cc",
+        "emailVerified": true,
+        "twoFactorEnabled": false,
+        "privateKey": "2.synthetic-private-key",
+        "accountKeys": {
+          "signatureKeyPair": null,
           "publicKeyEncryptionKeyPair": {
             "publicKey": "synthetic-public-key",
-            "wrappedPrivateKey": "2.synthetic-private-key"
-          }
-        },
-        "AvatarColor": "#3366cc",
-        "CreationDate": "2026-07-06T00:00:00.000Z",
-        "PrivateKey": "2.synthetic-private-key",
-        "SecurityStamp": "fixture-security-stamp",
-        "ForcePasswordReset": false,
-        "UsesKeyConnector": false,
-        "VerifyDevices": false,
-        "Organizations": [],
-        "OrganizationsNew": [],
-        "Providers": [],
-        "ProviderOrganizations": []
-      },
-      "Folders": [],
-      "Collections": [],
-      "Ciphers": [],
-      "Domains": {
-        "EquivalentDomains": [],
-        "GlobalEquivalentDomains": []
-      },
-      "Policies": [],
-      "PoliciesNew": [],
-      "Sends": [],
-      "UserDecryption": {
-        "MasterPasswordUnlock": {
-          "Salt": "person@example.test",
-          "Kdf": {
-            "KdfType": 0,
-            "Iterations": 600000
+            "wrappedPrivateKey": "2.synthetic-private-key",
+            "signedPublicKey": null
           },
-          "MasterKeyEncryptedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
+          "securityState": null
+        },
+        "premium": false,
+        "culture": "en-US",
+        "name": "Fixture User",
+        "organizations": [],
+        "organizationsNew": [],
+        "usesKeyConnector": false,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "masterPasswordHint": null,
+        "email": "person@example.test",
+        "key": "2.c3ludGhldGljLXVzZXIta2V5",
+        "securityStamp": "fixture-security-stamp",
+        "providers": [],
+        "creationDate": "2026-07-06T00:00:00.000Z"
+      },
+      "folders": [],
+      "collections": [],
+      "ciphers": [],
+      "domains": {
+        "equivalentDomains": [],
+        "globalEquivalentDomains": []
+      },
+      "policies": [],
+      "policiesNew": [],
+      "sends": [],
+      "userDecryption": {
+        "masterPasswordUnlock": {
+          "salt": "person@example.test",
+          "kdf": {
+            "kdfType": 0,
+            "iterations": 600000,
+            "memory": null,
+            "parallelism": null
+          },
+          "masterKeyWrappedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
         }
       }
     }
@@ -70,56 +75,56 @@
       "value": "sync"
     },
     {
-      "path": "$.Profile.Id",
+      "path": "$.profile.id",
       "type": "string"
     },
     {
-      "path": "$.Profile.Email",
+      "path": "$.profile.email",
       "type": "string"
     },
     {
-      "path": "$.Profile.Key",
+      "path": "$.profile.key",
       "type": "string"
     },
     {
-      "path": "$.Profile.AccountKeys.publicKeyEncryptionKeyPair.publicKey",
+      "path": "$.profile.accountKeys.publicKeyEncryptionKeyPair.publicKey",
       "type": "string"
     },
     {
-      "path": "$.Profile.PrivateKey",
+      "path": "$.profile.privateKey",
       "type": "string"
     },
     {
-      "path": "$.Folders",
+      "path": "$.folders",
       "type": "array",
       "length": 0
     },
     {
-      "path": "$.Collections",
+      "path": "$.collections",
       "type": "array",
       "length": 0
     },
     {
-      "path": "$.Ciphers",
+      "path": "$.ciphers",
       "type": "array",
       "length": 0
     },
     {
-      "path": "$.Domains.EquivalentDomains",
+      "path": "$.domains.equivalentDomains",
       "type": "array"
     },
     {
-      "path": "$.Policies",
+      "path": "$.policies",
       "type": "array",
       "length": 0
     },
     {
-      "path": "$.Sends",
+      "path": "$.sends",
       "type": "array",
       "length": 0
     },
     {
-      "path": "$.UserDecryption.MasterPasswordUnlock.Kdf.Iterations",
+      "path": "$.userDecryption.masterPasswordUnlock.kdf.iterations",
       "type": "number",
       "value": 600000
     }

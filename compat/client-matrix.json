@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-07-09T21:22:47Z",
+  "checkedAt": "2026-07-10T02:50:34Z",
   "sourceKind": "official-upstream-release-metadata",
   "metadataRefresh": {
     "cadenceDays": 14,
@@ -121,7 +121,23 @@
         "repositoryRef": "android-mobile-apps",
         "releaseSelector": "latest non-draft, non-prerelease Password Manager release whose tag ends with -bwpm"
       },
-      "verificationLevel": "fixture_only",
+      "verificationLevel": "live_smoke",
+      "liveEvidence": {
+        "path": "docs/release/android-mobile-live-client-evidence.md",
+        "status": "passed",
+        "recordedAt": "2026-07-10T02:49:00Z",
+        "clientVersion": "2026.6.1",
+        "clientBuild": "21713",
+        "flows": [
+          "config",
+          "known_device_preflight",
+          "prelogin",
+          "password_grant",
+          "empty_sync",
+          "billing_subscription",
+          "config_refresh"
+        ]
+      },
       "coveredFlows": [
         "config",
         "prelogin",
@@ -149,8 +165,8 @@
         "totp_login"
       ],
       "knownIssues": [
-        "No live mobile login or sync run is recorded for this exact version.",
-        "Release metadata advanced from 2026.6.0 build 21686 to 2026.6.1 build 21713 on 2026-07-09; live mobile evidence must be re-run before any promotion.",
+        "Live Android smoke covers official F-Droid APK self-hosted environment selection, password login, first empty-vault sync persistence, billing subscription read, and config refresh against a local synthetic account only.",
+        "The smoke exposed official Retrofit rejection of SQLite CURRENT_TIMESTAMP values; HonoWarden now normalizes outward API timestamps to UTC ISO-8601 before the passing clean run.",
         "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no Android TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
@@ -158,10 +174,10 @@
     },
     {
       "surface": "mobile_ios",
-      "version": "2026.6.0",
-      "build": "3325",
-      "releaseTag": "v2026.6.0-bwpm",
-      "releasePublishedAt": "2026-06-26T15:03:00Z",
+      "version": "2026.6.1",
+      "build": "3376",
+      "releaseTag": "v2026.6.1-bwpm",
+      "releasePublishedAt": "2026-07-09T22:32:52Z",
       "metadataSource": {
         "kind": "official-upstream-github-release",
         "repositoryRef": "ios-mobile-apps",
@@ -196,6 +212,8 @@
       ],
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
+        "Release metadata advanced from 2026.6.0 build 3325 to 2026.6.1 build 3376 on 2026-07-09; iOS still lacks a physical-device or simulator live smoke in this repository.",
+        "Follow-up live iOS evidence is tracked by HON-65.",
         "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no iOS TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."

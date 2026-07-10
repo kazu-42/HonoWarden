@@ -15,6 +15,7 @@ Use this index as the feature-freeze entry point:
 - [Alpha Tagging Runbook](tagging-runbook.md)
 - [Publication Gate](publication-gate.md)
 - [Live Client Evidence](live-client-evidence.md)
+- [Android Mobile Live Client Evidence](android-mobile-live-client-evidence.md)
 - [TOTP And Recent-Auth Live Evidence](totp-recent-auth-live-evidence.md)
 - [Two-User Dogfood And Disabled-User Evidence](two-user-dogfood-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
@@ -49,8 +50,9 @@ reviewed without inventing release process under time pressure.
 - Backup export and fresh-target restore drill evidence exists.
 - Scheduled remote backup workflow and remote backup evidence are recorded.
 - CLI live-client login/sync, one-step TOTP login, and recent-auth lifecycle
-  smoke evidence is recorded; remaining client surfaces stay conservative until
-  their own live evidence is recorded.
+  smoke evidence is recorded.
+- Android live-client login and empty-vault sync smoke evidence is recorded;
+  desktop and iOS stay conservative until their own live evidence is recorded.
 - synthetic two-user dogfood and disabled-user lifecycle evidence is recorded,
   with production lifecycle execution still operator-gated.
 - `pnpm release:gate -- --strict` passes on the release commit.

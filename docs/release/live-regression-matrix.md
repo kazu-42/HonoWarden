@@ -4,9 +4,10 @@ Target: `v0.1.0-alpha`.
 
 Status: harness ready, no row promoted to `live_regression`.
 
-The current release has one recorded CLI `live_smoke` evidence document. A
-`live_regression` promotion requires a repeatable run that covers the broader
-client lifecycle and stores only redacted, synthetic evidence.
+The current release has recorded CLI, browser-extension, and Android
+`live_smoke` evidence documents. A `live_regression` promotion requires a
+repeatable run that covers the broader client lifecycle and stores only
+redacted, synthetic evidence.
 
 ## Harness
 
@@ -97,6 +98,7 @@ flow ids used for that run.
 ## Current Status
 
 No tracked client row is promoted to `live_regression` yet. Browser extension,
-desktop, Android, and iOS remain `fixture_only`. CLI remains `live_smoke` until a
-repeatable run records refresh, session revoke, and selected auth lifecycle
-evidence in addition to the existing item lifecycle smoke.
+Android, and CLI remain `live_smoke`; desktop and iOS remain `fixture_only`.
+CLI remains below `live_regression` until a repeatable run records refresh,
+session revoke, and selected auth lifecycle evidence in addition to the
+existing item lifecycle smoke.
