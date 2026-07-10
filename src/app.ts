@@ -49,6 +49,7 @@ import {
   hashRefreshToken,
   invalidGrantError,
   parsePasswordGrantForm,
+  parseAuthRequestGrantForm,
   parseRefreshTokenGrantForm,
   signAccessToken,
   tokenErrorResponse,
@@ -62,6 +63,7 @@ import type {
   AccessTokenSigner,
   AccessTokenVerifier,
 } from './domain/tokens'
+import type { AuthRequestGrantRequest } from './domain/tokens'
 import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
 import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
@@ -76,6 +78,7 @@ import {
 import { persistAuditEvent } from './repositories/audit-event-repository'
 import {
   approveAuthRequest,
+  consumeAuthRequestWithSession,
   createAuthRequest,
   denyAuthRequest,
   findAuthRequestForOwner,
@@ -204,7 +207,7 @@ type AuthenticatedVaultRequest =
       user: AuthUserRecord
       deviceIdentifier: string
       tokenIssuedAt: number
-      authMethod: 'password' | 'refresh' | null
+      authMethod: AccessTokenAuthMethod | null
     }
   | {
       ok: false
@@ -1175,6 +1178,21 @@ app.post('/identity/connect/token', async (c) => {
 
   const form = await readFormBody(c.req.raw)
 
+  const authRequestGrant = parseAuthRequestGrantForm(form)
+  if (authRequestGrant.ok) {
+    return handleAuthRequestTokenGrant(
+      c,
+      accessTokenConfig,
+      authRequestGrant.grant,
+    )
+  }
+  if (!('reason' in authRequestGrant)) {
+    return c.json(
+      tokenErrorResponse(authRequestGrant.error),
+      authRequestGrant.status,
+    )
+  }
+
   if (form.get('grant_type') === 'refresh_token') {
     const grantDecision = parseRefreshTokenGrantForm(form)
     if (!grantDecision.ok) {
@@ -1630,6 +1648,192 @@ app.post('/identity/connect/token', async (c) => {
     )
   }
 })
+
+async function handleAuthRequestTokenGrant(
+  c: AppContext,
+  accessTokenConfig: Extract<AccessTokenRuntimeConfig, { ok: true }>,
+  grant: AuthRequestGrantRequest,
+) {
+  if (!isAuthRequestFeatureEnabled(c.env?.HONOWARDEN_AUTH_REQUESTS_ENABLED)) {
+    return c.json(tokenErrorResponse(invalidGrantError()), 400)
+  }
+
+  const authRequestSecret = c.env?.HONOWARDEN_AUTH_REQUEST_SECRET
+  if (
+    !authRequestSecret ||
+    new TextEncoder().encode(authRequestSecret).byteLength < 32
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Auth requests are not configured.',
+      ),
+      503,
+    )
+  }
+
+  const headerDevice = readDeviceInfo(c.req.raw.headers)
+  const device = headerDevice ?? grant.device
+  if (
+    device.identifier !== grant.device.identifier ||
+    device.identifier.length === 0 ||
+    device.identifier.length > authRequestPolicy.maxDeviceIdentifierLength ||
+    grant.authRequestId.length > 128 ||
+    grant.accessCode.length < authRequestPolicy.minAccessCodeLength ||
+    grant.accessCode.length > authRequestPolicy.maxAccessCodeLength
+  ) {
+    return c.json(tokenErrorResponse(invalidGrantError()), 400)
+  }
+
+  const issuedAt = Math.floor(Date.now() / 1000)
+  const now = new Date(issuedAt * 1000).toISOString()
+
+  try {
+    const networkQuotaResponse = await enforceAuthRequestQuotas(
+      c,
+      'auth.request_consume',
+      [
+        {
+          value: `consume:network:${extractClientAddress(c.req.raw.headers)}`,
+          limit: authRequestQuotaPolicy.consumeNetworkLimit,
+        },
+      ],
+    )
+    if (networkQuotaResponse) {
+      return networkQuotaResponse
+    }
+
+    const request = await findAuthRequestVerifierById(
+      c.env.DB,
+      grant.authRequestId,
+      now,
+    )
+    const accessCodeVerified =
+      request &&
+      (await verifyAuthRequestAccessCode(
+        authRequestSecret,
+        grant.authRequestId,
+        grant.accessCode,
+        request.accessCodeHash,
+      ))
+
+    if (
+      !request ||
+      !accessCodeVerified ||
+      request.status !== 'approved' ||
+      request.requestType !== 0 ||
+      !request.userId ||
+      request.requestDeviceIdentifier !== device.identifier
+    ) {
+      await emitAuthRequestConsumeFailure(c, grant.authRequestId)
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
+
+    const deviceHash = await buildAuthRequestDeviceHash(
+      authRequestSecret,
+      device.identifier,
+    )
+    const ownerQuotaResponse = await enforceAuthRequestQuotas(
+      c,
+      'auth.request_consume',
+      [
+        {
+          value: `consume:account:${request.emailHash}`,
+          limit: authRequestQuotaPolicy.consumeAccountLimit,
+        },
+        {
+          value: `consume:device:${deviceHash}`,
+          limit: authRequestQuotaPolicy.consumeDeviceLimit,
+        },
+      ],
+    )
+    if (ownerQuotaResponse) {
+      return ownerQuotaResponse
+    }
+
+    const user = await findAuthUserById(c.env.DB, request.userId)
+    if (
+      !user ||
+      user.disabledAt ||
+      user.emailNormalized !== grant.usernameNormalized
+    ) {
+      await emitAuthRequestConsumeFailure(c, grant.authRequestId)
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
+
+    const refreshToken = generateRefreshToken()
+    const refreshTokenHash = await hashRefreshToken(
+      accessTokenConfig.refreshTokenSecret,
+      refreshToken,
+    )
+    const refreshTokenId = crypto.randomUUID()
+    const consume = await consumeAuthRequestWithSession(c.env.DB, {
+      authRequestId: request.id,
+      accessCodeHash: request.accessCodeHash,
+      userId: user.id,
+      requestDeviceIdentifier: device.identifier,
+      deviceId: buildDeviceId(user.id, device.identifier),
+      deviceName: device.name,
+      deviceType: device.type,
+      refreshTokenId,
+      refreshTokenHash,
+      refreshTokenExpiresAt: new Date(
+        (issuedAt + refreshTokenTtlSeconds) * 1000,
+      ).toISOString(),
+      now,
+    })
+
+    if (consume.status !== 'consumed') {
+      await emitAuthRequestConsumeFailure(c, grant.authRequestId)
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
+
+    const accessToken = await signAccessToken(
+      accessTokenConfig.signer,
+      buildAccessTokenClaims({
+        user,
+        deviceIdentifier: device.identifier,
+        issuedAt,
+        expiresAt: issuedAt + accessTokenTtlSeconds,
+        authMethod: 'auth_request',
+      }),
+    )
+
+    await emitAuditEvent(c, {
+      name: 'auth.request_consume',
+      outcome: 'success',
+      actor: {
+        userId: user.id,
+        deviceIdentifier: device.identifier,
+      },
+      target: { type: 'auth_request', id: request.id },
+    })
+
+    return c.json(buildTokenResponse(user, accessToken, refreshToken))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Token exchange failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function emitAuthRequestConsumeFailure(
+  c: AppContext,
+  authRequestId: string,
+): Promise<void> {
+  await emitAuditEvent(c, {
+    name: 'auth.request_consume',
+    outcome: 'failure',
+    target: { type: 'auth_request', id: authRequestId },
+    context: { reason: 'invalid_or_replayed' },
+  })
+}
 
 app.get('/api/sync', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -4932,7 +5136,8 @@ function resolveAuthRequestRuntime(
 
 async function enforceAuthRequestQuotas(
   c: AppContext,
-  eventName: 'auth.request_create' | 'auth.request_poll',
+  eventName:
+    'auth.request_consume' | 'auth.request_create' | 'auth.request_poll',
   quotas: Array<{ value: string; limit: number }>,
 ): Promise<Response | null> {
   const now = new Date().toISOString()

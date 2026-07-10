@@ -5,6 +5,7 @@ export type AuditEventName =
   | 'auth.refresh_reuse'
   | 'auth.request_approve'
   | 'auth.request_create'
+  | 'auth.request_consume'
   | 'auth.request_deny'
   | 'auth.request_poll'
   | 'backup.export'

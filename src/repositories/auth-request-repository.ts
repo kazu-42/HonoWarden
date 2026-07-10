@@ -56,6 +56,21 @@ export type AuthRequestTransitionResult =
   { status: 'updated' } | { status: 'not_updated' }
 
 type AuthRequestDatabase = Pick<D1Database, 'prepare'>
+type AuthRequestSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
+
+export type ConsumeAuthRequestWithSessionInput = {
+  authRequestId: string
+  accessCodeHash: string
+  userId: string
+  requestDeviceIdentifier: string
+  deviceId: string
+  deviceName: string | null
+  deviceType: number | null
+  refreshTokenId: string
+  refreshTokenHash: string
+  refreshTokenExpiresAt: string
+  now: string
+}
 
 type AuthRequestRow = Omit<AuthRequestRecord, 'requestApproved'> & {
   requestApproved: number | boolean | null
@@ -283,6 +298,130 @@ export async function consumeAuthRequest(
     .run()
 
   return transitionResult(result.meta.changes)
+}
+
+export async function consumeAuthRequestWithSession(
+  database: AuthRequestSessionDatabase,
+  input: ConsumeAuthRequestWithSessionInput,
+): Promise<{ status: 'consumed' } | { status: 'not_consumed' }> {
+  const eligibility = `
+    id = ?
+    AND user_id = ?
+    AND request_device_identifier = ?
+    AND access_code_hash = ?
+    AND status = 'approved'
+    AND expires_at > ?
+  `
+  const eligibilityBindings = [
+    input.authRequestId,
+    input.userId,
+    input.requestDeviceIdentifier,
+    input.accessCodeHash,
+    input.now,
+  ] as const
+  const results = await database.batch([
+    database
+      .prepare(
+        `
+          INSERT OR IGNORE INTO devices (
+            id,
+            user_id,
+            identifier,
+            name,
+            type,
+            last_seen_at,
+            updated_at
+          )
+          SELECT ?, ?, ?, ?, ?, ?, ?
+          FROM auth_requests
+          WHERE ${eligibility}
+        `,
+      )
+      .bind(
+        input.deviceId,
+        input.userId,
+        input.requestDeviceIdentifier,
+        input.deviceName,
+        input.deviceType,
+        input.now,
+        input.now,
+        ...eligibilityBindings,
+      ),
+    database
+      .prepare(
+        `
+          UPDATE devices
+          SET
+            name = ?,
+            type = ?,
+            last_seen_at = ?,
+            revoked_at = NULL,
+            updated_at = ?
+          WHERE id = ?
+            AND user_id = ?
+            AND EXISTS (
+              SELECT 1 FROM auth_requests WHERE ${eligibility}
+            )
+        `,
+      )
+      .bind(
+        input.deviceName,
+        input.deviceType,
+        input.now,
+        input.now,
+        input.deviceId,
+        input.userId,
+        ...eligibilityBindings,
+      ),
+    database
+      .prepare(
+        `
+          INSERT INTO refresh_tokens (
+            id,
+            user_id,
+            device_id,
+            token_hash,
+            expires_at
+          )
+          SELECT ?, ?, ?, ?, ?
+          FROM auth_requests
+          WHERE ${eligibility}
+        `,
+      )
+      .bind(
+        input.refreshTokenId,
+        input.userId,
+        input.deviceId,
+        input.refreshTokenHash,
+        input.refreshTokenExpiresAt,
+        ...eligibilityBindings,
+      ),
+    database
+      .prepare(
+        `
+          UPDATE auth_requests
+          SET status = 'consumed', consumed_at = ?, updated_at = ?
+          WHERE ${eligibility}
+            AND EXISTS (
+              SELECT 1
+              FROM refresh_tokens
+              WHERE id = ? AND user_id = ? AND device_id = ?
+            )
+        `,
+      )
+      .bind(
+        input.now,
+        input.now,
+        ...eligibilityBindings,
+        input.refreshTokenId,
+        input.userId,
+        input.deviceId,
+      ),
+  ])
+
+  return results[2]?.meta.changes === 1 && results[3]?.meta.changes === 1
+    ? { status: 'consumed' }
+    : { status: 'not_consumed' }
 }
 
 export async function expireAuthRequests(

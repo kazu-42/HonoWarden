@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   approveAuthRequest,
   consumeAuthRequest,
+  consumeAuthRequestWithSession,
   createAuthRequest,
   deleteRetainedAuthRequests,
   denyAuthRequest,
@@ -29,6 +30,7 @@ class RecordingDatabase {
     private readonly firstResult: unknown | null = null,
     private readonly allResults: unknown[] = [],
     private readonly changes = 1,
+    private readonly batchChanges: number[] = [1, 1, 1, 1],
   ) {}
 
   prepare(query: string): D1PreparedStatement {
@@ -61,6 +63,16 @@ class RecordingDatabase {
       },
     }
     return statement as unknown as D1PreparedStatement
+  }
+
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
+    return statements.map((_, index) => ({
+      success: true,
+      results: [],
+      meta: { ...fakeMeta, changes: this.batchChanges[index] ?? 0 },
+    }))
   }
 }
 
@@ -198,6 +210,60 @@ describe('auth request repository', () => {
     })
 
     expect(result).toEqual({ status: 'not_updated' })
+  })
+
+  it('atomically creates a device session and consumes one approved request', async () => {
+    const database = new RecordingDatabase()
+
+    const result = await consumeAuthRequestWithSession(
+      database as unknown as D1Database,
+      {
+        authRequestId: 'request-1',
+        accessCodeHash: 'access-code-hash',
+        userId: 'user-1',
+        requestDeviceIdentifier: 'requester-device',
+        deviceId: 'user-1:requester-device',
+        deviceName: 'Requester',
+        deviceType: 8,
+        refreshTokenId: 'refresh-token-id',
+        refreshTokenHash: 'refresh-token-hash',
+        refreshTokenExpiresAt: '2026-08-10T00:05:00.000Z',
+        now: '2026-07-11T00:05:00.000Z',
+      },
+    )
+
+    expect(result).toEqual({ status: 'consumed' })
+    expect(database.queries).toHaveLength(4)
+    expect(database.queries.join('\n')).toContain(
+      'INSERT OR IGNORE INTO devices',
+    )
+    expect(database.queries.join('\n')).toContain('INSERT INTO refresh_tokens')
+    expect(database.queries.join('\n')).toContain("status = 'consumed'")
+    expect(database.queries.join('\n')).toContain("status = 'approved'")
+    expect(database.queries.join('\n')).toContain('access_code_hash = ?')
+  })
+
+  it('rejects replay unless both refresh insertion and consume update commit', async () => {
+    const database = new RecordingDatabase(null, [], 1, [0, 0, 0, 0])
+
+    const result = await consumeAuthRequestWithSession(
+      database as unknown as D1Database,
+      {
+        authRequestId: 'request-1',
+        accessCodeHash: 'access-code-hash',
+        userId: 'user-1',
+        requestDeviceIdentifier: 'requester-device',
+        deviceId: 'user-1:requester-device',
+        deviceName: null,
+        deviceType: null,
+        refreshTokenId: 'refresh-token-id',
+        refreshTokenHash: 'refresh-token-hash',
+        refreshTokenExpiresAt: '2026-08-10T00:05:00.000Z',
+        now: '2026-07-11T00:05:00.000Z',
+      },
+    )
+
+    expect(result).toEqual({ status: 'not_consumed' })
   })
 
   it('expires pending and approved requests in bounded batches', async () => {
