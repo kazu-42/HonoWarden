@@ -28,7 +28,8 @@ Out of scope for the initial product:
 - Emergency Access
 - browser-side cryptography review of third-party clients
 - Cloudflare account hardening outside repository-controlled configuration
-- bulk trusted-device approval and login-with-device push workflows
+- login-with-device runtime routes remain disabled until ADR 0008's persistence,
+  replay, quota, audit, retention, and staging gates pass
 
 ## Assets
 
@@ -38,6 +39,8 @@ Out of scope for the initial product:
 | master password hash and KDF settings | D1                                     | never log; compare without timing leaks where practical       |
 | user key and private key payloads     | D1                                     | store opaque encrypted payloads only                          |
 | refresh tokens                        | client plaintext, D1 secret-bound hash | rotate on use; invalidate reuse and revoked devices           |
+| login-with-device access codes        | client plaintext, D1 keyed hash        | never recover or log; bind to one request and one consumption |
+| auth-request encrypted handoff        | D1 opaque ciphertext                   | owner/device scope; never decrypt or place in notifications   |
 | access tokens                         | client bearer token                    | verify signature, expiry, subject, device, and security stamp |
 | TOTP setup secret                     | D1 AES-GCM envelope                    | wrap with `HONOWARDEN_TOTP_SECRET`; reject replay             |
 | vault folders and ciphers             | D1 encrypted payload columns           | preserve ciphertext; enforce owner scope                      |
@@ -90,6 +93,7 @@ Out of scope for the initial product:
 - cipher attachment upload, download, and delete routes
 - operator backup/restore and account lifecycle CLIs
 - audit log stream
+- disabled login-with-device routes and future request polling/approval surface
 
 Explicitly excluded public sharing surface:
 
@@ -188,6 +192,13 @@ Explicitly excluded public sharing surface:
     requires grantee identity, invitation, delay, cancellation, timeout,
     notification, cryptographic handoff, audit, abuse, rollback, and incident
     response design before implementation.
+
+12. Login-with-device confused-deputy or replay attack.
+    Current mitigation: routes remain explicit 501 responses. ADR 0008 requires
+    a different active approving device, owner-scoped compare-and-set state
+    transitions, keyed access-code hashes, fixed expiry, atomic one-time token
+    consumption, metadata-only audit, quotas, and polling as the authoritative
+    read path before the guard can be removed.
 
 ## Required Follow-Up Before Real Secrets
 
