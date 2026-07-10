@@ -2,6 +2,7 @@ import app from './app'
 import type { Bindings } from './bindings'
 import { isAuditLoggingEnabled } from './domain/audit'
 import { isGlobalRequestQuotaEnabled } from './domain/request-quota'
+import { handleInquiryEmail } from './inquiry-email'
 import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
 
 export default {
@@ -28,4 +29,7 @@ export default {
 
     return cleanup
   },
-}
+  email(message: ForwardableEmailMessage, env: Bindings) {
+    return handleInquiryEmail(message, env)
+  },
+} satisfies ExportedHandler<Bindings>

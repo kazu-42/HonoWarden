@@ -48,6 +48,8 @@ type FakeD1DatabaseOptions = {
   requestQuotaBucket?: Record<string, unknown> | null
   requestQuotaCleanupChanges?: number
   requestQuotaInsertThrows?: boolean
+  inquiryForwardUpdateThrows?: boolean
+  inquiryInsertThrows?: boolean
 }
 
 export type FakeAuditEventInsert = {
@@ -83,12 +85,70 @@ export type FakeRequestQuotaCleanupDelete = {
   limit: number
 }
 
+export type FakeInquiryThreadInsert = {
+  id: string
+  mailbox: string
+  threadKey: string
+  senderHash: string
+  subjectPreview: string | null
+  status: string
+  retentionDeadline: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type FakeInquiryMessageInsert = {
+  id: string
+  threadId: string
+  direction: string
+  envelopeSenderHash: string
+  envelopeRecipient: string
+  messageIdHash: string | null
+  inReplyToHash: string | null
+  referencesHash: string | null
+  subjectPreview: string | null
+  rawSize: number
+  contentType: string | null
+  hasAttachmentHint: boolean
+  bodyStorageState: string
+  rawBodyStored: boolean
+  rawObjectKey: string | null
+  attachmentStorageState: string
+  deliveryStatus: string
+  rejectionReason: string | null
+  forwardAttempted: boolean
+  forwardedAt: string | null
+  receivedAt: string
+  retentionDeadline: string
+  createdAt: string
+}
+
+export type FakeInquiryEventInsert = {
+  id: string
+  threadId: string
+  messageId: string
+  name: string
+  outcome: string
+  occurredAt: string
+  metadataJson: string | null
+  createdAt: string
+}
+
+export type FakeInquiryMessageForwardUpdate = {
+  messageId: string
+  forwardedAt: string
+}
+
 export class FakeD1Database {
   readonly deletedAuthFailureBucketKeys: string[] = []
   readonly auditEventInserts: FakeAuditEventInsert[] = []
   readonly auditEventCleanupDeletes: FakeAuditEventCleanupDelete[] = []
   readonly requestQuotaWrites: FakeRequestQuotaWrite[] = []
   readonly requestQuotaCleanupDeletes: FakeRequestQuotaCleanupDelete[] = []
+  readonly inquiryThreadInserts: FakeInquiryThreadInsert[] = []
+  readonly inquiryMessageInserts: FakeInquiryMessageInsert[] = []
+  readonly inquiryEventInserts: FakeInquiryEventInsert[] = []
+  readonly inquiryMessageForwardUpdates: FakeInquiryMessageForwardUpdate[] = []
 
   private readonly authFailureBuckets = new Map<
     string,
@@ -111,6 +171,10 @@ export class FakeD1Database {
     const auditEventCleanupDeletes = this.auditEventCleanupDeletes
     const requestQuotaWrites = this.requestQuotaWrites
     const requestQuotaCleanupDeletes = this.requestQuotaCleanupDeletes
+    const inquiryThreadInserts = this.inquiryThreadInserts
+    const inquiryMessageInserts = this.inquiryMessageInserts
+    const inquiryEventInserts = this.inquiryEventInserts
+    const inquiryMessageForwardUpdates = this.inquiryMessageForwardUpdates
     let boundValues: unknown[] = []
 
     const statement = {
@@ -643,6 +707,133 @@ export class FakeD1Database {
             windowSeconds:
               (Date.parse(now) - Date.parse(windowThreshold)) / 1000,
             blockSeconds: (Date.parse(blockedUntil) - Date.parse(now)) / 1000,
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO inquiry_threads')) {
+          if (options.inquiryInsertThrows) {
+            throw new Error('inquiry insert failed')
+          }
+
+          inquiryThreadInserts.push({
+            id: String(boundValues[0]),
+            mailbox: String(boundValues[1]),
+            threadKey: String(boundValues[2]),
+            senderHash: String(boundValues[3]),
+            subjectPreview:
+              boundValues[4] === null ? null : String(boundValues[4]),
+            status: String(boundValues[5]),
+            retentionDeadline: String(boundValues[6]),
+            createdAt: String(boundValues[7]),
+            updatedAt: String(boundValues[8]),
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO inquiry_messages')) {
+          if (options.inquiryInsertThrows) {
+            throw new Error('inquiry insert failed')
+          }
+
+          inquiryMessageInserts.push({
+            id: String(boundValues[0]),
+            threadId: String(boundValues[1]),
+            direction: String(boundValues[2]),
+            envelopeSenderHash: String(boundValues[3]),
+            envelopeRecipient: String(boundValues[4]),
+            messageIdHash:
+              boundValues[5] === null ? null : String(boundValues[5]),
+            inReplyToHash:
+              boundValues[6] === null ? null : String(boundValues[6]),
+            referencesHash:
+              boundValues[7] === null ? null : String(boundValues[7]),
+            subjectPreview:
+              boundValues[8] === null ? null : String(boundValues[8]),
+            rawSize: Number(boundValues[9]),
+            contentType:
+              boundValues[10] === null ? null : String(boundValues[10]),
+            hasAttachmentHint: boundValues[11] === 1,
+            bodyStorageState: String(boundValues[12]),
+            rawBodyStored: boundValues[13] === 1,
+            rawObjectKey:
+              boundValues[14] === null ? null : String(boundValues[14]),
+            attachmentStorageState: String(boundValues[15]),
+            deliveryStatus: String(boundValues[16]),
+            rejectionReason:
+              boundValues[17] === null ? null : String(boundValues[17]),
+            forwardAttempted: boundValues[18] === 1,
+            forwardedAt:
+              boundValues[19] === null ? null : String(boundValues[19]),
+            receivedAt: String(boundValues[20]),
+            retentionDeadline: String(boundValues[21]),
+            createdAt: String(boundValues[22]),
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (query.includes('INSERT INTO inquiry_events')) {
+          if (options.inquiryInsertThrows) {
+            throw new Error('inquiry insert failed')
+          }
+
+          inquiryEventInserts.push({
+            id: String(boundValues[0]),
+            threadId: String(boundValues[1]),
+            messageId: String(boundValues[2]),
+            name: String(boundValues[3]),
+            outcome: String(boundValues[4]),
+            occurredAt: String(boundValues[5]),
+            metadataJson:
+              boundValues[6] === null ? null : String(boundValues[6]),
+            createdAt: String(boundValues[7]),
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: 1,
+            },
+          }
+        }
+
+        if (
+          /UPDATE\s+inquiry_messages/.test(query) &&
+          query.includes("delivery_status = 'forwarded'")
+        ) {
+          if (options.inquiryForwardUpdateThrows) {
+            throw new Error('inquiry forward update failed')
+          }
+
+          inquiryMessageForwardUpdates.push({
+            forwardedAt: String(boundValues[0]),
+            messageId: String(boundValues[1]),
           })
 
           return {

@@ -17,12 +17,20 @@
     "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
     "HONOWARDEN_ENV": "development",
     "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
+    "HONOWARDEN_INQUIRY_DOMAINS": "honowarden.com",
+    "HONOWARDEN_INQUIRY_MAILBOXES": "security,support,hello,admin,postmaster,abuse",
+    "HONOWARDEN_INQUIRY_MAX_RAW_BYTES": "1000000",
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "honowarden",
       "database_id": "21ef7fa8-f26d-4024-82cb-c7b88ee02433",
+    },
+    {
+      "binding": "INQUIRY_DB",
+      "database_name": "honowarden-inquiry",
+      "database_id": "00aa46fa-057c-4409-b344-6fa3b61c00dc",
     },
   ],
   "r2_buckets": [
@@ -48,12 +56,20 @@
         "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "staging",
         "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
+        "HONOWARDEN_INQUIRY_DOMAINS": "honowarden.com",
+        "HONOWARDEN_INQUIRY_MAILBOXES": "security,support,hello,admin,postmaster,abuse",
+        "HONOWARDEN_INQUIRY_MAX_RAW_BYTES": "1000000",
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "honowarden-staging",
           "database_id": "95cd44de-809f-473c-9972-f892fa32ceb8",
+        },
+        {
+          "binding": "INQUIRY_DB",
+          "database_name": "honowarden-inquiry-staging",
+          "database_id": "73912ec8-7da4-4e1e-85c8-09ce9c177f9f",
         },
       ],
       "r2_buckets": [
@@ -79,12 +95,20 @@
         "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "production",
         "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
+        "HONOWARDEN_INQUIRY_DOMAINS": "honowarden.com",
+        "HONOWARDEN_INQUIRY_MAILBOXES": "security,support,hello,admin,postmaster,abuse",
+        "HONOWARDEN_INQUIRY_MAX_RAW_BYTES": "1000000",
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "honowarden",
           "database_id": "21ef7fa8-f26d-4024-82cb-c7b88ee02433",
+        },
+        {
+          "binding": "INQUIRY_DB",
+          "database_name": "honowarden-inquiry",
+          "database_id": "00aa46fa-057c-4409-b344-6fa3b61c00dc",
         },
       ],
       "r2_buckets": [

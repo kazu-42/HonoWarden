@@ -660,6 +660,7 @@ Not implemented:
 - live Linear API writes with a HonoWarden workspace key
 - security metadata publication and AI inquiry inbox implementation after
   verified Email Routing
+- raw MIME and attachment storage for the inquiry inbox
 
 ## Week 26 Release Gate Preflight
 
@@ -2000,12 +2001,21 @@ Implemented:
   Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
   Object state boundaries, human approval rules, retention/redaction controls,
   and follow-up implementation split for `HON-24` through `HON-27`
+- HON-24 metadata-only inquiry inbox ingestion implemented with Worker
+  `email()` handler, `migrations/0011_inquiry_inbox.sql`, allowed mailbox
+  enforcement, header/sender hashing, retention deadlines, optional verified
+  forwarding through `HONOWARDEN_INQUIRY_FORWARD_TO`, and attachment rejection
+  while storage is disabled
+- Inquiry metadata is persisted before optional forwarding. If initial storage
+  fails, the Email Worker fails before forwarding; if a post-forward status
+  update fails, it logs a structured error and returns success to avoid
+  duplicate forwarding on Cloudflare retry.
 
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- AI inquiry inbox Worker, mailbox UI, body or attachment storage, AI triage,
-  approved outbound replies, and Linear issue creation automation
+- inquiry mailbox UI, body or attachment storage, AI triage, approved outbound
+  replies, and Linear issue creation automation
 - actual traffic-changing rollback execution, because the current live services
   passed health checks and no incident required rollback
 - production secret writes, public registration enablement, or real vault-data

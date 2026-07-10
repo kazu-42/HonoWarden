@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-09.
+Last updated: 2026-07-10.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -21,6 +21,7 @@ changes and update this document in the same change.
 | `migrations/0007_audit_events.sql`       | `34e1661295fc9f521d898bca587f167a280fa490681d83e327828d43d326239d` |
 | `migrations/0008_request_quotas.sql`     | `fe2955c3733bc4907b0e6711b9c37257dfa67e5973c7495d06bb847ed84ee884` |
 | `migrations/0010_equivalent_domains.sql` | `4a6b2f2da77103955d78ed132afc8a1519ba4c0a59f50a6a4fdfb4194e6dc559` |
+| `migrations/0011_inquiry_inbox.sql`      | `a8c9524b32ecd398d540b052dbb6e96fc3dc500669ca6806089162c21b857bb8` |
 
 ## Required Tables At Freeze
 
@@ -35,6 +36,9 @@ changes and update this document in the same change.
 - `ciphers`
 - `cipher_attachments`
 - `audit_events`
+- `inquiry_threads`
+- `inquiry_messages`
+- `inquiry_events`
 - `user_totp`
 - `totp_challenges`
 

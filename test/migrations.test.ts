@@ -185,6 +185,33 @@ describe('initial D1 migration', () => {
     expect(allMigrations).not.toContain('client_ip')
   })
 
+  it('adds metadata-only inquiry inbox tables without raw body storage', () => {
+    expect(allMigrations).toContain(
+      'CREATE TABLE IF NOT EXISTS inquiry_threads',
+    )
+    expect(allMigrations).toContain(
+      'CREATE TABLE IF NOT EXISTS inquiry_messages',
+    )
+    expect(allMigrations).toContain('CREATE TABLE IF NOT EXISTS inquiry_events')
+    expect(allMigrations).toContain('mailbox TEXT NOT NULL')
+    expect(allMigrations).toContain('thread_key TEXT NOT NULL')
+    expect(allMigrations).toContain('sender_hash TEXT NOT NULL')
+    expect(allMigrations).toContain('envelope_sender_hash TEXT NOT NULL')
+    expect(allMigrations).toContain('body_storage_state TEXT NOT NULL')
+    expect(allMigrations).toContain("body_storage_state IN ('metadata_only')")
+    expect(allMigrations).toContain('raw_body_stored INTEGER NOT NULL')
+    expect(allMigrations).toContain('raw_object_key TEXT')
+    expect(allMigrations).toContain('attachment_storage_state TEXT NOT NULL')
+    expect(allMigrations).toContain('retention_deadline TEXT NOT NULL')
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_inquiry_messages_retention',
+    )
+    expect(allMigrations).toContain("VALUES ('0011')")
+    expect(allMigrations).not.toContain('raw_body TEXT')
+    expect(allMigrations).not.toContain('raw_content TEXT')
+    expect(allMigrations).not.toContain('attachment_body')
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -203,4 +230,5 @@ const allMigrations = [
   readFileSync('migrations/0007_audit_events.sql', 'utf8'),
   readFileSync('migrations/0008_request_quotas.sql', 'utf8'),
   readFileSync('migrations/0010_equivalent_domains.sql', 'utf8'),
+  readFileSync('migrations/0011_inquiry_inbox.sql', 'utf8'),
 ].join('\n')
