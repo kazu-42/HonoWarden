@@ -912,10 +912,22 @@ Implemented:
 - schema constraints that reject self-approval identifiers and malformed
   approved, denied, or consumed terminal states
 
-Not implemented in this slice:
+Subsequently implemented and verified in staging:
 
-- runtime auth-request routes, token grant consumption, notifications, or
-  official-client lifecycle evidence; the explicit 501 guard remains active
+- default-off create, pending list, owner read, approve/deny, and anonymous
+  response-polling routes
+- dedicated purpose-separated HMAC verifiers, active approving-device checks,
+  requester self-approval rejection, anonymous quotas, secret-safe audit
+  events, and bounded expiry/retention cleanup
+- compatible official-client request headers and response fields
+- live synthetic create, approve, deny, poll, wrong-code, idempotent replay, and
+  conflicting replay evidence in
+  `docs/release/auth-request-staging-evidence.md`
+
+Still not implemented:
+
+- auth-request token grant consumption, notifications, official-client UI
+  evidence, or production enablement
 
 ## Inquiry Migration Chain Reconciliation
 
@@ -952,7 +964,7 @@ Implemented:
 - explicit `501` JSON response for `/api/sends` and child paths
 - explicit `501` JSON response for collection, emergency-access, and top-level
   `/api/attachments` paths
-- explicit `501` JSON response for `/api/auth-requests` and child paths
+- explicit `501` JSON response for disabled or unsupported auth-request methods
 - request ID preservation on unsupported feature responses
 - route test coverage proving these paths do not fall through to generic `404`
 
@@ -962,7 +974,8 @@ Not implemented:
   collection assignment
 - public file-sharing functionality
 - collection or emergency-access functionality
-- login-with-device approval, push notification, or pending auth-request flows
+- login-with-device token consumption, push notification, or official-client UI
+  evidence
 - top-level attachment collection APIs outside the cipher-scoped upload,
   download, and delete routes
 
