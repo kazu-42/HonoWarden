@@ -61,7 +61,7 @@
       "knownIssues": [
         "Live browser-extension smoke covers self-hosted environment selection, password login, initial sync, account profile reads, and empty-vault render against a local synthetic account only.",
         "The browser run used Brave's Chromium extension host because the installed branded Chrome build did not expose the unpacked extension under the local evidence flags.",
-        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no browser-extension TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -105,7 +105,7 @@
       ],
       "knownIssues": [
         "No live client login or sync run is recorded for this exact version.",
-        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no desktop TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -151,7 +151,7 @@
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
         "Release metadata advanced from 2026.6.0 build 21686 to 2026.6.1 build 21713 on 2026-07-09; live mobile evidence must be re-run before any promotion.",
-        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no Android TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -196,7 +196,7 @@
       ],
       "knownIssues": [
         "No live mobile login or sync run is recorded for this exact version.",
-        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no iOS TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]
@@ -214,6 +214,7 @@
       "verificationLevel": "live_smoke",
       "liveEvidence": {
         "path": "docs/release/live-client-evidence.md",
+        "additionalPaths": ["docs/release/totp-recent-auth-live-evidence.md"],
         "status": "passed",
         "recordedAt": "2026-07-07T03:34:25Z",
         "clientVersion": "2026.6.0",
@@ -228,7 +229,14 @@
           "cipher_update",
           "cipher_soft_delete",
           "trash_sync",
-          "cipher_permanent_delete"
+          "cipher_permanent_delete",
+          "refresh_grant",
+          "totp_login",
+          "totp_setup",
+          "totp_change",
+          "totp_disable",
+          "recent_auth_reject",
+          "session_revoke"
         ]
       },
       "coveredFlows": [
@@ -258,9 +266,9 @@
         "totp_login"
       ],
       "knownIssues": [
-        "Live CLI smoke covers config, password login, sync, one synthetic login item create/update/trash/permanent-delete flow, and account revision lookup only.",
+        "Live CLI smoke covers config, password login, sync, one synthetic login item create/update/trash/permanent-delete flow, account revision lookup, official CLI one-step TOTP login, refresh grant, and HTTP auth lifecycle recent-auth guards.",
         "The live smoke used a local compression-stripping HTTPS proxy because wrangler dev returned gzip chunked responses that the tracked CLI HTTP stack rejected.",
-        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "TOTP setup, change, disable, and revoke-all-other-sessions evidence uses direct HTTP routes with CLI-issued or recent password-authenticated tokens because the tracked CLI does not expose those account-management flows in this scope.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
       ]

@@ -960,6 +960,57 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('accepts official CLI one-step TOTP password grants', async () => {
+    const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const encryptedSecret = await encryptTotpSecret('test-totp-secret', secret)
+    const code = await currentTotpCode(secret)
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+          twoFactorProvider: '0',
+          twoFactorToken: code,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: {
+            ...authUserRecord(),
+            totpEnabled: true,
+            totpEncryptedSecret: encryptedSecret,
+          },
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { access_token: string }
+    expect(body).toMatchObject({
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+      token_type: 'Bearer',
+      TwoFactorToken: null,
+    })
+    await expect(
+      verifyAccessToken('test-token-secret', body.access_token),
+    ).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        authMethod: 'password',
+      },
+    })
+  })
+
   it('rejects replayed TOTP challenges before issuing tokens', async () => {
     const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
     const encryptedSecret = await encryptTotpSecret('test-totp-secret', secret)

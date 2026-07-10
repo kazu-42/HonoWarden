@@ -30,6 +30,7 @@ type ClientMatrixEntry = {
   verificationLevel: string
   liveEvidence?: {
     path: string
+    additionalPaths?: string[]
     status: string
     recordedAt: string
     clientVersion: string
@@ -146,9 +147,9 @@ describe('client compatibility matrix', () => {
           status: 'passed',
           clientVersion: entry.version,
         })
-        expect(entry.liveEvidence?.path).toMatch(
-          /^docs\/release\/[A-Za-z0-9/_-]+\.md$/,
-        )
+        for (const evidencePath of matrixLiveEvidencePaths(entry)) {
+          expect(evidencePath).toMatch(/^docs\/release\/[A-Za-z0-9/_-]+\.md$/)
+        }
         expect(entry.liveEvidence?.recordedAt).toMatch(
           /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
         )
@@ -401,6 +402,12 @@ describe('client compatibility matrix', () => {
     expect(cliEntry?.liveEvidence?.path).toBe(
       'docs/release/live-client-evidence.md',
     )
+    expect(cliEntry?.liveEvidence?.additionalPaths).toContain(
+      'docs/release/totp-recent-auth-live-evidence.md',
+    )
+    expect(cliEntry?.liveEvidence?.flows).toEqual(
+      expect.arrayContaining(['refresh_grant', 'session_revoke', 'totp_login']),
+    )
 
     const nonCliEntries = matrix.entries.filter(
       (entry) => !['browser_extension', 'cli'].includes(entry.surface),
@@ -415,6 +422,9 @@ describe('client compatibility matrix', () => {
     )
     expect(compatibilityMatrixDoc).toContain(
       'browser-extension-live-client-evidence.md',
+    )
+    expect(compatibilityMatrixDoc).toContain(
+      'totp-recent-auth-live-evidence.md',
     )
   })
 
@@ -440,4 +450,15 @@ function readFixtureFlows(): FixtureFlowManifest {
   return JSON.parse(
     readFileSync(fixtureFlowsPath, 'utf8'),
   ) as FixtureFlowManifest
+}
+
+function matrixLiveEvidencePaths(entry: ClientMatrixEntry): string[] {
+  if (!entry.liveEvidence) {
+    return []
+  }
+
+  return [
+    entry.liveEvidence.path,
+    ...(entry.liveEvidence.additionalPaths ?? []),
+  ]
 }
