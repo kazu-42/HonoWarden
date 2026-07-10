@@ -917,6 +917,24 @@ Not implemented in this slice:
 - runtime auth-request routes, token grant consumption, notifications, or
   official-client lifecycle evidence; the explicit 501 guard remains active
 
+## Inquiry Migration Chain Reconciliation
+
+Implemented:
+
+- restored the exact applied `0009_inquiry_messages.sql` file at its original
+  SHA-256 after discovering that remote D1 retained version 0009 while the file
+  had disappeared from the repository
+- added forward-only `0010a_inquiry_message_reconciliation.sql` before 0011
+- renames the legacy table to `legacy_inquiry_messages_0009` without deleting
+  rows, releases its old index names, and recreates equivalent legacy indexes
+- allows 0011 to create the current thread/message/event schema under its
+  intended names
+- verified a fresh local D1 applies all migrations through 0012 and contains
+  both preserved legacy and current inquiry tables
+
+Staging and production migration mutation remains gated until the repair PR is
+merged. Production was not modified during discovery.
+
 ## Week 26 Unsupported Surface Guards
 
 Implemented:

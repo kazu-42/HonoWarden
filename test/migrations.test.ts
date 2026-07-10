@@ -7,6 +7,14 @@ const authRequestMigration = readFileSync(
   'migrations/0012_auth_requests.sql',
   'utf8',
 )
+const legacyInquiryMigration = readFileSync(
+  'migrations/0009_inquiry_messages.sql',
+  'utf8',
+)
+const inquiryReconciliationMigration = readFileSync(
+  'migrations/0010a_inquiry_message_reconciliation.sql',
+  'utf8',
+)
 
 describe('initial D1 migration', () => {
   it('creates the minimum Week 2 schema tables', () => {
@@ -216,6 +224,21 @@ describe('initial D1 migration', () => {
     expect(allMigrations).not.toContain('attachment_body')
   })
 
+  it('preserves the applied 0009 inquiry table before 0011 reuses its name', () => {
+    expect(legacyInquiryMigration).toContain(
+      'CREATE TABLE IF NOT EXISTS inquiry_messages',
+    )
+    expect(legacyInquiryMigration).toContain("VALUES ('0009')")
+    expect(inquiryReconciliationMigration).toContain(
+      'ALTER TABLE inquiry_messages RENAME TO legacy_inquiry_messages_0009',
+    )
+    expect(inquiryReconciliationMigration).toContain(
+      'idx_legacy_inquiry_messages_retention',
+    )
+    expect(inquiryReconciliationMigration).toContain("VALUES ('0010a')")
+    expect(inquiryReconciliationMigration).not.toContain('DROP TABLE')
+  })
+
   it('adds replay-safe login-with-device auth request state', () => {
     expect(allMigrations).toContain('CREATE TABLE IF NOT EXISTS auth_requests')
     expect(allMigrations).toContain('access_code_hash TEXT NOT NULL')
@@ -254,7 +277,9 @@ const allMigrations = [
   readFileSync('migrations/0006_cipher_attachments.sql', 'utf8'),
   readFileSync('migrations/0007_audit_events.sql', 'utf8'),
   readFileSync('migrations/0008_request_quotas.sql', 'utf8'),
+  legacyInquiryMigration,
   readFileSync('migrations/0010_equivalent_domains.sql', 'utf8'),
+  inquiryReconciliationMigration,
   readFileSync('migrations/0011_inquiry_inbox.sql', 'utf8'),
   authRequestMigration,
 ].join('\n')
