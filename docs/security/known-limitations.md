@@ -52,7 +52,7 @@ inputs, not minor documentation notes.
 - User-triggered server-side export is implemented at
   `POST /api/accounts/export` behind recent password authentication, but no
   live official-client export run has been captured yet.
-- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented; login-with-device approval, pending auth-request, and push notification workflows are not.
+- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented; login-with-device approval, pending auth-request, and notification runtime routes remain explicit 501 responses while ADR 0008's persistence, replay, audit, retention, staging, and rollback gates are implemented.
 - account disable/enable operator CLI is dry-run-first, but no admin UI or live
   production lifecycle evidence is recorded yet.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker

@@ -155,6 +155,31 @@ Failure invariants:
 - missing, already revoked, or cross-user devices return not found
 - successful and not-found outcomes are auditable when audit logging is enabled
 
+## Login With Device Planned Contract
+
+ADR 0008 defines the implementation gate. Runtime routes remain unsupported
+until the D1 migration, fixtures, staging lifecycle, and rollback evidence pass.
+
+```text
+anonymous requester creates pending request
+  -> access code stored as keyed hash
+  -> different active owner device approves or denies once
+  -> approval stores opaque requester-public-key encrypted user key
+  -> requester polls with request id + access code
+  -> auth-request token grant atomically consumes approved request
+  -> normal device-bound access and refresh session is issued
+```
+
+Failure invariants:
+
+- unknown account, bad code, expired request, consumed request, and guessed id
+  do not disclose account or request existence
+- requester and approver device identifiers must differ
+- denial cannot carry an encrypted key
+- approval notifications contain no key material and cannot replace API readback
+- expiry is fixed at creation and token consumption is single-use
+- organization/admin approval remains unsupported
+
 ## Revoke Other Sessions
 
 ```text
