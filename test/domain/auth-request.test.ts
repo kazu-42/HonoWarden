@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   authRequestPolicy,
+  authRequestQuotaPolicy,
   buildAuthRequestAccessCodeHash,
+  buildAuthRequestDeviceHash,
   buildAuthRequestEmailHash,
   buildAuthRequestTimestamps,
   isAuthRequestFeatureEnabled,
@@ -17,6 +19,7 @@ describe('auth request domain', () => {
   it('uses the fixed active and terminal-retention windows', () => {
     expect(authRequestPolicy.activeLifetimeSeconds).toBe(15 * 60)
     expect(authRequestPolicy.terminalRetentionDays).toBe(30)
+    expect(authRequestQuotaPolicy.windowSeconds).toBe(15 * 60)
   })
 
   it('builds deterministic purpose-separated HMAC values', async () => {
@@ -29,10 +32,16 @@ describe('auth request domain', () => {
       secret,
       'owner@example.com',
     )
+    const deviceHash = await buildAuthRequestDeviceHash(
+      secret,
+      'requester-device',
+    )
 
     expect(accessCodeHash).toMatch(/^hmac-sha256:[A-Za-z0-9_-]{43}$/)
     expect(emailHash).toMatch(/^hmac-sha256:[A-Za-z0-9_-]{43}$/)
+    expect(deviceHash).toMatch(/^hmac-sha256:[A-Za-z0-9_-]{43}$/)
     expect(accessCodeHash).not.toBe(emailHash)
+    expect(deviceHash).not.toBe(emailHash)
     expect(accessCodeHash).not.toContain('high-entropy-access-code')
     expect(emailHash).not.toContain('owner@example.com')
   })
@@ -99,6 +108,24 @@ describe('auth request domain', () => {
         accessCode: 'high-entropy-access-code',
         requestType: 0,
       },
+    })
+  })
+
+  it('accepts device type from the authenticated client header context', () => {
+    expect(
+      parseAuthRequestCreateBody(
+        {
+          email: 'owner@example.com',
+          publicKey: 'opaque-public-key',
+          deviceIdentifier: 'requester-device',
+          accessCode: 'high-entropy-access-code',
+          type: 0,
+        },
+        8,
+      ),
+    ).toEqual({
+      ok: true,
+      value: expect.objectContaining({ requestDeviceType: 8 }),
     })
   })
 

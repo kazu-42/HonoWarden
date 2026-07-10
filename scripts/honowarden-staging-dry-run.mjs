@@ -25,6 +25,7 @@ const expectedStaging = {
   },
   vars: {
     HONOWARDEN_AUDIT_LOGS: 'false',
+    HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
     HONOWARDEN_BOOTSTRAP_ENABLED: 'false',
     HONOWARDEN_ENV: 'staging',
   },
@@ -176,6 +177,17 @@ function validateStagingConfig(config) {
       staging?.vars?.HONOWARDEN_AUDIT_LOGS ===
         expectedStaging.vars.HONOWARDEN_AUDIT_LOGS,
       staging?.vars?.HONOWARDEN_AUDIT_LOGS,
+    ),
+    check(
+      'staging_auth_requests_enabled',
+      staging?.vars?.HONOWARDEN_AUTH_REQUESTS_ENABLED ===
+        expectedStaging.vars.HONOWARDEN_AUTH_REQUESTS_ENABLED,
+      staging?.vars?.HONOWARDEN_AUTH_REQUESTS_ENABLED,
+    ),
+    check(
+      'production_auth_requests_fail_closed',
+      production?.vars?.HONOWARDEN_AUTH_REQUESTS_ENABLED === 'false',
+      production?.vars?.HONOWARDEN_AUTH_REQUESTS_ENABLED,
     ),
     check(
       'staging_d1_binding',

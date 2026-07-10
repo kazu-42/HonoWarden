@@ -14,6 +14,7 @@
   "vars": {
     "HONOWARDEN_ALLOWED_EMAILS": "",
     "HONOWARDEN_AUDIT_LOGS": "false",
+    "HONOWARDEN_AUTH_REQUESTS_ENABLED": "false",
     "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
     "HONOWARDEN_ENV": "development",
     "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
@@ -53,6 +54,7 @@
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
+        "HONOWARDEN_AUTH_REQUESTS_ENABLED": "true",
         "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "staging",
         "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
@@ -92,6 +94,7 @@
       "vars": {
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
+        "HONOWARDEN_AUTH_REQUESTS_ENABLED": "false",
         "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "production",
         "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",

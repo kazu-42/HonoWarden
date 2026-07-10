@@ -64,6 +64,10 @@ If a secret is exposed:
 - `HONOWARDEN_TOTP_SECRET`: rotate only with a TOTP re-enrollment plan; existing
   encrypted setup secrets cannot be decrypted by the new secret.
 - `HONOWARDEN_BOOTSTRAP_TOKEN`: rotate immediately and keep bootstrap disabled.
+- `HONOWARDEN_AUTH_REQUEST_SECRET`: first set
+  `HONOWARDEN_AUTH_REQUESTS_ENABLED=false`. Allow the 15-minute active window
+  to drain before rotation; rotating immediately invalidates every pending or
+  approved unconsumed request. Do not reopen consumed rows during rollback.
 
 Use [Access Token Key Rotation](../operations/access-token-key-rotation.md) for
 staged access-token signing-key rollback. Do not treat access-token keyring

@@ -63,10 +63,12 @@ type AuthRequestRow = Omit<AuthRequestRecord, 'requestApproved'> & {
 
 export type AuthRequestVerifierRecord = AuthRequestRecord & {
   accessCodeHash: string
+  emailHash: string
 }
 
 type AuthRequestVerifierRow = AuthRequestRow & {
   accessCodeHash: string
+  emailHash: string
 }
 
 export async function createAuthRequest(
@@ -170,7 +172,11 @@ export async function findAuthRequestVerifierById(
     .first<AuthRequestVerifierRow>()
 
   return row
-    ? { ...mapAuthRequestRow(row), accessCodeHash: row.accessCodeHash }
+    ? {
+        ...mapAuthRequestRow(row),
+        accessCodeHash: row.accessCodeHash,
+        emailHash: row.emailHash,
+      }
     : null
 }
 
@@ -358,6 +364,7 @@ const authRequestVerifierSelect = `
     request_device_type as requestDeviceType,
     request_public_key as requestPublicKey,
     access_code_hash as accessCodeHash,
+    email_hash as emailHash,
     status,
     request_approved as requestApproved,
     approving_device_identifier as approvingDeviceIdentifier,

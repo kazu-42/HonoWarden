@@ -14,6 +14,7 @@ type FakeD1DatabaseOptions = {
   lockedIpFailureBucket?: boolean
   authUser?: Record<string, unknown> | null
   authUsers?: Record<string, unknown>[]
+  authRequests?: Record<string, unknown>[]
   userTotp?: Record<string, unknown> | null
   totpChallenge?: Record<string, unknown> | null
   cipher?: Record<string, unknown> | null
@@ -183,6 +184,14 @@ export class FakeD1Database {
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (query.includes('FROM auth_requests')) {
+          return findAuthRequestRow(
+            options.authRequests ?? [],
+            boundValues,
+            query,
+          ) as T | null
+        }
+
         if (query.includes('FROM request_quota_buckets')) {
           return (options.requestQuotaBucket ?? null) as T | null
         }
@@ -315,6 +324,18 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (query.includes('FROM auth_requests')) {
+          return {
+            success: true,
+            results: filterAuthRequestRows(
+              options.authRequests ?? [],
+              boundValues,
+              query,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('FROM cipher_attachments')) {
           return {
             success: true,
@@ -376,6 +397,36 @@ export class FakeD1Database {
         }
       },
       async run(): Promise<D1Result> {
+        if (query.includes('INSERT INTO auth_requests')) {
+          const changes = insertAuthRequest(options, boundValues)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
+        if (/UPDATE\s+auth_requests/.test(query)) {
+          const changes = updateAuthRequest(options, boundValues, query)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
+        if (query.includes('DELETE FROM auth_requests')) {
+          const changes = deleteRetainedAuthRequestRows(options, boundValues)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
         if (query.includes('INSERT OR IGNORE INTO users')) {
           const insertedUserChanges =
             options.userInsertChanges ??
@@ -1245,6 +1296,189 @@ function findDeviceRow(
   }
 
   return scopedRows[0] ?? null
+}
+
+function findAuthRequestRow(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown> | null {
+  const id = String(boundValues[0] ?? '')
+  const row = rows.find((candidate) => candidate.id === id)
+  if (!row) {
+    return null
+  }
+
+  if (query.includes('user_id = ?') && row.userId !== boundValues[1]) {
+    return null
+  }
+
+  const now = String(boundValues.at(-1) ?? '')
+  if (query.includes('expires_at > ?') && String(row.expiresAt) <= now) {
+    return null
+  }
+
+  return row
+}
+
+function filterAuthRequestRows(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown>[] {
+  const userId = String(boundValues[0] ?? '')
+  const now = String(boundValues[1] ?? '')
+
+  return rows
+    .filter((row) => row.userId === userId)
+    .filter(
+      (row) =>
+        !query.includes("status = 'pending'") || row.status === 'pending',
+    )
+    .filter(
+      (row) => !query.includes('expires_at > ?') || String(row.expiresAt) > now,
+    )
+}
+
+function insertAuthRequest(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  if (!options.authRequests) {
+    return 1
+  }
+
+  const id = String(boundValues[0])
+  if (options.authRequests.some((row) => row.id === id)) {
+    return 0
+  }
+
+  options.authRequests.push({
+    id,
+    userId: boundValues[1] ?? null,
+    emailHash: String(boundValues[2]),
+    requestType: Number(boundValues[3]),
+    requestDeviceIdentifier: String(boundValues[4]),
+    requestDeviceType: Number(boundValues[5]),
+    requestPublicKey: String(boundValues[6]),
+    accessCodeHash: String(boundValues[7]),
+    status: 'pending',
+    requestApproved: null,
+    approvingDeviceIdentifier: null,
+    encryptedResponseKey: null,
+    createdAt: String(boundValues[8]),
+    responseAt: null,
+    consumedAt: null,
+    expiresAt: String(boundValues[9]),
+    retentionDeleteAfter: String(boundValues[10]),
+    updatedAt: String(boundValues[11]),
+  })
+
+  return 1
+}
+
+function updateAuthRequest(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  if (!options.authRequests) {
+    return 1
+  }
+
+  if (/SET\s+status = 'approved'/.test(query)) {
+    const [approver, encryptedKey, now, , id, userId, , requester] = boundValues
+    const row = options.authRequests.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.userId === userId &&
+        candidate.status === 'pending' &&
+        candidate.requestDeviceIdentifier !== requester &&
+        String(candidate.expiresAt) > String(now),
+    )
+    if (!row) return 0
+    Object.assign(row, {
+      status: 'approved',
+      requestApproved: 1,
+      approvingDeviceIdentifier: approver,
+      encryptedResponseKey: encryptedKey,
+      responseAt: now,
+      updatedAt: now,
+    })
+    return 1
+  }
+
+  if (/SET\s+status = 'denied'/.test(query)) {
+    const [approver, now, , id, userId, , requester] = boundValues
+    const row = options.authRequests.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.userId === userId &&
+        candidate.status === 'pending' &&
+        candidate.requestDeviceIdentifier !== requester &&
+        String(candidate.expiresAt) > String(now),
+    )
+    if (!row) return 0
+    Object.assign(row, {
+      status: 'denied',
+      requestApproved: 0,
+      approvingDeviceIdentifier: approver,
+      encryptedResponseKey: null,
+      responseAt: now,
+      updatedAt: now,
+    })
+    return 1
+  }
+
+  if (/SET\s+status = 'expired'/.test(query)) {
+    const [now, expiryThreshold, rawLimit] = boundValues
+    const limit = Number(rawLimit)
+    const rows = options.authRequests
+      .filter(
+        (candidate) =>
+          (candidate.status === 'pending' || candidate.status === 'approved') &&
+          String(candidate.expiresAt) <= String(expiryThreshold),
+      )
+      .slice(0, limit)
+
+    for (const row of rows) {
+      Object.assign(row, { status: 'expired', updatedAt: now })
+    }
+
+    return rows.length
+  }
+
+  return 0
+}
+
+function deleteRetainedAuthRequestRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  if (!options.authRequests) {
+    return 0
+  }
+
+  const [retentionThreshold, rawLimit] = boundValues
+  const limit = Number(rawLimit)
+  const ids = options.authRequests
+    .filter(
+      (row) =>
+        (row.status === 'denied' ||
+          row.status === 'consumed' ||
+          row.status === 'expired') &&
+        String(row.retentionDeleteAfter) <= String(retentionThreshold),
+    )
+    .slice(0, limit)
+    .map((row) => row.id)
+
+  options.authRequests.splice(
+    0,
+    options.authRequests.length,
+    ...options.authRequests.filter((row) => !ids.includes(row.id)),
+  )
+
+  return ids.length
 }
 
 function filterDeviceRows(

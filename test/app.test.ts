@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import app, { acceptNotificationHubWebSocket } from '../src/app'
+import { buildAuthRequestAccessCodeHash } from '../src/domain/auth-request'
 import {
   buildAuthAttemptBucketKey,
   loginDefensePolicy,
@@ -578,6 +579,308 @@ describe('HonoWarden app', () => {
         requestId: 'unsupported-surface-request',
       })
     }
+  })
+
+  it('fails closed when auth-request routes are enabled without their secret', async () => {
+    const response = await app.request(
+      '/api/auth-requests',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Device-Identifier': 'requester-device',
+          'Device-Type': '8',
+        },
+        body: JSON.stringify({
+          email: 'person@example.test',
+          publicKey: 'opaque-public-key',
+          deviceIdentifier: 'requester-device',
+          accessCode: 'high-entropy-access-code',
+          type: 0,
+        }),
+      },
+      { HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true' },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'server_misconfigured' },
+    })
+  })
+
+  it('runs create, owner approval, and constant-time response polling', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const authRequests: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      authRequests,
+      requestQuotaBucket: {
+        bucketKey: 'request:anonymous:auth-request-quota',
+        scope: 'anonymous',
+        requestCount: 1,
+        windowStartedAt: '2026-07-11T00:00:00.000Z',
+        blockedUntil: null,
+        updatedAt: '2026-07-11T00:00:00.000Z',
+      },
+      devices: [
+        {
+          id: 'approver-device-id',
+          userId: user.id,
+          identifier: 'fixture-device',
+          name: 'Approver',
+          type: 8,
+          encryptedUserKey: null,
+          encryptedPublicKey: null,
+          encryptedPrivateKey: null,
+          lastSeenAt: null,
+          createdAt: '2026-07-11T00:00:00.000Z',
+          updatedAt: '2026-07-11T00:00:00.000Z',
+          revokedAt: null,
+        },
+      ],
+    })
+    const env = {
+      DB: database as unknown as D1Database,
+      HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const createResponse = await app.request(
+      '/api/auth-requests',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Device-Identifier': 'requester-device',
+          'Device-Type': '8',
+        },
+        body: JSON.stringify({
+          email: user.email,
+          publicKey: 'opaque-public-key',
+          deviceIdentifier: 'requester-device',
+          accessCode: 'high-entropy-access-code',
+          type: 0,
+        }),
+      },
+      env,
+    )
+
+    expect(createResponse.status).toBe(200)
+    const created = (await createResponse.json()) as {
+      id: string
+      object: string
+      requestDeviceTypeValue: number
+      requestApproved: boolean
+    }
+    expect(created.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(created).toMatchObject({
+      object: 'auth-request',
+      requestDeviceTypeValue: 8,
+      requestApproved: false,
+    })
+    expect(authRequests).toHaveLength(1)
+    expect(authRequests[0]).not.toHaveProperty('accessCode')
+    expect(authRequests[0]?.accessCodeHash).toMatch(/^hmac-sha256:/)
+
+    const pendingResponse = await app.request(
+      '/api/auth-requests/pending',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      env,
+    )
+    expect(pendingResponse.status).toBe(200)
+    await expect(pendingResponse.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: created.id,
+          requestApproved: false,
+          requestDeviceType: 'Device 8',
+          requestDeviceTypeValue: 8,
+        },
+      ],
+    })
+
+    const approvalResponse = await app.request(
+      `/api/auth-requests/${created.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestApproved: true,
+          key: 'opaque-encrypted-key',
+          deviceIdentifier: 'fixture-device',
+          masterPasswordHash: null,
+        }),
+      },
+      env,
+    )
+    expect(approvalResponse.status).toBe(200)
+
+    const pollResponse = await app.request(
+      `/api/auth-requests/${created.id}/response?code=high-entropy-access-code`,
+      undefined,
+      env,
+    )
+    expect(pollResponse.status).toBe(200)
+    await expect(pollResponse.json()).resolves.toMatchObject({
+      id: created.id,
+      requestApproved: true,
+      key: 'opaque-encrypted-key',
+    })
+  })
+
+  it('rejects auth-request self-approval without revealing transition details', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      authRequests: [
+        {
+          ...authRequestRecord(),
+          requestDeviceIdentifier: 'fixture-device',
+        },
+      ],
+      devices: [deviceRecord()],
+    })
+
+    const response = await app.request(
+      '/api/auth-requests/auth-request-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestApproved: true,
+          key: 'opaque-encrypted-key',
+        }),
+      },
+      {
+        DB: database as unknown as D1Database,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'auth_request_conflict' },
+    })
+  })
+
+  it('denies an auth request without accepting or returning key material', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const secret = '0123456789abcdef0123456789abcdef'
+    const accessCode = 'high-entropy-access-code'
+    const row = {
+      ...authRequestRecord(),
+      accessCodeHash: await buildAuthRequestAccessCodeHash(
+        secret,
+        'auth-request-id',
+        accessCode,
+      ),
+    }
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      authRequests: [row],
+      devices: [deviceRecord()],
+      requestQuotaBucket: {
+        bucketKey: 'request:anonymous:auth-request-quota',
+        scope: 'anonymous',
+        requestCount: 1,
+        windowStartedAt: '2026-07-11T00:00:00.000Z',
+        blockedUntil: null,
+        updatedAt: '2026-07-11T00:00:00.000Z',
+      },
+    })
+    const env = {
+      DB: database as unknown as D1Database,
+      HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_AUTH_REQUEST_SECRET: secret,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const denyResponse = await app.request(
+      '/api/auth-requests/auth-request-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestApproved: false,
+          deviceIdentifier: 'fixture-device',
+        }),
+      },
+      env,
+    )
+    expect(denyResponse.status).toBe(200)
+    await expect(denyResponse.json()).resolves.toMatchObject({
+      id: 'auth-request-id',
+      requestApproved: false,
+      key: null,
+      responseDate: expect.any(String),
+    })
+
+    const pollResponse = await app.request(
+      `/api/auth-requests/auth-request-id/response?code=${accessCode}`,
+      undefined,
+      env,
+    )
+    expect(pollResponse.status).toBe(200)
+    await expect(pollResponse.json()).resolves.toMatchObject({
+      requestApproved: false,
+      key: null,
+    })
+    expect(row.encryptedResponseKey).toBeNull()
+  })
+
+  it('rejects anonymous auth-request creation when a dedicated quota is blocked', async () => {
+    const authRequests: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authRequests,
+      requestQuotaBucket: {
+        bucketKey: 'request:anonymous:blocked-auth-request-quota',
+        scope: 'anonymous',
+        requestCount: 31,
+        windowStartedAt: '2026-07-11T00:00:00.000Z',
+        blockedUntil: '2999-07-11T00:15:00.000Z',
+        updatedAt: '2026-07-11T00:00:00.000Z',
+      },
+    })
+
+    const response = await app.request(
+      '/api/auth-requests',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'person@example.test',
+          publicKey: 'opaque-public-key',
+          deviceIdentifier: 'requester-device',
+          deviceType: 8,
+          accessCode: 'high-entropy-access-code',
+          type: 0,
+        }),
+      },
+      {
+        DB: database as unknown as D1Database,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+      },
+    )
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('Retry-After')).toBe('900')
+    expect(authRequests).toHaveLength(0)
   })
 
   it('returns empty collection metadata for authenticated users', async () => {
@@ -7369,6 +7672,46 @@ function refreshTokenSessionRecord() {
     totpEnabled: false,
     totpEncryptedSecret: null,
     totpLastAcceptedStep: null,
+  }
+}
+
+function deviceRecord() {
+  return {
+    id: 'approver-device-id',
+    userId: 'user-id',
+    identifier: 'fixture-device',
+    name: 'Approver',
+    type: 8,
+    encryptedUserKey: null,
+    encryptedPublicKey: null,
+    encryptedPrivateKey: null,
+    lastSeenAt: null,
+    createdAt: '2026-07-11T00:00:00.000Z',
+    updatedAt: '2026-07-11T00:00:00.000Z',
+    revokedAt: null,
+  }
+}
+
+function authRequestRecord() {
+  return {
+    id: 'auth-request-id',
+    userId: 'user-id',
+    emailHash: 'hmac-sha256:email-hash',
+    requestType: 0,
+    requestDeviceIdentifier: 'requester-device',
+    requestDeviceType: 8,
+    requestPublicKey: 'opaque-public-key',
+    accessCodeHash: 'hmac-sha256:access-code-hash',
+    status: 'pending',
+    requestApproved: null,
+    approvingDeviceIdentifier: null,
+    encryptedResponseKey: null,
+    createdAt: '2026-07-11T00:00:00.000Z',
+    responseAt: null,
+    consumedAt: null,
+    expiresAt: '2999-07-11T00:15:00.000Z',
+    retentionDeleteAfter: '2999-08-10T00:00:00.000Z',
+    updatedAt: '2026-07-11T00:00:00.000Z',
   }
 }
 
