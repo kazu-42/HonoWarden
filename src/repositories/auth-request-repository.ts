@@ -61,6 +61,14 @@ type AuthRequestRow = Omit<AuthRequestRecord, 'requestApproved'> & {
   requestApproved: number | boolean | null
 }
 
+export type AuthRequestVerifierRecord = AuthRequestRecord & {
+  accessCodeHash: string
+}
+
+type AuthRequestVerifierRow = AuthRequestRow & {
+  accessCodeHash: string
+}
+
 export async function createAuthRequest(
   database: AuthRequestDatabase,
   input: CreateAuthRequestInput,
@@ -143,27 +151,27 @@ export async function findAuthRequestForOwner(
   return row ? mapAuthRequestRow(row) : null
 }
 
-export async function findAuthRequestByAccessCodeHash(
+export async function findAuthRequestVerifierById(
   database: AuthRequestDatabase,
   id: string,
-  accessCodeHash: string,
   now: string,
-): Promise<AuthRequestRecord | null> {
+): Promise<AuthRequestVerifierRecord | null> {
   const row = await database
     .prepare(
       `
-        ${authRequestSelect}
+        ${authRequestVerifierSelect}
         WHERE id = ?
-          AND access_code_hash = ?
           AND status IN ('pending', 'approved', 'denied')
           AND expires_at > ?
         LIMIT 1
       `,
     )
-    .bind(id, accessCodeHash, now)
-    .first<AuthRequestRow>()
+    .bind(id, now)
+    .first<AuthRequestVerifierRow>()
 
-  return row ? mapAuthRequestRow(row) : null
+  return row
+    ? { ...mapAuthRequestRow(row), accessCodeHash: row.accessCodeHash }
+    : null
 }
 
 export async function approveAuthRequest(
@@ -330,6 +338,26 @@ const authRequestSelect = `
     request_device_identifier as requestDeviceIdentifier,
     request_device_type as requestDeviceType,
     request_public_key as requestPublicKey,
+    status,
+    request_approved as requestApproved,
+    approving_device_identifier as approvingDeviceIdentifier,
+    encrypted_response_key as encryptedResponseKey,
+    created_at as createdAt,
+    response_at as responseAt,
+    consumed_at as consumedAt,
+    expires_at as expiresAt
+  FROM auth_requests
+`
+
+const authRequestVerifierSelect = `
+  SELECT
+    id,
+    user_id as userId,
+    request_type as requestType,
+    request_device_identifier as requestDeviceIdentifier,
+    request_device_type as requestDeviceType,
+    request_public_key as requestPublicKey,
+    access_code_hash as accessCodeHash,
     status,
     request_approved as requestApproved,
     approving_device_identifier as approvingDeviceIdentifier,
