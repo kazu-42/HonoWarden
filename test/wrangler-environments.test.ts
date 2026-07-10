@@ -60,36 +60,78 @@ describe('wrangler deployment environments', () => {
   })
 
   it('keeps staging and production storage names separated', () => {
-    expect(config.env.staging.d1_databases).toHaveLength(1)
-    expect(config.env.production.d1_databases).toHaveLength(1)
+    expect(config.env.staging.d1_databases).toHaveLength(2)
+    expect(config.env.production.d1_databases).toHaveLength(2)
     expect(config.env.staging.r2_buckets).toHaveLength(1)
     expect(config.env.production.r2_buckets).toHaveLength(1)
 
-    const stagingD1 = config.env.staging.d1_databases[0]
-    const productionD1 = config.env.production.d1_databases[0]
+    const stagingD1 = findBinding(config.env.staging.d1_databases, 'DB')
+    const productionD1 = findBinding(config.env.production.d1_databases, 'DB')
+    const stagingInquiryD1 = findBinding(
+      config.env.staging.d1_databases,
+      'INQUIRY_DB',
+    )
+    const productionInquiryD1 = findBinding(
+      config.env.production.d1_databases,
+      'INQUIRY_DB',
+    )
     const stagingR2 = config.env.staging.r2_buckets[0]
     const productionR2 = config.env.production.r2_buckets[0]
 
-    if (!stagingD1 || !productionD1 || !stagingR2 || !productionR2) {
+    if (
+      !stagingD1 ||
+      !productionD1 ||
+      !stagingInquiryD1 ||
+      !productionInquiryD1 ||
+      !stagingR2 ||
+      !productionR2
+    ) {
       throw new Error('Expected staging and production storage bindings')
     }
 
     expect(stagingD1.database_name).not.toBe(productionD1.database_name)
+    expect(stagingInquiryD1.database_name).not.toBe(
+      productionInquiryD1.database_name,
+    )
+    expect(stagingInquiryD1.database_name).not.toBe(stagingD1.database_name)
+    expect(productionInquiryD1.database_name).not.toBe(
+      productionD1.database_name,
+    )
     expect(stagingR2.bucket_name).not.toBe(productionR2.bucket_name)
   })
 
   it('uses real separated D1 database ids for deployable environments', () => {
-    const stagingD1 = config.env.staging.d1_databases[0]
-    const productionD1 = config.env.production.d1_databases[0]
+    const stagingD1 = findBinding(config.env.staging.d1_databases, 'DB')
+    const productionD1 = findBinding(config.env.production.d1_databases, 'DB')
+    const stagingInquiryD1 = findBinding(
+      config.env.staging.d1_databases,
+      'INQUIRY_DB',
+    )
+    const productionInquiryD1 = findBinding(
+      config.env.production.d1_databases,
+      'INQUIRY_DB',
+    )
     const placeholder = '00000000-0000-0000-0000-000000000000'
 
-    if (!stagingD1 || !productionD1) {
+    if (
+      !stagingD1 ||
+      !productionD1 ||
+      !stagingInquiryD1 ||
+      !productionInquiryD1
+    ) {
       throw new Error('Expected staging and production D1 bindings')
     }
 
     expect(stagingD1.database_id).not.toBe(placeholder)
     expect(productionD1.database_id).not.toBe(placeholder)
+    expect(stagingInquiryD1.database_id).not.toBe(placeholder)
+    expect(productionInquiryD1.database_id).not.toBe(placeholder)
     expect(stagingD1.database_id).not.toBe(productionD1.database_id)
+    expect(stagingInquiryD1.database_id).not.toBe(
+      productionInquiryD1.database_id,
+    )
+    expect(stagingInquiryD1.database_id).not.toBe(stagingD1.database_id)
+    expect(productionInquiryD1.database_id).not.toBe(productionD1.database_id)
   })
 
   it('keeps deployable environment bootstrap defaults fail-closed', () => {
@@ -136,3 +178,10 @@ describe('wrangler deployment environments', () => {
     })
   })
 })
+
+function findBinding(
+  bindings: WranglerBinding[],
+  bindingName: string,
+): WranglerBinding | undefined {
+  return bindings.find((binding) => binding.binding === bindingName)
+}

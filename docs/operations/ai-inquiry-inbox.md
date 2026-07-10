@@ -1,6 +1,8 @@
 # AI Inquiry Inbox Architecture
 
-Status: proposed for post-alpha implementation.
+Status: phase 1 metadata-only ingestion implemented; UI, AI triage, outbound
+reply, raw MIME storage, attachment storage, and Linear automation remain
+future phases.
 
 This document defines the safe architecture for a HonoWarden contact,
 support, and security inquiry inbox. It is intentionally narrower than a full
@@ -160,6 +162,26 @@ Raw MIME and attachment storage starts disabled. Metadata-only ingestion plus
 forwarding remains the default until an operator explicitly enables storage and
 the deletion path is tested.
 
+HON-24 implemented the first safe subset in this repository:
+
+- `email(message, env, ctx)` is exported from the Worker entrypoint.
+- Allowed recipients default to `security`, `support`, `hello`, `admin`,
+  `postmaster`, and `abuse` on `honowarden.com`.
+- `migrations/0011_inquiry_inbox.sql` creates `inquiry_threads`,
+  `inquiry_messages`, and `inquiry_events`.
+- The handler records sender/message header hashes, public recipient, subject
+  preview, raw size, content type, attachment hint, delivery status, and
+  retention deadline.
+- The handler does not read `message.raw`, does not persist raw body content,
+  and rejects attachment-like messages while attachment storage is disabled.
+- Forwarding uses `HONOWARDEN_INQUIRY_FORWARD_TO` only when a verified
+  destination is configured outside tracked files.
+- Metadata is persisted before forwarding. If storage fails, the handler fails
+  before forwarding so Cloudflare can retry without creating an untracked
+  operator-visible delivery. If the post-forward status update fails, the
+  handler logs a structured error and returns success to avoid duplicate
+  forwards.
+
 ## Inbound Flow
 
 ```mermaid
@@ -174,7 +196,7 @@ sequenceDiagram
 
   Sender->>Routing: Send email to honowarden.com
   Routing->>Worker: email(message, env, ctx)
-  Worker->>Worker: Validate recipient, size, and loop headers
+  Worker->>Worker: Validate recipient, size, and attachment policy
   Worker->>D1: Record metadata-only receive event
   alt storage enabled
     Worker->>R2: Store raw MIME / attachments by generated key
@@ -184,10 +206,12 @@ sequenceDiagram
   Worker->>Queue: Enqueue parse/redact/classify task
 ```
 
-Failure mode: if persistence, parsing, or queue enqueue fails, the Worker must
-log a structured error and still forward the original message to the verified
-destination when forwarding is available. It must not send an auto-reply that
-claims successful case creation when storage or triage failed.
+Failure mode: if initial metadata persistence fails, the Worker must fail before
+forwarding so retry does not duplicate an operator-visible message. Once
+forwarding has succeeded, post-forward status update failures are logged and
+not rethrown because rethrowing would ask Cloudflare to retry an already
+forwarded email. The Worker must not send an auto-reply that claims successful
+case creation when storage or triage failed.
 
 ## Triage And Draft Flow
 
@@ -252,15 +276,18 @@ is an incomplete deletion.
 
 The implementation Worker needs separate configuration from the vault API:
 
-| Binding or setting             | Purpose                                              | Secret?                       |
-| ------------------------------ | ---------------------------------------------------- | ----------------------------- |
-| `INQUIRY_DB`                   | inbox D1 tables                                      | no, but environment-specific  |
-| `INQUIRY_OBJECTS`              | raw MIME and attachments                             | no, but sensitive data store  |
-| `EMAIL`                        | outbound Email Service binding                       | no secret value in repo       |
-| `HONOWARDEN_INQUIRY_MAILBOXES` | allowed local parts and mailbox roles                | operationally sensitive       |
-| `POLICY_AUD` / `TEAM_DOMAIN`   | Cloudflare Access validation when implemented in-app | secret or Worker secret       |
-| `LINEAR_API_KEY`               | Linear issue adapter                                 | secret; write scope minimized |
-| AI binding/model config        | classification and draft generation                  | no secret value in repo       |
+| Binding or setting                 | Purpose                                              | Secret?                       |
+| ---------------------------------- | ---------------------------------------------------- | ----------------------------- |
+| `INQUIRY_DB`                       | inbox D1 tables                                      | no, but environment-specific  |
+| `INQUIRY_OBJECTS`                  | raw MIME and attachments                             | no, but sensitive data store  |
+| `EMAIL`                            | outbound Email Service binding                       | no secret value in repo       |
+| `HONOWARDEN_INQUIRY_MAILBOXES`     | allowed local parts and mailbox roles                | operationally sensitive       |
+| `HONOWARDEN_INQUIRY_DOMAINS`       | accepted recipient domains                           | no, but environment-specific  |
+| `HONOWARDEN_INQUIRY_FORWARD_TO`    | verified forwarding destination                      | operationally sensitive       |
+| `HONOWARDEN_INQUIRY_MAX_RAW_BYTES` | inbound size cap before metadata persistence         | no                            |
+| `POLICY_AUD` / `TEAM_DOMAIN`       | Cloudflare Access validation when implemented in-app | secret or Worker secret       |
+| `LINEAR_API_KEY`                   | Linear issue adapter                                 | secret; write scope minimized |
+| AI binding/model config            | classification and draft generation                  | no secret value in repo       |
 
 Do not reuse `HONOWARDEN_TOKEN_SECRET`, `HONOWARDEN_TOTP_SECRET`, or the vault
 API D1 binding in the inbox Worker.

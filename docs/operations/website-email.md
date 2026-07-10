@@ -91,13 +91,16 @@ Phase 2 can add an Email Worker when there is a concrete need:
 Do not parse or store full message bodies or attachments in HonoWarden systems
 until retention, access control, and deletion policy are written down.
 
-Phase 3 can add the AI inquiry inbox after the architecture gate is satisfied:
+Phase 3 can add the AI inquiry inbox after the architecture gate is satisfied.
+The first HON-24 slice is now implemented as metadata-only Worker ingestion:
 
 - metadata-only ingestion and forwarding remain the default
 - raw MIME and attachment storage require an explicit retention/deletion switch
 - AI may classify, summarize, and draft, but external replies require human
   approval by default
 - Linear issue creation uses redacted summaries and requires human approval
+- attachment-like inbound messages are rejected until attachment storage and
+  deletion evidence are implemented
 
 ## Cloudflare Configuration Checklist
 

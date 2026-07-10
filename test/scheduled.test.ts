@@ -30,6 +30,7 @@ describe('HonoWarden scheduled maintenance', () => {
         } as ScheduledController,
         {
           DB: db as unknown as D1Database,
+          INQUIRY_DB: db as unknown as D1Database,
           VAULT_OBJECTS: {} as unknown as R2Bucket,
         },
         context,
@@ -61,6 +62,7 @@ describe('HonoWarden scheduled maintenance', () => {
         } as ScheduledController,
         {
           DB: db as unknown as D1Database,
+          INQUIRY_DB: db as unknown as D1Database,
           HONOWARDEN_AUDIT_LOGS: 'true',
           VAULT_OBJECTS: {} as unknown as R2Bucket,
         },
@@ -94,6 +96,7 @@ describe('HonoWarden scheduled maintenance', () => {
         } as ScheduledController,
         {
           DB: db as unknown as D1Database,
+          INQUIRY_DB: db as unknown as D1Database,
           HONOWARDEN_AUDIT_LOGS: 'false',
           VAULT_OBJECTS: {} as unknown as R2Bucket,
         },
@@ -122,6 +125,7 @@ describe('HonoWarden scheduled maintenance', () => {
         } as ScheduledController,
         {
           DB: db as unknown as D1Database,
+          INQUIRY_DB: db as unknown as D1Database,
           HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
           VAULT_OBJECTS: {} as unknown as R2Bucket,
         },

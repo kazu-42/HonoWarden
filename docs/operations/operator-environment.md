@@ -151,6 +151,7 @@ used by `.github/workflows/remote-backup.yml`.
 | `HONOWARDEN_ADMIN_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
 | `HONOWARDEN_POSTMASTER_FORWARD_TO`          | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
 | `HONOWARDEN_ABUSE_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_INQUIRY_FORWARD_TO`             | Inquiry inbox forwarding                  | Optional verified destination for the metadata-only Email Worker; keep local-only or Wrangler-secret managed.                     |
 
 Local-only Worker smoke variables are also listed in `.env.example`, but
 staging and production must receive them through Wrangler secret commands:
@@ -163,6 +164,13 @@ staging and production must receive them through Wrangler secret commands:
 - `HONOWARDEN_TOTP_SECRET`
 - `HONOWARDEN_TOTP_OLD_SECRET`
 - `HONOWARDEN_TOTP_NEW_SECRET`
+
+Inquiry inbox allowlist and size-cap variables are tracked in `wrangler.jsonc`
+because they are operational policy rather than secrets:
+
+- `HONOWARDEN_INQUIRY_DOMAINS`
+- `HONOWARDEN_INQUIRY_MAILBOXES`
+- `HONOWARDEN_INQUIRY_MAX_RAW_BYTES`
 
 `HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID` is not secret by itself, but keep it in the
 same ignored local file as the matching active secret so partial staged-rotation
