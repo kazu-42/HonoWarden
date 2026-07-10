@@ -179,6 +179,12 @@ export class FakeD1Database {
     let boundValues: unknown[] = []
 
     const statement = {
+      get __fakeQuery() {
+        return query
+      },
+      get __fakeBoundValues() {
+        return boundValues
+      },
       bind(...values: unknown[]) {
         boundValues = values
         return statement
@@ -994,7 +1000,7 @@ export class FakeD1Database {
       async raw<T = unknown>(): Promise<T[]> {
         return []
       },
-    } as D1PreparedStatement
+    } as unknown as D1PreparedStatement
 
     return statement
   }
@@ -1002,6 +1008,40 @@ export class FakeD1Database {
   async batch<T = unknown>(
     statements: D1PreparedStatement[],
   ): Promise<D1Result<T>[]> {
+    const fakeStatements = statements as unknown as Array<{
+      __fakeQuery: string
+      __fakeBoundValues: unknown[]
+    }>
+    const consumeStatement = fakeStatements.find((statement) =>
+      /UPDATE\s+auth_requests/.test(statement.__fakeQuery),
+    )
+    if (consumeStatement && this.options.authRequests) {
+      const values = consumeStatement.__fakeBoundValues
+      const row = this.options.authRequests.find(
+        (candidate) =>
+          candidate.id === values[2] &&
+          candidate.userId === values[3] &&
+          candidate.requestDeviceIdentifier === values[4] &&
+          candidate.accessCodeHash === values[5] &&
+          candidate.status === 'approved' &&
+          String(candidate.expiresAt) > String(values[6]),
+      )
+      const changes = row ? 1 : 0
+      if (row) {
+        Object.assign(row, {
+          status: 'consumed',
+          consumedAt: values[0],
+          updatedAt: values[1],
+        })
+      }
+
+      return statements.map(() => ({
+        success: true,
+        results: [],
+        meta: { ...fakeMeta, changes },
+      }))
+    }
+
     return statements.map(() => ({
       success: true,
       results: [],

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   generateRefreshToken,
   hashRefreshToken,
+  parseAuthRequestGrantForm,
   parsePasswordGrantForm,
   parseRefreshTokenGrantForm,
   signAccessToken,
@@ -58,6 +59,45 @@ describe('token domain', () => {
         },
       },
     })
+  })
+
+  it('parses the official auth-request password grant extension', () => {
+    const form = new URLSearchParams({
+      grant_type: 'password',
+      username: ' Person@Example.Test ',
+      password: 'high-entropy-access-code',
+      authRequest: ' auth-request-id ',
+      deviceType: '8',
+      deviceIdentifier: 'requester-device',
+      deviceName: 'Requester',
+    })
+
+    expect(parseAuthRequestGrantForm(form)).toEqual({
+      ok: true,
+      grant: {
+        username: 'Person@Example.Test',
+        usernameNormalized: 'person@example.test',
+        accessCode: 'high-entropy-access-code',
+        authRequestId: 'auth-request-id',
+        device: {
+          identifier: 'requester-device',
+          name: 'Requester',
+          type: 8,
+        },
+      },
+    })
+  })
+
+  it('does not classify ordinary password grants as auth-request grants', () => {
+    expect(
+      parseAuthRequestGrantForm(
+        new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      ),
+    ).toEqual({ ok: false, reason: 'not_auth_request' })
   })
 
   it('accepts alternate two-factor form field names', () => {

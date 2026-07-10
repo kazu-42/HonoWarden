@@ -21,6 +21,19 @@ export type RefreshTokenGrantRequest = {
   refreshToken: string
 }
 
+export type AuthRequestGrantRequest = {
+  username: string
+  usernameNormalized: string
+  accessCode: string
+  authRequestId: string
+  device: TokenDeviceInfo
+}
+
+export type AuthRequestGrantParseResult =
+  | { ok: true; grant: AuthRequestGrantRequest }
+  | { ok: false; reason: 'not_auth_request' }
+  | FailedTokenRequest
+
 export type PasswordGrantParseResult =
   | {
       ok: true
@@ -42,7 +55,7 @@ export type TokenError = {
   }
 }
 
-export type AccessTokenAuthMethod = 'password' | 'refresh'
+export type AccessTokenAuthMethod = 'auth_request' | 'password' | 'refresh'
 
 export type AccessTokenClaims = {
   sub: string
@@ -138,6 +151,49 @@ export function parsePasswordGrantForm(
         'TwoFactorCode',
         'code',
       ]),
+    },
+  }
+}
+
+export function parseAuthRequestGrantForm(
+  form: URLSearchParams,
+): AuthRequestGrantParseResult {
+  const authRequestId = readFormValue(form, [
+    'authRequest',
+    'auth_request',
+    'AuthRequest',
+  ])
+  if (!authRequestId) {
+    return { ok: false, reason: 'not_auth_request' }
+  }
+
+  if (form.get('grant_type') !== 'password') {
+    return tokenRequestError(
+      'unsupported_grant_type',
+      'The requested grant type is not supported.',
+    )
+  }
+
+  const username = form.get('username')?.trim()
+  const accessCode = form.get('password')
+  const usernameNormalized = username ? normalizeEmail(username) : null
+  const device = parseDeviceInfo(form)
+
+  if (!username || !usernameNormalized || !accessCode || !device) {
+    return tokenRequestError(
+      'invalid_request',
+      'Auth request credentials and device information are required.',
+    )
+  }
+
+  return {
+    ok: true,
+    grant: {
+      username,
+      usernameNormalized,
+      accessCode,
+      authRequestId,
+      device,
     },
   }
 }

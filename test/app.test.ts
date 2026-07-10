@@ -790,15 +790,8 @@ describe('HonoWarden app', () => {
     const database = new FakeD1Database(null, [], {
       authUser: user,
       authRequests: [row],
+      requestQuotaBucket: unblockedRequestQuotaBucket(),
       devices: [deviceRecord()],
-      requestQuotaBucket: {
-        bucketKey: 'request:anonymous:auth-request-quota',
-        scope: 'anonymous',
-        requestCount: 1,
-        windowStartedAt: '2026-07-11T00:00:00.000Z',
-        blockedUntil: null,
-        updatedAt: '2026-07-11T00:00:00.000Z',
-      },
     })
     const env = {
       DB: database as unknown as D1Database,
@@ -1154,6 +1147,133 @@ describe('HonoWarden app', () => {
       device: 'fixture-device',
       sstamp: 'security-stamp',
     })
+  })
+
+  it('atomically consumes an approved auth request for one device-bound session', async () => {
+    const user = authUserRecord()
+    const secret = '0123456789abcdef0123456789abcdef'
+    const accessCode = 'high-entropy-access-code'
+    const row = {
+      ...authRequestRecord(),
+      status: 'approved',
+      requestApproved: 1,
+      encryptedResponseKey: 'opaque-encrypted-key',
+      responseAt: '2026-07-11T00:05:00.000Z',
+      accessCodeHash: await buildAuthRequestAccessCodeHash(
+        secret,
+        'auth-request-id',
+        accessCode,
+      ),
+    }
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      authRequests: [row],
+      requestQuotaBucket: unblockedRequestQuotaBucket(),
+    })
+    const env = {
+      DB: database as unknown as D1Database,
+      HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_AUTH_REQUEST_SECRET: secret,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const form = new URLSearchParams({
+      grant_type: 'password',
+      username: user.email,
+      password: accessCode,
+      authRequest: 'auth-request-id',
+      deviceType: '8',
+      deviceIdentifier: 'requester-device',
+      deviceName: 'Requester',
+    })
+
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form,
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { access_token: string }
+    expect(body).toMatchObject({
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+      token_type: 'Bearer',
+    })
+    expect(decodeJwtPayload(body.access_token)).toMatchObject({
+      sub: user.id,
+      device: 'requester-device',
+      authMethod: 'auth_request',
+    })
+    expect(row.status).toBe('consumed')
+
+    const replay = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form,
+      },
+      env,
+    )
+    expect(replay.status).toBe(400)
+    await expect(replay.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+  })
+
+  it('does not issue a new session from an unlock-only auth request', async () => {
+    const user = authUserRecord()
+    const secret = '0123456789abcdef0123456789abcdef'
+    const accessCode = 'high-entropy-access-code'
+    const row = {
+      ...authRequestRecord(),
+      requestType: 1,
+      status: 'approved',
+      requestApproved: 1,
+      encryptedResponseKey: 'opaque-encrypted-key',
+      responseAt: '2026-07-11T00:05:00.000Z',
+      accessCodeHash: await buildAuthRequestAccessCodeHash(
+        secret,
+        'auth-request-id',
+        accessCode,
+      ),
+    }
+
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: user.email,
+          password: accessCode,
+          authRequest: 'auth-request-id',
+          deviceType: '8',
+          deviceIdentifier: 'requester-device',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          authRequests: [row],
+          requestQuotaBucket: unblockedRequestQuotaBucket(),
+        }) as unknown as D1Database,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: secret,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+    expect(row.status).toBe('approved')
   })
 
   it('signs password-grant access tokens with the configured active key id', async () => {
@@ -7711,6 +7831,17 @@ function authRequestRecord() {
     consumedAt: null,
     expiresAt: '2999-07-11T00:15:00.000Z',
     retentionDeleteAfter: '2999-08-10T00:00:00.000Z',
+    updatedAt: '2026-07-11T00:00:00.000Z',
+  }
+}
+
+function unblockedRequestQuotaBucket() {
+  return {
+    bucketKey: 'request:anonymous:auth-request-quota',
+    scope: 'anonymous',
+    requestCount: 1,
+    windowStartedAt: '2026-07-11T00:00:00.000Z',
+    blockedUntil: null,
     updatedAt: '2026-07-11T00:00:00.000Z',
   }
 }
