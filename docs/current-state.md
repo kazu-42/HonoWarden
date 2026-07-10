@@ -923,11 +923,17 @@ Subsequently implemented and verified in staging:
 - live synthetic create, approve, deny, poll, wrong-code, idempotent replay, and
   conflicting replay evidence in
   `docs/release/auth-request-staging-evidence.md`
+- replay-safe type `0` token consumption through the public client password
+  form extension, with owner/requester/expiry/HMAC binding and conditional D1
+  device/session/consume batch
+- live auth-request token issuance, authenticated sync, replay rejection,
+  refresh rotation, consumed-state readback, and zero-row cleanup evidence
+- a staging-detected auth-method verifier regression repaired by PR `#72` and a
+  sign-and-verify regression test
 
 Still not implemented:
 
-- auth-request token grant consumption, notifications, official-client UI
-  evidence, or production enablement
+- notifications, official-client UI evidence, or production enablement
 
 ## Inquiry Migration Chain Reconciliation
 
