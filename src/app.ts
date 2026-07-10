@@ -6,6 +6,18 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
 import {
+  authRequestPolicy,
+  authRequestQuotaPolicy,
+  buildAuthRequestAccessCodeHash,
+  buildAuthRequestDeviceHash,
+  buildAuthRequestEmailHash,
+  buildAuthRequestTimestamps,
+  isAuthRequestFeatureEnabled,
+  parseAuthRequestCreateBody,
+  parseAuthRequestResponseBody,
+  verifyAuthRequestAccessCode,
+} from './domain/auth-request'
+import {
   buildAuditEvent,
   isAuditLoggingEnabled,
   serializeAuditEvent,
@@ -62,6 +74,15 @@ import {
   listCipherAttachmentsByUser,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
+import {
+  approveAuthRequest,
+  createAuthRequest,
+  denyAuthRequest,
+  findAuthRequestForOwner,
+  findAuthRequestVerifierById,
+  listPendingAuthRequests,
+} from './repositories/auth-request-repository'
+import type { AuthRequestRecord } from './repositories/auth-request-repository'
 import type { CipherAttachmentRecord } from './repositories/attachment-repository'
 import {
   createCipher,
@@ -167,6 +188,7 @@ type AuditInput = {
       | 'account'
       | 'attachment'
       | 'backup'
+      | 'auth_request'
       | 'cipher'
       | 'device'
       | 'folder'
@@ -750,6 +772,11 @@ app.all('/api/collections', unsupportedAlphaFeature)
 app.all('/api/collections/*', unsupportedAlphaFeature)
 app.all('/api/emergency-access', unsupportedAlphaFeature)
 app.all('/api/emergency-access/*', unsupportedAlphaFeature)
+app.post('/api/auth-requests', createAuthRequestRoute)
+app.get('/api/auth-requests/pending', listPendingAuthRequestsRoute)
+app.get('/api/auth-requests/:id/response', pollAuthRequestRoute)
+app.get('/api/auth-requests/:id', readAuthRequestRoute)
+app.put('/api/auth-requests/:id', respondToAuthRequestRoute)
 app.all('/api/auth-requests', unsupportedAlphaFeature)
 app.all('/api/auth-requests/*', unsupportedAlphaFeature)
 app.all('/api/attachments', unsupportedAlphaFeature)
@@ -4208,6 +4235,8 @@ function apiError(
     | 'collection_not_found'
     | 'account_not_found'
     | 'attachment_not_found'
+    | 'auth_request_conflict'
+    | 'auth_request_not_found'
     | 'current_device_revoke_forbidden'
     | 'database_unavailable'
     | 'device_not_found'
@@ -4494,6 +4523,528 @@ function revisionConflictError(requestIdValue: string) {
     requestIdValue,
     'revision_conflict',
     'The resource was modified by another client.',
+  )
+}
+
+async function createAuthRequestRoute(c: AppContext) {
+  const runtime = resolveAuthRequestRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const headerDevice = readDeviceInfo(c.req.raw.headers)
+  const request = parseAuthRequestCreateBody(
+    await readJsonBody(c.req.raw),
+    headerDevice?.type ?? null,
+  )
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Auth request payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  if (
+    headerDevice &&
+    headerDevice.identifier !== request.value.requestDeviceIdentifier
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Auth request device identifiers do not match.',
+      ),
+      400,
+    )
+  }
+
+  const id = crypto.randomUUID()
+  const timestamps = buildAuthRequestTimestamps(new Date().toISOString())
+
+  try {
+    const emailHash = await buildAuthRequestEmailHash(
+      runtime.secret,
+      request.value.emailNormalized,
+    )
+    const deviceHash = await buildAuthRequestDeviceHash(
+      runtime.secret,
+      request.value.requestDeviceIdentifier,
+    )
+    const quotaResponse = await enforceAuthRequestQuotas(
+      c,
+      'auth.request_create',
+      [
+        {
+          value: `create:account:${emailHash}`,
+          limit: authRequestQuotaPolicy.createAccountLimit,
+        },
+        {
+          value: `create:device:${deviceHash}`,
+          limit: authRequestQuotaPolicy.createDeviceLimit,
+        },
+        {
+          value: `create:network:${extractClientAddress(c.req.raw.headers)}`,
+          limit: authRequestQuotaPolicy.createNetworkLimit,
+        },
+      ],
+    )
+    if (quotaResponse) {
+      return quotaResponse
+    }
+
+    const user = await findAuthUserByEmail(
+      c.env.DB,
+      request.value.emailNormalized,
+    )
+    const owner = user && !user.disabledAt ? user : null
+
+    const persistedRequest = {
+      id,
+      userId: owner?.id ?? null,
+      emailHash,
+      requestType: request.value.requestType,
+      requestDeviceIdentifier: request.value.requestDeviceIdentifier,
+      requestDeviceType: request.value.requestDeviceType,
+      requestPublicKey: request.value.requestPublicKey,
+      accessCodeHash: await buildAuthRequestAccessCodeHash(
+        runtime.secret,
+        id,
+        request.value.accessCode,
+      ),
+      ...timestamps,
+    }
+    await createAuthRequest(c.env.DB, persistedRequest)
+
+    await emitAuditEvent(c, {
+      name: 'auth.request_create',
+      outcome: 'success',
+      target: { type: 'auth_request', id },
+    })
+
+    return c.json(
+      buildAuthRequestResponse({
+        ...persistedRequest,
+        status: 'pending',
+        requestApproved: null,
+        approvingDeviceIdentifier: null,
+        encryptedResponseKey: null,
+        responseAt: null,
+        consumedAt: null,
+      }),
+    )
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Auth request creation failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function listPendingAuthRequestsRoute(c: AppContext) {
+  const runtime = resolveAuthRequestRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const auth = await authenticateActiveDeviceRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const requests = await listPendingAuthRequests(
+      c.env.DB,
+      auth.user.id,
+      new Date().toISOString(),
+    )
+
+    return c.json({
+      object: 'list',
+      data: requests.map(buildAuthRequestResponse),
+      continuationToken: null,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Auth request list failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function readAuthRequestRoute(c: AppContext) {
+  const runtime = resolveAuthRequestRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const auth = await authenticateActiveDeviceRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const id = c.req.param('id')
+  if (!id) {
+    return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+  }
+
+  try {
+    const request = await findAuthRequestForOwner(c.env.DB, id, auth.user.id)
+
+    return request
+      ? c.json(buildAuthRequestResponse(request))
+      : c.json(authRequestNotFoundError(c.get('requestId')), 404)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Auth request lookup failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function respondToAuthRequestRoute(c: AppContext) {
+  const runtime = resolveAuthRequestRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const auth = await authenticateActiveDeviceRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const response = parseAuthRequestResponseBody(await readJsonBody(c.req.raw))
+  if (!response.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Auth request response is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const id = c.req.param('id')
+  if (!id) {
+    return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+  }
+  const now = new Date().toISOString()
+
+  try {
+    const current = await findAuthRequestForOwner(c.env.DB, id, auth.user.id)
+    if (!current) {
+      return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+    }
+
+    if (current.requestDeviceIdentifier === auth.deviceIdentifier) {
+      return c.json(authRequestConflictError(c.get('requestId')), 409)
+    }
+
+    const transition = response.value.requestApproved
+      ? await approveAuthRequest(c.env.DB, {
+          id,
+          userId: auth.user.id,
+          approvingDeviceIdentifier: auth.deviceIdentifier,
+          encryptedResponseKey: response.value.encryptedResponseKey,
+          now,
+        })
+      : await denyAuthRequest(c.env.DB, {
+          id,
+          userId: auth.user.id,
+          approvingDeviceIdentifier: auth.deviceIdentifier,
+          now,
+        })
+
+    const updated = await findAuthRequestForOwner(c.env.DB, id, auth.user.id)
+    if (!updated) {
+      return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+    }
+
+    const isSameResponse =
+      updated.requestApproved === response.value.requestApproved &&
+      (response.value.requestApproved
+        ? updated.encryptedResponseKey === response.value.encryptedResponseKey
+        : updated.encryptedResponseKey === null)
+
+    if (transition.status === 'not_updated' && !isSameResponse) {
+      return c.json(authRequestConflictError(c.get('requestId')), 409)
+    }
+
+    if (transition.status === 'updated') {
+      await emitAuditEvent(c, {
+        name: response.value.requestApproved
+          ? 'auth.request_approve'
+          : 'auth.request_deny',
+        outcome: 'success',
+        actor: {
+          userId: auth.user.id,
+          deviceIdentifier: auth.deviceIdentifier,
+        },
+        target: { type: 'auth_request', id },
+      })
+    }
+
+    return c.json(buildAuthRequestResponse(updated))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Auth request response failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function pollAuthRequestRoute(c: AppContext) {
+  const runtime = resolveAuthRequestRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const id = c.req.param('id')
+  const accessCode = c.req.query('code')
+  if (
+    !id ||
+    !accessCode ||
+    accessCode.length < authRequestPolicy.minAccessCodeLength ||
+    accessCode.length > authRequestPolicy.maxAccessCodeLength
+  ) {
+    return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+  }
+
+  try {
+    const networkQuotaResponse = await enforceAuthRequestQuotas(
+      c,
+      'auth.request_poll',
+      [
+        {
+          value: `poll:network:${extractClientAddress(c.req.raw.headers)}`,
+          limit: authRequestQuotaPolicy.pollNetworkLimit,
+        },
+      ],
+    )
+    if (networkQuotaResponse) {
+      return networkQuotaResponse
+    }
+
+    const request = await findAuthRequestVerifierById(
+      c.env.DB,
+      id,
+      new Date().toISOString(),
+    )
+    const verified =
+      request &&
+      (await verifyAuthRequestAccessCode(
+        runtime.secret,
+        id,
+        accessCode,
+        request.accessCodeHash,
+      ))
+
+    if (!request || !verified) {
+      return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+    }
+
+    const deviceHash = await buildAuthRequestDeviceHash(
+      runtime.secret,
+      request.requestDeviceIdentifier,
+    )
+    const ownerQuotaResponse = await enforceAuthRequestQuotas(
+      c,
+      'auth.request_poll',
+      [
+        {
+          value: `poll:account:${request.emailHash}`,
+          limit: authRequestQuotaPolicy.pollAccountLimit,
+        },
+        {
+          value: `poll:device:${deviceHash}`,
+          limit: authRequestQuotaPolicy.pollDeviceLimit,
+        },
+      ],
+    )
+    if (ownerQuotaResponse) {
+      return ownerQuotaResponse
+    }
+
+    await emitAuditEvent(c, {
+      name: 'auth.request_poll',
+      outcome: 'success',
+      target: { type: 'auth_request', id },
+      context: { status: request.status },
+    })
+
+    return c.json(buildAuthRequestResponse(request))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Auth request lookup failed.',
+      ),
+      503,
+    )
+  }
+}
+
+function resolveAuthRequestRuntime(
+  c: AppContext,
+): { ok: true; secret: string } | { ok: false; response: Response } {
+  if (!isAuthRequestFeatureEnabled(c.env?.HONOWARDEN_AUTH_REQUESTS_ENABLED)) {
+    return { ok: false, response: unsupportedAlphaFeature(c) }
+  }
+
+  const secret = c.env?.HONOWARDEN_AUTH_REQUEST_SECRET
+  if (!secret || new TextEncoder().encode(secret).byteLength < 32) {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Auth requests are not configured.',
+        ),
+        503,
+      ),
+    }
+  }
+
+  return { ok: true, secret }
+}
+
+async function enforceAuthRequestQuotas(
+  c: AppContext,
+  eventName: 'auth.request_create' | 'auth.request_poll',
+  quotas: Array<{ value: string; limit: number }>,
+): Promise<Response | null> {
+  const now = new Date().toISOString()
+
+  for (const quota of quotas) {
+    const bucketKey = await buildRequestQuotaBucketKey(
+      'anonymous',
+      `auth-request:${quota.value}`,
+    )
+    const bucket = await recordRequestQuotaHit(c.env.DB, {
+      bucketKey,
+      scope: 'anonymous',
+      limit: quota.limit,
+      windowSeconds: authRequestQuotaPolicy.windowSeconds,
+      blockSeconds: authRequestQuotaPolicy.blockSeconds,
+      now,
+    })
+
+    if (isRequestQuotaExceeded(bucket, now)) {
+      await emitAuditEvent(c, {
+        name: eventName,
+        outcome: 'failure',
+        context: { reason: 'quota_rejected' },
+      })
+      c.header('Retry-After', String(authRequestQuotaPolicy.blockSeconds))
+
+      return c.json(
+        apiError(c.get('requestId'), 'rate_limited', 'Request quota exceeded.'),
+        429,
+      )
+    }
+  }
+
+  return null
+}
+
+async function authenticateActiveDeviceRequest(
+  c: AppContext,
+): Promise<AuthenticatedVaultRequest> {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth
+  }
+
+  try {
+    const device = await findDeviceByIdentifier(c.env.DB, {
+      userId: auth.user.id,
+      identifier: auth.deviceIdentifier,
+    })
+
+    if (!device) {
+      return {
+        ok: false,
+        response: c.json(
+          apiError(
+            c.get('requestId'),
+            'invalid_token',
+            'The access token is invalid.',
+          ),
+          401,
+        ),
+      }
+    }
+
+    return auth
+  } catch {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'database_unavailable',
+          'Device authorization failed.',
+        ),
+        503,
+      ),
+    }
+  }
+}
+
+function buildAuthRequestResponse(request: AuthRequestRecord) {
+  return {
+    object: 'auth-request',
+    id: request.id,
+    publicKey: request.requestPublicKey,
+    requestDeviceType: `Device ${request.requestDeviceType}`,
+    requestDeviceTypeValue: request.requestDeviceType,
+    requestDeviceIdentifier: request.requestDeviceIdentifier,
+    requestIpAddress: null,
+    requestCountryName: null,
+    type: request.requestType,
+    creationDate: request.createdAt,
+    responseDate: request.responseAt,
+    requestApproved: request.requestApproved ?? false,
+    key: request.requestApproved ? request.encryptedResponseKey : null,
+    requestDeviceId: null,
+  }
+}
+
+function authRequestNotFoundError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'auth_request_not_found',
+    'Auth request was not found.',
+  )
+}
+
+function authRequestConflictError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'auth_request_conflict',
+    'Auth request could not be updated.',
   )
 }
 

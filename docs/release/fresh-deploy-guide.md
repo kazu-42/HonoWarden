@@ -64,6 +64,7 @@ Set secrets per environment. Do not put these values in `wrangler.jsonc`.
 pnpm wrangler secret put HONOWARDEN_BOOTSTRAP_TOKEN --env staging
 pnpm wrangler secret put HONOWARDEN_TOKEN_SECRET --env staging
 pnpm wrangler secret put HONOWARDEN_TOTP_SECRET --env staging
+pnpm wrangler secret put HONOWARDEN_AUTH_REQUEST_SECRET --env staging
 ```
 
 Access-token key-id signing is optional on first deploy. If enabling staged
@@ -83,6 +84,7 @@ Set production secrets only after staging validation passes:
 pnpm wrangler secret put HONOWARDEN_BOOTSTRAP_TOKEN --env production
 pnpm wrangler secret put HONOWARDEN_TOKEN_SECRET --env production
 pnpm wrangler secret put HONOWARDEN_TOTP_SECRET --env production
+pnpm wrangler secret put HONOWARDEN_AUTH_REQUEST_SECRET --env production
 ```
 
 For production staged access-token key rotation, repeat the same three keyring
@@ -91,6 +93,10 @@ secret commands only after the staging runbook in
 
 `HONOWARDEN_AUDIT_LOGS` remains `false` until log retention and access controls
 are approved.
+
+Keep `HONOWARDEN_AUTH_REQUESTS_ENABLED=false` until migration `0012`, the
+dedicated secret, and staging create/approve/deny/poll/replay checks are all
+verified. Production stays disabled until the staging evidence is recorded.
 
 ## Apply Migrations
 

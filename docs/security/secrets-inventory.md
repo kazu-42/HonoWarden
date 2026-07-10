@@ -14,6 +14,7 @@ Do not commit real secret values to the repository.
 | `HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET` | active key-id access-token signing when staged key rotation is enabled        | Wrangler secret or local env | suspected exposure, staged access-token key rotation             | token exchange and authenticated routes fail closed |
 | `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS` | previous key-id access-token verification during a staged access-token rotate | Wrangler secret or local env | previous key retirement after token TTL and safety window        | token exchange and authenticated routes fail closed |
 | `HONOWARDEN_TOTP_SECRET`                | AES-GCM wrapping of TOTP setup secrets                                        | Wrangler secret or local env | suspected exposure or planned TOTP re-enrollment event           | TOTP setup/login fails closed                       |
+| `HONOWARDEN_AUTH_REQUEST_SECRET`        | keyed auth-request access-code, account, and device verifiers                 | Wrangler secret or local env | suspected exposure or planned auth-request verifier rotation     | auth-request routes fail closed                     |
 
 ## Runtime Configuration
 
@@ -21,6 +22,7 @@ Do not commit real secret values to the repository.
 | ------------------------------------ | ---------------------------------------------- | ------------------------------------------------------------- |
 | `HONOWARDEN_ALLOWED_EMAILS`          | no, but operationally sensitive                | restricts bootstrap/prelogin account set                      |
 | `HONOWARDEN_BOOTSTRAP_ENABLED`       | no                                             | keeps bootstrap default-off                                   |
+| `HONOWARDEN_AUTH_REQUESTS_ENABLED`   | no                                             | gates auth-request routes and cleanup; production default-off |
 | `HONOWARDEN_AUDIT_LOGS`              | no                                             | controls audit JSON-line emission                             |
 | `HONOWARDEN_ENV`                     | no                                             | separates development, staging, and production behavior       |
 | `HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID` | no, but rotate with the matching active secret | identifies the active access-token signing key in JWT headers |
@@ -41,6 +43,7 @@ Do not commit real secret values to the repository.
 | TOTP challenge hash           | D1 `totp_challenges.challenge_hash`      | single-use, expiring, device-bound                    |
 | auth failure bucket keys      | D1 `auth_*` tables                       | hashed bucket metadata, not raw IP                    |
 | audit event rows and lines    | D1 `audit_events`, Cloudflare logs       | sensitive operational metadata                        |
+| auth-request verifier state   | D1 `auth_requests`                       | keyed hashes and opaque client ciphertext only        |
 | backup directories            | operator filesystem                      | include D1 dump, manifest, and optional R2 objects    |
 
 ## Rotation Notes
@@ -66,6 +69,10 @@ Do not commit real secret values to the repository.
   [TOTP Secret Rotation](../operations/totp-secret-rotation.md). Rewrap keeps
   TOTP enabled by re-encrypting active and pending envelopes; force
   re-enrollment deletes TOTP rows and requires explicit operator approval.
+- Do not reuse token, TOTP, bootstrap, or inquiry secrets for
+  `HONOWARDEN_AUTH_REQUEST_SECRET`. Rotation invalidates polling and token
+  exchange for every unconsumed auth request, so disable the feature, let the
+  15-minute active window drain, rotate, and then re-enable.
 - Bootstrap token should be short-lived operationally even if the route remains
   disabled by default.
 - Production secrets must be set with Wrangler secret commands, not

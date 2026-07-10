@@ -1,6 +1,7 @@
 import app from './app'
 import type { Bindings } from './bindings'
 import { isAuditLoggingEnabled } from './domain/audit'
+import { isAuthRequestFeatureEnabled } from './domain/auth-request'
 import { isGlobalRequestQuotaEnabled } from './domain/request-quota'
 import { handleInquiryEmail } from './inquiry-email'
 import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
@@ -19,9 +20,12 @@ export default {
       new Date(controller.scheduledTime).toISOString(),
       {
         auditEvents: isAuditLoggingEnabled(env.HONOWARDEN_AUDIT_LOGS),
-        requestQuotaBuckets: isGlobalRequestQuotaEnabled(
-          env.HONOWARDEN_GLOBAL_REQUEST_QUOTA,
+        authRequests: isAuthRequestFeatureEnabled(
+          env.HONOWARDEN_AUTH_REQUESTS_ENABLED,
         ),
+        requestQuotaBuckets:
+          isGlobalRequestQuotaEnabled(env.HONOWARDEN_GLOBAL_REQUEST_QUOTA) ||
+          isAuthRequestFeatureEnabled(env.HONOWARDEN_AUTH_REQUESTS_ENABLED),
       },
     )
 

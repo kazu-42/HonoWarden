@@ -40,6 +40,7 @@ describe('HonoWarden scheduled maintenance', () => {
     expect(cleanup).toHaveBeenCalledTimes(1)
     expect(cleanup).toHaveBeenCalledWith(db, '2026-07-08T00:00:00.000Z', {
       auditEvents: false,
+      authRequests: false,
       requestQuotaBuckets: false,
     })
     expect(context.waitUntil).toHaveBeenCalledTimes(1)
@@ -77,6 +78,48 @@ describe('HonoWarden scheduled maintenance', () => {
       },
     ])
     expect(context.waitUntil).toHaveBeenCalledTimes(1)
+  })
+
+  it('expires active auth requests and removes terminal rows past retention', async () => {
+    const authRequests = [
+      {
+        id: 'expired-active',
+        status: 'pending',
+        expiresAt: '2026-07-10T23:00:00.000Z',
+        retentionDeleteAfter: '2026-08-10T23:00:00.000Z',
+      },
+      {
+        id: 'retained-terminal',
+        status: 'denied',
+        expiresAt: '2026-06-01T00:00:00.000Z',
+        retentionDeleteAfter: '2026-07-10T22:00:00.000Z',
+      },
+    ]
+    const db = new FakeD1Database('0012', [], { authRequests })
+    const context = {
+      waitUntil: vi.fn(),
+      passThroughOnException: vi.fn(),
+    } as unknown as ExecutionContext
+
+    await worker.scheduled(
+      {
+        scheduledTime: Date.UTC(2026, 6, 11, 0, 0, 0),
+        cron: '0 * * * *',
+        type: 'scheduled',
+        noRetry: vi.fn(),
+      } as ScheduledController,
+      {
+        DB: db as unknown as D1Database,
+        INQUIRY_DB: db as unknown as D1Database,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        VAULT_OBJECTS: {} as unknown as R2Bucket,
+      },
+      context,
+    )
+
+    expect(authRequests).toEqual([
+      expect.objectContaining({ id: 'expired-active', status: 'expired' }),
+    ])
   })
 
   it('skips audit-event cleanup while audit logging is disabled', async () => {

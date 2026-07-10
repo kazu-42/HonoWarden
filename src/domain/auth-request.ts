@@ -12,6 +12,17 @@ export const authRequestPolicy = {
   terminalRetentionDays: 30,
 } as const
 
+export const authRequestQuotaPolicy = {
+  blockSeconds: 15 * 60,
+  createAccountLimit: 10,
+  createDeviceLimit: 10,
+  createNetworkLimit: 30,
+  pollAccountLimit: 120,
+  pollDeviceLimit: 120,
+  pollNetworkLimit: 300,
+  windowSeconds: 15 * 60,
+} as const
+
 export type AuthRequestCreateInput = {
   emailNormalized: string
   requestPublicKey: string
@@ -38,6 +49,7 @@ export function isAuthRequestFeatureEnabled(
 
 export function parseAuthRequestCreateBody(
   body: unknown,
+  fallbackDeviceType: number | null = null,
 ): ParseResult<AuthRequestCreateInput> {
   if (!isRecord(body)) {
     return { ok: false }
@@ -50,7 +62,10 @@ export function parseAuthRequestCreateBody(
     'deviceIdentifier',
     'DeviceIdentifier',
   )
-  const requestDeviceType = readNumber(body, 'deviceType', 'DeviceType')
+  const bodyDeviceType = readNumber(body, 'deviceType', 'DeviceType')
+  const requestDeviceType = Number.isNaN(bodyDeviceType)
+    ? fallbackDeviceType
+    : bodyDeviceType
   const accessCode = readExactString(body, 'accessCode', 'AccessCode')
   const requestType = readNumber(body, 'type', 'Type')
   const emailNormalized = email ? normalizeEmail(email) : null
@@ -68,6 +83,7 @@ export function parseAuthRequestCreateBody(
       1,
       authRequestPolicy.maxDeviceIdentifierLength,
     ) ||
+    requestDeviceType === null ||
     !Number.isInteger(requestDeviceType) ||
     requestDeviceType < 0 ||
     requestDeviceType > authRequestPolicy.maxDeviceType ||
@@ -174,6 +190,16 @@ export async function buildAuthRequestEmailHash(
   return buildVerifier(
     secret,
     `honowarden:auth-request:email:v1\0${normalizedEmail}`,
+  )
+}
+
+export async function buildAuthRequestDeviceHash(
+  secret: string,
+  deviceIdentifier: string,
+): Promise<string> {
+  return buildVerifier(
+    secret,
+    `honowarden:auth-request:device:v1\0${deviceIdentifier}`,
   )
 }
 

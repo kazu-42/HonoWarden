@@ -145,6 +145,7 @@ describe('auth request repository', () => {
     const database = new RecordingDatabase({
       ...authRequestRow,
       accessCodeHash: 'access-code-hash',
+      emailHash: 'email-hash',
     })
 
     const request = await findAuthRequestVerifierById(
@@ -155,6 +156,7 @@ describe('auth request repository', () => {
 
     expect(request?.id).toBe('request-1')
     expect(request?.accessCodeHash).toBe('access-code-hash')
+    expect(request?.emailHash).toBe('email-hash')
     expect(database.queries.join('\n')).toContain(
       'access_code_hash as accessCodeHash',
     )
