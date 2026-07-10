@@ -7,7 +7,7 @@ import {
   deleteRetainedAuthRequests,
   denyAuthRequest,
   expireAuthRequests,
-  findAuthRequestByAccessCodeHash,
+  findAuthRequestVerifierById,
   listPendingAuthRequests,
 } from '../../src/repositories/auth-request-repository'
 
@@ -141,19 +141,28 @@ describe('auth request repository', () => {
     )
   })
 
-  it('polls by request id and access-code hash without owner enumeration', async () => {
-    const database = new RecordingDatabase(authRequestRow)
+  it('loads the internal verifier by request id without exposing it publicly', async () => {
+    const database = new RecordingDatabase({
+      ...authRequestRow,
+      accessCodeHash: 'access-code-hash',
+    })
 
-    const request = await findAuthRequestByAccessCodeHash(
+    const request = await findAuthRequestVerifierById(
       database as unknown as D1Database,
       'request-1',
-      'access-code-hash',
       '2026-07-11T00:05:00.000Z',
     )
 
     expect(request?.id).toBe('request-1')
-    expect(database.queries.join('\n')).toContain('access_code_hash = ?')
+    expect(request?.accessCodeHash).toBe('access-code-hash')
+    expect(database.queries.join('\n')).toContain(
+      'access_code_hash as accessCodeHash',
+    )
     expect(database.queries.join('\n')).not.toContain('email_normalized')
+    expect(database.bindings[0]).toEqual([
+      'request-1',
+      '2026-07-11T00:05:00.000Z',
+    ])
   })
 
   it('atomically consumes one approved unexpired request for its requester device', async () => {
