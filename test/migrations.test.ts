@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const migration = readFileSync('migrations/0001_initial_schema.sql', 'utf8')
+const authRequestMigration = readFileSync(
+  'migrations/0012_auth_requests.sql',
+  'utf8',
+)
 
 describe('initial D1 migration', () => {
   it('creates the minimum Week 2 schema tables', () => {
@@ -212,6 +216,27 @@ describe('initial D1 migration', () => {
     expect(allMigrations).not.toContain('attachment_body')
   })
 
+  it('adds replay-safe login-with-device auth request state', () => {
+    expect(allMigrations).toContain('CREATE TABLE IF NOT EXISTS auth_requests')
+    expect(allMigrations).toContain('access_code_hash TEXT NOT NULL')
+    expect(allMigrations).toContain('request_public_key TEXT NOT NULL')
+    expect(allMigrations).toContain('encrypted_response_key TEXT')
+    expect(allMigrations).toContain(
+      "status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'consumed', 'expired'))",
+    )
+    expect(allMigrations).toContain('expires_at TEXT NOT NULL')
+    expect(allMigrations).toContain('retention_delete_after TEXT NOT NULL')
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_auth_requests_owner_status_expires',
+    )
+    expect(allMigrations).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_auth_requests_retention',
+    )
+    expect(allMigrations).toContain("VALUES ('0012')")
+    expect(authRequestMigration).not.toContain('access_code TEXT')
+    expect(authRequestMigration).not.toContain('private_key')
+  })
+
   it('stores vault records as encrypted payloads', () => {
     expect(allMigrations).toContain('encrypted_name TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_json TEXT NOT NULL')
@@ -231,4 +256,5 @@ const allMigrations = [
   readFileSync('migrations/0008_request_quotas.sql', 'utf8'),
   readFileSync('migrations/0010_equivalent_domains.sql', 'utf8'),
   readFileSync('migrations/0011_inquiry_inbox.sql', 'utf8'),
+  authRequestMigration,
 ].join('\n')

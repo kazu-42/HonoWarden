@@ -22,6 +22,7 @@ changes and update this document in the same change.
 | `migrations/0008_request_quotas.sql`     | `fe2955c3733bc4907b0e6711b9c37257dfa67e5973c7495d06bb847ed84ee884` |
 | `migrations/0010_equivalent_domains.sql` | `4a6b2f2da77103955d78ed132afc8a1519ba4c0a59f50a6a4fdfb4194e6dc559` |
 | `migrations/0011_inquiry_inbox.sql`      | `a8c9524b32ecd398d540b052dbb6e96fc3dc500669ca6806089162c21b857bb8` |
+| `migrations/0012_auth_requests.sql`      | `71fc9ca16ea9dd2e6e8dbe9c7c93cc2899b8375b482eaeaf3a673b6d01b50b3d` |
 
 ## Required Tables At Freeze
 
@@ -39,6 +40,7 @@ changes and update this document in the same change.
 - `inquiry_threads`
 - `inquiry_messages`
 - `inquiry_events`
+- `auth_requests`
 - `user_totp`
 - `totp_challenges`
 

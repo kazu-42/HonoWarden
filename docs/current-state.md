@@ -900,6 +900,23 @@ Implemented:
 - tests for invalid current code, refresh-auth rejection, pending verify
   promotion, and replay rejection when no pending change remains
 
+## Login With Device Schema Gate
+
+Implemented:
+
+- accepted ADR 0008 for personal-vault auth-request create, approve/deny, poll,
+  expiry, single-use consume, notification, audit, retention, and rollback
+- forward-only `0012_auth_requests.sql` migration with owner-optional rows,
+  access-code hashes, opaque requester public/encrypted response keys, fixed
+  expiry, terminal retention, and owner/requester lookup indexes
+- schema constraints that reject self-approval identifiers and malformed
+  approved, denied, or consumed terminal states
+
+Not implemented in this slice:
+
+- runtime auth-request routes, token grant consumption, notifications, or
+  official-client lifecycle evidence; the explicit 501 guard remains active
+
 ## Week 26 Unsupported Surface Guards
 
 Implemented:
