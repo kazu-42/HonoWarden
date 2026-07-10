@@ -47,8 +47,13 @@ export type AccessTokenAuthMethod = 'password' | 'refresh'
 export type AccessTokenClaims = {
   sub: string
   email: string
+  email_verified?: boolean
+  name?: string | null
+  premium?: boolean
+  amr?: string[]
   device: string
   securityStamp: string
+  sstamp?: string
   iat: number
   exp: number
   authMethod?: AccessTokenAuthMethod
@@ -348,6 +353,16 @@ function isAccessTokenClaims(value: unknown): value is AccessTokenClaims {
     typeof claims.email === 'string' &&
     typeof claims.device === 'string' &&
     typeof claims.securityStamp === 'string' &&
+    (claims.email_verified === undefined ||
+      typeof claims.email_verified === 'boolean') &&
+    (claims.name === undefined ||
+      claims.name === null ||
+      typeof claims.name === 'string') &&
+    (claims.premium === undefined || typeof claims.premium === 'boolean') &&
+    (claims.amr === undefined ||
+      (Array.isArray(claims.amr) &&
+        claims.amr.every((method) => typeof method === 'string'))) &&
+    (claims.sstamp === undefined || typeof claims.sstamp === 'string') &&
     typeof claims.iat === 'number' &&
     typeof claims.exp === 'number' &&
     (claims.authMethod === undefined ||

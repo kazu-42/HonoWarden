@@ -372,10 +372,10 @@ describe('client compatibility matrix', () => {
       build: '21713',
       releaseTag: 'v2026.6.1-bwpm',
       releasePublishedAt: '2026-07-09T16:57:30Z',
-      verificationLevel: 'fixture_only',
+      verificationLevel: 'live_smoke',
     })
     expect(androidEntry?.knownIssues.join('\n')).toContain(
-      'live mobile evidence must be re-run before any promotion',
+      'HonoWarden now normalizes outward API timestamps to UTC ISO-8601',
     )
   })
 
@@ -409,8 +409,26 @@ describe('client compatibility matrix', () => {
       expect.arrayContaining(['refresh_grant', 'session_revoke', 'totp_login']),
     )
 
+    const androidEntry = matrix.entries.find(
+      (entry) => entry.surface === 'mobile_android',
+    )
+    expect(androidEntry?.verificationLevel).toBe('live_smoke')
+    expect(androidEntry?.liveEvidence?.path).toBe(
+      'docs/release/android-mobile-live-client-evidence.md',
+    )
+    expect(androidEntry?.liveEvidence?.flows).toEqual(
+      expect.arrayContaining([
+        'config',
+        'known_device_preflight',
+        'prelogin',
+        'password_grant',
+        'empty_sync',
+      ]),
+    )
+
     const nonCliEntries = matrix.entries.filter(
-      (entry) => !['browser_extension', 'cli'].includes(entry.surface),
+      (entry) =>
+        !['browser_extension', 'cli', 'mobile_android'].includes(entry.surface),
     )
     for (const entry of nonCliEntries) {
       expect(entry.verificationLevel).toBe('fixture_only')
@@ -425,6 +443,9 @@ describe('client compatibility matrix', () => {
     )
     expect(compatibilityMatrixDoc).toContain(
       'totp-recent-auth-live-evidence.md',
+    )
+    expect(compatibilityMatrixDoc).toContain(
+      'android-mobile-live-client-evidence.md',
     )
   })
 

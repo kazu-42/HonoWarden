@@ -85,21 +85,21 @@ describe('synthetic two-user dogfood and disabled-user lifecycle evidence', () =
     const bobSync = await syncVault(env, bobToken)
 
     expect(aliceSync).toMatchObject({
-      Profile: {
-        Id: alice!.id,
-        Email: 'dogfood-a@example.test',
+      profile: {
+        id: alice!.id,
+        email: 'dogfood-a@example.test',
       },
-      Folders: [{ id: 'dogfood-a-folder' }],
-      Ciphers: [{ id: 'dogfood-a-cipher' }],
+      folders: [{ id: 'dogfood-a-folder' }],
+      ciphers: [{ id: 'dogfood-a-cipher' }],
     })
     expect(JSON.stringify(aliceSync)).not.toContain('dogfood-b-')
     expect(bobSync).toMatchObject({
-      Profile: {
-        Id: bob!.id,
-        Email: 'dogfood-b@example.test',
+      profile: {
+        id: bob!.id,
+        email: 'dogfood-b@example.test',
       },
-      Folders: [{ id: 'dogfood-b-folder' }],
-      Ciphers: [{ id: 'dogfood-b-cipher' }],
+      folders: [{ id: 'dogfood-b-folder' }],
+      ciphers: [{ id: 'dogfood-b-cipher' }],
     })
     expect(JSON.stringify(bobSync)).not.toContain('dogfood-a-')
 

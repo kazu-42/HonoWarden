@@ -45,6 +45,7 @@ import {
   verifyPresentedPasswordHash,
 } from './domain/tokens'
 import type {
+  AccessTokenAuthMethod,
   AccessTokenSigningKey,
   AccessTokenSigner,
   AccessTokenVerifier,
@@ -237,7 +238,7 @@ app.use(
         return ''
       }
 
-      const requestOrigin = new URL(c.req.url).origin
+      const requestOrigin = resolvePublicOrigin(c.req.raw)
       if (origin === requestOrigin || isExtensionOrigin(origin)) {
         return origin
       }
@@ -312,6 +313,69 @@ function isExtensionOrigin(origin: string): boolean {
     origin.startsWith('moz-extension://') ||
     origin.startsWith('safari-web-extension://')
   )
+}
+
+function resolvePublicOrigin(request: Request): string {
+  const url = new URL(request.url)
+  const scheme =
+    readCloudflareVisitorScheme(request.headers.get('CF-Visitor')) ??
+    readForwardedProto(request.headers.get('Forwarded')) ??
+    readForwardedProto(request.headers.get('X-Forwarded-Proto')) ??
+    normalizePublicScheme(url.protocol.replace(/:$/, ''))
+
+  if (scheme) {
+    url.protocol = `${scheme}:`
+  }
+
+  return url.origin
+}
+
+function readCloudflareVisitorScheme(
+  headerValue: string | null,
+): string | null {
+  if (!headerValue) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(headerValue) as unknown
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+    ) {
+      return normalizePublicScheme((parsed as Record<string, unknown>).scheme)
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function readForwardedProto(headerValue: string | null): string | null {
+  if (!headerValue) {
+    return null
+  }
+
+  const firstValue = headerValue.split(',')[0]?.trim()
+  if (!firstValue) {
+    return null
+  }
+
+  const protoMatch = /(?:^|;)\s*proto=([^;]+)/i.exec(firstValue)
+  const rawProto = protoMatch?.[1]?.replace(/^"|"$/g, '') ?? firstValue
+
+  return normalizePublicScheme(rawProto)
+}
+
+function normalizePublicScheme(value: unknown): 'http' | 'https' | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/:$/, '')
+  return normalized === 'http' || normalized === 'https' ? normalized : null
 }
 
 function isRequestQuotaBypass(c: AppContext): boolean {
@@ -470,13 +534,13 @@ app.get('/health/db', async (c) => {
 })
 
 app.get('/api/config', (c) => {
-  const origin = new URL(c.req.url).origin
+  const origin = resolvePublicOrigin(c.req.raw)
 
   return c.json(buildServerConfig(origin))
 })
 
 app.get('/config', (c) => {
-  const origin = new URL(c.req.url).origin
+  const origin = resolvePublicOrigin(c.req.raw)
 
   return c.json(buildServerConfig(origin))
 })
@@ -570,6 +634,15 @@ app.get('/api/accounts/profile', async (c) => {
 })
 app.put('/api/accounts/profile', handleAccountProfileUpdate)
 app.post('/api/accounts/profile', handleAccountProfileUpdate)
+
+app.get('/api/account/billing/vnext/subscription', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  return c.json(buildBillingSubscriptionResponse())
+})
 
 app.post('/api/accounts/register', (c) => {
   return c.json(
@@ -1113,15 +1186,16 @@ app.post('/identity/connect/token', async (c) => {
         return c.json(tokenErrorResponse(invalidGrantError()), 400)
       }
 
-      const accessToken = await signAccessToken(accessTokenConfig.signer, {
-        sub: session.user.id,
-        email: session.user.emailNormalized,
-        device: session.deviceIdentifier,
-        securityStamp: session.user.securityStamp,
-        iat: issuedAt,
-        exp: issuedAt + accessTokenTtlSeconds,
-        authMethod: 'refresh',
-      })
+      const accessToken = await signAccessToken(
+        accessTokenConfig.signer,
+        buildAccessTokenClaims({
+          user: session.user,
+          deviceIdentifier: session.deviceIdentifier,
+          issuedAt,
+          expiresAt: issuedAt + accessTokenTtlSeconds,
+          authMethod: 'refresh',
+        }),
+      )
 
       return c.json(
         buildTokenResponse(session.user, accessToken, nextRefreshToken),
@@ -1457,15 +1531,16 @@ app.post('/identity/connect/token', async (c) => {
       now,
     })
 
-    const accessToken = await signAccessToken(accessTokenConfig.signer, {
-      sub: user.id,
-      email: user.emailNormalized,
-      device: device.identifier,
-      securityStamp: user.securityStamp,
-      iat: issuedAt,
-      exp: expiresAt,
-      authMethod: 'password',
-    })
+    const accessToken = await signAccessToken(
+      accessTokenConfig.signer,
+      buildAccessTokenClaims({
+        user,
+        deviceIdentifier: device.identifier,
+        issuedAt,
+        expiresAt,
+        authMethod: 'password',
+      }),
+    )
 
     return c.json(buildTokenResponse(user, accessToken, refreshToken))
   } catch {
@@ -1711,6 +1786,27 @@ app.get('/api/devices/identifier/:identifier', async (c) => {
       503,
     )
   }
+})
+
+app.put('/api/devices/identifier/:identifier/token', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parsePushTokenRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Push token payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  return c.body(null, 204)
 })
 
 app.post('/identity/accounts/totp/setup', async (c) => {
@@ -3228,6 +3324,18 @@ function buildTokenResponse(
 ) {
   const accountKeys = buildAccountKeysResponse(user)
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
+  const userDecryptionOptions = masterPasswordUnlock
+    ? {
+        HasMasterPassword: true,
+        hasMasterPassword: true,
+        MasterPasswordUnlock: masterPasswordUnlock,
+        masterPasswordUnlock,
+        TrustedDeviceOption: null,
+        trustedDeviceOption: null,
+        KeyConnectorOption: null,
+        keyConnectorOption: null,
+      }
+    : null
 
   return {
     access_token: accessToken,
@@ -3244,13 +3352,31 @@ function buildTokenResponse(
     ForcePasswordReset: false,
     TwoFactorToken: null,
     MasterPasswordPolicy: null,
-    UserDecryptionOptions: masterPasswordUnlock
-      ? {
-          HasMasterPassword: true,
-          MasterPasswordUnlock: masterPasswordUnlock,
-        }
-      : null,
+    UserDecryptionOptions: userDecryptionOptions,
     KeyConnectorUrl: null,
+  }
+}
+
+function buildAccessTokenClaims(input: {
+  user: AuthUserRecord
+  deviceIdentifier: string
+  issuedAt: number
+  expiresAt: number
+  authMethod: AccessTokenAuthMethod
+}) {
+  return {
+    sub: input.user.id,
+    email: input.user.emailNormalized,
+    email_verified: true,
+    name: input.user.displayName,
+    premium: false,
+    amr: ['Application'],
+    device: input.deviceIdentifier,
+    securityStamp: input.user.securityStamp,
+    sstamp: input.user.securityStamp,
+    iat: input.issuedAt,
+    exp: input.expiresAt,
+    authMethod: input.authMethod,
   }
 }
 
@@ -3260,10 +3386,13 @@ function buildAccountKeysResponse(user: AuthUserRecord) {
   }
 
   return {
+    signatureKeyPair: null,
     publicKeyEncryptionKeyPair: {
       publicKey: user.publicKey,
       wrappedPrivateKey: user.privateKey,
+      signedPublicKey: null,
     },
+    securityState: null,
   }
 }
 
@@ -3274,11 +3403,30 @@ function buildMasterPasswordUnlockResponse(user: AuthUserRecord) {
 
   return {
     Salt: user.emailNormalized,
+    salt: user.emailNormalized,
     Kdf: {
       KdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
+      kdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
       Iterations: user.kdfIterations,
+      iterations: user.kdfIterations,
+      Memory: user.kdfMemory,
+      memory: user.kdfMemory,
+      Parallelism: user.kdfParallelism,
+      parallelism: user.kdfParallelism,
+    },
+    kdf: {
+      KdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
+      kdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
+      Iterations: user.kdfIterations,
+      iterations: user.kdfIterations,
+      Memory: user.kdfMemory,
+      memory: user.kdfMemory,
+      Parallelism: user.kdfParallelism,
+      parallelism: user.kdfParallelism,
     },
     MasterKeyEncryptedUserKey: user.userKey,
+    masterKeyEncryptedUserKey: user.userKey,
+    masterKeyWrappedUserKey: user.userKey,
   }
 }
 
@@ -3365,26 +3513,26 @@ function buildSyncResponse(
   attachments: readonly CipherAttachmentRecord[] = [],
   domainSettings: DomainSettings = emptyDomainSettings,
 ) {
-  const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const attachmentsByCipherId = buildAttachmentsByCipherId(attachments)
+  const profile = buildSyncProfileResponse(user)
+  const folderResponses = folders.map(buildFolderResponse)
+  const cipherResponses = ciphers.map((cipher) =>
+    buildCipherResponse(cipher, attachmentsByCipherId.get(cipher.id) ?? []),
+  )
+  const domains = buildSyncDomainsResponse(domainSettings)
+  const userDecryption = buildSyncUserDecryptionResponse(user)
 
   return {
     object: 'sync',
-    Profile: buildProfileResponse(user),
-    Folders: folders.map(buildFolderResponse),
-    Collections: [],
-    Ciphers: ciphers.map((cipher) =>
-      buildCipherResponse(cipher, attachmentsByCipherId.get(cipher.id) ?? []),
-    ),
-    Domains: buildDomainsResponse(domainSettings),
-    Policies: [],
-    PoliciesNew: [],
-    Sends: [],
-    UserDecryption: masterPasswordUnlock
-      ? {
-          MasterPasswordUnlock: masterPasswordUnlock,
-        }
-      : null,
+    profile,
+    folders: folderResponses,
+    collections: [],
+    ciphers: cipherResponses,
+    domains,
+    policies: [],
+    policiesNew: [],
+    sends: [],
+    userDecryption,
   }
 }
 
@@ -3427,8 +3575,8 @@ function buildBackupAccountResponse(user: AuthUserRecord) {
     id: user.id,
     email: user.emailNormalized,
     name: user.displayName ?? user.emailNormalized,
-    revisionDate: user.revisionDate,
-    creationDate: user.createdAt,
+    revisionDate: normalizeApiTimestamp(user.revisionDate),
+    creationDate: normalizeApiTimestamp(user.createdAt),
     twoFactorEnabled: user.totpEnabled,
     key: user.userKey,
     publicKey: user.publicKey,
@@ -3588,31 +3736,158 @@ const emptyDomainSettings: DomainSettings = {
 
 function buildDomainsResponse(settings: DomainSettings = emptyDomainSettings) {
   return {
+    equivalentDomains: settings.equivalentDomains,
+    globalEquivalentDomains: [],
     EquivalentDomains: settings.equivalentDomains,
     GlobalEquivalentDomains: [],
   }
 }
 
+function buildSyncDomainsResponse(
+  settings: DomainSettings = emptyDomainSettings,
+) {
+  return {
+    equivalentDomains: settings.equivalentDomains,
+    globalEquivalentDomains: [],
+  }
+}
+
+function buildSyncUserDecryptionResponse(user: AuthUserRecord) {
+  const masterPasswordUnlock = buildSyncMasterPasswordUnlockResponse(user)
+
+  return masterPasswordUnlock
+    ? {
+        masterPasswordUnlock,
+      }
+    : null
+}
+
+function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
+  if (!user.userKey) {
+    return null
+  }
+
+  return {
+    salt: user.emailNormalized,
+    kdf: {
+      kdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
+      iterations: user.kdfIterations,
+      memory: user.kdfMemory,
+      parallelism: user.kdfParallelism,
+    },
+    masterKeyWrappedUserKey: user.userKey,
+  }
+}
+
 function buildAccountProfileResponse(user: AuthUserRecord) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
+  const userDecryptionOptions = masterPasswordUnlock
+    ? {
+        HasMasterPassword: true,
+        hasMasterPassword: true,
+        MasterPasswordUnlock: masterPasswordUnlock,
+        masterPasswordUnlock,
+        TrustedDeviceOption: null,
+        trustedDeviceOption: null,
+        KeyConnectorOption: null,
+        keyConnectorOption: null,
+      }
+    : null
 
   return {
     object: 'profile',
     ...buildProfileResponse(user),
-    UserDecryptionOptions: masterPasswordUnlock
-      ? {
-          HasMasterPassword: true,
-          MasterPasswordUnlock: masterPasswordUnlock,
-        }
-      : null,
+    UserDecryptionOptions: userDecryptionOptions,
+    userDecryptionOptions,
     KeyConnectorUrl: null,
+    keyConnectorUrl: null,
+  }
+}
+
+function buildBillingSubscriptionResponse() {
+  return {
+    status: 'canceled',
+    cart: {
+      passwordManager: {
+        seats: {
+          translationKey: 'premiumMembership',
+          quantity: 0,
+          cost: 0,
+          discount: null,
+        },
+        additionalStorage: null,
+      },
+      secretsManager: null,
+      cadence: 'annually',
+      discount: null,
+      estimatedTax: 0,
+    },
+    storage: null,
+    cancelAt: null,
+    canceled: null,
+    nextCharge: null,
+    suspension: null,
+    gracePeriod: null,
+  }
+}
+
+function buildSyncProfileResponse(user: AuthUserRecord) {
+  const name = user.displayName ?? user.emailNormalized
+  const accountKeys = buildAccountKeysResponse(user)
+
+  return {
+    providerOrganizations: [],
+    premiumFromOrganization: false,
+    forcePasswordReset: false,
+    avatarColor: '#3366cc',
+    emailVerified: true,
+    twoFactorEnabled: user.totpEnabled,
+    privateKey: user.privateKey,
+    accountKeys,
+    premium: false,
+    culture: 'en-US',
+    name,
+    organizations: [],
+    organizationsNew: [],
+    usesKeyConnector: false,
+    id: user.id,
+    masterPasswordHint: null,
+    email: user.emailNormalized,
+    key: user.userKey,
+    securityStamp: user.securityStamp,
+    providers: [],
+    creationDate: normalizeApiTimestamp(user.createdAt),
   }
 }
 
 function buildProfileResponse(user: AuthUserRecord) {
+  const name = user.displayName ?? user.emailNormalized
+  const accountKeys = buildAccountKeysResponse(user)
+
   return {
+    providerOrganizations: [],
+    premiumFromOrganization: false,
+    forcePasswordReset: false,
+    avatarColor: '#3366cc',
+    emailVerified: true,
+    twoFactorEnabled: user.totpEnabled,
+    privateKey: user.privateKey,
+    accountKeys,
+    premium: false,
+    culture: 'en-US',
+    name,
+    organizations: [],
+    organizationsNew: [],
+    usesKeyConnector: false,
+    id: user.id,
+    masterPasswordHint: null,
+    email: user.emailNormalized,
+    key: user.userKey,
+    securityStamp: user.securityStamp,
+    providers: [],
+    creationDate: normalizeApiTimestamp(user.createdAt),
     Id: user.id,
-    Name: user.displayName ?? user.emailNormalized,
+    Name: name,
     Email: user.emailNormalized,
     EmailVerified: true,
     Premium: false,
@@ -3620,9 +3895,9 @@ function buildProfileResponse(user: AuthUserRecord) {
     Culture: 'en-US',
     TwoFactorEnabled: user.totpEnabled,
     Key: user.userKey,
-    AccountKeys: buildAccountKeysResponse(user),
+    AccountKeys: accountKeys,
     AvatarColor: '#3366cc',
-    CreationDate: user.createdAt,
+    CreationDate: normalizeApiTimestamp(user.createdAt),
     PrivateKey: user.privateKey,
     SecurityStamp: user.securityStamp,
     ForcePasswordReset: false,
@@ -3679,13 +3954,15 @@ function buildDeviceResponse(device: DeviceRecord) {
     name: device.name,
     identifier: device.identifier,
     type: device.type,
-    creationDate: device.createdAt,
-    revisionDate: device.updatedAt,
+    creationDate: normalizeApiTimestamp(device.createdAt),
+    revisionDate: normalizeApiTimestamp(device.updatedAt),
     isTrusted: isTrustedDevice(device),
     encryptedUserKey: device.encryptedUserKey,
     encryptedPublicKey: device.encryptedPublicKey,
     devicePendingAuthRequest: null,
-    lastActivityDate: device.lastSeenAt ?? device.updatedAt,
+    lastActivityDate: normalizeApiTimestamp(
+      device.lastSeenAt ?? device.updatedAt,
+    ),
   }
 }
 
@@ -3719,9 +3996,9 @@ function buildCipherResponse(
     organizationUseTotp: readBoolean(payload.organizationUseTotp, false),
     collectionIds: readStringArray(payload.collectionIds),
     permissions: normalizeCipherPermissions(payload.permissions),
-    revisionDate: cipher.revisionDate,
-    creationDate: cipher.createdAt,
-    deletedDate: cipher.deletedAt ?? null,
+    revisionDate: normalizeApiTimestamp(cipher.revisionDate),
+    creationDate: normalizeApiTimestamp(cipher.createdAt),
+    deletedDate: normalizeNullableApiTimestamp(cipher.deletedAt),
   }
 }
 
@@ -3771,7 +4048,7 @@ function buildAttachmentResponse(attachment: CipherAttachmentRecord) {
     object: 'attachment',
     ...buildAttachmentMetadataResponse(attachment),
     cipherId: attachment.cipherId,
-    revisionDate: attachment.revisionDate,
+    revisionDate: normalizeApiTimestamp(attachment.revisionDate),
   }
 }
 
@@ -3797,9 +4074,27 @@ function buildBackupAttachmentResponse(attachment: CipherAttachmentRecord) {
     size: attachment.size,
     sizeName: formatByteSize(attachment.size),
     contentType: attachment.contentType,
-    revisionDate: attachment.revisionDate,
-    creationDate: attachment.createdAt,
+    revisionDate: normalizeApiTimestamp(attachment.revisionDate),
+    creationDate: normalizeApiTimestamp(attachment.createdAt),
   }
+}
+
+function normalizeNullableApiTimestamp(
+  value: string | null | undefined,
+): string | null {
+  return value ? normalizeApiTimestamp(value) : null
+}
+
+function normalizeApiTimestamp(value: string): string {
+  const sqliteTimestamp = value.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d+)?$/,
+  )
+  const candidate = sqliteTimestamp
+    ? `${sqliteTimestamp[1]}T${sqliteTimestamp[2]}${sqliteTimestamp[3] ?? ''}Z`
+    : value
+  const timestamp = Date.parse(candidate)
+
+  return Number.isNaN(timestamp) ? value : new Date(timestamp).toISOString()
 }
 
 function formatByteSize(size: number): string {
@@ -3854,7 +4149,7 @@ function buildFolderResponse(folder: FolderRecord) {
     object: 'folder',
     id: folder.id,
     name: folder.name,
-    revisionDate: folder.revisionDate,
+    revisionDate: normalizeApiTimestamp(folder.revisionDate),
   }
 }
 
@@ -4499,6 +4794,18 @@ function parseDeviceMetadataUpdateRequestBody(
     name,
     type,
   }
+}
+
+function parsePushTokenRequestBody(
+  body: unknown,
+): { ok: true } | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  return typeof body.pushToken === 'string' && body.pushToken.trim()
+    ? { ok: true }
+    : { ok: false }
 }
 
 function parseDeviceKeysUpdateRequestBody(body: unknown):

@@ -331,6 +331,44 @@ describe('token domain', () => {
     })
   })
 
+  it('preserves upstream mobile JWT claims required by the Android parser', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      email_verified: true,
+      name: 'Person',
+      premium: false,
+      amr: ['Application'],
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      sstamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+      authMethod: 'password',
+    })
+
+    expect(decodeSegment(token.split('.')[1])).toMatchObject({
+      sub: 'user-id',
+      email: 'person@example.test',
+      email_verified: true,
+      name: 'Person',
+      premium: false,
+      amr: ['Application'],
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      sstamp: 'security-stamp',
+      authMethod: 'password',
+    })
+    await expect(verifyAccessToken('secret', token, 2)).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        email_verified: true,
+        premium: false,
+        amr: ['Application'],
+      },
+    })
+  })
+
   it('rejects signed access tokens with invalid auth method claims', async () => {
     const token = await signAccessToken('secret', {
       sub: 'user-id',

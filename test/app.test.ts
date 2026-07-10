@@ -797,6 +797,16 @@ describe('HonoWarden app', () => {
         authMethod: 'password',
       },
     })
+    expect(decodeJwtPayload(body.access_token)).toMatchObject({
+      sub: 'user-id',
+      email: 'person@example.test',
+      email_verified: true,
+      name: 'Person',
+      premium: false,
+      amr: ['Application'],
+      device: 'fixture-device',
+      sstamp: 'security-stamp',
+    })
   })
 
   it('signs password-grant access tokens with the configured active key id', async () => {
@@ -1739,8 +1749,8 @@ describe('HonoWarden app', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
       object: 'sync',
-      Profile: {
-        Id: user.id,
+      profile: {
+        id: user.id,
       },
     })
   })
@@ -1768,8 +1778,8 @@ describe('HonoWarden app', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
       object: 'sync',
-      Profile: {
-        Id: user.id,
+      profile: {
+        id: user.id,
       },
     })
   })
@@ -2824,57 +2834,118 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
+    const body = (await response.json()) as Record<string, unknown> & {
+      profile: Record<string, unknown>
+      domains: Record<string, unknown>
+      userDecryption: {
+        masterPasswordUnlock: {
+          kdf: Record<string, unknown>
+        } & Record<string, unknown>
+      } & Record<string, unknown>
+    }
+    expect(body).toMatchObject({
       object: 'sync',
-      Profile: {
-        Id: 'user-id',
-        Name: 'Person',
-        Email: 'person@example.test',
-        EmailVerified: true,
-        Premium: false,
-        PremiumFromOrganization: false,
-        Culture: 'en-US',
-        TwoFactorEnabled: false,
-        Key: '2.synthetic-user-key',
-        AccountKeys: {
+      profile: {
+        id: 'user-id',
+        name: 'Person',
+        email: 'person@example.test',
+        emailVerified: true,
+        premium: false,
+        premiumFromOrganization: false,
+        culture: 'en-US',
+        twoFactorEnabled: false,
+        key: '2.synthetic-user-key',
+        accountKeys: {
+          signatureKeyPair: null,
           publicKeyEncryptionKeyPair: {
             publicKey: 'synthetic-public-key',
             wrappedPrivateKey: '2.synthetic-private-key',
+            signedPublicKey: null,
           },
+          securityState: null,
         },
-        AvatarColor: '#3366cc',
-        CreationDate: '2026-07-06T00:00:00.000Z',
-        PrivateKey: '2.synthetic-private-key',
-        SecurityStamp: 'security-stamp',
-        ForcePasswordReset: false,
-        UsesKeyConnector: false,
-        VerifyDevices: false,
-        Organizations: [],
-        OrganizationsNew: [],
-        Providers: [],
-        ProviderOrganizations: [],
+        avatarColor: '#3366cc',
+        creationDate: '2026-07-06T00:00:00.000Z',
+        privateKey: '2.synthetic-private-key',
+        securityStamp: 'security-stamp',
+        forcePasswordReset: false,
+        usesKeyConnector: false,
+        organizations: [],
+        organizationsNew: [],
+        providers: [],
+        providerOrganizations: [],
+        masterPasswordHint: null,
       },
-      Folders: [],
-      Collections: [],
-      Ciphers: [],
-      Domains: {
-        EquivalentDomains: [],
-        GlobalEquivalentDomains: [],
+      folders: [],
+      collections: [],
+      ciphers: [],
+      domains: {
+        equivalentDomains: [],
+        globalEquivalentDomains: [],
       },
-      Policies: [],
-      PoliciesNew: [],
-      Sends: [],
-      UserDecryption: {
-        MasterPasswordUnlock: {
-          Salt: 'person@example.test',
-          Kdf: {
-            KdfType: 0,
-            Iterations: 600000,
+      policies: [],
+      policiesNew: [],
+      sends: [],
+      userDecryption: {
+        masterPasswordUnlock: {
+          salt: 'person@example.test',
+          kdf: {
+            kdfType: 0,
+            iterations: 600000,
+            memory: null,
+            parallelism: null,
           },
-          MasterKeyEncryptedUserKey: '2.synthetic-user-key',
+          masterKeyWrappedUserKey: '2.synthetic-user-key',
         },
       },
     })
+    expect(body).not.toHaveProperty('Profile')
+    expect(body).not.toHaveProperty('Domains')
+    expect(body).not.toHaveProperty('UserDecryption')
+    expect(body.profile).not.toHaveProperty('Id')
+    expect(body.profile).not.toHaveProperty('Email')
+    expect(body.profile).not.toHaveProperty('AccountKeys')
+    expect(body.domains).not.toHaveProperty('EquivalentDomains')
+    expect(body.domains).not.toHaveProperty('GlobalEquivalentDomains')
+    expect(body.userDecryption).not.toHaveProperty('MasterPasswordUnlock')
+    expect(body.userDecryption.masterPasswordUnlock).not.toHaveProperty('Salt')
+    expect(body.userDecryption.masterPasswordUnlock).not.toHaveProperty('Kdf')
+    expect(body.userDecryption.masterPasswordUnlock).not.toHaveProperty(
+      'MasterKeyEncryptedUserKey',
+    )
+    expect(body.userDecryption.masterPasswordUnlock.kdf).not.toHaveProperty(
+      'KdfType',
+    )
+  })
+
+  it('normalizes SQLite timestamps in sync profile dates for mobile clients', async () => {
+    const user = {
+      ...authUserRecord(),
+      createdAt: '2026-07-10 01:05:47',
+    }
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      profile: {
+        creationDate: string
+      }
+    }
+    expect(body.profile.creationDate).toBe('2026-07-10T01:05:47.000Z')
   })
 
   it('returns empty policy metadata for authenticated users', async () => {
@@ -2927,7 +2998,9 @@ describe('HonoWarden app', () => {
       )
 
       expect(response.status).toBe(200)
-      await expect(response.json()).resolves.toEqual({
+      await expect(response.json()).resolves.toMatchObject({
+        equivalentDomains: [],
+        globalEquivalentDomains: [],
         EquivalentDomains: [],
         GlobalEquivalentDomains: [],
       })
@@ -2963,7 +3036,12 @@ describe('HonoWarden app', () => {
       )
 
       expect(response.status).toBe(200)
-      await expect(response.json()).resolves.toEqual({
+      await expect(response.json()).resolves.toMatchObject({
+        equivalentDomains: [
+          ['example.com', 'example.net'],
+          ['service.test', 'login.service.test'],
+        ],
+        globalEquivalentDomains: [],
         EquivalentDomains: [
           ['example.com', 'example.net'],
           ['service.test', 'login.service.test'],
@@ -2984,12 +3062,12 @@ describe('HonoWarden app', () => {
 
     expect(syncResponse.status).toBe(200)
     await expect(syncResponse.json()).resolves.toMatchObject({
-      Domains: {
-        EquivalentDomains: [
+      domains: {
+        equivalentDomains: [
           ['example.com', 'example.net'],
           ['service.test', 'login.service.test'],
         ],
-        GlobalEquivalentDomains: [],
+        globalEquivalentDomains: [],
       },
     })
   })
@@ -3022,7 +3100,9 @@ describe('HonoWarden app', () => {
       )
 
       expect(response.status).toBe(200)
-      await expect(response.json()).resolves.toEqual({
+      await expect(response.json()).resolves.toMatchObject({
+        equivalentDomains: [['example.com', 'example.net']],
+        globalEquivalentDomains: [],
         EquivalentDomains: [['example.com', 'example.net']],
         GlobalEquivalentDomains: [],
       })
@@ -3055,7 +3135,9 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
+      equivalentDomains: [],
+      globalEquivalentDomains: [],
       EquivalentDomains: [],
       GlobalEquivalentDomains: [],
     })
@@ -3184,8 +3266,52 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
+    const body = await response.json()
+    expect(body).toMatchObject({
       object: 'profile',
+      id: 'user-id',
+      name: 'Person',
+      email: 'person@example.test',
+      emailVerified: true,
+      premium: false,
+      premiumFromOrganization: false,
+      culture: 'en-US',
+      twoFactorEnabled: true,
+      key: '2.synthetic-user-key',
+      accountKeys: {
+        signatureKeyPair: null,
+        publicKeyEncryptionKeyPair: {
+          publicKey: 'synthetic-public-key',
+          wrappedPrivateKey: '2.synthetic-private-key',
+          signedPublicKey: null,
+        },
+        securityState: null,
+      },
+      avatarColor: '#3366cc',
+      creationDate: '2026-07-06T00:00:00.000Z',
+      privateKey: '2.synthetic-private-key',
+      securityStamp: 'security-stamp',
+      forcePasswordReset: false,
+      usesKeyConnector: false,
+      organizations: [],
+      organizationsNew: [],
+      providers: [],
+      providerOrganizations: [],
+      userDecryptionOptions: {
+        hasMasterPassword: true,
+        masterPasswordUnlock: {
+          salt: 'person@example.test',
+          kdf: {
+            kdfType: 0,
+            iterations: 600000,
+            memory: null,
+            parallelism: null,
+          },
+          masterKeyWrappedUserKey: '2.synthetic-user-key',
+        },
+        trustedDeviceOption: null,
+        keyConnectorOption: null,
+      },
       Id: 'user-id',
       Name: 'Person',
       Email: 'person@example.test',
@@ -3196,10 +3322,13 @@ describe('HonoWarden app', () => {
       TwoFactorEnabled: true,
       Key: '2.synthetic-user-key',
       AccountKeys: {
+        signatureKeyPair: null,
         publicKeyEncryptionKeyPair: {
           publicKey: 'synthetic-public-key',
           wrappedPrivateKey: '2.synthetic-private-key',
+          signedPublicKey: null,
         },
+        securityState: null,
       },
       AvatarColor: '#3366cc',
       CreationDate: '2026-07-06T00:00:00.000Z',
@@ -3219,11 +3348,60 @@ describe('HonoWarden app', () => {
           Kdf: {
             KdfType: 0,
             Iterations: 600000,
+            Memory: null,
+            Parallelism: null,
           },
           MasterKeyEncryptedUserKey: '2.synthetic-user-key',
         },
+        TrustedDeviceOption: null,
+        KeyConnectorOption: null,
       },
       KeyConnectorUrl: null,
+    })
+  })
+
+  it('returns a zero-cost canceled billing subscription for mobile startup', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/account/billing/vnext/subscription',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      status: 'canceled',
+      cart: {
+        passwordManager: {
+          seats: {
+            translationKey: 'premiumMembership',
+            quantity: 0,
+            cost: 0,
+            discount: null,
+          },
+          additionalStorage: null,
+        },
+        secretsManager: null,
+        cadence: 'annually',
+        discount: null,
+        estimatedTax: 0,
+      },
+      storage: null,
+      cancelAt: null,
+      canceled: null,
+      nextCharge: null,
+      suspension: null,
+      gracePeriod: null,
     })
   })
 
@@ -3354,8 +3532,8 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
-      Profile: {
-        TwoFactorEnabled: true,
+      profile: {
+        twoFactorEnabled: true,
       },
     })
   })
@@ -3388,7 +3566,7 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
-      Folders: [
+      folders: [
         {
           object: 'folder',
           id: 'folder-id',
@@ -3639,6 +3817,66 @@ describe('HonoWarden app', () => {
         code: 'device_not_found',
       },
       requestId: 'missing-device-identifier-request',
+    })
+  })
+
+  it('accepts authenticated push-token registration as a no-op for mobile clients', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/identifier/fixture-device/token',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pushToken: 'synthetic-mobile-push-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(204)
+    await expect(response.text()).resolves.toBe('')
+  })
+
+  it('rejects malformed mobile push-token registration payloads', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/devices/identifier/fixture-device/token',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'malformed-push-token-request',
+        },
+        body: JSON.stringify({
+          pushToken: null,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+      },
+      requestId: 'malformed-push-token-request',
     })
   })
 
@@ -5910,7 +6148,7 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
-      Ciphers: [
+      ciphers: [
         {
           object: 'cipher',
           id: 'cipher-id',
@@ -6044,28 +6282,28 @@ describe('HonoWarden app', () => {
     expect(aliceResponse.status).toBe(200)
     expect(bobResponse.status).toBe(200)
     const aliceBody = (await aliceResponse.json()) as {
-      Folders: Array<{ id: string; name: string }>
-      Ciphers: Array<{ folderId: string; id: string; name: string }>
+      folders: Array<{ id: string; name: string }>
+      ciphers: Array<{ folderId: string; id: string; name: string }>
     }
     const bobBody = (await bobResponse.json()) as {
-      Folders: Array<{ id: string; name: string }>
-      Ciphers: Array<{ folderId: string; id: string; name: string }>
+      folders: Array<{ id: string; name: string }>
+      ciphers: Array<{ folderId: string; id: string; name: string }>
     }
 
-    expect(aliceBody.Folders).toHaveLength(1)
-    expect(aliceBody.Ciphers).toHaveLength(1)
+    expect(aliceBody.folders).toHaveLength(1)
+    expect(aliceBody.ciphers).toHaveLength(1)
     expect(aliceBody).toMatchObject({
-      Profile: {
-        Id: 'alice-id',
-        Email: 'alice@example.test',
+      profile: {
+        id: 'alice-id',
+        email: 'alice@example.test',
       },
-      Folders: [
+      folders: [
         {
           id: 'alice-folder-id',
           name: '2.alice-encrypted-folder',
         },
       ],
-      Ciphers: [
+      ciphers: [
         {
           id: 'alice-cipher-id',
           folderId: 'alice-folder-id',
@@ -6074,20 +6312,20 @@ describe('HonoWarden app', () => {
       ],
     })
     expect(JSON.stringify(aliceBody)).not.toContain('bob-')
-    expect(bobBody.Folders).toHaveLength(1)
-    expect(bobBody.Ciphers).toHaveLength(1)
+    expect(bobBody.folders).toHaveLength(1)
+    expect(bobBody.ciphers).toHaveLength(1)
     expect(bobBody).toMatchObject({
-      Profile: {
-        Id: 'bob-id',
-        Email: 'bob@example.test',
+      profile: {
+        id: 'bob-id',
+        email: 'bob@example.test',
       },
-      Folders: [
+      folders: [
         {
           id: 'bob-folder-id',
           name: '2.bob-encrypted-folder',
         },
       ],
-      Ciphers: [
+      ciphers: [
         {
           id: 'bob-cipher-id',
           folderId: 'bob-folder-id',
@@ -6155,10 +6393,10 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
-      Ciphers: Array<Record<string, unknown>>
+      ciphers: Array<Record<string, unknown>>
     }
-    expect(body.Ciphers).toHaveLength(50)
-    expect(body.Ciphers[0]).toMatchObject({
+    expect(body.ciphers).toHaveLength(50)
+    expect(body.ciphers[0]).toMatchObject({
       object: 'cipher',
       id: 'cipher-1',
       type: 1,
@@ -6168,11 +6406,11 @@ describe('HonoWarden app', () => {
         value: '2.encrypted-future-1',
       },
     })
-    expect(body.Ciphers[1]).toMatchObject({
+    expect(body.ciphers[1]).toMatchObject({
       id: 'cipher-2',
       favorite: true,
     })
-    expect(body.Ciphers[4]).toMatchObject({
+    expect(body.ciphers[4]).toMatchObject({
       id: 'cipher-5',
       type: 2,
       secureNote: {
@@ -6182,7 +6420,7 @@ describe('HonoWarden app', () => {
         value: '2.encrypted-future-5',
       },
     })
-    expect(body.Ciphers[49]).toMatchObject({
+    expect(body.ciphers[49]).toMatchObject({
       id: 'cipher-50',
       favorite: true,
       unknownEncryptedEnvelope: {
@@ -6863,6 +7101,42 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('keeps forwarded HTTPS origins in server config URLs', async () => {
+    const response = await app.request('http://vault.example.test/api/config', {
+      headers: {
+        'X-Forwarded-Proto': 'https',
+      },
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      environment: {
+        vault: 'https://vault.example.test',
+        api: 'https://vault.example.test/api',
+        identity: 'https://vault.example.test/identity',
+        notifications: 'https://vault.example.test/notifications',
+      },
+    })
+  })
+
+  it('keeps Cloudflare visitor HTTPS origins in server config URLs', async () => {
+    const response = await app.request('http://vault.example.test/api/config', {
+      headers: {
+        'CF-Visitor': JSON.stringify({ scheme: 'https' }),
+      },
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      environment: {
+        vault: 'https://vault.example.test',
+        api: 'https://vault.example.test/api',
+        identity: 'https://vault.example.test/identity',
+        notifications: 'https://vault.example.test/notifications',
+      },
+    })
+  })
+
   it('returns structured JSON for unknown routes', async () => {
     const response = await app.request('/missing', {
       headers: {
@@ -6986,6 +7260,15 @@ function decodeJwtHeader(token: string): Record<string, unknown> {
 
   return JSON.parse(
     Buffer.from(encodedHeader ?? '', 'base64url').toString('utf8'),
+  ) as Record<string, unknown>
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const [, encodedPayload] = token.split('.')
+  expect(encodedPayload).toBeDefined()
+
+  return JSON.parse(
+    Buffer.from(encodedPayload ?? '', 'base64url').toString('utf8'),
   ) as Record<string, unknown>
 }
 

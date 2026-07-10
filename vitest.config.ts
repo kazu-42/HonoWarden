@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
@@ -6,5 +6,6 @@ export default defineConfig({
     globals: false,
     maxWorkers: 2,
     testTimeout: 30_000,
+    exclude: [...configDefaults.exclude, 'test/.tmp/**'],
   },
 })
