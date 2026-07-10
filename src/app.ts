@@ -1348,36 +1348,52 @@ app.post('/identity/connect/token', async (c) => {
 
       if (
         !isTotpProvider(grantDecision.grant.twoFactorProvider) ||
-        !grantDecision.grant.twoFactorToken ||
-        !grantDecision.grant.twoFactorCode
+        (!grantDecision.grant.twoFactorToken &&
+          !grantDecision.grant.twoFactorCode)
       ) {
         return await recordAccountFailure()
       }
 
-      const challengeHash = await hashTotpChallengeToken(
-        tokenSecret,
-        grantDecision.grant.twoFactorToken,
-      )
-      const challenge = await findActiveTotpChallengeByHash(
-        c.env.DB,
-        challengeHash,
-        now,
-      )
+      let totpCode =
+        grantDecision.grant.twoFactorCode ??
+        grantDecision.grant.twoFactorToken ??
+        null
 
       if (
-        !challenge ||
-        challenge.userId !== user.id ||
-        challenge.deviceIdentifier !== device.identifier
+        grantDecision.grant.twoFactorToken &&
+        grantDecision.grant.twoFactorCode
       ) {
-        return await recordAccountFailure()
+        const challengeHash = await hashTotpChallengeToken(
+          tokenSecret,
+          grantDecision.grant.twoFactorToken,
+        )
+        const challenge = await findActiveTotpChallengeByHash(
+          c.env.DB,
+          challengeHash,
+          now,
+        )
+
+        if (
+          !challenge ||
+          challenge.userId !== user.id ||
+          challenge.deviceIdentifier !== device.identifier
+        ) {
+          return await recordAccountFailure()
+        }
+
+        const challengeConsumed = await consumeTotpChallenge(c.env.DB, {
+          challengeId: challenge.id,
+          consumedAt: now,
+        })
+
+        if (!challengeConsumed) {
+          return await recordAccountFailure()
+        }
+
+        totpCode = grantDecision.grant.twoFactorCode
       }
 
-      const challengeConsumed = await consumeTotpChallenge(c.env.DB, {
-        challengeId: challenge.id,
-        consumedAt: now,
-      })
-
-      if (!challengeConsumed) {
+      if (!totpCode) {
         return await recordAccountFailure()
       }
 
@@ -1399,7 +1415,7 @@ app.post('/identity/connect/token', async (c) => {
 
       const verification = await verifyTotpCode({
         secretBase32,
-        code: grantDecision.grant.twoFactorCode,
+        code: totpCode,
         nowUnixSeconds: issuedAt,
         lastAcceptedStep: user.totpLastAcceptedStep,
       })

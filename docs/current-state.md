@@ -302,7 +302,8 @@ Deferred at that checkpoint:
 
 - server-side user export API (implemented later in
   `Week 26 User Backup Export API`)
-- live client re-auth evidence
+- live client re-auth evidence (captured later for CLI plus HTTP auth
+  lifecycle in `Week 26 Live Client Evidence`)
 
 The project remains pre-alpha and must not be used to store real secrets.
 
@@ -710,13 +711,14 @@ Implemented:
 
 Current blockers reported by the preflight:
 
-- none after CLI live-client evidence was recorded locally
+- none after CLI and browser-extension live-client evidence was recorded
+  locally
 
 Not implemented:
 
 - real Cloudflare staging deploy
 - deployed Worker HTTP health smoke
-- non-CLI live client evidence
+- desktop/mobile live client evidence
 
 ## Week 26 Cloudflare Resource Evidence
 
@@ -735,7 +737,8 @@ Implemented:
 
 Current blockers reported by the preflight:
 
-- none after CLI live-client evidence was recorded locally
+- none after CLI and browser-extension live-client evidence was recorded
+  locally
 
 Not implemented:
 
@@ -744,7 +747,7 @@ Not implemented:
 - route writes
 - production migration apply
 - deployed Worker HTTP health smoke
-- non-CLI live client evidence
+- desktop/mobile live client evidence
 
 ## Week 26 Live Client Evidence
 
@@ -764,14 +767,28 @@ Implemented:
 - release gate update requiring linked live evidence for promoted matrix rows
 - Android client release metadata refreshed to `2026.6.1` build `21713` while
   keeping the row at `fixture_only`
+- official browser extension `2026.6.1` asset provenance and SHA-256 evidence
+- browser-extension self-hosted host selection against local wrangler dev
+- browser-extension password login, `/api/sync`, account profile reads, and
+  empty-vault render with redacted evidence
+- `compat/client-matrix.json` browser extension row promoted to `live_smoke`
+- browser-extension release evidence document under
+  `docs/release/browser-extension-live-client-evidence.md`
+- release gate update listing all promoted row live-evidence paths
+- official CLI one-step TOTP password grant live evidence
+- direct HTTP TOTP setup, change, disable, refresh-grant recent-auth rejection,
+  and revoke-all-other-sessions live evidence using synthetic local state
+- `compat/client-matrix.json` CLI row linked to
+  `docs/release/totp-recent-auth-live-evidence.md`
+- release gate update requiring the TOTP/recent-auth evidence markers whenever
+  the CLI live-evidence flow list claims `totp_login`
 
 Not implemented:
 
-- browser extension live evidence
 - desktop live evidence
 - mobile live evidence
-- live TOTP login evidence
-- live item mutation evidence
+- browser-extension, desktop, Android, or iOS TOTP UX evidence
+- live item mutation evidence beyond the existing CLI smoke
 
 ## Week 26 Server Config Fixture Coverage
 
@@ -904,7 +921,8 @@ Implemented:
 
 Not implemented:
 
-- live client evidence for revoke-all-other-sessions
+- browser-extension, desktop, Android, or iOS live client evidence for
+  revoke-all-other-sessions
 - account management UI or admin tooling for session inventory
 
 ## Week 26 Device List API

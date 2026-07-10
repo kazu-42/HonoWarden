@@ -16,6 +16,7 @@ const releaseDocs = [
   'tagging-runbook.md',
   'publication-gate.md',
   'live-client-evidence.md',
+  'totp-recent-auth-live-evidence.md',
   'live-regression-matrix.md',
   'two-user-dogfood-evidence.md',
   'backup-restore-drill-evidence.md',

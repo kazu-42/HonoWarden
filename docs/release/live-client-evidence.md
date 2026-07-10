@@ -148,9 +148,10 @@ staging evidence.
 
 ## Limits
 
-This evidence does not prove browser extension, desktop app, Android, iOS, TOTP
-login through a live client, refresh rotation through a live client, attachment
-upload/download/delete behavior, folder mutation through a live client,
-Organizations, Send, Web Vault behavior, or any public registration path. Those
-surfaces remain explicit known limitations until separate live evidence is
-recorded.
+This evidence does not prove browser extension, desktop app, Android, iOS,
+attachment upload/download/delete behavior, folder mutation through a live
+client, Organizations, Send, Web Vault behavior, or any public registration
+path. CLI TOTP login and recent-auth lifecycle evidence is recorded separately
+in `docs/release/totp-recent-auth-live-evidence.md`; browser-extension,
+desktop, Android, and iOS TOTP UX remain explicit known limitations until
+separate live evidence is recorded.

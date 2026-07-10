@@ -1,0 +1,84 @@
+{
+  "title": "HON-52 browser extension live evidence",
+  "slug": "hon-52-browser-extension-live-evidence",
+  "created_at": "2026-07-09T23:02:04+00:00",
+  "updated_at": "2026-07-09T23:34:53Z",
+  "status": "done",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local synthetic browser-extension evidence only; no production Cloudflare writes or real vault data."
+  },
+  "packets": [
+    {
+      "id": "asset-provenance",
+      "status": "done",
+      "evidence": [
+        "browser-v2026.6.1 official GitHub release selected",
+        "dist-chrome-2026.6.1.zip SHA-256 fcd29c5971d9b218ad9159717a19c38cca5150f2a0aa909ddf805bd7695d097e",
+        "manifest version 2026.6.1, Manifest V3 background service worker"
+      ]
+    },
+    {
+      "id": "synthetic-account-crypto",
+      "status": "done",
+      "evidence": [
+        "Official CLI wasm crypto generated the synthetic wrapped user key, public key, and wrapped private key.",
+        "Wrapped user key decrypts with the master password path and legacy master-key path.",
+        "Wrapped private key decrypts with the unwrapped user key."
+      ]
+    },
+    {
+      "id": "local-worker",
+      "status": "done",
+      "evidence": [
+        "Local D1 was reset and migrated under ignored test/.tmp/hon-52-browser-extension/wrangler-state.",
+        "Synthetic account bootstrap returned 201 against https://127.0.0.1:8790.",
+        "Direct token exchange and official CLI binary login succeeded before browser-extension automation."
+      ]
+    },
+    {
+      "id": "browser-automation",
+      "status": "done",
+      "evidence": [
+        "Official browser-v2026.6.1 extension artifact loaded in Brave Chromium host.",
+        "Extension saved self-hosted host 127.0.0.1:8790 and completed password login.",
+        "CDP recorded /api/config, /identity/accounts/prelogin/password, /identity/connect/token, and /api/accounts/profile returning 200.",
+        "wrangler dev logged GET /api/sync 200 during the browser-extension login run.",
+        "Popup reached #/tabs/vault and rendered the empty-vault loaded state with zero console errors and zero runtime exceptions."
+      ]
+    },
+    {
+      "id": "docs-tests-pr-linear",
+      "status": "done",
+      "evidence": [
+        "compat/client-matrix.json promotes browser_extension 2026.6.1 to live_smoke.",
+        "docs/release/browser-extension-live-client-evidence.md records redacted evidence and limits.",
+        "docs/compatibility-matrix.md links the browser-extension live evidence.",
+        "Verification commands are recorded after this workflow state update."
+      ]
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "pnpm format",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm compat:test",
+      "pnpm test",
+      "pnpm release:gate -- --strict",
+      "pnpm brand:scan"
+    ],
+    "evidence": [
+      "format passed after pnpm format:write normalized markdown wrapping",
+      "tsc --noEmit passed",
+      "eslint . passed",
+      "compat test suite passed: 5 files, 121 tests",
+      "full test suite passed: 103 files, 874 tests",
+      "release gate strict passed with overall ready",
+      "brand scan passed",
+      "release-evidence targeted rerun passed after avoiding concurrent vitest temp-file collision: 8 files, 44 tests"
+    ]
+  }
+}

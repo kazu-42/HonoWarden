@@ -30,6 +30,7 @@ type ClientMatrixEntry = {
   verificationLevel: string
   liveEvidence?: {
     path: string
+    additionalPaths?: string[]
     status: string
     recordedAt: string
     clientVersion: string
@@ -146,9 +147,9 @@ describe('client compatibility matrix', () => {
           status: 'passed',
           clientVersion: entry.version,
         })
-        expect(entry.liveEvidence?.path).toMatch(
-          /^docs\/release\/[A-Za-z0-9/_-]+\.md$/,
-        )
+        for (const evidencePath of matrixLiveEvidencePaths(entry)) {
+          expect(evidencePath).toMatch(/^docs\/release\/[A-Za-z0-9/_-]+\.md$/)
+        }
         expect(entry.liveEvidence?.recordedAt).toMatch(
           /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
         )
@@ -378,19 +379,53 @@ describe('client compatibility matrix', () => {
     )
   })
 
-  it('records the alpha CLI live smoke while keeping other surfaces conservative', () => {
+  it('records live smoke rows while keeping unproven surfaces conservative', () => {
+    const browserEntry = matrix.entries.find(
+      (entry) => entry.surface === 'browser_extension',
+    )
+    expect(browserEntry?.verificationLevel).toBe('live_smoke')
+    expect(browserEntry?.liveEvidence?.path).toBe(
+      'docs/release/browser-extension-live-client-evidence.md',
+    )
+    expect(browserEntry?.liveEvidence?.flows).toEqual(
+      expect.arrayContaining([
+        'config',
+        'prelogin',
+        'password_grant',
+        'empty_sync',
+        'account_profile',
+      ]),
+    )
+
     const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
     expect(cliEntry?.verificationLevel).toBe('live_smoke')
     expect(cliEntry?.liveEvidence?.path).toBe(
       'docs/release/live-client-evidence.md',
     )
+    expect(cliEntry?.liveEvidence?.additionalPaths).toContain(
+      'docs/release/totp-recent-auth-live-evidence.md',
+    )
+    expect(cliEntry?.liveEvidence?.flows).toEqual(
+      expect.arrayContaining(['refresh_grant', 'session_revoke', 'totp_login']),
+    )
 
     const nonCliEntries = matrix.entries.filter(
-      (entry) => entry.surface !== 'cli',
+      (entry) => !['browser_extension', 'cli'].includes(entry.surface),
     )
     for (const entry of nonCliEntries) {
       expect(entry.verificationLevel).toBe('fixture_only')
     }
+
+    const compatibilityMatrixDoc = readFileSync(
+      compatibilityMatrixDocPath,
+      'utf8',
+    )
+    expect(compatibilityMatrixDoc).toContain(
+      'browser-extension-live-client-evidence.md',
+    )
+    expect(compatibilityMatrixDoc).toContain(
+      'totp-recent-auth-live-evidence.md',
+    )
   })
 
   it('documents repeatable live regression promotion requirements', () => {
@@ -415,4 +450,15 @@ function readFixtureFlows(): FixtureFlowManifest {
   return JSON.parse(
     readFileSync(fixtureFlowsPath, 'utf8'),
   ) as FixtureFlowManifest
+}
+
+function matrixLiveEvidencePaths(entry: ClientMatrixEntry): string[] {
+  if (!entry.liveEvidence) {
+    return []
+  }
+
+  return [
+    entry.liveEvidence.path,
+    ...(entry.liveEvidence.additionalPaths ?? []),
+  ]
 }
