@@ -6,6 +6,8 @@ import { isGlobalRequestQuotaEnabled } from './domain/request-quota'
 import { handleInquiryEmail } from './inquiry-email'
 import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
 
+export { NotificationHub } from './notification-hub'
+
 export default {
   fetch(request: Request, env: Bindings, context: ExecutionContext) {
     return app.fetch(request, env, context)

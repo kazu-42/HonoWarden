@@ -640,9 +640,16 @@ describe('HonoWarden app', () => {
         },
       ],
     })
+    const notificationFetch = vi.fn().mockResolvedValue(new Response(null))
+    const notificationHub = {
+      idFromName: vi.fn((name: string) => `do:${name}`),
+      get: vi.fn(() => ({ fetch: notificationFetch })),
+    }
     const env = {
       DB: database as unknown as D1Database,
+      NOTIFICATION_HUB: notificationHub as unknown as DurableObjectNamespace,
       HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
       HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
       HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
     }
@@ -719,6 +726,33 @@ describe('HonoWarden app', () => {
       env,
     )
     expect(approvalResponse.status).toBe(200)
+    await vi.waitFor(() => expect(notificationFetch).toHaveBeenCalledOnce())
+    expect(notificationHub.idFromName).toHaveBeenCalledWith(user.id)
+    expect(notificationFetch).toHaveBeenCalledWith(
+      'https://notification-hub/notify',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ requestId: created.id, userId: user.id }),
+      }),
+    )
+
+    const replayResponse = await app.request(
+      `/api/auth-requests/${created.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestApproved: true,
+          key: 'opaque-encrypted-key',
+        }),
+      },
+      env,
+    )
+    expect(replayResponse.status).toBe(200)
+    expect(notificationFetch).toHaveBeenCalledOnce()
 
     const pollResponse = await app.request(
       `/api/auth-requests/${created.id}/response?code=high-entropy-access-code`,
@@ -731,6 +765,59 @@ describe('HonoWarden app', () => {
       requestApproved: true,
       key: 'opaque-encrypted-key',
     })
+  })
+
+  it('keeps polling authoritative when auth-request notification delivery fails', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const row = authRequestRecord()
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      authRequests: [row],
+      devices: [deviceRecord()],
+    })
+    const notificationFetch = vi
+      .fn()
+      .mockRejectedValue(new Error('do unavailable'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const response = await app.request(
+      '/api/auth-requests/auth-request-id',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'approval-with-notification-failure',
+        },
+        body: JSON.stringify({
+          requestApproved: false,
+        }),
+      },
+      {
+        DB: database as unknown as D1Database,
+        NOTIFICATION_HUB: {
+          idFromName: () => 'user-object',
+          get: () => ({ fetch: notificationFetch }),
+        } as unknown as DurableObjectNamespace,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'auth-request-id',
+      requestApproved: false,
+    })
+    await vi.waitFor(() => expect(error).toHaveBeenCalledOnce())
+    expect(row.status).toBe('denied')
+    expect(error.mock.calls[0]?.[0]).toContain(
+      'auth_request_notification_failed',
+    )
+    expect(error.mock.calls[0]?.[0]).not.toContain('security-stamp')
   })
 
   it('rejects auth-request self-approval without revealing transition details', async () => {
