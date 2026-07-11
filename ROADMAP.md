@@ -6,6 +6,12 @@ Start date: 2026-07-06
 Initial six-month target: 2027-01-03  
 Target release: `v0.1.0-alpha`
 
+The current post-alpha execution sequence, Linear hierarchy, usable-state exit
+criteria, and issue-capacity policy are maintained in
+[docs/implementation-plan.md](docs/implementation-plan.md). The six-month
+schedule below remains the historical product roadmap; the implementation plan
+is authoritative for current delivery order.
+
 ## Target For v0.1.0-alpha
 
 HonoWarden should let official upstream browser extension, desktop, and mobile clients connect to a self-hosted URL and use a minimal personal vault:
