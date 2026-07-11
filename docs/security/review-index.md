@@ -1,6 +1,6 @@
 # Security Review Index
 
-Last reviewed: 2026-07-09.
+Last reviewed: 2026-07-11.
 
 Use these documents together when reviewing alpha readiness:
 
@@ -15,6 +15,8 @@ Use these documents together when reviewing alpha readiness:
 - [Secret Rotation Drill Evidence](../release/secret-rotation-drill-evidence.md)
 - [Known Limitations](known-limitations.md)
 - [Dependency Audit Evidence](dependency-audit.md)
+- [Independent Assessment Engagement](assessment-engagement.md)
+- [Independent Assessment Finding Template](assessment-finding-template.md)
 
 ## Local Evidence
 
@@ -39,3 +41,6 @@ Use these documents together when reviewing alpha readiness:
 - Do not treat the incident response tabletop or formal secret rotation dry-run
   as a completed live secret rotation, Cloudflare account hardening, external
   audit, or production incident drill.
+- Do not treat the engagement pack as authorization, an independent assessment,
+  or a passed external audit. Active testing requires the private `HON-87`
+  authorization gate and an independent assessor.

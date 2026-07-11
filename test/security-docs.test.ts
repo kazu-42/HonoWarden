@@ -12,6 +12,8 @@ const securityDocPaths = [
   'incident-response-exercise.md',
   'known-limitations.md',
   'dependency-audit.md',
+  'assessment-engagement.md',
+  'assessment-finding-template.md',
   'review-index.md',
 ] as const
 
@@ -108,6 +110,25 @@ describe('security review materials', () => {
     expect(dependencyAudit).toContain('pnpm audit --audit-level low')
     expect(dependencyAudit).toContain('No known vulnerabilities found')
     expect(dependencyAudit).toContain('pnpm-lock.yaml')
+
+    const engagement = readSecurityDoc('assessment-engagement.md')
+    expect(engagement).toContain('Status: not authorized')
+    expect(engagement).toContain('## Authorization Gate')
+    expect(engagement).toContain('## In-Scope Targets')
+    expect(engagement).toContain('## Prohibited Actions')
+    expect(engagement).toContain('## Stop Conditions')
+    expect(engagement).toContain('production is out of scope')
+    expect(engagement).toContain('synthetic accounts')
+    expect(engagement).toContain('exact Git commit')
+    expect(engagement).toContain('source IP')
+    expect(engagement).toContain('HON-87')
+
+    const findingTemplate = readSecurityDoc('assessment-finding-template.md')
+    expect(findingTemplate).toContain('## Severity')
+    expect(findingTemplate).toContain('## Redacted Reproduction')
+    expect(findingTemplate).toContain('## Remediation Owner And SLA')
+    expect(findingTemplate).toContain('## Independent Retest')
+    expect(findingTemplate).toContain('Risk acceptance')
   })
 })
 
