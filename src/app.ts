@@ -68,6 +68,7 @@ import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
 import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
 import { resolveRuntimeEnvironment } from './infra/environment'
+import { isDurableNotificationEnabled } from './notification-hub'
 import { buildServerConfig } from './protocol/config'
 import {
   createCipherAttachment,
@@ -592,6 +593,27 @@ app.get('/notifications/hub', async (c) => {
   )
   if (!auth.ok) {
     return auth.response
+  }
+
+  if (
+    isDurableNotificationEnabled(c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED)
+  ) {
+    if (!c.env.NOTIFICATION_HUB) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Notification hub is unavailable.',
+        ),
+        503,
+      )
+    }
+    const stub = c.env.NOTIFICATION_HUB.get(
+      c.env.NOTIFICATION_HUB.idFromName(auth.user.id),
+    )
+    return stub.fetch(
+      new Request('https://notification-hub/connect', c.req.raw),
+    )
   }
 
   if (typeof WebSocketPair === 'undefined') {
@@ -5002,6 +5024,7 @@ async function respondToAuthRequestRoute(c: AppContext) {
         },
         target: { type: 'auth_request', id },
       })
+      notifyAuthRequestResponse(c, auth.user.id, id)
     }
 
     return c.json(buildAuthRequestResponse(updated))
@@ -5014,6 +5037,50 @@ async function respondToAuthRequestRoute(c: AppContext) {
       ),
       503,
     )
+  }
+}
+
+function notifyAuthRequestResponse(
+  c: AppContext,
+  userId: string,
+  requestId: string,
+): void {
+  if (
+    !isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) ||
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return
+  }
+
+  const delivery = c.env.NOTIFICATION_HUB.get(
+    c.env.NOTIFICATION_HUB.idFromName(userId),
+  )
+    .fetch('https://notification-hub/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, userId }),
+    })
+    .then((response) => {
+      if (!response.ok)
+        throw new Error(`notification_status_${response.status}`)
+    })
+    .catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          event: 'auth_request_notification_failed',
+          requestId: c.get('requestId'),
+          authRequestId: requestId,
+          reason: error instanceof Error ? error.message : 'unknown_error',
+        }),
+      )
+    })
+
+  try {
+    c.executionCtx.waitUntil(delivery)
+  } catch {
+    void delivery
   }
 }
 

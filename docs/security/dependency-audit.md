@@ -1,6 +1,6 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-07-06.
+Last scanned: 2026-07-11.
 
 This is a point-in-time dependency audit snapshot for the repository state used
 by the Week 24 security review materials. Re-run the command before every
@@ -22,7 +22,7 @@ No known vulnerabilities found
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `7c7a65a039d55eee3eea44d511da9f820c833af974d1bc9dc998d54fa43d3a0e`
+  `6ccdb94979a39b4e71afa6bf8ab556937dca35caf76812808a1b1a419537ba5b`
 
 ## Scope
 

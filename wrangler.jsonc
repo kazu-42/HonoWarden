@@ -15,6 +15,7 @@
     "HONOWARDEN_ALLOWED_EMAILS": "",
     "HONOWARDEN_AUDIT_LOGS": "false",
     "HONOWARDEN_AUTH_REQUESTS_ENABLED": "false",
+    "HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED": "false",
     "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
     "HONOWARDEN_ENV": "development",
     "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
@@ -40,6 +41,12 @@
       "bucket_name": "honowarden-vault-objects",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "NOTIFICATION_HUB", "class_name": "NotificationHub" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NotificationHub"] }],
   "env": {
     "staging": {
       "name": "honowarden-staging",
@@ -55,6 +62,7 @@
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
         "HONOWARDEN_AUTH_REQUESTS_ENABLED": "true",
+        "HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED": "true",
         "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "staging",
         "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
@@ -80,6 +88,11 @@
           "bucket_name": "honowarden-staging-vault-objects",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "NOTIFICATION_HUB", "class_name": "NotificationHub" },
+        ],
+      },
     },
     "production": {
       "name": "honowarden",
@@ -95,6 +108,7 @@
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
         "HONOWARDEN_AUTH_REQUESTS_ENABLED": "false",
+        "HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED": "false",
         "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
         "HONOWARDEN_ENV": "production",
         "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
@@ -120,6 +134,11 @@
           "bucket_name": "honowarden-vault-objects",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "NOTIFICATION_HUB", "class_name": "NotificationHub" },
+        ],
+      },
     },
   },
 }
