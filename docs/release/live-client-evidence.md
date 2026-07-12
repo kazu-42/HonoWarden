@@ -24,9 +24,9 @@ Proxy: local HTTPS compression-stripping proxy
 
 This evidence records one real CLI binary login, sync, and item lifecycle smoke
 against the HonoWarden Worker running through wrangler dev with local D1 state.
-It is a smoke test, not a full client regression suite. Browser extension and
-Android now have separate live-smoke evidence; desktop and iOS rows remain
-`fixture_only` until their own live runs are captured with redacted evidence.
+It is a smoke test, not a full client regression suite. Browser extension,
+Desktop, and Android now have separate live-smoke evidence; iOS remains
+`fixture_only` until its own live run is captured with redacted evidence.
 Attachment sync metadata is covered by local fixtures only; this live run did
 not upload, download, or delete attachments.
 

@@ -68,7 +68,11 @@ import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
 import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
 import { resolveRuntimeEnvironment } from './infra/environment'
-import { isDurableNotificationEnabled } from './notification-hub'
+import {
+  authRequestNotificationTypes,
+  isDurableNotificationEnabled,
+} from './notification-hub'
+import type { AuthRequestNotificationType } from './notification-hub'
 import { buildServerConfig } from './protocol/config'
 import {
   createCipherAttachment,
@@ -639,6 +643,87 @@ app.get('/notifications/hub', async (c) => {
   })
 })
 
+app.get('/notifications/anonymous-hub', async (c) => {
+  if (!isWebSocketUpgrade(c.req.raw)) {
+    c.header('Upgrade', 'websocket')
+
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'websocket_required',
+        'Anonymous notification hub requires a WebSocket upgrade.',
+      ),
+      426,
+    )
+  }
+
+  const runtime = resolveAuthRequestRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const token = c.req.query('Token') ?? c.req.query('token')
+  if (!token || token.length > 128) {
+    return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+  }
+
+  if (
+    !isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) ||
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Anonymous notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const authRequest = await findAuthRequestVerifierById(
+      c.env.DB,
+      token,
+      new Date().toISOString(),
+    )
+    if (!authRequest?.userId) {
+      return c.json(authRequestNotFoundError(c.get('requestId')), 404)
+    }
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Anonymous notification hub lookup failed.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const stub = c.env.NOTIFICATION_HUB.get(
+      c.env.NOTIFICATION_HUB.idFromName(
+        authRequestNotificationObjectName(token),
+      ),
+    )
+    return await stub.fetch(
+      new Request('https://notification-hub/connect', c.req.raw),
+    )
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'notification_unavailable',
+        'Anonymous notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+})
+
 async function handlePrelogin(c: AppContext) {
   const body = await readJsonBody(c.req.raw)
   const decision = resolvePrelogin(body, c.env?.HONOWARDEN_ALLOWED_EMAILS)
@@ -798,6 +883,7 @@ app.all('/api/collections/*', unsupportedAlphaFeature)
 app.all('/api/emergency-access', unsupportedAlphaFeature)
 app.all('/api/emergency-access/*', unsupportedAlphaFeature)
 app.post('/api/auth-requests', createAuthRequestRoute)
+app.post('/api/auth-requests/', createAuthRequestRoute)
 app.get('/api/auth-requests/pending', listPendingAuthRequestsRoute)
 app.get('/api/auth-requests/:id/response', pollAuthRequestRoute)
 app.get('/api/auth-requests/:id', readAuthRequestRoute)
@@ -4075,7 +4161,7 @@ function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
       memory: user.kdfMemory,
       parallelism: user.kdfParallelism,
     },
-    masterKeyWrappedUserKey: user.userKey,
+    masterKeyEncryptedUserKey: user.userKey,
   }
 }
 
@@ -4470,6 +4556,7 @@ function apiError(
     | 'invalid_request'
     | 'invalid_token'
     | 'missing_token'
+    | 'notification_unavailable'
     | 'rate_limited'
     | 'reauth_required'
     | 'revision_conflict'
@@ -4850,6 +4937,9 @@ async function createAuthRequestRoute(c: AppContext) {
       outcome: 'success',
       target: { type: 'auth_request', id },
     })
+    if (owner) {
+      notifyAuthRequest(c, owner.id, id, authRequestNotificationTypes.pending)
+    }
 
     return c.json(
       buildAuthRequestResponse({
@@ -5024,7 +5114,12 @@ async function respondToAuthRequestRoute(c: AppContext) {
         },
         target: { type: 'auth_request', id },
       })
-      notifyAuthRequestResponse(c, auth.user.id, id)
+      notifyAuthRequest(
+        c,
+        auth.user.id,
+        id,
+        authRequestNotificationTypes.response,
+      )
     }
 
     return c.json(buildAuthRequestResponse(updated))
@@ -5040,10 +5135,11 @@ async function respondToAuthRequestRoute(c: AppContext) {
   }
 }
 
-function notifyAuthRequestResponse(
+function notifyAuthRequest(
   c: AppContext,
   userId: string,
   requestId: string,
+  type: AuthRequestNotificationType,
 ): void {
   if (
     !isDurableNotificationEnabled(
@@ -5054,13 +5150,17 @@ function notifyAuthRequestResponse(
     return
   }
 
+  const objectName =
+    type === authRequestNotificationTypes.pending
+      ? userId
+      : authRequestNotificationObjectName(requestId)
   const delivery = c.env.NOTIFICATION_HUB.get(
-    c.env.NOTIFICATION_HUB.idFromName(userId),
+    c.env.NOTIFICATION_HUB.idFromName(objectName),
   )
     .fetch('https://notification-hub/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, userId }),
+      body: JSON.stringify({ requestId, userId, type }),
     })
     .then((response) => {
       if (!response.ok)
@@ -5082,6 +5182,10 @@ function notifyAuthRequestResponse(
   } catch {
     void delivery
   }
+}
+
+function authRequestNotificationObjectName(requestId: string): string {
+  return `auth-request:${requestId}`
 }
 
 async function pollAuthRequestRoute(c: AppContext) {

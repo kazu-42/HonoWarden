@@ -21,6 +21,9 @@
       "verificationLevel": "live_smoke",
       "liveEvidence": {
         "path": "docs/release/browser-extension-live-client-evidence.md",
+        "additionalPaths": [
+          "docs/release/login-with-device-live-client-evidence.md"
+        ],
         "status": "passed",
         "recordedAt": "2026-07-09T23:23:19Z",
         "clientVersion": "2026.6.1",
@@ -29,7 +32,9 @@
           "prelogin",
           "password_grant",
           "empty_sync",
-          "account_profile"
+          "account_profile",
+          "login_with_device",
+          "auth_request_grant"
         ]
       },
       "coveredFlows": [
@@ -61,6 +66,7 @@
       "knownIssues": [
         "Live browser-extension smoke covers self-hosted environment selection, password login, initial sync, account profile reads, and empty-vault render against a local synthetic account only.",
         "The browser run used Brave's Chromium extension host because the installed branded Chrome build did not expose the unpacked extension under the local evidence flags.",
+        "The staging login-with-device run used an isolated Chrome for Testing host with unsafe extension debugging enabled only for the pinned unpacked test extension.",
         "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no browser-extension TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
@@ -76,7 +82,25 @@
         "repositoryRef": "client-apps",
         "releaseSelector": "latest non-draft, non-prerelease release whose tag starts with desktop-v"
       },
-      "verificationLevel": "fixture_only",
+      "verificationLevel": "live_smoke",
+      "liveEvidence": {
+        "path": "docs/release/login-with-device-live-client-evidence.md",
+        "additionalPaths": [
+          "docs/release/desktop-notification-transport-evidence.md"
+        ],
+        "status": "passed",
+        "recordedAt": "2026-07-11T23:47:40Z",
+        "clientVersion": "2026.6.1",
+        "flows": [
+          "config",
+          "prelogin",
+          "password_grant",
+          "empty_sync",
+          "known_device_preflight",
+          "auth_request_notification",
+          "auth_request_approval"
+        ]
+      },
       "coveredFlows": [
         "config",
         "prelogin",
@@ -104,7 +128,9 @@
         "totp_login"
       ],
       "knownIssues": [
-        "No live client login or sync run is recorded for this exact version.",
+        "Live Desktop smoke covers self-hosted staging selection, password login, initial sync, pending login notification, approval, and empty-vault rendering with a synthetic account only.",
+        "The live run used the official ACCESS_TOKEN_LOCATION=DISK switch and an isolated Electron user-data directory; it did not patch the official app or modify a normal official-client Keychain entry.",
+        "Item create, update, delete, logout/login persistence, and a full live regression remain unverified for Desktop.",
         "TOTP login has official CLI plus HTTP auth lifecycle evidence only; no desktop TOTP evidence is recorded yet.",
         "Encrypted device key and bulk trust update have fixture coverage only; no live client evidence is recorded yet.",
         "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."

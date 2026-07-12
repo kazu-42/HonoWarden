@@ -655,7 +655,7 @@ describe('HonoWarden app', () => {
     }
 
     const createResponse = await app.request(
-      '/api/auth-requests',
+      '/api/auth-requests/',
       {
         method: 'POST',
         headers: {
@@ -690,6 +690,20 @@ describe('HonoWarden app', () => {
     expect(authRequests).toHaveLength(1)
     expect(authRequests[0]).not.toHaveProperty('accessCode')
     expect(authRequests[0]?.accessCodeHash).toMatch(/^hmac-sha256:/)
+    await vi.waitFor(() => expect(notificationFetch).toHaveBeenCalledOnce())
+    expect(notificationHub.idFromName).toHaveBeenCalledWith(user.id)
+    expect(notificationFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://notification-hub/notify',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          requestId: created.id,
+          userId: user.id,
+          type: 15,
+        }),
+      }),
+    )
 
     const pendingResponse = await app.request(
       '/api/auth-requests/pending',
@@ -726,13 +740,21 @@ describe('HonoWarden app', () => {
       env,
     )
     expect(approvalResponse.status).toBe(200)
-    await vi.waitFor(() => expect(notificationFetch).toHaveBeenCalledOnce())
-    expect(notificationHub.idFromName).toHaveBeenCalledWith(user.id)
-    expect(notificationFetch).toHaveBeenCalledWith(
+    await vi.waitFor(() => expect(notificationFetch).toHaveBeenCalledTimes(2))
+    expect(notificationHub.idFromName).toHaveBeenNthCalledWith(
+      2,
+      `auth-request:${created.id}`,
+    )
+    expect(notificationFetch).toHaveBeenNthCalledWith(
+      2,
       'https://notification-hub/notify',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ requestId: created.id, userId: user.id }),
+        body: JSON.stringify({
+          requestId: created.id,
+          userId: user.id,
+          type: 16,
+        }),
       }),
     )
 
@@ -752,7 +774,7 @@ describe('HonoWarden app', () => {
       env,
     )
     expect(replayResponse.status).toBe(200)
-    expect(notificationFetch).toHaveBeenCalledOnce()
+    expect(notificationFetch).toHaveBeenCalledTimes(2)
 
     const pollResponse = await app.request(
       `/api/auth-requests/${created.id}/response?code=high-entropy-access-code`,
@@ -3449,7 +3471,7 @@ describe('HonoWarden app', () => {
             memory: null,
             parallelism: null,
           },
-          masterKeyWrappedUserKey: '2.synthetic-user-key',
+          masterKeyEncryptedUserKey: '2.synthetic-user-key',
         },
       },
     })
@@ -3466,6 +3488,9 @@ describe('HonoWarden app', () => {
     expect(body.userDecryption.masterPasswordUnlock).not.toHaveProperty('Kdf')
     expect(body.userDecryption.masterPasswordUnlock).not.toHaveProperty(
       'MasterKeyEncryptedUserKey',
+    )
+    expect(body.userDecryption.masterPasswordUnlock).not.toHaveProperty(
+      'masterKeyWrappedUserKey',
     )
     expect(body.userDecryption.masterPasswordUnlock.kdf).not.toHaveProperty(
       'KdfType',
@@ -7702,6 +7727,113 @@ describe('HonoWarden app', () => {
         message: 'Bearer authorization is required.',
       },
       requestId: 'notification-hub-missing-token',
+    })
+  })
+
+  it('rejects anonymous notification requests that are not websocket upgrades', async () => {
+    const response = await app.request(
+      'https://vault.example.test/notifications/anonymous-hub?Token=auth-request-id',
+      {
+        headers: {
+          'X-Request-Id': 'anonymous-hub-non-upgrade',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authRequests: [authRequestRecord()],
+        }),
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+      },
+    )
+
+    expect(response.status).toBe(426)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'websocket_required' },
+      requestId: 'anonymous-hub-non-upgrade',
+    })
+  })
+
+  it('does not open anonymous notification sockets for unknown requests', async () => {
+    const response = await app.request(
+      'https://vault.example.test/notifications/anonymous-hub?Token=unknown-request',
+      {
+        headers: {
+          Upgrade: 'websocket',
+          'X-Request-Id': 'anonymous-hub-unknown-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], { authRequests: [] }),
+        NOTIFICATION_HUB: {} as DurableObjectNamespace,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'auth_request_not_found' },
+      requestId: 'anonymous-hub-unknown-request',
+    })
+  })
+
+  it('proxies valid anonymous notification sockets to a request-scoped object', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('connected'))
+    const notificationHub = {
+      idFromName: vi.fn((name: string) => `do:${name}`),
+      get: vi.fn(() => ({ fetch })),
+    }
+    const response = await app.request(
+      'https://vault.example.test/notifications/anonymous-hub?Token=auth-request-id',
+      {
+        headers: { Upgrade: 'websocket' },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authRequests: [authRequestRecord()],
+        }),
+        NOTIFICATION_HUB: notificationHub as unknown as DurableObjectNamespace,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(notificationHub.idFromName).toHaveBeenCalledWith(
+      'auth-request:auth-request-id',
+    )
+    expect(fetch).toHaveBeenCalledOnce()
+    const forwarded = fetch.mock.calls[0]?.[0] as Request
+    expect(forwarded.url).toBe('https://notification-hub/connect')
+    expect(forwarded.headers.get('Upgrade')).toBe('websocket')
+  })
+
+  it('reports anonymous notification transport failures explicitly', async () => {
+    const response = await app.request(
+      'https://vault.example.test/notifications/anonymous-hub?Token=auth-request-id',
+      { headers: { Upgrade: 'websocket' } },
+      {
+        DB: new FakeD1Database(null, [], {
+          authRequests: [authRequestRecord()],
+        }),
+        NOTIFICATION_HUB: {
+          idFromName: () => 'request-object',
+          get: () => ({
+            fetch: vi.fn().mockRejectedValue(new Error('do unavailable')),
+          }),
+        } as unknown as DurableObjectNamespace,
+        HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'notification_unavailable' },
     })
   })
 

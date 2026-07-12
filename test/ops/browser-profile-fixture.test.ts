@@ -191,6 +191,8 @@ describe('official browser profile fixture CLI', () => {
     expect(runbook).toContain('Status: passed for HON-94')
     expect(runbook).toContain('Brave Browser 150.1.92.134')
     expect(runbook).toContain('Brave Browser 150.1.92.139')
+    expect(runbook).toContain('Chrome for Testing `149.0.7827.55`')
+    expect(runbook).toContain('--enable-unsafe-extension-debugging')
     expect(runbook).toContain('`rootExists: false`')
   })
 })

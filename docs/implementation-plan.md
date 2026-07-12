@@ -97,15 +97,18 @@ Existing hierarchy:
       - `HON-84` durable notification delivery - Done
       - `HON-85` official Desktop/browser lifecycle
         - `HON-88` staging fixture/evidence CLI
+        - `HON-94` pinned clean browser-extension profile - Done
+        - `HON-95` Desktop approval and browser consumption - live flow passed;
+          PR/cleanup closeout in progress
+        - `HON-96` polling/readback, replay, cleanup, and compatibility closeout
+          - `HON-115` supersede older pending requests on resend
+          - `HON-117` host-agnostic isolated browser evidence launcher
 - `HON-65` iOS live smoke, tracked separately from the browser/Desktop critical
   path because it requires a provisioned Apple run target.
 
-Sub-issues to add under `HON-85`:
-
-- prepare and clean the official browser-extension profile with pinned version;
-- capture Desktop approval notification and browser token-consume evidence;
-- record polling fallback, replay rejection, cleanup, and conservative matrix
-  promotion.
+The `HON-85` child split is now visible in Linear. `HON-94` and `HON-95` own
+the pinned client preparation and official UI path; `HON-96` owns final
+authoritative readback, replay, cleanup, and parent closeout.
 
 Exit criteria:
 
@@ -175,6 +178,8 @@ Existing hierarchy:
 - `HON-57` independent security assessment
   - `HON-86` engagement pack - Done
   - `HON-87` commission and complete independent assessment
+- `HON-116` bounded refresh-token history retention, under the `HON-92` P3
+  parent
 
 Sub-issues to add under `HON-73`/`HON-74`:
 

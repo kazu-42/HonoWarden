@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-08.
+Last updated: 2026-07-12.
 
 Use this index as the feature-freeze entry point:
 
@@ -28,6 +28,7 @@ Use this index as the feature-freeze entry point:
 - [Website Live Evidence](website-live-evidence.md)
 - [Email Routing Evidence](email-routing-evidence.md)
 - [Desktop Notification Transport Evidence](desktop-notification-transport-evidence.md)
+- [Login With Device Live Client Evidence](login-with-device-live-client-evidence.md)
 - [Retention Cron Evidence](retention-cron-evidence.md)
 - [Operations Rollback Evidence](ops-rollback-evidence.md)
 - [Secret Rotation Drill Evidence](secret-rotation-drill-evidence.md)
@@ -53,8 +54,8 @@ reviewed without inventing release process under time pressure.
 - Scheduled remote backup workflow and remote backup evidence are recorded.
 - CLI live-client login/sync, one-step TOTP login, and recent-auth lifecycle
   smoke evidence is recorded.
-- Android live-client login and empty-vault sync smoke evidence is recorded;
-  desktop and iOS stay conservative until their own live evidence is recorded.
+- Android and Desktop live-client login and empty-vault sync smoke evidence is
+  recorded; iOS stays conservative until its own live evidence is recorded.
 - synthetic two-user dogfood and disabled-user lifecycle evidence is recorded,
   with production lifecycle execution still operator-gated.
 - `pnpm release:gate -- --strict` passes on the release commit.

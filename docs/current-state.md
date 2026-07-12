@@ -2204,3 +2204,34 @@ Not implemented:
 - remote restore into a disposable Cloudflare D1/R2 target
 - long-term external archive copy automation beyond the encrypted GitHub
   artifact and documented operator retention target
+
+## Official Desktop And Login-With-Device Live Evidence
+
+Implemented and verified with synthetic staging data on 2026-07-12:
+
+- official Desktop `2026.6.1` clean-profile self-hosted password login,
+  successful sync, and empty-vault rendering
+- official browser extension `2026.6.1` login-with-device request creation,
+  Desktop notification and approval, one-time auth-request token exchange, and
+  empty-vault rendering
+- trailing-slash compatibility for the official extension's
+  `POST /api/auth-requests/` request
+- sync user-decryption compatibility through the official
+  `masterKeyEncryptedUserKey` field
+- owner-scoped pending notification type `15` through the authenticated
+  SignalR `ReceiveMessage` target
+- request-scoped anonymous SignalR WebSocket validation and response type `16`
+  delivery through the official `AuthRequestResponseRecieved` target
+- exact fingerprint equality verification without recording the phrase
+- redacted empty-vault screenshots and status-class evidence in
+  `docs/release/login-with-device-live-client-evidence.md`
+- promotion of the Desktop `2026.6.1` compatibility row from `fixture_only` to
+  narrow `live_smoke`
+
+Not implemented or not yet verified:
+
+- Desktop item create/update/delete and logout/login persistence lifecycle
+- automatic timed polling in the current official extension when anonymous
+  response notification delivery is unavailable
+- superseding older pending requests created by repeated resend attempts
+- production login-with-device enablement or any real-vault-data run

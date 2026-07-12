@@ -5,14 +5,22 @@ import type { Bindings } from './bindings'
 
 const recordSeparator = '\u001e'
 const heartbeatIntervalMs = 15_000
-const authRequestResponseType = 16
 const messagePackProtocol = new MessagePackHubProtocol()
 
 type Protocol = 'json' | 'messagepack'
 
+export const authRequestNotificationTypes = {
+  pending: 15,
+  response: 16,
+} as const
+
+export type AuthRequestNotificationType =
+  (typeof authRequestNotificationTypes)[keyof typeof authRequestNotificationTypes]
+
 export type AuthRequestNotification = {
   requestId: string
   userId: string
+  type: AuthRequestNotificationType
 }
 
 export class NotificationHub {
@@ -122,12 +130,16 @@ export function encodeAuthRequestNotification(
   protocol: Protocol,
   notification: AuthRequestNotification,
 ): string | ArrayBuffer {
+  const target =
+    notification.type === authRequestNotificationTypes.response
+      ? 'AuthRequestResponseRecieved'
+      : 'ReceiveMessage'
   const message = {
     type: MessageType.Invocation as const,
-    target: 'ReceiveMessage',
+    target,
     arguments: [
       {
-        Type: authRequestResponseType,
+        Type: notification.type,
         Payload: { Id: notification.requestId, UserId: notification.userId },
       },
     ],
@@ -146,17 +158,20 @@ async function parseNotification(
     if (!isObject(value)) return null
     const requestId = value.requestId
     const userId = value.userId
+    const type = value.type
     if (
       typeof requestId !== 'string' ||
       requestId.length < 1 ||
       requestId.length > 128 ||
       typeof userId !== 'string' ||
       userId.length < 1 ||
-      userId.length > 128
+      userId.length > 128 ||
+      (type !== authRequestNotificationTypes.pending &&
+        type !== authRequestNotificationTypes.response)
     ) {
       return null
     }
-    return { requestId, userId }
+    return { requestId, userId, type }
   } catch {
     return null
   }
