@@ -97,7 +97,10 @@ restores explicit 501 responses and disables auth-request cleanup queries. Do
 not delete or reopen consumed rows. Production remains disabled and was not
 deployed or migrated by this operation.
 
-## Remaining Gates
+## Follow-Up Gates
 
-- `HON-80`: notification hint delivery and official-client lifecycle evidence;
+- `HON-80` added durable notification delivery and `HON-95` passed the official
+  Desktop/browser synthetic lifecycle; see
+  [`login-with-device-live-client-evidence.md`](login-with-device-live-client-evidence.md);
+- `HON-96`: authoritative readback, replay, cleanup, and parent closeout;
 - production migration, secret configuration, enablement, and rollback drill.

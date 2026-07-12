@@ -312,6 +312,10 @@ describe('official-client auth-request fixture CLI', () => {
     expect(runbook).toContain('official browser extension')
     expect(runbook).toMatch(/never\s+prints\s+the\s+email\s+or\s+password/)
     expect(runbook).toMatch(/polling\s+remains\s+authoritative/i)
+    expect(runbook).toContain('ACCESS_TOKEN_LOCATION=DISK')
+    expect(runbook).toContain('--enable-unsafe-extension-debugging')
+    expect(runbook).toContain('/notifications/anonymous-hub')
+    expect(runbook).toContain('AuthRequestResponseRecieved')
   })
 })
 

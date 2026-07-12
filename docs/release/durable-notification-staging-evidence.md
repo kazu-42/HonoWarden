@@ -34,6 +34,13 @@ The implementation uses the official Microsoft SignalR MessagePack codec for
 binary framing. No access code, token, email, password hash, device identifier,
 security stamp, or encrypted response key is included in the notification.
 
+The original HON-84 pass above exercised response type `16` on the
+authenticated hub. HON-95 later aligned the complete official-client split:
+pending type `15` now uses the authenticated owner hub and `ReceiveMessage`,
+while response type `16` uses a request-scoped anonymous hub and the official
+`AuthRequestResponseRecieved` target. See
+[`login-with-device-live-client-evidence.md`](login-with-device-live-client-evidence.md).
+
 ## Live Lifecycle
 
 A temporary synthetic user and active approving device were inserted into the
@@ -88,7 +95,8 @@ To disable delivery, set
 Object binding can remain configured; no D1 data migration or request rollback
 is required. Production remains disabled and was not deployed.
 
-## Remaining Gate
+## Follow-Up Gate
 
-- `HON-85`: verify the complete login-with-device lifecycle in official desktop
-  and browser clients.
+- `HON-95` passed the official Desktop approval and browser consumption path.
+- `HON-96` owns explicit polling/readback, replay, cleanup, and final
+  compatibility closeout.

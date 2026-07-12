@@ -89,7 +89,7 @@
             "memory": null,
             "parallelism": null
           },
-          "masterKeyWrappedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
+          "masterKeyEncryptedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
         }
       }
     }
@@ -110,7 +110,7 @@
       "type": "string"
     },
     {
-      "path": "$.userDecryption.masterPasswordUnlock.masterKeyWrappedUserKey",
+      "path": "$.userDecryption.masterPasswordUnlock.masterKeyEncryptedUserKey",
       "type": "string"
     },
     {

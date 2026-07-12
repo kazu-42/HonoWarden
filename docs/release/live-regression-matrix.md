@@ -98,7 +98,8 @@ flow ids used for that run.
 ## Current Status
 
 No tracked client row is promoted to `live_regression` yet. Browser extension,
-Android, and CLI remain `live_smoke`; desktop and iOS remain `fixture_only`.
-CLI remains below `live_regression` until a repeatable run records refresh,
-session revoke, and selected auth lifecycle evidence in addition to the
-existing item lifecycle smoke.
+Desktop, Android, and CLI remain `live_smoke`; iOS remains `fixture_only`. CLI
+remains below `live_regression` until a repeatable run records refresh, session
+revoke, and selected auth lifecycle evidence in addition to the existing item
+lifecycle smoke. Desktop remains below it until the item lifecycle and
+logout/login persistence pass.

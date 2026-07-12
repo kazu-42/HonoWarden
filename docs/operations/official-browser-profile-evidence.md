@@ -78,6 +78,30 @@ Record the Brave version, extension release/digest, extension target type, and
 manifest version. Do not record account identifiers, tokens, profile LevelDB,
 extension storage, encrypted keys, or request payloads.
 
+### HON-95 Chromium Host Note
+
+The HON-95 login-with-device run kept the same pinned official extension but
+used isolated Chrome for Testing `149.0.7827.55`. The installed Brave host had
+unstable duplicate-app behavior during repeated extension popup launches, and
+current Chromium disabled the unpacked extension after popup close unless the
+explicit test-only flag was present.
+
+```sh
+"/path/to/Google Chrome for Testing" \
+  --user-data-dir="$ROOT/profile" \
+  --disable-extensions-except="$ROOT/extension" \
+  --load-extension="$ROOT/extension" \
+  --enable-unsafe-extension-debugging \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9224 \
+  --no-first-run \
+  --no-default-browser-check
+```
+
+This is an evidence-host override, not a compatibility pin or a recommended
+daily-browser setting. The extension asset, digest, ignored profile boundary,
+and cleanup requirements remain unchanged.
+
 ## Staging Boundary
 
 HON-94 proves that the pinned extension starts in an isolated empty profile.

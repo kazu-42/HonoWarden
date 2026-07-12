@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-10.
+Last reviewed: 2026-07-12.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -8,8 +8,8 @@ inputs, not minor documentation notes.
 ## Release Blockers Before Real Secrets
 
 - no independent security audit has been completed
-- only a CLI live smoke has been captured; no full live client regression suite
-  exists yet
+- narrow live smokes exist for the CLI, browser extension, Android, and
+  Desktop clients; no full live client regression suite exists yet
 - remote production backup and local fresh-target restore drill evidence exists,
   but no remote disposable Cloudflare restore drill has been recorded
 - Cloudflare scoped account tokens exist for normal HonoWarden operations, but
@@ -52,7 +52,7 @@ inputs, not minor documentation notes.
 - User-triggered server-side export is implemented at
   `POST /api/accounts/export` behind recent password authentication, but no
   live official-client export run has been captured yet.
-- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented; login-with-device approval, pending auth-request, and notification runtime routes remain explicit 501 responses while ADR 0008's persistence, replay, audit, retention, staging, and rollback gates are implemented.
+- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented. Login-with-device request, approval, owner notification, anonymous requester notification, and one-time token exchange are live-tested with synthetic data in staging. Production remains disabled, the current official extension relies on response notification rather than automatic timed polling, and repeated resend attempts can leave older pending requests visible until fixed expiry.
 - account disable/enable operator CLI is dry-run-first, but no admin UI or live
   production lifecycle evidence is recorded yet.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker

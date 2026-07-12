@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for implementation behind the existing unsupported-route guard.
+Implemented behind environment flags. Enabled and live-tested with synthetic
+data in staging; disabled in production.
 
 ## Context
 
@@ -23,9 +24,9 @@ protocol shape:
 - an approval notification as a hint, followed by server readback;
 - token exchange using the request id and access code after approval.
 
-The current `/api/auth-requests` guard returns 501. Removing that guard before
-the persistence, replay, audit, and fixture gates below pass would create an
-account takeover surface.
+The original `/api/auth-requests` guard returned 501 until the persistence,
+replay, audit, fixture, notification, and official-client gates below passed.
+Unsupported methods and disabled environments still fail explicitly.
 
 ## Decision
 
@@ -35,14 +36,28 @@ unsupported because HonoWarden has no organization role model.
 
 ### HTTP Contract
 
-| Method | Route                                        | Authentication | Purpose                                                                            |
-| ------ | -------------------------------------------- | -------------- | ---------------------------------------------------------------------------------- |
-| POST   | `/api/auth-requests`                         | anonymous      | Create one pending request after email, device, quota, and payload validation.     |
-| GET    | `/api/auth-requests/pending`                 | bearer         | List unexpired pending requests owned by the authenticated user.                   |
-| GET    | `/api/auth-requests/:id`                     | bearer         | Read an owner-scoped request for approval UI.                                      |
-| PUT    | `/api/auth-requests/:id`                     | bearer         | Approve or deny once from a different active device.                               |
-| GET    | `/api/auth-requests/:id/response?code=...`   | anonymous      | Poll status after constant-time access-code hash verification.                     |
-| POST   | `/identity/connect/token` auth-request grant | anonymous      | Atomically consume one approved request and issue the normal device-bound session. |
+| Method | Route                                         | Authentication | Purpose                                                                            |
+| ------ | --------------------------------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| POST   | `/api/auth-requests` or `/api/auth-requests/` | anonymous      | Create one pending request after email, device, quota, and payload validation.     |
+| GET    | `/api/auth-requests/pending`                  | bearer         | List unexpired pending requests owned by the authenticated user.                   |
+| GET    | `/api/auth-requests/:id`                      | bearer         | Read an owner-scoped request for approval UI.                                      |
+| PUT    | `/api/auth-requests/:id`                      | bearer         | Approve or deny once from a different active device.                               |
+| GET    | `/api/auth-requests/:id/response?code=...`    | anonymous      | Poll status after constant-time access-code hash verification.                     |
+| POST   | `/identity/connect/token` auth-request grant  | anonymous      | Atomically consume one approved request and issue the normal device-bound session. |
+
+### Notification Contract
+
+- Authenticated approver clients connect to `/notifications/hub` and receive
+  pending request type `15` through the SignalR `ReceiveMessage` target.
+- Requester clients connect to
+  `/notifications/anonymous-hub?Token=<request-id>`. The Worker verifies that
+  the bearer request id resolves to an existing, unexpired, owned request before
+  proxying the WebSocket to a request-scoped Durable Object.
+- Approval or denial sends response type `16` through the official
+  `AuthRequestResponseRecieved` target. The payload contains only request id,
+  owner user id, and the allowlisted notification type.
+- The requester then reads the authoritative response endpoint with its access
+  code. Encrypted key material is never carried in SignalR messages.
 
 Request and response casing must remain compatible with the repository's
 existing response-property mapping. API responses include stable request id,
@@ -132,8 +147,11 @@ or retries.
 
 ## Consequences
 
-- HON-79 may implement persistence and polling/approval/token APIs against this
+- HON-79 implemented persistence and polling/approval/token APIs against this
   contract.
-- HON-80 may add notification delivery only after the API lifecycle passes.
-- `/api/auth-requests` remains unsupported until HON-79's migration, tests,
-  staging evidence, and rollback gate are complete.
+- HON-80 implemented owner and requester Durable Object notification delivery.
+- HON-95 captured the official Desktop/browser synthetic lifecycle, including
+  fingerprint comparison, approval, one-time token exchange, and empty-vault
+  rendering.
+- Production remains disabled until a separate, explicitly approved rollout
+  satisfies the real-secret readiness gates.

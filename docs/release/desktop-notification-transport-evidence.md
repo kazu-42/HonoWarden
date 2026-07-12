@@ -1,14 +1,17 @@
 # Desktop Notification Transport Evidence
 
-Status: SignalR transport passed; Desktop vault lifecycle remains pending.
+Status: historical transport pass; the login/vault gate passed later.
 
-Updated: 2026-07-11.
+Updated: 2026-07-12.
 
 ## Scope
 
-This evidence covers only the notification transport required by the official
+This evidence records the original transport-only checkpoint for the official
 Desktop client. It does not claim notification delivery, vault rendering, item
-lifecycle compatibility, or broad Desktop support.
+lifecycle compatibility, or broad Desktop support by itself. The later
+[login-with-device live client evidence](login-with-device-live-client-evidence.md)
+supersedes the login/vault blocker while preserving this document as historical
+deployment evidence.
 
 Client under test:
 
@@ -61,9 +64,12 @@ account address is recorded here.
 - repeated-handshake timer replacement;
 - timer cleanup on close and error.
 
-## Remaining Desktop Gate
+## Follow-Up Result
 
-The clean-profile Desktop UI did not yet provide verified vault render and item
-create/update/delete evidence. The compatibility matrix therefore remains
-`fixture_only`. HON-67 owns the short-HOME rerun and full lifecycle evidence;
-promotion is prohibited until that issue passes.
+On 2026-07-12 the same official Desktop version completed password login,
+initial sync, owner notification, approval, and empty-vault rendering against
+staging. The earlier synthetic-`HOME` isolation was replaced with the real
+macOS `HOME`, an isolated Electron `user-data-dir`, and the official
+`ACCESS_TOKEN_LOCATION=DISK` switch. The Desktop matrix row can therefore move
+to narrow `live_smoke`; item create/update/delete remains a separate lifecycle
+gate.

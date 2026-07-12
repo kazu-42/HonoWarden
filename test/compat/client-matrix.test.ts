@@ -387,6 +387,9 @@ describe('client compatibility matrix', () => {
     expect(browserEntry?.liveEvidence?.path).toBe(
       'docs/release/browser-extension-live-client-evidence.md',
     )
+    expect(browserEntry?.liveEvidence?.additionalPaths).toContain(
+      'docs/release/login-with-device-live-client-evidence.md',
+    )
     expect(browserEntry?.liveEvidence?.flows).toEqual(
       expect.arrayContaining([
         'config',
@@ -394,6 +397,27 @@ describe('client compatibility matrix', () => {
         'password_grant',
         'empty_sync',
         'account_profile',
+        'login_with_device',
+        'auth_request_grant',
+      ]),
+    )
+
+    const desktopEntry = matrix.entries.find(
+      (entry) => entry.surface === 'desktop',
+    )
+    expect(desktopEntry?.verificationLevel).toBe('live_smoke')
+    expect(desktopEntry?.liveEvidence?.path).toBe(
+      'docs/release/login-with-device-live-client-evidence.md',
+    )
+    expect(desktopEntry?.liveEvidence?.additionalPaths).toContain(
+      'docs/release/desktop-notification-transport-evidence.md',
+    )
+    expect(desktopEntry?.liveEvidence?.flows).toEqual(
+      expect.arrayContaining([
+        'password_grant',
+        'empty_sync',
+        'auth_request_notification',
+        'auth_request_approval',
       ]),
     )
 
@@ -428,7 +452,9 @@ describe('client compatibility matrix', () => {
 
     const nonCliEntries = matrix.entries.filter(
       (entry) =>
-        !['browser_extension', 'cli', 'mobile_android'].includes(entry.surface),
+        !['browser_extension', 'desktop', 'cli', 'mobile_android'].includes(
+          entry.surface,
+        ),
     )
     for (const entry of nonCliEntries) {
       expect(entry.verificationLevel).toBe('fixture_only')
@@ -446,6 +472,9 @@ describe('client compatibility matrix', () => {
     )
     expect(compatibilityMatrixDoc).toContain(
       'android-mobile-live-client-evidence.md',
+    )
+    expect(compatibilityMatrixDoc).toContain(
+      'login-with-device-live-client-evidence.md',
     )
   })
 

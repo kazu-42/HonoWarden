@@ -155,17 +155,21 @@ Failure invariants:
 - missing, already revoked, or cross-user devices return not found
 - successful and not-found outcomes are auditable when audit logging is enabled
 
-## Login With Device Planned Contract
+## Login With Device
 
-ADR 0008 defines the implementation gate. Runtime routes remain unsupported
-until the D1 migration, fixtures, staging lifecycle, and rollback evidence pass.
+ADR 0008 defines the implemented contract. Runtime routes and Durable Object
+notifications are enabled for synthetic staging evidence and remain disabled
+in production.
 
 ```text
 anonymous requester creates pending request
   -> access code stored as keyed hash
+  -> owner hub sends pending notification type 15
+  -> requester opens request-scoped anonymous hub
   -> different active owner device approves or denies once
   -> approval stores opaque requester-public-key encrypted user key
-  -> requester polls with request id + access code
+  -> anonymous hub sends response notification type 16
+  -> requester reads response with request id + access code
   -> auth-request token grant atomically consumes approved request
   -> normal device-bound access and refresh session is issued
 ```

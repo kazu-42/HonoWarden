@@ -99,7 +99,7 @@
             "memory": null,
             "parallelism": null
           },
-          "masterKeyWrappedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
+          "masterKeyEncryptedUserKey": "2.c3ludGhldGljLXVzZXIta2V5"
         }
       }
     }
