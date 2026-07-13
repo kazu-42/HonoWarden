@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-12.
+Last reviewed: 2026-07-13.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -38,14 +38,25 @@ inputs, not minor documentation notes.
   0007 keeps collection metadata read-only and empty for personal vaults until
   ownership, membership, assignment, audit, migration, rollback, and
   compatibility fixtures are designed.
-- Send and public file-sharing are intentionally not implemented; ADR 0003
-  requires public access-token entropy, expiration, revocation, rate limits,
-  abuse reporting, cache policy, audit, and retention/deletion design before
-  any public sharing support claim.
-- Emergency Access is intentionally not implemented; ADR 0004 requires grantee
-  identity, delayed access, cancellation, notification delivery, cryptographic
-  handoff, transition audit, abuse controls, rollback, and incident-response
-  design before any delegated recovery support claim.
+- Premium-gated surfaces outside TOTP and cipher-scoped attachments are
+  intentionally unavailable under ADR 0009. Emergency Access requires ADR
+  0004's grantee identity, delayed access, cancellation, notification,
+  cryptographic handoff, audit, abuse-control, and rollback design. Server-origin
+  vault breach lookup at `GET /api/hibp/breach` is unsupported; the pinned
+  extension performs weak/reused-password evaluation locally and calls the
+  external Pwned Passwords range API directly for its manual exposed-password
+  check. File Sends and all other Send/public-sharing operations remain excluded
+  by ADR 0003 until public access-token entropy, expiration, revocation,
+  rate-limit, abuse, cache, audit, and retention/deletion controls are designed.
+- Unsupported Emergency Access, breach-lookup, and Send routes return state-free
+  HTTP `501` responses with `error.code = unsupported_feature` and a top-level
+  `Message` that official clients can render. This includes the `send_access`
+  grant at `POST /identity/connect/token`; password, refresh-token, and
+  login-with-device grants keep their supported behavior. The pinned client's
+  Emergency Access trust preflight consequently blocks account-key rotation,
+  and its attachment action may also report the rejected request through its
+  global error handler after clearing loading state; returning `404` instead
+  would activate a misleading cached attachment URL fallback.
 - Cipher-scoped attachment upload, download, delete, and sync metadata are
   implemented for opaque client-encrypted payloads, but no live official-client
   attachment run has been captured yet.

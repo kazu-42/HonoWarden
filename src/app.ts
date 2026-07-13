@@ -874,8 +874,9 @@ app.post('/identity/accounts/register', (c) => {
 
 app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
-app.all('/api/sends', unsupportedAlphaFeature)
-app.all('/api/sends/*', unsupportedAlphaFeature)
+app.all('/api/sends', unsupportedPremiumFeature)
+app.all('/api/sends/*', unsupportedPremiumFeature)
+app.get('/api/hibp/breach', unsupportedPremiumFeature)
 app.get('/api/collections', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -903,8 +904,8 @@ app.get('/api/collections/:id', async (c) => {
 
 app.all('/api/collections', unsupportedAlphaFeature)
 app.all('/api/collections/*', unsupportedAlphaFeature)
-app.all('/api/emergency-access', unsupportedAlphaFeature)
-app.all('/api/emergency-access/*', unsupportedAlphaFeature)
+app.all('/api/emergency-access', unsupportedPremiumFeature)
+app.all('/api/emergency-access/*', unsupportedPremiumFeature)
 app.post('/api/auth-requests', createAuthRequestRoute)
 app.post('/api/auth-requests/', createAuthRequestRoute)
 app.get('/api/auth-requests/pending', listPendingAuthRequestsRoute)
@@ -1363,6 +1364,11 @@ app.post('/api/accounts/bootstrap', async (c) => {
 })
 
 app.post('/identity/connect/token', async (c) => {
+  const form = await readFormBody(c.req.raw)
+  if (form.get('grant_type') === 'send_access') {
+    return unsupportedPremiumFeature(c)
+  }
+
   const accessTokenConfig = resolveAccessTokenRuntimeConfig(c.env)
   if (!accessTokenConfig.ok) {
     return c.json(
@@ -1377,8 +1383,6 @@ app.post('/identity/connect/token', async (c) => {
     )
   }
   const tokenSecret = accessTokenConfig.refreshTokenSecret
-
-  const form = await readFormBody(c.req.raw)
 
   const authRequestGrant = parseAuthRequestGrantForm(form)
   if (authRequestGrant.ok) {
@@ -4718,12 +4722,32 @@ function apiError(
 }
 
 function unsupportedAlphaFeature(c: AppContext) {
+  return unsupportedFeatureResponse(
+    c,
+    'This feature is intentionally not implemented in the alpha scope.',
+    false,
+  )
+}
+
+function unsupportedPremiumFeature(c: AppContext) {
+  return unsupportedFeatureResponse(
+    c,
+    'This feature is unavailable on this server.',
+    true,
+  )
+}
+
+function unsupportedFeatureResponse(
+  c: AppContext,
+  message: string,
+  exposeClientMessage: boolean,
+) {
   return c.json(
     {
+      ...(exposeClientMessage ? { Message: message } : {}),
       error: {
         code: 'unsupported_feature',
-        message:
-          'This feature is intentionally not implemented in the alpha scope.',
+        message,
       },
       requestId: c.get('requestId'),
     },

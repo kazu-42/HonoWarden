@@ -87,25 +87,32 @@ support claim.
 ## Explicit Unsupported Responses
 
 The alpha API returns typed `501` JSON errors for feature families that are
-intentionally outside the initial scope:
+intentionally outside the initial scope. Premium-triggered unsupported routes
+use a top-level client compatibility message in addition to HonoWarden's stable
+structural error code:
 
-- `/api/organizations`
-- `/api/organizations/*`
 - `/api/sends`
 - `/api/sends/*`
 - `/api/emergency-access`
 - `/api/emergency-access/*`
+- `GET /api/hibp/breach`
+- `POST /identity/connect/token` when `grant_type=send_access`
 
 Response shape:
 
 ```json
 {
+  "Message": "This feature is unavailable on this server.",
   "error": {
     "code": "unsupported_feature",
-    "message": "This feature is intentionally not implemented in the alpha scope."
+    "message": "This feature is unavailable on this server."
   },
   "requestId": "request-id"
 }
 ```
+
+Other typed alpha-scope guards, including Organizations, keep the same HTTP
+status and structural code but may omit the top-level client compatibility
+message.
 
 This project is independent and not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.
