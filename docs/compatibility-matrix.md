@@ -6,6 +6,24 @@ This matrix records the exact client versions currently tracked by HonoWarden. I
 
 Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compat/fixture-flows.json). CI verifies that every `coveredFlows` value in the matrix maps to at least one fixture file. CI also route-replays every JSON fixture under `compat/fixtures` against the Hono app and compares that replay set with the fixture-flow manifest, so fixture assertions exercise real route behavior instead of only static JSON shape.
 
+## 2026-07-13 Premium Surface Boundary
+
+A source-map audit of the pinned browser extension `2026.6.1` found no
+feature-specific server capability that can hide Emergency Access, vault breach
+lookup, or file Sends while broad premium state is enabled. HonoWarden therefore
+returns an explicit state-free HTTP `501` with
+`error.code = unsupported_feature` and a client-readable top-level `Message`
+for `/api/emergency-access`, `/api/emergency-access/*`,
+`GET /api/hibp/breach`, `/api/sends`, `/api/sends/*`, and the `send_access`
+grant at `POST /identity/connect/token`.
+
+The pinned extension evaluates weak and reused passwords locally and performs
+its manual exposed-password check directly against the external Pwned Passwords
+range API, so those flows do not add HonoWarden report routes. TOTP remains a
+client-side operation, and authenticated cipher-scoped attachment routes are not
+part of this unsupported set. This source audit and route contract add no live
+client evidence and do not change any verification level in the matrix.
+
 ## Metadata Refresh Policy
 
 - Refresh cadence: every 14 days and before every release candidate.

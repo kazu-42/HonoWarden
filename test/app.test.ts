@@ -576,12 +576,8 @@ describe('HonoWarden app', () => {
     for (const request of [
       { method: 'POST', path: '/api/organizations' },
       { method: 'POST', path: '/api/organizations/org-id/collections' },
-      { method: 'POST', path: '/api/sends' },
-      { method: 'POST', path: '/api/sends/send-id' },
       { method: 'POST', path: '/api/collections' },
       { method: 'POST', path: '/api/collections/collection-id' },
-      { method: 'POST', path: '/api/emergency-access' },
-      { method: 'POST', path: '/api/emergency-access/invite' },
       { method: 'POST', path: '/api/auth-requests' },
       { method: 'POST', path: '/api/auth-requests/auth-request-id' },
       { method: 'POST', path: '/api/attachments' },
@@ -603,6 +599,79 @@ describe('HonoWarden app', () => {
             'This feature is intentionally not implemented in the alpha scope.',
         },
         requestId: 'unsupported-surface-request',
+      })
+    }
+  })
+
+  it('returns client-readable unsupported errors for premium surfaces', async () => {
+    const message = 'This feature is unavailable on this server.'
+    const requests = [
+      // Emergency Access endpoints shipped in the pinned browser extension.
+      { method: 'GET', path: '/api/emergency-access/trusted' },
+      {
+        method: 'GET',
+        path: '/api/emergency-access/emergency-id/cipher-id/attachment/attachment-id',
+      },
+      // Keep the unsupported route-family root explicit as well.
+      { method: 'POST', path: '/api/emergency-access' },
+      // The only server-origin vault breach report in the pinned extension.
+      {
+        method: 'GET',
+        path: '/api/hibp/breach?username=person%40example.test',
+      },
+      // File-specific Send endpoints.
+      { method: 'POST', path: '/api/sends/file/v2' },
+      { method: 'GET', path: '/api/sends/send-id/file/file-id' },
+      { method: 'POST', path: '/api/sends/send-id/file/file-id' },
+      {
+        method: 'POST',
+        path: '/api/sends/send-id/access/file/file-id',
+      },
+      { method: 'POST', path: '/api/sends/access/file/file-id' },
+      // Generic Send endpoints used by file Send flows.
+      { method: 'GET', path: '/api/sends/send-id' },
+      { method: 'POST', path: '/api/sends/access/send-id' },
+      { method: 'POST', path: '/api/sends/access' },
+      { method: 'GET', path: '/api/sends' },
+      { method: 'PUT', path: '/api/sends/send-id/remove-password' },
+      { method: 'DELETE', path: '/api/sends/send-id' },
+      { method: 'PUT', path: '/api/sends/send-id' },
+      // V2 public Send access obtains a Send-scoped token first.
+      {
+        method: 'POST',
+        path: '/identity/connect/token',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: 'send',
+          grant_type: 'send_access',
+          scope: 'api.send.access',
+          send_id: 'send-id',
+        }).toString(),
+      },
+      // Text Send creation remains unsupported under ADR 0003 as well.
+      { method: 'POST', path: '/api/sends' },
+    ]
+
+    for (const request of requests) {
+      const response = await app.request(request.path, {
+        method: request.method,
+        headers: {
+          'X-Request-Id': 'unsupported-premium-surface-request',
+          ...request.headers,
+        },
+        ...(request.body === undefined ? {} : { body: request.body }),
+      })
+
+      expect(response.status, `${request.method} ${request.path}`).toBe(501)
+      await expect(response.json()).resolves.toEqual({
+        Message: message,
+        error: {
+          code: 'unsupported_feature',
+          message,
+        },
+        requestId: 'unsupported-premium-surface-request',
       })
     }
   })
