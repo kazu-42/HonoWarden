@@ -1,5 +1,5 @@
 export type AuthRequestStatus =
-  'pending' | 'approved' | 'denied' | 'consumed' | 'expired'
+  'pending' | 'approved' | 'denied' | 'consumed' | 'expired' | 'superseded'
 
 export type AuthRequestRecord = {
   id: string
@@ -56,7 +56,7 @@ export type AuthRequestTransitionResult =
   { status: 'updated' } | { status: 'not_updated' }
 
 type AuthRequestDatabase = Pick<D1Database, 'prepare'>
-type AuthRequestSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
+type AuthRequestBatchDatabase = Pick<D1Database, 'batch' | 'prepare'>
 
 export type ConsumeAuthRequestWithSessionInput = {
   authRequestId: string
@@ -87,10 +87,60 @@ type AuthRequestVerifierRow = AuthRequestRow & {
 }
 
 export async function createAuthRequest(
-  database: AuthRequestDatabase,
+  database: AuthRequestBatchDatabase,
   input: CreateAuthRequestInput,
 ): Promise<void> {
-  await database
+  if (input.userId === null) {
+    await prepareAuthRequestInsert(database, input).run()
+    return
+  }
+
+  await database.batch([
+    database
+      .prepare(
+        `
+          UPDATE auth_requests
+          SET status = 'expired', updated_at = ?
+          WHERE user_id = ?
+            AND request_device_identifier = ?
+            AND status = 'pending'
+            AND expires_at <= ?
+        `,
+      )
+      .bind(
+        input.createdAt,
+        input.userId,
+        input.requestDeviceIdentifier,
+        input.createdAt,
+      ),
+    database
+      .prepare(
+        `
+          UPDATE auth_requests
+          SET status = 'superseded', request_approved = 0, updated_at = ?
+          WHERE user_id = ?
+            AND request_device_identifier = ?
+            AND status = 'pending'
+            AND expires_at > ?
+            AND id <> ?
+        `,
+      )
+      .bind(
+        input.createdAt,
+        input.userId,
+        input.requestDeviceIdentifier,
+        input.createdAt,
+        input.id,
+      ),
+    prepareAuthRequestInsert(database, input),
+  ])
+}
+
+function prepareAuthRequestInsert(
+  database: AuthRequestDatabase,
+  input: CreateAuthRequestInput,
+): D1PreparedStatement {
+  return database
     .prepare(
       `
         INSERT INTO auth_requests (
@@ -125,7 +175,6 @@ export async function createAuthRequest(
       input.retentionDeleteAfter,
       input.createdAt,
     )
-    .run()
 }
 
 export async function listPendingAuthRequests(
@@ -301,7 +350,7 @@ export async function consumeAuthRequest(
 }
 
 export async function consumeAuthRequestWithSession(
-  database: AuthRequestSessionDatabase,
+  database: AuthRequestBatchDatabase,
   input: ConsumeAuthRequestWithSessionInput,
 ): Promise<{ status: 'consumed' } | { status: 'not_consumed' }> {
   const eligibility = `
@@ -462,7 +511,7 @@ export async function deleteRetainedAuthRequests(
         WHERE id IN (
           SELECT id
           FROM auth_requests
-          WHERE status IN ('denied', 'consumed', 'expired')
+          WHERE status IN ('denied', 'consumed', 'expired', 'superseded')
             AND retention_delete_after <= ?
           ORDER BY retention_delete_after ASC
           LIMIT ?

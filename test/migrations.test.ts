@@ -7,6 +7,10 @@ const authRequestMigration = readFileSync(
   'migrations/0012_auth_requests.sql',
   'utf8',
 )
+const authRequestSupersedeMigration = readFileSync(
+  'migrations/0013_auth_request_supersede.sql',
+  'utf8',
+)
 const legacyInquiryMigration = readFileSync(
   'migrations/0009_inquiry_messages.sql',
   'utf8',
@@ -244,20 +248,40 @@ describe('initial D1 migration', () => {
     expect(allMigrations).toContain('access_code_hash TEXT NOT NULL')
     expect(allMigrations).toContain('request_public_key TEXT NOT NULL')
     expect(allMigrations).toContain('encrypted_response_key TEXT')
-    expect(allMigrations).toContain(
-      "status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'consumed', 'expired'))",
+    expect(authRequestSupersedeMigration).toContain(
+      "status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'consumed', 'expired', 'superseded'))",
+    )
+    expect(authRequestSupersedeMigration).toContain(
+      "CHECK (status <> 'superseded' OR (request_approved IS NOT NULL AND request_approved = 0 AND encrypted_response_key IS NULL))",
     )
     expect(allMigrations).toContain('expires_at TEXT NOT NULL')
     expect(allMigrations).toContain('retention_delete_after TEXT NOT NULL')
-    expect(allMigrations).toContain(
+    expect(authRequestSupersedeMigration).toContain(
+      'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+    )
+    expect(authRequestSupersedeMigration).toContain(
       'CREATE INDEX IF NOT EXISTS idx_auth_requests_owner_status_expires',
     )
-    expect(allMigrations).toContain(
+    expect(authRequestSupersedeMigration).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_auth_requests_requester_status',
+    )
+    expect(authRequestSupersedeMigration).toContain(
       'CREATE INDEX IF NOT EXISTS idx_auth_requests_retention',
     )
-    expect(allMigrations).toContain("VALUES ('0012')")
+    expect(authRequestSupersedeMigration).toContain(
+      'CREATE UNIQUE INDEX idx_auth_requests_single_pending',
+    )
+    expect(authRequestSupersedeMigration).toContain(
+      'ON auth_requests (user_id, request_device_identifier)',
+    )
+    expect(authRequestSupersedeMigration).toContain(
+      "WHERE status = 'pending' AND user_id IS NOT NULL",
+    )
+    expect(allMigrations).toContain("VALUES ('0013')")
     expect(authRequestMigration).not.toContain('access_code TEXT')
     expect(authRequestMigration).not.toContain('private_key')
+    expect(authRequestSupersedeMigration).not.toContain('access_code TEXT')
+    expect(authRequestSupersedeMigration).not.toContain('private_key')
   })
 
   it('stores vault records as encrypted payloads', () => {
@@ -282,4 +306,5 @@ const allMigrations = [
   inquiryReconciliationMigration,
   readFileSync('migrations/0011_inquiry_inbox.sql', 'utf8'),
   authRequestMigration,
+  authRequestSupersedeMigration,
 ].join('\n')

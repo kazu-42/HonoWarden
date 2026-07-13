@@ -1012,8 +1012,77 @@ export class FakeD1Database {
       __fakeQuery: string
       __fakeBoundValues: unknown[]
     }>
-    const consumeStatement = fakeStatements.find((statement) =>
-      /UPDATE\s+auth_requests/.test(statement.__fakeQuery),
+    const expireStatement = fakeStatements.find(
+      (statement) =>
+        /UPDATE\s+auth_requests/.test(statement.__fakeQuery) &&
+        /SET\s+status\s*=\s*'expired'/.test(statement.__fakeQuery) &&
+        statement.__fakeQuery.includes('user_id = ?') &&
+        statement.__fakeQuery.includes('request_device_identifier = ?') &&
+        statement.__fakeQuery.includes("status = 'pending'") &&
+        statement.__fakeQuery.includes('expires_at <= ?'),
+    )
+    const supersedeStatement = fakeStatements.find(
+      (statement) =>
+        /UPDATE\s+auth_requests/.test(statement.__fakeQuery) &&
+        /SET\s+status\s*=\s*'superseded'/.test(statement.__fakeQuery),
+    )
+    const createStatement = fakeStatements.find((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO auth_requests'),
+    )
+
+    if (expireStatement && supersedeStatement && createStatement) {
+      const rows = this.options.authRequests
+      const snapshots = rows?.map((row) => ({ row, values: { ...row } }))
+
+      try {
+        return fakeStatements.map((statement) => {
+          let changes = 0
+
+          if (
+            statement === expireStatement ||
+            statement === supersedeStatement
+          ) {
+            changes = updateAuthRequest(
+              this.options,
+              statement.__fakeBoundValues,
+              statement.__fakeQuery,
+            )
+          } else if (statement === createStatement) {
+            changes = insertAuthRequest(
+              this.options,
+              statement.__fakeBoundValues,
+            )
+            if (changes !== 1) {
+              throw new Error('Auth request insert failed')
+            }
+          }
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        })
+      } catch (error) {
+        if (rows && snapshots) {
+          for (const { row, values } of snapshots) {
+            for (const key of Object.keys(row)) {
+              delete row[key]
+            }
+            Object.assign(row, values)
+          }
+          rows.splice(0, rows.length, ...snapshots.map(({ row }) => row))
+        }
+
+        throw error
+      }
+    }
+
+    const consumeStatement = fakeStatements.find(
+      (statement) =>
+        /UPDATE\s+auth_requests/.test(statement.__fakeQuery) &&
+        /SET\s+status\s*=\s*'consumed'/.test(statement.__fakeQuery) &&
+        statement.__fakeQuery.includes('consumed_at = ?'),
     )
     if (consumeStatement && this.options.authRequests) {
       const values = consumeStatement.__fakeBoundValues
@@ -1353,6 +1422,15 @@ function findAuthRequestRow(
     return null
   }
 
+  if (
+    /status\s+IN\s+\('pending',\s*'approved',\s*'denied'\)/.test(query) &&
+    row.status !== 'pending' &&
+    row.status !== 'approved' &&
+    row.status !== 'denied'
+  ) {
+    return null
+  }
+
   const now = String(boundValues.at(-1) ?? '')
   if (query.includes('expires_at > ?') && String(row.expiresAt) <= now) {
     return null
@@ -1393,12 +1471,31 @@ function insertAuthRequest(
     return 0
   }
 
+  const userId =
+    boundValues[1] === null || boundValues[1] === undefined
+      ? null
+      : String(boundValues[1])
+  const requestDeviceIdentifier = String(boundValues[4])
+  if (
+    userId !== null &&
+    options.authRequests.some(
+      (row) =>
+        row.userId === userId &&
+        row.requestDeviceIdentifier === requestDeviceIdentifier &&
+        row.status === 'pending',
+    )
+  ) {
+    throw new Error(
+      'UNIQUE constraint failed: auth_requests.user_id, auth_requests.request_device_identifier',
+    )
+  }
+
   options.authRequests.push({
     id,
-    userId: boundValues[1] ?? null,
+    userId,
     emailHash: String(boundValues[2]),
     requestType: Number(boundValues[3]),
-    requestDeviceIdentifier: String(boundValues[4]),
+    requestDeviceIdentifier,
     requestDeviceType: Number(boundValues[5]),
     requestPublicKey: String(boundValues[6]),
     accessCodeHash: String(boundValues[7]),
@@ -1424,6 +1521,49 @@ function updateAuthRequest(
 ): number {
   if (!options.authRequests) {
     return 1
+  }
+
+  if (
+    /SET\s+status\s*=\s*'expired'/.test(query) &&
+    query.includes('user_id = ?') &&
+    query.includes('request_device_identifier = ?')
+  ) {
+    const [updatedAt, userId, requester, expiryThreshold] = boundValues
+    const rows = options.authRequests.filter(
+      (candidate) =>
+        candidate.userId === userId &&
+        candidate.requestDeviceIdentifier === requester &&
+        candidate.status === 'pending' &&
+        String(candidate.expiresAt) <= String(expiryThreshold),
+    )
+
+    for (const row of rows) {
+      Object.assign(row, { status: 'expired', updatedAt })
+    }
+
+    return rows.length
+  }
+
+  if (/SET\s+status\s*=\s*'superseded'/.test(query)) {
+    const [updatedAt, userId, requester, now, excludedId] = boundValues
+    const rows = options.authRequests.filter(
+      (candidate) =>
+        candidate.userId === userId &&
+        candidate.requestDeviceIdentifier === requester &&
+        candidate.status === 'pending' &&
+        String(candidate.expiresAt) > String(now) &&
+        candidate.id !== excludedId,
+    )
+
+    for (const row of rows) {
+      Object.assign(row, {
+        status: 'superseded',
+        requestApproved: 0,
+        updatedAt,
+      })
+    }
+
+    return rows.length
   }
 
   if (/SET\s+status = 'approved'/.test(query)) {
@@ -1506,7 +1646,8 @@ function deleteRetainedAuthRequestRows(
       (row) =>
         (row.status === 'denied' ||
           row.status === 'consumed' ||
-          row.status === 'expired') &&
+          row.status === 'expired' ||
+          row.status === 'superseded') &&
         String(row.retentionDeleteAfter) <= String(retentionThreshold),
     )
     .slice(0, limit)
