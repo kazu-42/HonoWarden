@@ -1,4 +1,8 @@
 import { loginDefensePolicy } from '../domain/login-defense'
+import {
+  attachmentStoragePolicy,
+  pendingAttachmentExpiredBefore,
+} from '../domain/attachment'
 import { refreshTokenRetentionRowsPerSlice } from '../domain/tokens'
 import {
   cleanupAuthDefenseState,
@@ -15,6 +19,7 @@ import {
   deleteRetainedAuthRequests,
   expireAuthRequests,
 } from '../repositories/auth-request-repository'
+import { deleteExpiredPendingCipherAttachments } from '../repositories/attachment-repository'
 
 const authDefenseCleanupRowsPerSlice = 100
 
@@ -53,6 +58,11 @@ export async function cleanupTransientAuthData(
   await cleanupExpiredTotpChallenges(database, {
     expiredBefore: now,
     limit: authDefenseCleanupRowsPerSlice,
+  })
+
+  await deleteExpiredPendingCipherAttachments(database, {
+    expiredBefore: pendingAttachmentExpiredBefore(now),
+    limit: attachmentStoragePolicy.cleanupRowsPerSlice,
   })
 
   if (options.authRequests) {

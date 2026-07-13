@@ -47,6 +47,55 @@ describe('HonoWarden scheduled maintenance', () => {
     expect(context.waitUntil).toHaveBeenCalledTimes(1)
   })
 
+  it('reclaims one bounded slice of expired pending attachment reservations', async () => {
+    const attachments: Record<string, unknown>[] = Array.from(
+      { length: 101 },
+      (_, index) => ({
+        id: `expired-pending-${index.toString().padStart(3, '0')}`,
+        contentType: null,
+        uploadState: 'pending',
+        updatedAt: '2026-07-06T00:00:00.000Z',
+      }),
+    )
+    attachments.push(
+      {
+        id: 'active-pending',
+        contentType: null,
+        uploadState: 'pending',
+        updatedAt: '2026-07-07T01:00:00.000Z',
+      },
+      {
+        id: 'uploaded-attachment',
+        contentType: 'application/octet-stream',
+        uploadState: 'uploaded',
+        updatedAt: '2026-07-06T00:00:00.000Z',
+      },
+    )
+    const db = new FakeD1Database('0013', [], { attachments })
+
+    await worker.scheduled(
+      {
+        scheduledTime: Date.UTC(2026, 6, 8, 0, 0, 0),
+        cron: '0 * * * *',
+        type: 'scheduled',
+        noRetry: vi.fn(),
+      } as ScheduledController,
+      {
+        DB: db as unknown as D1Database,
+        INQUIRY_DB: db as unknown as D1Database,
+        VAULT_OBJECTS: {} as unknown as R2Bucket,
+      },
+      executionContext(),
+    )
+
+    expect(attachments).toHaveLength(3)
+    expect(attachments.map((attachment) => attachment.id)).toEqual([
+      'expired-pending-100',
+      'active-pending',
+      'uploaded-attachment',
+    ])
+  })
+
   it('runs bounded audit-event retention cleanup from the scheduled handler', async () => {
     const db = new FakeD1Database('0007', [])
     const context = {

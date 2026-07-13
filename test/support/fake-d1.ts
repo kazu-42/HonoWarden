@@ -1,3 +1,5 @@
+import { pendingAttachmentExpiresAt } from '../../src/domain/attachment'
+
 const fakeMeta = {
   duration: 0,
   size_after: 0,
@@ -274,6 +276,18 @@ export class FakeD1Database {
         }
 
         if (query.includes('FROM cipher_attachments')) {
+          if (query.includes('SUM(size)')) {
+            const row = {
+              storageBytes: calculateAttachmentStorageBytes(
+                options.attachments ?? [],
+                boundValues,
+                query,
+              ),
+            }
+
+            return (column ? row[column as keyof typeof row] : row) as T
+          }
+
           if (options.attachment !== undefined) {
             return (options.attachment ?? null) as T | null
           }
@@ -357,6 +371,7 @@ export class FakeD1Database {
             results: filterAttachmentRows(
               options.attachments ?? [],
               boundValues,
+              query,
             ) as T[],
             meta: fakeMeta,
           }
@@ -499,23 +514,45 @@ export class FakeD1Database {
         }
 
         if (query.includes('INSERT INTO cipher_attachments')) {
+          const changes =
+            options.attachmentInsertChanges ??
+            insertCipherAttachment(options, boundValues, query)
+
           return {
             success: true,
             results: [],
             meta: {
               ...fakeMeta,
-              changes: options.attachmentInsertChanges ?? 1,
+              changes,
+            },
+          }
+        }
+
+        if (/UPDATE\s+cipher_attachments/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: {
+              ...fakeMeta,
+              changes: updateCipherAttachment(options, boundValues, query),
             },
           }
         }
 
         if (/DELETE\s+FROM\s+cipher_attachments/.test(query)) {
+          const changes =
+            options.attachmentDeleteChanges === 0
+              ? 0
+              : deleteCipherAttachments(options, boundValues, query)
+
           return {
             success: true,
             results: [],
             meta: {
               ...fakeMeta,
-              changes: options.attachmentDeleteChanges ?? 1,
+              changes:
+                options.attachmentDeleteChanges ??
+                (options.attachments ? changes : 1),
             },
           }
         }
@@ -1403,10 +1440,212 @@ function findScopedAttachmentRow(
 function filterAttachmentRows(
   rows: Record<string, unknown>[],
   boundValues: unknown[],
+  query: string,
 ): Record<string, unknown>[] {
   const userId = String(boundValues[0] ?? '')
 
-  return rows.filter((row) => row.userId === userId).sort(compareRevisionThenId)
+  return rows
+    .filter((row) => row.userId === userId)
+    .filter(
+      (row) =>
+        !query.includes('content_type IS NOT NULL') || row.contentType != null,
+    )
+    .sort(compareRevisionThenId)
+}
+
+function calculateAttachmentStorageBytes(
+  rows: Record<string, unknown>[],
+  boundValues: unknown[],
+  query: string,
+): number {
+  const userId = String(boundValues[0] ?? '')
+  const expiredBefore = String(boundValues[1] ?? '')
+
+  return rows
+    .filter((row) => row.userId === userId)
+    .filter((row) => {
+      if (row.contentType != null) {
+        return true
+      }
+
+      return (
+        query.includes('content_type IS NULL') &&
+        String(row.updatedAt ?? '') > expiredBefore
+      )
+    })
+    .reduce((total, row) => total + Number(row.size ?? 0), 0)
+}
+
+function insertCipherAttachment(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  if (!options.attachments) {
+    return 1
+  }
+
+  const id = String(boundValues[0])
+  if (options.attachments.some((row) => row.id === id)) {
+    return 0
+  }
+
+  if (query.includes('SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?')) {
+    const requestedSize = Number(boundValues[11])
+    const userId = String(boundValues[12])
+    const expiredBefore = String(boundValues[13])
+    const maxStorageBytes = Number(boundValues[14])
+    const reservedStorage = calculateAttachmentStorageBytes(
+      options.attachments,
+      [userId, expiredBefore],
+      'content_type IS NOT NULL content_type IS NULL',
+    )
+
+    if (reservedStorage + requestedSize > maxStorageBytes) {
+      return 0
+    }
+  }
+
+  const contentType =
+    boundValues[7] === null || boundValues[7] === undefined
+      ? null
+      : String(boundValues[7])
+  const updatedAt = String(boundValues[10])
+  options.attachments.push({
+    id,
+    userId: String(boundValues[1]),
+    cipherId: String(boundValues[2]),
+    objectKey: String(boundValues[3]),
+    fileName: String(boundValues[4]),
+    attachmentKey: String(boundValues[5]),
+    size: Number(boundValues[6]),
+    contentType,
+    uploadState: contentType === null ? 'pending' : 'uploaded',
+    pendingExpiresAt:
+      contentType === null ? pendingAttachmentExpiresAt(updatedAt) : null,
+    revisionDate: String(boundValues[8]),
+    createdAt: String(boundValues[9]),
+    updatedAt,
+  })
+
+  return 1
+}
+
+function updateCipherAttachment(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  if (!options.attachments) {
+    return 1
+  }
+
+  if (query.includes('SET updated_at = ?')) {
+    const [updatedAt, id, cipherId, userId, expiredBefore] = boundValues
+    const requestedSize = Number(boundValues[5])
+    const maxStorageBytes = Number(boundValues[9])
+    const row = options.attachments.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.cipherId === cipherId &&
+        candidate.userId === userId &&
+        candidate.contentType === null &&
+        String(candidate.updatedAt ?? '') > String(expiredBefore),
+    )
+    if (!row) {
+      return 0
+    }
+
+    const otherReservedStorage = options.attachments
+      .filter((candidate) => candidate.userId === userId && candidate.id !== id)
+      .filter(
+        (candidate) =>
+          candidate.contentType != null ||
+          String(candidate.updatedAt ?? '') > String(expiredBefore),
+      )
+      .reduce((total, candidate) => total + Number(candidate.size ?? 0), 0)
+    if (otherReservedStorage + requestedSize > maxStorageBytes) {
+      return 0
+    }
+
+    Object.assign(row, {
+      updatedAt,
+      pendingExpiresAt: pendingAttachmentExpiresAt(String(updatedAt)),
+    })
+    return 1
+  }
+
+  const [contentType, revisionDate, updatedAt, id, cipherId, userId] =
+    boundValues
+  const row = options.attachments.find(
+    (candidate) =>
+      candidate.id === id &&
+      candidate.cipherId === cipherId &&
+      candidate.userId === userId &&
+      candidate.contentType === null,
+  )
+  if (!row) {
+    return 0
+  }
+
+  Object.assign(row, {
+    contentType,
+    uploadState: 'uploaded',
+    pendingExpiresAt: null,
+    revisionDate,
+    updatedAt,
+  })
+  return 1
+}
+
+function deleteCipherAttachments(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  if (!options.attachments) {
+    return 1
+  }
+
+  if (query.includes('WHERE id IN')) {
+    const expiredBefore = String(boundValues[0])
+    const limit = Number(boundValues[1])
+    const ids = options.attachments
+      .filter(
+        (row) =>
+          row.contentType === null &&
+          String(row.updatedAt ?? '') <= expiredBefore,
+      )
+      .sort((left, right) => {
+        const expiryComparison = String(left.updatedAt).localeCompare(
+          String(right.updatedAt),
+        )
+        return (
+          expiryComparison || String(left.id).localeCompare(String(right.id))
+        )
+      })
+      .slice(0, limit)
+      .map((row) => row.id)
+
+    options.attachments.splice(
+      0,
+      options.attachments.length,
+      ...options.attachments.filter((row) => !ids.includes(row.id)),
+    )
+    return ids.length
+  }
+
+  const [id, cipherId, userId] = boundValues
+  const index = options.attachments.findIndex(
+    (row) =>
+      row.id === id && row.cipherId === cipherId && row.userId === userId,
+  )
+  if (index < 0) {
+    return 0
+  }
+
+  options.attachments.splice(index, 1)
+  return 1
 }
 
 function findDeviceRow(

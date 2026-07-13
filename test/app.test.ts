@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import app, { acceptNotificationHubWebSocket } from '../src/app'
+import { attachmentStoragePolicy } from '../src/domain/attachment'
 import { buildAuthRequestAccessCodeHash } from '../src/domain/auth-request'
 import {
   buildAuthAttemptBucketKey,
@@ -13,6 +14,8 @@ import { hotp } from '../src/domain/totp'
 import * as retentionCleanup from '../src/maintenance/retention-cleanup'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 import { FakeR2Bucket } from './support/fake-r2'
+
+const testAttachmentStorageQuotaBytes = attachmentStoragePolicy.maxStorageBytes
 
 class FakeWebSocket {
   accepted = false
@@ -50,6 +53,28 @@ class FakeWebSocket {
     for (const listener of this.listeners.get(type) ?? []) {
       listener(event)
     }
+  }
+}
+
+class TwoPutBarrierR2Bucket extends FakeR2Bucket {
+  private arrivals = 0
+  private releaseBarrier!: () => void
+  private readonly barrier = new Promise<void>((resolve) => {
+    this.releaseBarrier = resolve
+  })
+
+  override async put(
+    key: string,
+    value: ArrayBuffer | ArrayBufferView | Blob | string | null,
+    options: { httpMetadata?: { contentType?: string } } = {},
+  ): Promise<null> {
+    this.arrivals += 1
+    if (this.arrivals === 2) {
+      this.releaseBarrier()
+    }
+    await this.barrier
+
+    return super.put(key, value, options)
   }
 }
 
@@ -4068,6 +4093,20 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          attachments: [
+            attachmentRecord(),
+            {
+              ...pendingAttachmentRecord(),
+              id: 'pending-profile-attachment-id',
+              size: 50,
+            },
+            {
+              ...attachmentRecord(),
+              id: 'other-user-profile-attachment-id',
+              userId: 'other-user-id',
+              size: 999,
+            },
+          ],
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -4105,6 +4144,8 @@ describe('HonoWarden app', () => {
       organizationsNew: [],
       providers: [],
       providerOrganizations: [],
+      storage: 15,
+      maxStorageGb: 1,
       userDecryptionOptions: {
         hasMasterPassword: true,
         masterPasswordUnlock: {
@@ -4149,6 +4190,8 @@ describe('HonoWarden app', () => {
       OrganizationsNew: [],
       Providers: [],
       ProviderOrganizations: [],
+      Storage: 15,
+      MaxStorageGb: 1,
       UserDecryptionOptions: {
         HasMasterPassword: true,
         MasterPasswordUnlock: {
@@ -4232,6 +4275,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          attachments: [attachmentRecord()],
           userUpdateChanges: 1,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -4247,6 +4291,10 @@ describe('HonoWarden app', () => {
       Email: 'person@example.test',
       SecurityStamp: 'security-stamp',
       TwoFactorEnabled: false,
+      storage: 15,
+      maxStorageGb: 1,
+      Storage: 15,
+      MaxStorageGb: 1,
     })
   })
 
@@ -6491,6 +6539,674 @@ describe('HonoWarden app', () => {
     expect(objectKey).not.toContain('file-name')
   })
 
+  it('allocates attachment metadata for the official v2 Direct flow', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const attachments: Record<string, unknown>[] = []
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/v2',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          Key: '2.encrypted-attachment-key',
+          FileName: '2.encrypted-file-name',
+          FileSize: 15,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipher: cipherRecord(),
+          attachments,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(201)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
+      AttachmentId: expect.any(String),
+      FileUploadType: 0,
+      Url: expect.stringMatching(
+        /^\/api\/ciphers\/cipher-id\/attachment\/[0-9a-f-]{36}$/,
+      ),
+      CipherResponse: {
+        id: 'cipher-id',
+        attachments: [
+          {
+            id: expect.any(String),
+            fileName: '2.encrypted-file-name',
+            key: '2.encrypted-attachment-key',
+            size: 15,
+          },
+        ],
+      },
+      attachmentId: expect.any(String),
+      fileUploadType: 0,
+      url: expect.stringMatching(
+        /^\/api\/ciphers\/cipher-id\/attachment\/[0-9a-f-]{36}$/,
+      ),
+      cipherResponse: {
+        id: 'cipher-id',
+      },
+    })
+    expect(body.AttachmentId).toBe(body.attachmentId)
+    expect(body.Url).toBe(body.url)
+    expect(bucket.putKeys).toEqual([])
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        id: body.AttachmentId,
+        cipherId: 'cipher-id',
+        userId: 'user-id',
+        contentType: null,
+        uploadState: 'pending',
+      }),
+    ])
+    const [objectKey] = attachments.map((attachment) => attachment.objectKey)
+    expect(objectKey).toMatch(/^attachments\/[0-9a-f-]{36}$/)
+    expect(objectKey).not.toContain('user-id')
+    expect(objectKey).not.toContain('cipher-id')
+    expect(objectKey).not.toContain('file-name')
+  })
+
+  it('accepts the official lower-camel v2 allocation fields', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        authUser: user,
+        cipher: cipherRecord(),
+        attachments: [],
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/v2',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key: '2.encrypted-attachment-key',
+          fileName: '2.encrypted-file-name',
+          fileSize: 15,
+        }),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(201)
+    const allocation = (await response.json()) as Record<string, unknown>
+    expect(allocation).toMatchObject({
+      AttachmentId: expect.any(String),
+      FileUploadType: 0,
+    })
+
+    const form = new FormData()
+    form.set(
+      'data',
+      new Blob(['encrypted-bytes'], { type: 'application/octet-stream' }),
+      '2.encrypted-file-name',
+    )
+    const uploadResponse = await app.request(
+      String(allocation.Url),
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: form,
+      },
+      env,
+    )
+
+    expect(uploadResponse.status).toBe(204)
+    expect(bucket.keys()).toHaveLength(1)
+  })
+
+  it.each([
+    {
+      name: 'missing cipher',
+      ciphers: [],
+    },
+    {
+      name: 'cross-user cipher',
+      ciphers: [{ ...cipherRecord(), userId: 'other-user-id' }],
+    },
+    {
+      name: 'deleted cipher',
+      ciphers: [
+        {
+          ...cipherRecord(),
+          deletedAt: '2026-07-12T00:00:00.000Z',
+        },
+      ],
+    },
+  ])(
+    'rejects v2 allocation for a $name without R2 writes',
+    async ({ ciphers }) => {
+      const user = authUserRecord()
+      const accessToken = await accessTokenFor(user)
+      const bucket = new FakeR2Bucket()
+      const attachments: Record<string, unknown>[] = []
+      const response = await app.request(
+        '/api/ciphers/cipher-id/attachment/v2',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            key: '2.encrypted-attachment-key',
+            fileName: '2.encrypted-file-name',
+            fileSize: 15,
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers,
+            attachments,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          VAULT_OBJECTS: bucket as unknown as R2Bucket,
+        },
+      )
+
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'cipher_not_found' },
+      })
+      expect(attachments).toEqual([])
+      expect(bucket.putKeys).toEqual([])
+    },
+  )
+
+  it('uploads and safely retries encrypted bytes for a pre-allocated attachment id', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const attachments = [pendingAttachmentRecord()]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers: [cipherRecord()],
+      attachments,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const form = new FormData()
+      form.set(
+        'data',
+        new Blob(['encrypted-bytes'], {
+          type: 'application/octet-stream',
+        }),
+        '2.encrypted-file-name',
+      )
+      const response = await app.request(
+        '/api/ciphers/cipher-id/attachment/attachment-id',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: form,
+        },
+        env,
+      )
+
+      expect(response.status).toBe(204)
+    }
+
+    expect(bucket.keys()).toEqual(['attachments/opaque-object-id'])
+    expect(bucket.putKeys).toEqual([
+      'attachments/opaque-object-id',
+      'attachments/opaque-object-id',
+    ])
+    await expect(
+      bucket
+        .get('attachments/opaque-object-id')
+        .then((object) => object?.text()),
+    ).resolves.toBe('encrypted-bytes')
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        id: 'attachment-id',
+        uploadState: 'uploaded',
+        pendingExpiresAt: null,
+      }),
+    ])
+
+    const profileResponse = await app.request(
+      '/api/accounts/profile',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      env,
+    )
+    expect(profileResponse.status).toBe(200)
+    await expect(profileResponse.json()).resolves.toMatchObject({
+      storage: 15,
+      maxStorageGb: 1,
+      Storage: 15,
+      MaxStorageGb: 1,
+    })
+  })
+
+  it('keeps the shared object when concurrent retries race the uploaded-state transition', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new TwoPutBarrierR2Bucket()
+    const attachments = [pendingAttachmentRecord()]
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        authUser: user,
+        ciphers: [cipherRecord()],
+        attachments,
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+    const upload = (contents: string) => {
+      const form = new FormData()
+      form.set(
+        'data',
+        new Blob([contents], { type: 'application/octet-stream' }),
+        '2.encrypted-file-name',
+      )
+
+      return app.request(
+        '/api/ciphers/cipher-id/attachment/attachment-id',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: form,
+        },
+        env,
+      )
+    }
+
+    const responses = await Promise.all([
+      upload('encrypted-one!!'),
+      upload('encrypted-two!!'),
+    ])
+
+    expect(responses.map((response) => response.status)).toEqual([204, 204])
+    expect(bucket.putKeys).toEqual([
+      'attachments/opaque-object-id',
+      'attachments/opaque-object-id',
+    ])
+    expect(bucket.deletedKeys).toEqual([])
+    expect(bucket.keys()).toEqual(['attachments/opaque-object-id'])
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        id: 'attachment-id',
+        uploadState: 'uploaded',
+      }),
+    ])
+  })
+
+  it.each([
+    {
+      name: 'missing cipher',
+      ciphers: [],
+      attachments: [pendingAttachmentRecord()],
+      expectedCode: 'cipher_not_found',
+    },
+    {
+      name: 'cross-user cipher',
+      ciphers: [{ ...cipherRecord(), userId: 'other-user-id' }],
+      attachments: [
+        {
+          ...pendingAttachmentRecord(),
+          userId: 'other-user-id',
+        },
+      ],
+      expectedCode: 'cipher_not_found',
+    },
+    {
+      name: 'attachment id on another cipher',
+      ciphers: [cipherRecord()],
+      attachments: [
+        {
+          ...pendingAttachmentRecord(),
+          cipherId: 'other-cipher-id',
+        },
+      ],
+      expectedCode: 'attachment_not_found',
+    },
+    {
+      name: 'missing attachment id',
+      ciphers: [cipherRecord()],
+      attachments: [],
+      expectedCode: 'attachment_not_found',
+    },
+  ])(
+    'rejects direct upload for $name before R2 writes',
+    async ({ ciphers, attachments, expectedCode }) => {
+      const user = authUserRecord()
+      const accessToken = await accessTokenFor(user)
+      const bucket = new FakeR2Bucket()
+      const form = new FormData()
+      form.set('data', new Blob(['encrypted-bytes']), 'encrypted-name')
+      const response = await app.request(
+        '/api/ciphers/cipher-id/attachment/attachment-id',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: form,
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers,
+            attachments,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          VAULT_OBJECTS: bucket as unknown as R2Bucket,
+        },
+      )
+
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: expectedCode },
+      })
+      expect(bucket.putKeys).toEqual([])
+    },
+  )
+
+  it('renews the Direct upload URL without mutating a pending attachment', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const attachments = [pendingAttachmentRecord()]
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id/renew',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [cipherRecord()],
+          attachments,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      AttachmentId: 'attachment-id',
+      FileUploadType: 0,
+      Url: '/api/ciphers/cipher-id/attachment/attachment-id',
+      attachmentId: 'attachment-id',
+      fileUploadType: 0,
+      url: '/api/ciphers/cipher-id/attachment/attachment-id',
+    })
+    expect(attachments).toEqual([pendingAttachmentRecord()])
+    expect(bucket.putKeys).toEqual([])
+    expect(bucket.deletedKeys).toEqual([])
+  })
+
+  it('rolls back a pending allocation and releases its reserved quota', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const attachments = [
+      {
+        ...pendingAttachmentRecord(),
+        size: testAttachmentStorageQuotaBytes,
+      },
+    ]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers: [cipherRecord()],
+      attachments,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+
+    const deleteResponse = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      env,
+    )
+
+    expect(deleteResponse.status).toBe(200)
+    expect(attachments).toEqual([])
+    expect(bucket.keys()).toEqual([])
+
+    const allocationResponse = await app.request(
+      '/api/ciphers/cipher-id/attachment/v2',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key: '2.replacement-key',
+          fileName: '2.replacement-name',
+          fileSize: testAttachmentStorageQuotaBytes,
+        }),
+      },
+      env,
+    )
+    expect(allocationResponse.status).toBe(201)
+  })
+
+  it.each([
+    {
+      name: 'account quota is already reserved',
+      fileSize: 1,
+      attachments: [
+        {
+          ...attachmentRecord(),
+          size: testAttachmentStorageQuotaBytes,
+        },
+      ],
+      expectedCode: 'attachment_storage_limit_exceeded',
+      expectedStatus: 413,
+    },
+    {
+      name: 'the attachment is individually oversized',
+      fileSize: testAttachmentStorageQuotaBytes + 1,
+      attachments: [],
+      expectedCode: 'attachment_too_large',
+      expectedStatus: 413,
+    },
+    {
+      name: 'the encrypted payload is empty',
+      fileSize: 0,
+      attachments: [],
+      expectedCode: 'invalid_request',
+      expectedStatus: 400,
+    },
+  ])(
+    'rejects v2 allocation when $name',
+    async ({ fileSize, attachments, expectedCode, expectedStatus }) => {
+      const user = authUserRecord()
+      const accessToken = await accessTokenFor(user)
+      const bucket = new FakeR2Bucket()
+      const response = await app.request(
+        '/api/ciphers/cipher-id/attachment/v2',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            key: '2.encrypted-attachment-key',
+            fileName: '2.encrypted-file-name',
+            fileSize,
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers: [cipherRecord()],
+            attachments,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          VAULT_OBJECTS: bucket as unknown as R2Bucket,
+        },
+      )
+
+      expect(response.status).toBe(expectedStatus)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: expectedCode },
+      })
+      expect(bucket.putKeys).toEqual([])
+    },
+  )
+
+  it('rejects a direct upload whose encrypted byte count differs from its allocation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const form = new FormData()
+    form.set('data', new Blob(['wrong-size']), '2.encrypted-file-name')
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [cipherRecord()],
+          attachments: [pendingAttachmentRecord()],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'attachment_size_mismatch' },
+    })
+    expect(bucket.putKeys).toEqual([])
+  })
+
+  it('rejects direct upload when reserved account storage is over quota before R2 writes', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const form = new FormData()
+    form.set('data', new Blob(['encrypted-bytes']), '2.encrypted-file-name')
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [cipherRecord()],
+          attachments: [
+            {
+              ...attachmentRecord(),
+              id: 'existing-full-quota-attachment-id',
+              objectKey: 'attachments/existing-full-quota-object-id',
+              size: testAttachmentStorageQuotaBytes,
+            },
+            pendingAttachmentRecord(),
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(413)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'attachment_storage_limit_exceeded' },
+    })
+    expect(bucket.putKeys).toEqual([])
+  })
+
+  it('does not delete v2 bytes when audit persistence fails after upload state is durable', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const attachments = [pendingAttachmentRecord()]
+    const form = new FormData()
+    form.set('data', new Blob(['encrypted-bytes']), '2.encrypted-file-name')
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'v2-audit-attachment-create-failure-request',
+        },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          auditEventInsertThrows: true,
+          ciphers: [cipherRecord()],
+          attachments,
+        }),
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(503)
+    expect(bucket.putKeys).toEqual(['attachments/opaque-object-id'])
+    expect(bucket.deletedKeys).toEqual([])
+    expect(bucket.has('attachments/opaque-object-id')).toBe(true)
+    expect(attachments[0]).toMatchObject({ uploadState: 'uploaded' })
+    auditLog.mockRestore()
+  })
+
   it('rejects attachment upload for missing or cross-user ciphers before R2 writes', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -6526,6 +7242,46 @@ describe('HonoWarden app', () => {
       },
     })
     expect(bucket.keys()).toEqual([])
+  })
+
+  it('enforces the storage quota on the legacy upload before R2 writes', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const bucket = new FakeR2Bucket()
+    const form = new FormData()
+    form.set('fileName', '2.encrypted-file-name')
+    form.set('key', '2.encrypted-attachment-key')
+    form.set('file', new Blob(['encrypted-bytes']), 'ignored.bin')
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipher: cipherRecord(),
+          attachments: [
+            {
+              ...attachmentRecord(),
+              size: testAttachmentStorageQuotaBytes,
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(413)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'attachment_storage_limit_exceeded' },
+    })
+    expect(bucket.putKeys).toEqual([])
   })
 
   it('does not delete uploaded attachment bytes when audit persistence fails after metadata create', async () => {
@@ -6663,7 +7419,31 @@ describe('HonoWarden app', () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const bucket = new FakeR2Bucket()
+    const attachments = [attachmentRecord()]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      attachmentDeleteChanges: 1,
+      attachments,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
     await bucket.put('attachments/opaque-object-id', 'encrypted-bytes')
+
+    const profileBeforeDelete = await app.request(
+      '/api/accounts/profile',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      env,
+    )
+    await expect(profileBeforeDelete.json()).resolves.toMatchObject({
+      storage: 15,
+    })
 
     const response = await app.request(
       '/api/ciphers/cipher-id/attachment/attachment-id',
@@ -6673,15 +7453,7 @@ describe('HonoWarden app', () => {
           Authorization: `Bearer ${accessToken}`,
         },
       },
-      {
-        DB: new FakeD1Database(null, [], {
-          authUser: user,
-          attachmentDeleteChanges: 1,
-          attachments: [attachmentRecord()],
-        }),
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-        VAULT_OBJECTS: bucket as unknown as R2Bucket,
-      },
+      env,
     )
 
     expect(response.status).toBe(200)
@@ -6693,6 +7465,20 @@ describe('HonoWarden app', () => {
     })
     expect(bucket.has('attachments/opaque-object-id')).toBe(false)
     expect(bucket.deletedKeys).toEqual(['attachments/opaque-object-id'])
+    expect(attachments).toEqual([])
+
+    const profileAfterDelete = await app.request(
+      '/api/accounts/profile',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      env,
+    )
+    await expect(profileAfterDelete.json()).resolves.toMatchObject({
+      storage: 0,
+    })
   })
 
   it('emits secret-safe audit events for attachment mutations', async () => {
@@ -6993,6 +7779,52 @@ describe('HonoWarden app', () => {
         },
       ],
     })
+  })
+
+  it('keeps pending attachment allocations out of sync and storage usage', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [cipherRecord()],
+          attachments: [
+            {
+              ...attachmentRecord(),
+              id: 'uploaded-attachment-id',
+            },
+            {
+              ...pendingAttachmentRecord(),
+              id: 'pending-attachment-id',
+              objectKey: 'attachments/pending-object-id',
+              size: 50,
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      profile: Record<string, unknown>
+      ciphers: Array<{ attachments?: Array<{ id: string }> }>
+    }
+    expect(body.profile).toMatchObject({
+      storage: 15,
+      maxStorageGb: 1,
+    })
+    expect(body.ciphers[0]?.attachments).toEqual([
+      expect.objectContaining({ id: 'uploaded-attachment-id' }),
+    ])
+    expect(JSON.stringify(body.ciphers)).not.toContain('pending-attachment-id')
   })
 
   it('keeps sync folders and ciphers isolated between personal vault users', async () => {
@@ -8439,6 +9271,20 @@ function cipherCreateBody() {
   }
 }
 
+function cipherRecord() {
+  return {
+    id: 'cipher-id',
+    userId: 'user-id',
+    folderId: null,
+    type: 1,
+    favorite: 0,
+    encryptedJson: JSON.stringify(cipherCreateBody()),
+    revisionDate: '2026-07-06T00:05:00.000Z',
+    createdAt: '2026-07-06T00:04:00.000Z',
+    deletedAt: null,
+  }
+}
+
 function attachmentRecord() {
   return {
     id: 'attachment-id',
@@ -8449,9 +9295,21 @@ function attachmentRecord() {
     attachmentKey: '2.encrypted-attachment-key',
     size: 15,
     contentType: 'application/octet-stream',
+    uploadState: 'uploaded',
+    pendingExpiresAt: null,
     revisionDate: '2026-07-10T00:00:00.000Z',
     createdAt: '2026-07-10T00:00:00.000Z',
     updatedAt: '2026-07-10T00:00:00.000Z',
+  }
+}
+
+function pendingAttachmentRecord() {
+  return {
+    ...attachmentRecord(),
+    contentType: null,
+    uploadState: 'pending',
+    pendingExpiresAt: '2999-07-10T00:00:00.000Z',
+    updatedAt: '2999-07-09T00:00:00.000Z',
   }
 }
 

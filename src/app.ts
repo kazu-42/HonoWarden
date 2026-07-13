@@ -6,6 +6,11 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
 import {
+  attachmentStoragePolicy,
+  pendingAttachmentExpiredBefore,
+  pendingAttachmentExpiresAt,
+} from './domain/attachment'
+import {
   authRequestPolicy,
   authRequestQuotaPolicy,
   buildAuthRequestAccessCodeHash,
@@ -75,10 +80,13 @@ import {
 import type { AuthRequestNotificationType } from './notification-hub'
 import { buildServerConfig } from './protocol/config'
 import {
-  createCipherAttachment,
+  createPendingCipherAttachment,
   deleteCipherAttachment,
   findCipherAttachment,
+  getCipherAttachmentStorageUsage,
   listCipherAttachmentsByUser,
+  markCipherAttachmentUploaded,
+  reserveCipherAttachmentUpload,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
 import {
@@ -809,7 +817,22 @@ app.get('/api/accounts/profile', async (c) => {
     return auth.response
   }
 
-  return c.json(buildAccountProfileResponse(auth.user))
+  try {
+    const storage = await getCipherAttachmentStorageUsage(
+      c.env.DB,
+      auth.user.id,
+    )
+    return c.json(buildAccountProfileResponse(auth.user, storage))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account profile lookup failed.',
+      ),
+      503,
+    )
+  }
 })
 app.put('/api/accounts/profile', handleAccountProfileUpdate)
 app.post('/api/accounts/profile', handleAccountProfileUpdate)
@@ -892,6 +915,7 @@ app.all('/api/auth-requests', unsupportedAlphaFeature)
 app.all('/api/auth-requests/*', unsupportedAlphaFeature)
 app.all('/api/attachments', unsupportedAlphaFeature)
 app.all('/api/attachments/*', unsupportedAlphaFeature)
+app.post('/api/ciphers/:id/attachment/v2', createCipherAttachmentV2Route)
 app.post('/api/ciphers/:id/attachment', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -918,6 +942,10 @@ app.post('/api/ciphers/:id/attachment', async (c) => {
     )
   }
 
+  if (upload.size > attachmentStoragePolicy.maxStorageBytes) {
+    return c.json(attachmentTooLargeError(c.get('requestId')), 413)
+  }
+
   const now = new Date().toISOString()
   const attachmentId = crypto.randomUUID()
   const objectKey = buildAttachmentObjectKey()
@@ -932,32 +960,90 @@ app.post('/api/ciphers/:id/attachment', async (c) => {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
-    await c.env.VAULT_OBJECTS.put(objectKey, upload.body, {
-      httpMetadata: {
-        contentType: upload.contentType,
+    const pendingAttachment = await createPendingCipherAttachment(
+      c.env.DB,
+      {
+        id: attachmentId,
+        userId: auth.user.id,
+        cipherId,
+        objectKey,
+        fileName: upload.fileName,
+        attachmentKey: upload.attachmentKey,
+        size: upload.size,
+        contentType: null,
+        uploadState: 'pending',
+        pendingExpiresAt: pendingAttachmentExpiresAt(now),
+        revisionDate: now,
+        createdAt: now,
+        updatedAt: now,
       },
-    })
+      {
+        maxStorageBytes: attachmentStoragePolicy.maxStorageBytes,
+        expiredBefore: pendingAttachmentExpiredBefore(now),
+      },
+    )
+    if (pendingAttachment.status === 'quota_exceeded') {
+      return c.json(attachmentStorageLimitError(c.get('requestId')), 413)
+    }
 
-    const attachment = await (async () => {
-      try {
-        return await createCipherAttachment(c.env.DB, {
-          id: attachmentId,
-          userId: auth.user.id,
-          cipherId,
-          objectKey,
-          fileName: upload.fileName,
-          attachmentKey: upload.attachmentKey,
-          size: upload.size,
+    try {
+      await c.env.VAULT_OBJECTS.put(objectKey, upload.body, {
+        httpMetadata: {
           contentType: upload.contentType,
-          revisionDate: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-      } catch {
-        await c.env.VAULT_OBJECTS.delete(objectKey)
-        throw new Error('attachment metadata create failed')
+        },
+      })
+    } catch {
+      await c.env.VAULT_OBJECTS.delete(objectKey)
+      await deleteCipherAttachment(c.env.DB, {
+        id: attachmentId,
+        cipherId,
+        userId: auth.user.id,
+      })
+      throw new Error('attachment object create failed')
+    }
+
+    let attachment: CipherAttachmentRecord
+    try {
+      const markResult = await markCipherAttachmentUploaded(c.env.DB, {
+        id: attachmentId,
+        cipherId,
+        userId: auth.user.id,
+        contentType: upload.contentType,
+        revisionDate: now,
+        updatedAt: now,
+      })
+      if (markResult.status !== 'uploaded') {
+        throw new Error('attachment upload state transition failed')
       }
-    })()
+
+      attachment = {
+        ...pendingAttachment.attachment,
+        contentType: upload.contentType,
+        uploadState: 'uploaded',
+        pendingExpiresAt: null,
+        revisionDate: now,
+        updatedAt: now,
+      }
+    } catch {
+      const currentAttachment = await findCipherAttachment(c.env.DB, {
+        id: attachmentId,
+        cipherId,
+        userId: auth.user.id,
+      })
+      if (currentAttachment?.uploadState === 'uploaded') {
+        attachment = currentAttachment
+      } else {
+        await c.env.VAULT_OBJECTS.delete(objectKey)
+        if (currentAttachment) {
+          await deleteCipherAttachment(c.env.DB, {
+            id: attachmentId,
+            cipherId,
+            userId: auth.user.id,
+          })
+        }
+        throw new Error('attachment upload state transition failed')
+      }
+    }
 
     await emitVaultMutationAuditEvent(c, auth, {
       name: 'attachment.create',
@@ -985,6 +1071,14 @@ app.post('/api/ciphers/:id/attachment', async (c) => {
     )
   }
 })
+app.post(
+  '/api/ciphers/:id/attachment/:attachmentId',
+  uploadPreallocatedCipherAttachmentRoute,
+)
+app.get(
+  '/api/ciphers/:id/attachment/:attachmentId/renew',
+  renewCipherAttachmentUploadRoute,
+)
 app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -998,7 +1092,7 @@ app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
       userId: auth.user.id,
     })
 
-    if (!attachment) {
+    if (!attachment || attachment.uploadState !== 'uploaded') {
       return c.json(attachmentNotFoundError(c.get('requestId')), 404)
     }
 
@@ -3904,7 +3998,10 @@ function buildSyncResponse(
   domainSettings: DomainSettings = emptyDomainSettings,
 ) {
   const attachmentsByCipherId = buildAttachmentsByCipherId(attachments)
-  const profile = buildSyncProfileResponse(user)
+  const profile = buildSyncProfileResponse(
+    user,
+    sumCipherAttachmentStorage(attachments),
+  )
   const folderResponses = folders.map(buildFolderResponse)
   const cipherResponses = ciphers.map((cipher) =>
     buildCipherResponse(cipher, attachmentsByCipherId.get(cipher.id) ?? []),
@@ -4169,7 +4266,10 @@ function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
   }
 }
 
-function buildAccountProfileResponse(user: AuthUserRecord) {
+function buildAccountProfileResponse(
+  user: AuthUserRecord,
+  storageBytes: number = 0,
+) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const userDecryptionOptions = masterPasswordUnlock
     ? {
@@ -4186,7 +4286,7 @@ function buildAccountProfileResponse(user: AuthUserRecord) {
 
   return {
     object: 'profile',
-    ...buildProfileResponse(user),
+    ...buildProfileResponse(user, storageBytes),
     UserDecryptionOptions: userDecryptionOptions,
     userDecryptionOptions,
     KeyConnectorUrl: null,
@@ -4221,7 +4321,7 @@ function buildBillingSubscriptionResponse() {
   }
 }
 
-function buildSyncProfileResponse(user: AuthUserRecord) {
+function buildSyncProfileResponse(user: AuthUserRecord, storageBytes: number) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
 
@@ -4247,10 +4347,12 @@ function buildSyncProfileResponse(user: AuthUserRecord) {
     securityStamp: user.securityStamp,
     providers: [],
     creationDate: normalizeApiTimestamp(user.createdAt),
+    storage: storageBytes,
+    maxStorageGb: attachmentStoragePolicy.maxStorageGb,
   }
 }
 
-function buildProfileResponse(user: AuthUserRecord) {
+function buildProfileResponse(user: AuthUserRecord, storageBytes: number) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
 
@@ -4276,6 +4378,8 @@ function buildProfileResponse(user: AuthUserRecord) {
     securityStamp: user.securityStamp,
     providers: [],
     creationDate: normalizeApiTimestamp(user.createdAt),
+    storage: storageBytes,
+    maxStorageGb: attachmentStoragePolicy.maxStorageGb,
     Id: user.id,
     Name: name,
     Email: user.emailNormalized,
@@ -4297,6 +4401,8 @@ function buildProfileResponse(user: AuthUserRecord) {
     OrganizationsNew: [],
     Providers: [],
     ProviderOrganizations: [],
+    Storage: storageBytes,
+    MaxStorageGb: attachmentStoragePolicy.maxStorageGb,
   }
 }
 
@@ -4433,6 +4539,12 @@ function buildAttachmentsByCipherId(
   return grouped
 }
 
+function sumCipherAttachmentStorage(
+  attachments: readonly CipherAttachmentRecord[],
+): number {
+  return attachments.reduce((total, attachment) => total + attachment.size, 0)
+}
+
 function buildAttachmentResponse(attachment: CipherAttachmentRecord) {
   return {
     object: 'attachment',
@@ -4442,17 +4554,41 @@ function buildAttachmentResponse(attachment: CipherAttachmentRecord) {
   }
 }
 
+function buildAttachmentUploadDataResponse(
+  attachment: CipherAttachmentRecord,
+  cipherResponse: Record<string, unknown>,
+) {
+  const url = buildAttachmentDirectUploadUrl(attachment)
+
+  return {
+    AttachmentId: attachment.id,
+    FileUploadType: 0,
+    Url: url,
+    CipherResponse: cipherResponse,
+    attachmentId: attachment.id,
+    fileUploadType: 0,
+    url,
+    cipherResponse,
+  }
+}
+
 function buildAttachmentMetadataResponse(attachment: CipherAttachmentRecord) {
   return {
     id: attachment.id,
-    url: `/api/ciphers/${encodeURIComponent(
-      attachment.cipherId,
-    )}/attachment/${encodeURIComponent(attachment.id)}`,
+    url: buildAttachmentDirectUploadUrl(attachment),
     fileName: attachment.fileName,
     key: attachment.attachmentKey,
     size: attachment.size,
     sizeName: formatByteSize(attachment.size),
   }
+}
+
+function buildAttachmentDirectUploadUrl(
+  attachment: Pick<CipherAttachmentRecord, 'cipherId' | 'id'>,
+): string {
+  return `/api/ciphers/${encodeURIComponent(
+    attachment.cipherId,
+  )}/attachment/${encodeURIComponent(attachment.id)}`
 }
 
 function buildBackupAttachmentResponse(attachment: CipherAttachmentRecord) {
@@ -4551,6 +4687,9 @@ function apiError(
     | 'collection_not_found'
     | 'account_not_found'
     | 'attachment_not_found'
+    | 'attachment_size_mismatch'
+    | 'attachment_storage_limit_exceeded'
+    | 'attachment_too_large'
     | 'auth_request_conflict'
     | 'auth_request_not_found'
     | 'current_device_revoke_forbidden'
@@ -4760,6 +4899,347 @@ async function handleTrustedDevicesUpdate(c: AppContext) {
   }
 }
 
+async function createCipherAttachmentV2Route(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  if (!cipherId) {
+    return c.json(
+      apiError(c.get('requestId'), 'invalid_request', 'Cipher id is required.'),
+      400,
+    )
+  }
+
+  const allocation = parseAttachmentAllocationRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!allocation.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Attachment allocation payload is invalid.',
+      ),
+      400,
+    )
+  }
+  if (allocation.fileSize > attachmentStoragePolicy.maxStorageBytes) {
+    return c.json(attachmentTooLargeError(c.get('requestId')), 413)
+  }
+
+  const now = new Date().toISOString()
+  const pendingExpiresAt = pendingAttachmentExpiresAt(now)
+
+  try {
+    const cipher = await findCipherById(c.env.DB, {
+      id: cipherId,
+      userId: auth.user.id,
+    })
+    if (!cipher || cipher.deletedAt) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    const uploadedAttachments = await listCipherAttachmentsByUser(
+      c.env.DB,
+      auth.user.id,
+    )
+    const result = await createPendingCipherAttachment(
+      c.env.DB,
+      {
+        id: crypto.randomUUID(),
+        userId: auth.user.id,
+        cipherId,
+        objectKey: buildAttachmentObjectKey(),
+        fileName: allocation.fileName,
+        attachmentKey: allocation.attachmentKey,
+        size: allocation.fileSize,
+        contentType: null,
+        uploadState: 'pending',
+        pendingExpiresAt,
+        revisionDate: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        maxStorageBytes: attachmentStoragePolicy.maxStorageBytes,
+        expiredBefore: pendingAttachmentExpiredBefore(now),
+      },
+    )
+    if (result.status === 'quota_exceeded') {
+      return c.json(attachmentStorageLimitError(c.get('requestId')), 413)
+    }
+
+    const existingForCipher =
+      buildAttachmentsByCipherId(uploadedAttachments).get(cipherId) ?? []
+    const cipherResponse = buildCipherResponse(cipher, [
+      ...existingForCipher,
+      result.attachment,
+    ])
+
+    return c.json(
+      buildAttachmentUploadDataResponse(result.attachment, cipherResponse),
+      201,
+    )
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Attachment allocation failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function uploadPreallocatedCipherAttachmentRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  const attachmentId = c.req.param('attachmentId')
+  if (!cipherId || !attachmentId) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher and attachment ids are required.',
+      ),
+      400,
+    )
+  }
+  const lookupNow = new Date().toISOString()
+
+  try {
+    const cipher = await findCipherById(c.env.DB, {
+      id: cipherId,
+      userId: auth.user.id,
+    })
+    if (!cipher || cipher.deletedAt) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    const attachment = await findCipherAttachment(c.env.DB, {
+      id: attachmentId,
+      cipherId,
+      userId: auth.user.id,
+    })
+    if (
+      !attachment ||
+      (attachment.uploadState === 'pending' &&
+        (!attachment.pendingExpiresAt ||
+          attachment.pendingExpiresAt <= lookupNow))
+    ) {
+      return c.json(attachmentNotFoundError(c.get('requestId')), 404)
+    }
+
+    const upload = await parsePreallocatedAttachmentUploadRequest(c.req.raw)
+    if (!upload.ok) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'Attachment upload payload is invalid.',
+        ),
+        400,
+      )
+    }
+    if (upload.size > attachmentStoragePolicy.maxStorageBytes) {
+      return c.json(attachmentTooLargeError(c.get('requestId')), 413)
+    }
+    if (upload.size !== attachment.size) {
+      return c.json(attachmentSizeMismatchError(c.get('requestId')), 400)
+    }
+
+    // Parsing multipart bodies may take long enough for an old reservation to
+    // expire. Refresh the lease with a new timestamp immediately before the
+    // cross-service write so concurrent allocations cannot reuse its quota.
+    const uploadReservedAt = new Date().toISOString()
+    let requiresUploadStateTransition = attachment.uploadState === 'pending'
+    if (requiresUploadStateTransition) {
+      const reservation = await reserveCipherAttachmentUpload(c.env.DB, {
+        id: attachment.id,
+        cipherId,
+        userId: auth.user.id,
+        size: attachment.size,
+        expiredBefore: pendingAttachmentExpiredBefore(uploadReservedAt),
+        maxStorageBytes: attachmentStoragePolicy.maxStorageBytes,
+        updatedAt: uploadReservedAt,
+      })
+      if (reservation.status !== 'reserved') {
+        const currentAttachment = await findCipherAttachment(c.env.DB, {
+          id: attachment.id,
+          cipherId,
+          userId: auth.user.id,
+        })
+        if (!currentAttachment) {
+          return c.json(attachmentNotFoundError(c.get('requestId')), 404)
+        }
+        if (currentAttachment.uploadState !== 'uploaded') {
+          return c.json(attachmentStorageLimitError(c.get('requestId')), 413)
+        }
+
+        requiresUploadStateTransition = false
+      }
+    }
+
+    await c.env.VAULT_OBJECTS.put(attachment.objectKey, upload.body, {
+      httpMetadata: {
+        contentType: upload.contentType,
+      },
+    })
+
+    let createdAttachment = false
+    if (requiresUploadStateTransition) {
+      let stateTransitionSucceeded = false
+      try {
+        const markResult = await markCipherAttachmentUploaded(c.env.DB, {
+          id: attachment.id,
+          cipherId,
+          userId: auth.user.id,
+          contentType: upload.contentType,
+          revisionDate: uploadReservedAt,
+          updatedAt: uploadReservedAt,
+        })
+        stateTransitionSucceeded = markResult.status === 'uploaded'
+      } catch {
+        // A failed D1 request is ambiguous: the update may have committed. The
+        // exact scoped read below determines whether compensation is safe.
+      }
+
+      if (stateTransitionSucceeded) {
+        createdAttachment = true
+      } else {
+        const currentAttachment = await findCipherAttachment(c.env.DB, {
+          id: attachment.id,
+          cipherId,
+          userId: auth.user.id,
+        })
+        if (currentAttachment?.uploadState === 'uploaded') {
+          // Another concurrent retry won the pending-to-uploaded transition.
+          // Both requests target the same opaque key, so deleting here would
+          // destroy the winner's durable object.
+          createdAttachment = false
+        } else if (!currentAttachment) {
+          // A missing scoped row cannot become uploaded, so this request owns
+          // no durable metadata and can safely compensate its object write.
+          await c.env.VAULT_OBJECTS.delete(attachment.objectKey)
+          throw new Error('attachment upload state transition failed')
+        } else {
+          // Another request may already have written this shared key and be
+          // about to win the transition. Preserve the bytes while state is
+          // ambiguous; a later retry or rollback can reconcile the pending
+          // allocation without risking an uploaded row with a missing object.
+          throw new Error('attachment upload state transition is pending')
+        }
+      }
+    }
+
+    if (createdAttachment) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'attachment.create',
+        outcome: 'success',
+        target: {
+          type: 'attachment',
+          id: attachment.id,
+        },
+        context: {
+          resultStatus: 'created',
+          cipherId,
+          size: attachment.size,
+        },
+      })
+    }
+
+    return c.body(null, 204)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Attachment upload failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function renewCipherAttachmentUploadRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  const attachmentId = c.req.param('attachmentId')
+  if (!cipherId || !attachmentId) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher and attachment ids are required.',
+      ),
+      400,
+    )
+  }
+  const now = new Date().toISOString()
+
+  try {
+    const cipher = await findCipherById(c.env.DB, {
+      id: cipherId,
+      userId: auth.user.id,
+    })
+    if (!cipher || cipher.deletedAt) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    const attachment = await findCipherAttachment(c.env.DB, {
+      id: attachmentId,
+      cipherId,
+      userId: auth.user.id,
+    })
+    if (
+      !attachment ||
+      (attachment.uploadState === 'pending' &&
+        (!attachment.pendingExpiresAt || attachment.pendingExpiresAt <= now))
+    ) {
+      return c.json(attachmentNotFoundError(c.get('requestId')), 404)
+    }
+
+    const uploadedAttachments = await listCipherAttachmentsByUser(
+      c.env.DB,
+      auth.user.id,
+    )
+    const existingForCipher =
+      buildAttachmentsByCipherId(uploadedAttachments).get(cipherId) ?? []
+    const cipherAttachments =
+      attachment.uploadState === 'pending'
+        ? [...existingForCipher, attachment]
+        : existingForCipher
+
+    return c.json(
+      buildAttachmentUploadDataResponse(
+        attachment,
+        buildCipherResponse(cipher, cipherAttachments),
+      ),
+    )
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Attachment upload renewal failed.',
+      ),
+      503,
+    )
+  }
+}
+
 async function handleAccountProfileUpdate(c: AppContext) {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -4800,12 +5280,20 @@ async function handleAccountProfileUpdate(c: AppContext) {
       )
     }
 
+    const storage = await getCipherAttachmentStorageUsage(
+      c.env.DB,
+      auth.user.id,
+    )
+
     return c.json(
-      buildAccountProfileResponse({
-        ...auth.user,
-        displayName: result.displayName,
-        revisionDate: result.revisionDate,
-      }),
+      buildAccountProfileResponse(
+        {
+          ...auth.user,
+          displayName: result.displayName,
+          revisionDate: result.revisionDate,
+        },
+        storage,
+      ),
     )
   } catch {
     return c.json(
@@ -4828,6 +5316,30 @@ function attachmentNotFoundError(requestIdValue: string) {
     requestIdValue,
     'attachment_not_found',
     'Attachment was not found.',
+  )
+}
+
+function attachmentStorageLimitError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'attachment_storage_limit_exceeded',
+    'Attachment storage limit exceeded.',
+  )
+}
+
+function attachmentTooLargeError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'attachment_too_large',
+    'Attachment exceeds the account storage limit.',
+  )
+}
+
+function attachmentSizeMismatchError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'attachment_size_mismatch',
+    'Attachment byte count does not match its allocation.',
   )
 }
 
@@ -5685,6 +6197,68 @@ async function readJsonBody(request: Request): Promise<unknown> {
 
 async function readFormBody(request: Request): Promise<URLSearchParams> {
   return new URLSearchParams(await request.text())
+}
+
+function parseAttachmentAllocationRequestBody(body: unknown):
+  | {
+      ok: true
+      attachmentKey: string
+      fileName: string
+      fileSize: number
+    }
+  | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const attachmentKey = parseRequiredString(body.key ?? body.Key)
+  const fileName = parseRequiredString(body.fileName ?? body.FileName)
+  const fileSize = body.fileSize ?? body.FileSize
+  if (
+    !attachmentKey ||
+    !fileName ||
+    typeof fileSize !== 'number' ||
+    !Number.isSafeInteger(fileSize) ||
+    fileSize <= 0
+  ) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    attachmentKey,
+    fileName,
+    fileSize,
+  }
+}
+
+async function parsePreallocatedAttachmentUploadRequest(
+  request: Request,
+): Promise<
+  | {
+      ok: true
+      body: Blob
+      contentType: string
+      size: number
+    }
+  | { ok: false }
+> {
+  try {
+    const form = await request.formData()
+    const file = readFormBlob(form, 'data')
+    if (!file) {
+      return { ok: false }
+    }
+
+    return {
+      ok: true,
+      body: file,
+      contentType: file.type || 'application/octet-stream',
+      size: file.size,
+    }
+  } catch {
+    return { ok: false }
+  }
 }
 
 async function parseAttachmentUploadRequest(request: Request): Promise<
