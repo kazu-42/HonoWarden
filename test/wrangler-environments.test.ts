@@ -159,6 +159,16 @@ describe('wrangler deployment environments', () => {
     expect(config.env.production.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
   })
 
+  it('keeps refresh-token retention staged and disabled by default', () => {
+    expect(config.vars.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED).toBe('false')
+    expect(
+      config.env.staging.vars.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED,
+    ).toBe('true')
+    expect(
+      config.env.production.vars.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED,
+    ).toBe('false')
+  })
+
   it('keeps Workers Logpush and observability enabled for deployable environments', () => {
     expect(config.logpush).toBe(true)
     expect(config.env.staging.logpush).toBe(true)

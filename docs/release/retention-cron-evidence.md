@@ -20,8 +20,13 @@ The live cleanup path covers only transient authentication tables:
 - `auth_failure_buckets`
 - `totp_challenges`
 
-It does not delete users, devices, refresh tokens, folders, ciphers, audit log
-lines, backup manifests, R2 objects, or inquiry inbox data.
+It does not delete users, devices, folders, ciphers, audit log lines, backup
+manifests, R2 objects, or inquiry inbox data.
+
+Policy note added 2026-07-13: refresh-token history retention is separately
+gated by `HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED`. It only targets rows that
+have been expired for at least 30 days in bounded batches. This note does not
+rewrite the historical 2026-07-09 deployment, smoke, or cron run records below.
 
 ## Deployment Readback
 

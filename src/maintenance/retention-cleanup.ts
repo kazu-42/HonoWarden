@@ -1,5 +1,9 @@
 import { loginDefensePolicy } from '../domain/login-defense'
-import { cleanupAuthDefenseState } from '../repositories/auth-repository'
+import { refreshTokenRetentionRowsPerSlice } from '../domain/tokens'
+import {
+  cleanupAuthDefenseState,
+  deleteExpiredRefreshTokens,
+} from '../repositories/auth-repository'
 import {
   auditEventRetentionPolicy,
   cleanupExpiredAuditEvents,
@@ -24,6 +28,7 @@ const authDefenseCleanupWindowSeconds = Math.max(
 type CleanupTransientAuthDataOptions = {
   auditEvents?: boolean
   authRequests?: boolean
+  refreshTokens?: boolean
   requestQuotaBuckets?: boolean
 }
 
@@ -57,6 +62,13 @@ export async function cleanupTransientAuthData(
       now,
       authDefenseCleanupRowsPerSlice,
     )
+  }
+
+  if (options.refreshTokens) {
+    await deleteExpiredRefreshTokens(database, {
+      now,
+      limit: refreshTokenRetentionRowsPerSlice,
+    })
   }
 
   if (options.auditEvents) {

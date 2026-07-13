@@ -1,5 +1,8 @@
 import { normalizeEmail } from './prelogin'
 
+export const refreshTokenRetentionDays = 30
+export const refreshTokenRetentionRowsPerSlice = 100
+
 export type PasswordGrantRequest = {
   username: string
   usernameNormalized: string
@@ -85,6 +88,12 @@ export type AccessTokenKeyring = {
 
 export type AccessTokenSigner = string | AccessTokenSigningKey
 export type AccessTokenVerifier = string | AccessTokenKeyring
+
+export function isRefreshTokenRetentionEnabled(
+  value: string | undefined,
+): boolean {
+  return value?.trim().toLowerCase() === 'true'
+}
 
 export type AccessTokenVerification =
   | {

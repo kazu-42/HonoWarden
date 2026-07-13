@@ -36,6 +36,11 @@ type StagingDryRunReport = {
     bytes: number
     sha256: string
   }
+  checks: Array<{
+    id: string
+    status: 'pass' | 'fail'
+    detail: string
+  }>
   limitations: string[]
 }
 
@@ -73,6 +78,16 @@ describe('staging deploy dry run', () => {
     expect(fileReport.bindings.r2).toEqual({
       binding: 'VAULT_OBJECTS',
       bucketName: 'honowarden-staging-vault-objects',
+    })
+    expect(fileReport.checks).toContainEqual({
+      id: 'staging_refresh_token_retention_enabled',
+      status: 'pass',
+      detail: 'true',
+    })
+    expect(fileReport.checks).toContainEqual({
+      id: 'production_refresh_token_retention_fail_closed',
+      status: 'pass',
+      detail: 'false',
     })
     expect(fileReport.bundle.bytes).toBeGreaterThan(0)
     expect(fileReport.bundle.sha256).toMatch(/^[a-f0-9]{64}$/)

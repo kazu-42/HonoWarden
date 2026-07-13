@@ -41,6 +41,7 @@ describe('HonoWarden scheduled maintenance', () => {
     expect(cleanup).toHaveBeenCalledWith(db, '2026-07-08T00:00:00.000Z', {
       auditEvents: false,
       authRequests: false,
+      refreshTokens: false,
       requestQuotaBuckets: false,
     })
     expect(context.waitUntil).toHaveBeenCalledTimes(1)
@@ -122,6 +123,99 @@ describe('HonoWarden scheduled maintenance', () => {
     ])
   })
 
+  it('deletes one bounded refresh-token retention slice when enabled', async () => {
+    const refreshTokens: Record<string, unknown>[] = Array.from(
+      { length: 101 },
+      (_, index) => ({
+        id: `expired-token-${index.toString().padStart(3, '0')}`,
+        expiresAt: new Date(
+          Date.UTC(2026, 4, 1, 0, 0, 0) + index * 60_000,
+        ).toISOString(),
+        revokedAt: '2026-06-01T00:00:00.000Z',
+      }),
+    ).reverse()
+    refreshTokens.push(
+      {
+        id: 'active-token',
+        expiresAt: '2026-08-01T00:00:00.000Z',
+        revokedAt: null,
+      },
+      {
+        id: 'revoked-but-unexpired-token',
+        expiresAt: '2026-07-15T00:00:00.000Z',
+        revokedAt: '2026-06-20T00:00:00.000Z',
+      },
+    )
+    const db = new FakeD1Database('0001', [], { refreshTokens })
+    const prepare = vi.spyOn(db, 'prepare')
+    const context = executionContext()
+
+    await worker.scheduled(
+      scheduledController(Date.UTC(2026, 6, 31, 0, 0, 0)),
+      {
+        DB: db as unknown as D1Database,
+        INQUIRY_DB: db as unknown as D1Database,
+        HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED: 'true',
+        VAULT_OBJECTS: {} as unknown as R2Bucket,
+      },
+      context,
+    )
+
+    expect(db.refreshTokenCleanupDeletes).toEqual([
+      {
+        expiredBefore: '2026-07-01T00:00:00.000Z',
+        limit: 100,
+        deleted: 100,
+      },
+    ])
+    expect(refreshTokens.map((row) => row.id)).toEqual([
+      'expired-token-100',
+      'active-token',
+      'revoked-but-unexpired-token',
+    ])
+    expect(
+      prepare.mock.calls.some(([query]) =>
+        /DELETE\s+FROM\s+refresh_tokens/.test(query),
+      ),
+    ).toBe(true)
+  })
+
+  it.each([undefined, 'false'])(
+    'issues no refresh-token cleanup statement when the flag is %s',
+    async (flag) => {
+      const refreshTokens = [
+        {
+          id: 'expired-token',
+          expiresAt: '2026-05-01T00:00:00.000Z',
+          revokedAt: '2026-05-02T00:00:00.000Z',
+        },
+      ]
+      const db = new FakeD1Database('0001', [], { refreshTokens })
+      const prepare = vi.spyOn(db, 'prepare')
+      const context = executionContext()
+
+      await worker.scheduled(
+        scheduledController(Date.UTC(2026, 6, 31, 0, 0, 0)),
+        {
+          DB: db as unknown as D1Database,
+          INQUIRY_DB: db as unknown as D1Database,
+          ...(flag === undefined
+            ? {}
+            : { HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED: flag }),
+          VAULT_OBJECTS: {} as unknown as R2Bucket,
+        },
+        context,
+      )
+
+      expect(refreshTokens).toHaveLength(1)
+      expect(
+        prepare.mock.calls.some(([query]) =>
+          /DELETE\s+FROM\s+refresh_tokens/.test(query),
+        ),
+      ).toBe(false)
+    },
+  )
+
   it('skips audit-event cleanup while audit logging is disabled', async () => {
     const db = new FakeD1Database('0006', [])
     const context = {
@@ -186,3 +280,19 @@ describe('HonoWarden scheduled maintenance', () => {
     expect(context.waitUntil).toHaveBeenCalledTimes(1)
   })
 })
+
+function scheduledController(scheduledTime: number): ScheduledController {
+  return {
+    scheduledTime,
+    cron: '0 * * * *',
+    type: 'scheduled',
+    noRetry: vi.fn(),
+  } as ScheduledController
+}
+
+function executionContext(): ExecutionContext {
+  return {
+    waitUntil: vi.fn(),
+    passThroughOnException: vi.fn(),
+  } as unknown as ExecutionContext
+}

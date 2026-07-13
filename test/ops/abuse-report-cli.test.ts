@@ -31,6 +31,7 @@ describe('abuse report CLI', () => {
       retention: {
         authDefenseCleanupWindowSeconds: number
         auditEventRetentionDays: number
+        refreshTokenRetentionDays: number
         requestQuotaCleanupRetentionSeconds: number
         rowsPerCleanupSlice: number
       }
@@ -58,6 +59,7 @@ describe('abuse report CLI', () => {
       retention: {
         authDefenseCleanupWindowSeconds: 900,
         auditEventRetentionDays: 365,
+        refreshTokenRetentionDays: 30,
         requestQuotaCleanupRetentionSeconds: 3600,
         rowsPerCleanupSlice: 100,
       },
@@ -79,6 +81,7 @@ describe('abuse report CLI', () => {
       'auth_attempt_cleanup_candidates',
       'auth_failure_cleanup_candidates',
       'totp_challenge_cleanup_candidates',
+      'refresh_token_cleanup_candidates',
       'audit_event_cleanup_candidates',
       'request_quota_cleanup_candidates',
     ])
@@ -92,6 +95,23 @@ describe('abuse report CLI', () => {
         (query) => query.id === 'request_quota_cleanup_candidates',
       )?.sql,
     ).toContain('blocked_until')
+    const refreshTokenCleanupQuery = output.queries.find(
+      (query) => query.id === 'refresh_token_cleanup_candidates',
+    )
+    expect(refreshTokenCleanupQuery?.sql).toBe(
+      [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(expires_at) AS oldest_candidate_at,',
+        '  MAX(expires_at) AS newest_candidate_at',
+        'FROM refresh_tokens',
+        "WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days');",
+      ].join('\n'),
+    )
+    expect(refreshTokenCleanupQuery?.sql).not.toContain('revoked_at')
+    expect(refreshTokenCleanupQuery?.sql).not.toContain('token_hash')
+    expect(refreshTokenCleanupQuery?.sql).not.toContain('user_id')
+    expect(refreshTokenCleanupQuery?.sql).not.toContain('device_id')
     expect(output.alerts.map((alert) => alert.id)).toEqual([
       'request_quota_active_blocked_buckets',
       'auth_failure_active_locked_buckets',
@@ -118,5 +138,6 @@ describe('abuse report CLI', () => {
     expect(serialized).not.toContain('email')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('encrypted_json')
+    expect(serialized).not.toContain('token_hash')
   })
 })

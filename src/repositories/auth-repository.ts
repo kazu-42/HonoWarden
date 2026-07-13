@@ -1,3 +1,5 @@
+import { refreshTokenRetentionDays } from '../domain/tokens'
+
 export type AuthUserRecord = {
   id: string
   email: string
@@ -243,6 +245,7 @@ type AuthDeviceMetadataDatabase = Pick<D1Database, 'prepare'>
 type AuthDeviceKeysDatabase = Pick<D1Database, 'prepare'>
 type AuthDeviceTrustDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type LoginDefenseDatabase = Pick<D1Database, 'prepare'>
+type RefreshTokenRetentionDatabase = Pick<D1Database, 'prepare'>
 
 type AuthUserRow = {
   id: string
@@ -1166,6 +1169,32 @@ export async function cleanupAuthDefenseState(
   ])
 
   return { deletedAuthAttempts, deletedAuthFailureBuckets }
+}
+
+export async function deleteExpiredRefreshTokens(
+  database: RefreshTokenRetentionDatabase,
+  input: { now: string; limit: number },
+): Promise<number> {
+  const expiredBefore = new Date(
+    Date.parse(input.now) - refreshTokenRetentionDays * 86_400_000,
+  ).toISOString()
+  const result = await database
+    .prepare(
+      `
+        DELETE FROM refresh_tokens
+        WHERE id IN (
+          SELECT id
+          FROM refresh_tokens
+          WHERE expires_at <= ?
+          ORDER BY expires_at ASC
+          LIMIT ?
+        )
+      `,
+    )
+    .bind(expiredBefore, input.limit)
+    .run()
+
+  return result.meta.changes
 }
 
 export async function rotateRefreshToken(
