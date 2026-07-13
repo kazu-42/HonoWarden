@@ -74,7 +74,7 @@
               "url": "/api/ciphers/cipher-id/attachment/attachment-id",
               "fileName": "2.encrypted-file-name",
               "key": "2.encrypted-attachment-key",
-              "size": 15,
+              "size": "15",
               "sizeName": "15 B"
             }
           ],
@@ -142,8 +142,8 @@
     },
     {
       "path": "$.ciphers.0.attachments.0.size",
-      "type": "number",
-      "value": 15
+      "type": "string",
+      "value": "15"
     },
     {
       "path": "$.ciphers.0.attachments.0.objectKey",
