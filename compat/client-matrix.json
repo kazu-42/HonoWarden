@@ -128,6 +128,7 @@
         "totp_login"
       ],
       "knownIssues": [
+        "On 2026-07-13, official Desktop 2026.6.1 exposed a server routing defect: permanent delete via DELETE /api/ciphers/:id returned an opaque 404 for a trashed cipher; this change corrects that route and adds the upstream POST /api/ciphers/:id/delete alias. A post-fix official-client lifecycle rerun is not recorded yet.",
         "Live Desktop smoke covers self-hosted staging selection, password login, initial sync, pending login notification, approval, and empty-vault rendering with a synthetic account only.",
         "The live run used the official ACCESS_TOKEN_LOCATION=DISK switch and an isolated Electron user-data directory; it did not patch the official app or modify a normal official-client Keychain entry.",
         "Item create, update, delete, logout/login persistence, and a full live regression remain unverified for Desktop.",

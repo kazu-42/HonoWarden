@@ -7599,7 +7599,37 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('trashes a cipher for the authenticated user', async () => {
+  it('trashes a cipher through the upstream PUT delete route', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id/delete',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherPermanentDeleteChanges: 0,
+          cipherSoftDeleteChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: 'cipher-id',
+      revisionDate: expect.any(String),
+      deletedDate: expect.any(String),
+    })
+  })
+
+  it('permanently deletes a trashed cipher through the upstream DELETE route', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
@@ -7613,6 +7643,38 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipherPermanentDeleteChanges: 1,
+          cipherSoftDeleteChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
+      object: 'cipherDeletion',
+      id: 'cipher-id',
+      revisionDate: expect.any(String),
+    })
+    expect(body).not.toHaveProperty('deletedDate')
+  })
+
+  it('permanently deletes a non-trashed cipher through the upstream DELETE route', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherPermanentDeleteChanges: 1,
           cipherSoftDeleteChanges: 1,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -7621,10 +7683,38 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
-      object: 'cipher',
+      object: 'cipherDeletion',
       id: 'cipher-id',
       revisionDate: expect.any(String),
-      deletedDate: expect.any(String),
+    })
+  })
+
+  it('permanently deletes a cipher through the upstream POST delete alias', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/ciphers/cipher-id/delete',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          cipherPermanentDeleteChanges: 1,
+          cipherSoftDeleteChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      object: 'cipherDeletion',
+      id: 'cipher-id',
+      revisionDate: expect.any(String),
     })
   })
 
@@ -7657,7 +7747,7 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('permanently deletes a cipher for the authenticated user', async () => {
+  it('retains DELETE /api/ciphers/:id/delete as a permanent-delete alias', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
@@ -7738,9 +7828,9 @@ describe('HonoWarden app', () => {
       env,
     )
     const trashResponse = await app.request(
-      '/api/ciphers/cipher-id',
+      '/api/ciphers/cipher-id/delete',
       {
-        method: 'DELETE',
+        method: 'PUT',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'X-Request-Id': 'audit-cipher-delete-request',
@@ -7760,7 +7850,7 @@ describe('HonoWarden app', () => {
       env,
     )
     const permanentDeleteResponse = await app.request(
-      '/api/ciphers/cipher-id/delete',
+      '/api/ciphers/cipher-id',
       {
         method: 'DELETE',
         headers: {
@@ -7848,13 +7938,18 @@ describe('HonoWarden app', () => {
     expect(serialized).not.toContain('test-token-secret')
   })
 
-  it('returns not found for missing cipher lifecycle mutations', async () => {
+  it('returns the same opaque not found response for missing or unowned cipher lifecycle mutations', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
 
     for (const [method, path, options] of [
       ['PUT', '/api/ciphers/cipher-id/delete', { cipherSoftDeleteChanges: 0 }],
-      ['DELETE', '/api/ciphers/cipher-id', { cipherSoftDeleteChanges: 0 }],
+      ['DELETE', '/api/ciphers/cipher-id', { cipherPermanentDeleteChanges: 0 }],
+      [
+        'POST',
+        '/api/ciphers/cipher-id/delete',
+        { cipherPermanentDeleteChanges: 0 },
+      ],
       ['PUT', '/api/ciphers/cipher-id/restore', { cipherRestoreChanges: 0 }],
       [
         'DELETE',
@@ -7868,6 +7963,7 @@ describe('HonoWarden app', () => {
           method,
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            'X-Request-Id': 'cipher-lifecycle-not-found-request',
           },
         },
         {
@@ -7880,10 +7976,44 @@ describe('HonoWarden app', () => {
       )
 
       expect(response.status).toBe(404)
-      await expect(response.json()).resolves.toMatchObject({
+      await expect(response.json()).resolves.toEqual({
         error: {
           code: 'cipher_not_found',
+          message: 'Cipher was not found.',
         },
+        requestId: 'cipher-lifecycle-not-found-request',
+      })
+    }
+  })
+
+  it('rejects unauthenticated cipher lifecycle mutations', async () => {
+    for (const [method, path] of [
+      ['PUT', '/api/ciphers/cipher-id/delete'],
+      ['DELETE', '/api/ciphers/cipher-id'],
+      ['POST', '/api/ciphers/cipher-id/delete'],
+      ['DELETE', '/api/ciphers/cipher-id/delete'],
+      ['PUT', '/api/ciphers/cipher-id/restore'],
+    ] as const) {
+      const response = await app.request(
+        path,
+        {
+          method,
+          headers: {
+            'X-Request-Id': 'cipher-lifecycle-missing-token-request',
+          },
+        },
+        {
+          DB: new FakeD1Database(null, []),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(401)
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'missing_token',
+        },
+        requestId: 'cipher-lifecycle-missing-token-request',
       })
     }
   })

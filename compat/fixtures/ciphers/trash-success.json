@@ -1,8 +1,8 @@
 {
   "name": "cipher-trash-success",
   "endpoint": {
-    "method": "DELETE",
-    "path": "/api/ciphers/cipher-id"
+    "method": "PUT",
+    "path": "/api/ciphers/cipher-id/delete"
   },
   "request": {
     "headers": {

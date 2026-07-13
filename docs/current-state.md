@@ -133,10 +133,12 @@ Implemented:
 
 - owner-scoped cipher update repository operation
 - owner-scoped cipher trash, restore, and permanent delete repository operations
-- `PUT /api/ciphers/:id`
-- `DELETE /api/ciphers/:id`
-- `PUT /api/ciphers/:id/restore`
-- `DELETE /api/ciphers/:id/delete`
+- `PUT /api/ciphers/:id` updates a cipher
+- `PUT /api/ciphers/:id/delete` trashes a cipher
+- `DELETE /api/ciphers/:id` permanently deletes a cipher
+- `POST /api/ciphers/:id/delete` is the upstream permanent-delete alias
+- `PUT /api/ciphers/:id/restore` restores a trashed cipher
+- `DELETE /api/ciphers/:id/delete` remains a permanent-delete alias
 - folder ownership check for cipher update
 - stable `400`, `401`, `404`, and `503` cipher lifecycle responses
 - HTTP tests for cipher update, trash, restore, permanent delete, invalid body, missing folder, and not found
@@ -1299,9 +1301,10 @@ Implemented:
 - cipher mutation replay covers create, update, trash, restore, permanent
   delete, and stale revision conflict fixtures through the real authenticated
   cipher routes with explicit stateful replay opt-in
-- cipher trash route semantics now align with the compatibility fixture:
-  `DELETE /api/ciphers/:id` trashes and `DELETE /api/ciphers/:id/delete`
-  permanently deletes
+- cipher lifecycle route semantics align with the upstream contract:
+  `PUT /api/ciphers/:id/delete` trashes, `DELETE /api/ciphers/:id` and
+  `POST /api/ciphers/:id/delete` permanently delete, and
+  `DELETE /api/ciphers/:id/delete` remains a permanent-delete alias
 - route replay tests now enumerate `compat/fixtures/**/*.json` and fail when a
   fixture file is missing a replay entry, a replay entry points to no file, or a
   replay path is duplicated

@@ -2,7 +2,7 @@
   "name": "cipher-delete-success",
   "endpoint": {
     "method": "DELETE",
-    "path": "/api/ciphers/cipher-id/delete"
+    "path": "/api/ciphers/cipher-id"
   },
   "request": {
     "headers": {
