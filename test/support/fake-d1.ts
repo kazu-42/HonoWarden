@@ -36,6 +36,7 @@ type FakeD1DatabaseOptions = {
   folders?: Record<string, unknown>[]
   folderUpdateChanges?: number
   refreshSession?: Record<string, unknown> | null
+  refreshTokens?: Record<string, unknown>[]
   refreshRotationChanges?: number
   userInsertChanges?: number
   userUpdateChanges?: number
@@ -70,6 +71,12 @@ export type FakeAuditEventInsert = {
 export type FakeAuditEventCleanupDelete = {
   expiredBefore: string
   limit: number
+}
+
+export type FakeRefreshTokenCleanupDelete = {
+  expiredBefore: string
+  limit: number
+  deleted: number
 }
 
 export type FakeRequestQuotaWrite = {
@@ -144,6 +151,7 @@ export class FakeD1Database {
   readonly deletedAuthFailureBucketKeys: string[] = []
   readonly auditEventInserts: FakeAuditEventInsert[] = []
   readonly auditEventCleanupDeletes: FakeAuditEventCleanupDelete[] = []
+  readonly refreshTokenCleanupDeletes: FakeRefreshTokenCleanupDelete[] = []
   readonly requestQuotaWrites: FakeRequestQuotaWrite[] = []
   readonly requestQuotaCleanupDeletes: FakeRequestQuotaCleanupDelete[] = []
   readonly inquiryThreadInserts: FakeInquiryThreadInsert[] = []
@@ -170,6 +178,7 @@ export class FakeD1Database {
     const deletedAuthFailureBucketKeys = this.deletedAuthFailureBucketKeys
     const auditEventInserts = this.auditEventInserts
     const auditEventCleanupDeletes = this.auditEventCleanupDeletes
+    const refreshTokenCleanupDeletes = this.refreshTokenCleanupDeletes
     const requestQuotaWrites = this.requestQuotaWrites
     const requestQuotaCleanupDeletes = this.requestQuotaCleanupDeletes
     const inquiryThreadInserts = this.inquiryThreadInserts
@@ -430,6 +439,22 @@ export class FakeD1Database {
             success: true,
             results: [],
             meta: { ...fakeMeta, changes },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+refresh_tokens/.test(query)) {
+          const deleted = deleteExpiredRefreshTokenRows(options, boundValues)
+
+          refreshTokenCleanupDeletes.push({
+            expiredBefore: String(boundValues[0]),
+            limit: Number(boundValues[1]),
+            deleted,
+          })
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes: deleted },
           }
         }
 
@@ -1660,6 +1685,40 @@ function deleteRetainedAuthRequestRows(
   )
 
   return ids.length
+}
+
+function deleteExpiredRefreshTokenRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  if (!options.refreshTokens) {
+    return 0
+  }
+
+  const [expiredBefore, rawLimit] = boundValues
+  const deletedIds = new Set(
+    options.refreshTokens
+      .filter((row) => String(row.expiresAt) <= String(expiredBefore))
+      .sort((left, right) =>
+        String(left.expiresAt).localeCompare(String(right.expiresAt)),
+      )
+      .slice(0, Number(rawLimit))
+      .map((row) => row.id),
+  )
+
+  options.refreshTokens.splice(
+    0,
+    options.refreshTokens.length,
+    ...options.refreshTokens.filter((row) => !deletedIds.has(row.id)),
+  )
+
+  for (const row of options.refreshTokens) {
+    if (deletedIds.has(row.rotatedFromTokenId)) {
+      row.rotatedFromTokenId = null
+    }
+  }
+
+  return deletedIds.size
 }
 
 function filterDeviceRows(

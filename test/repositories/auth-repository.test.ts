@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDeviceId,
   createPasswordGrantSession,
+  deleteExpiredRefreshTokens,
   countRecentFailedAuthAttempts,
   findAuthFailureBucket,
   findAuthUserByEmail,
@@ -728,6 +729,148 @@ describe('auth repository', () => {
     expect(database.boundValues).not.toContain('next-refresh-token-hash')
   })
 
+  it('deletes refresh-token history only at the retention cutoff in bounded idempotent slices', async () => {
+    const refreshTokens = [
+      {
+        id: 'oldest-expired-token',
+        expiresAt: '2026-06-30T23:59:59.999Z',
+        revokedAt: '2026-06-01T00:00:00.000Z',
+      },
+      {
+        id: 'cutoff-token',
+        expiresAt: '2026-07-01T00:00:00.000Z',
+        revokedAt: null,
+      },
+      {
+        id: 'active-token',
+        expiresAt: '2026-08-01T00:00:00.000Z',
+        revokedAt: null,
+      },
+      {
+        id: 'revoked-but-unexpired-token',
+        expiresAt: '2026-07-15T00:00:00.000Z',
+        revokedAt: '2026-06-20T00:00:00.000Z',
+      },
+    ]
+    const database = new RefreshTokenRetentionD1Database(refreshTokens)
+    const input = {
+      now: '2026-07-31T00:00:00.000Z',
+      limit: 1,
+    }
+
+    await expect(deleteExpiredRefreshTokens(database, input)).resolves.toBe(1)
+    expect(refreshTokens.map((row) => row.id)).toEqual([
+      'cutoff-token',
+      'active-token',
+      'revoked-but-unexpired-token',
+    ])
+
+    await expect(deleteExpiredRefreshTokens(database, input)).resolves.toBe(1)
+    await expect(deleteExpiredRefreshTokens(database, input)).resolves.toBe(0)
+
+    expect(refreshTokens.map((row) => row.id)).toEqual([
+      'active-token',
+      'revoked-but-unexpired-token',
+    ])
+    expect(normalizeSql(database.queries[0] ?? '')).toBe(
+      'DELETE FROM refresh_tokens WHERE id IN ( SELECT id FROM refresh_tokens WHERE expires_at <= ? ORDER BY expires_at ASC LIMIT ? )',
+    )
+    expect(database.queries[0]).not.toContain('revoked_at')
+    expect(database.bindings).toEqual([
+      ['2026-07-01T00:00:00.000Z', 1],
+      ['2026-07-01T00:00:00.000Z', 1],
+      ['2026-07-01T00:00:00.000Z', 1],
+    ])
+  })
+
+  it('preserves revoked-token reuse invalidation after an expired rotation parent is retained-cleaned', async () => {
+    const currentToken = {
+      id: 'revoked-current-token',
+      tokenId: 'revoked-current-token',
+      userId: 'user-id',
+      deviceId: 'device-id',
+      deviceIdentifier: 'device-identifier',
+      tokenHash: 'revoked-current-token-hash',
+      rotatedFromTokenId: 'expired-rotation-parent',
+      expiresAt: '2026-07-15T00:00:00.000Z',
+      tokenExpiresAt: '2026-07-15T00:00:00.000Z',
+      revokedAt: '2026-06-20T00:00:00.000Z',
+      tokenRevokedAt: '2026-06-20T00:00:00.000Z',
+      deviceRevokedAt: null,
+      email: 'Person@Example.Test',
+      emailNormalized: 'person@example.test',
+      displayName: 'Person',
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+      masterPasswordHash: 'synthetic-master-password-hash',
+      userKey: '2.synthetic-user-key',
+      publicKey: 'synthetic-public-key',
+      privateKey: '2.synthetic-private-key',
+      securityStamp: 'security-stamp',
+      revisionDate: '2026-06-20T00:00:00.000Z',
+      createdAt: '2026-06-20T00:00:00.000Z',
+      disabledAt: null,
+      loginFailedCount: 0,
+      loginFailedAt: null,
+      loginLockedUntil: null,
+      totpEnabled: false,
+      totpEncryptedSecret: null,
+      totpLastAcceptedStep: null,
+    }
+    const refreshTokens: Record<string, unknown>[] = [
+      {
+        id: 'expired-rotation-parent',
+        tokenHash: 'expired-parent-token-hash',
+        expiresAt: '2026-06-01T00:00:00.000Z',
+        revokedAt: '2026-05-15T00:00:00.000Z',
+      },
+      currentToken,
+    ]
+    const database = new RefreshTokenRetentionD1Database(refreshTokens)
+
+    await expect(
+      deleteExpiredRefreshTokens(database, {
+        now: '2026-07-01T00:00:00.000Z',
+        limit: 100,
+      }),
+    ).resolves.toBe(1)
+    expect(refreshTokens).toHaveLength(1)
+    expect(currentToken.rotatedFromTokenId).toBeNull()
+
+    const session = await findRefreshTokenSessionByHash(
+      database,
+      'revoked-current-token-hash',
+    )
+    expect(session).toMatchObject({
+      tokenId: 'revoked-current-token',
+      tokenRevokedAt: '2026-06-20T00:00:00.000Z',
+    })
+
+    await expect(
+      rotateRefreshToken(database, {
+        currentTokenId: session?.tokenId ?? '',
+        userId: session?.userId ?? '',
+        deviceId: session?.deviceId ?? '',
+        deviceIdentifier: session?.deviceIdentifier ?? '',
+        deviceName: null,
+        deviceType: null,
+        nextRefreshTokenId: 'must-not-be-created',
+        nextRefreshTokenHash: 'must-not-be-stored',
+        nextRefreshTokenExpiresAt: '2026-08-01T00:00:00.000Z',
+        now: '2026-07-01T00:00:01.000Z',
+      }),
+    ).resolves.toEqual({ status: 'reuse_detected' })
+
+    expect(database.batchQueries).toHaveLength(1)
+    expect(database.batchQueries[0]?.join('\n')).toContain(
+      'WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL',
+    )
+    expect(database.batchQueries[0]?.join('\n')).toContain('UPDATE devices')
+    expect(database.bindings.flat()).not.toContain('must-not-be-stored')
+  })
+
   it('can invalidate active refresh tokens for one device session', async () => {
     const database = new RecordingAuthD1Database(null)
 
@@ -1033,6 +1176,109 @@ class CleanupAwareAuthD1Database {
   }
 }
 
+class RefreshTokenRetentionD1Database {
+  readonly batchQueries: string[][] = []
+  readonly bindings: unknown[][] = []
+  readonly queries: string[] = []
+
+  constructor(private readonly refreshTokens: Record<string, unknown>[]) {}
+
+  prepare(query: string): D1PreparedStatement {
+    this.queries.push(query)
+    let boundValues: unknown[] = []
+    const statement = {
+      __query: query,
+      bind: (...values: unknown[]) => {
+        boundValues = values
+        this.bindings.push(values)
+        return statement
+      },
+      first: async <T = unknown>(): Promise<T | null> => {
+        if (!query.includes('FROM refresh_tokens')) {
+          return null
+        }
+
+        const tokenHash = String(boundValues[0] ?? '')
+        return (this.refreshTokens.find((row) => row.tokenHash === tokenHash) ??
+          null) as T | null
+      },
+      all: async <T = unknown>(): Promise<D1Result<T>> => ({
+        success: true,
+        results: [],
+        meta: fakeMeta,
+      }),
+      run: async <T = Record<string, unknown>>(): Promise<D1Result<T>> => {
+        let changes = 0
+
+        if (/DELETE\s+FROM\s+refresh_tokens/.test(query)) {
+          const [cutoff, rawLimit] = boundValues
+          const deletedIds = [...this.refreshTokens]
+            .filter(
+              (row) =>
+                String(row.expiresAt ?? row.tokenExpiresAt) <= String(cutoff),
+            )
+            .sort((left, right) =>
+              String(left.expiresAt ?? left.tokenExpiresAt).localeCompare(
+                String(right.expiresAt ?? right.tokenExpiresAt),
+              ),
+            )
+            .slice(0, Number(rawLimit))
+            .map((row) => row.id)
+
+          this.refreshTokens.splice(
+            0,
+            this.refreshTokens.length,
+            ...this.refreshTokens.filter((row) => !deletedIds.includes(row.id)),
+          )
+          for (const row of this.refreshTokens) {
+            if (deletedIds.includes(row.rotatedFromTokenId)) {
+              row.rotatedFromTokenId = null
+            }
+          }
+          changes = deletedIds.length
+        } else if (
+          /UPDATE\s+refresh_tokens/.test(query) &&
+          query.includes('WHERE id = ?')
+        ) {
+          const [, id, userId, deviceId] = boundValues
+          const row = this.refreshTokens.find(
+            (candidate) =>
+              candidate.id === id &&
+              candidate.userId === userId &&
+              candidate.deviceId === deviceId &&
+              candidate.revokedAt == null,
+          )
+          changes = row ? 1 : 0
+        }
+
+        return {
+          success: true,
+          results: [],
+          meta: { ...fakeMeta, changes },
+        }
+      },
+      raw: async <T = unknown>(): Promise<T[]> => [],
+    } as unknown as D1PreparedStatement
+
+    return statement
+  }
+
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
+    const queries = statements.map(
+      (statement) => (statement as unknown as { __query: string }).__query,
+    )
+    this.batchQueries.push(queries)
+
+    return statements.map(() => ({
+      success: true,
+      results: [],
+      meta: fakeMeta,
+    }))
+  }
+}
+
 class RecordingAuthD1Database {
   boundValues: unknown[] = []
   batchStatements: D1PreparedStatement[] = []
@@ -1222,4 +1468,8 @@ function filterRecordingDeviceRows(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeSql(query: string): string {
+  return query.replace(/\s+/g, ' ').trim()
 }

@@ -98,6 +98,11 @@ Failure invariants:
 - revoked devices cannot refresh
 - expired or unknown tokens return generic invalid-grant wording
 
+Retention note: cleanup only deletes refresh-token rows that have been expired
+for at least 30 days. Active and revoked-but-unexpired rows remain available for
+lookup, preserving revoked-token reuse detection and device-session invalidation
+for the token's entire validity period.
+
 ## Access Token Verification
 
 ```text

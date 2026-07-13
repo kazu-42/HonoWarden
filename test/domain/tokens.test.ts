@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   generateRefreshToken,
   hashRefreshToken,
+  isRefreshTokenRetentionEnabled,
   parseAuthRequestGrantForm,
   parsePasswordGrantForm,
   parseRefreshTokenGrantForm,
+  refreshTokenRetentionDays,
+  refreshTokenRetentionRowsPerSlice,
   signAccessToken,
   tokenErrorResponse,
   verifyAccessToken,
@@ -13,6 +16,14 @@ import {
 } from '../../src/domain/tokens'
 
 describe('token domain', () => {
+  it('keeps refresh-token history retention bounded and opt-in', () => {
+    expect(refreshTokenRetentionDays).toBe(30)
+    expect(refreshTokenRetentionRowsPerSlice).toBe(100)
+    expect(isRefreshTokenRetentionEnabled(' TRUE ')).toBe(true)
+    expect(isRefreshTokenRetentionEnabled('false')).toBe(false)
+    expect(isRefreshTokenRetentionEnabled(undefined)).toBe(false)
+  })
+
   it('parses password grant form fields', () => {
     const form = new URLSearchParams({
       grant_type: 'password',

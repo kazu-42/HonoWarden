@@ -10,6 +10,7 @@ describe('retention cron live evidence', () => {
   it('records the live deployment, schedule, smoke, and cron readback evidence', () => {
     const evidence = readRepoFile('docs/release/retention-cron-evidence.md')
     const runbook = readRepoFile('docs/operations/retention-cleanup.md')
+    const authStateMachine = readRepoFile('docs/security/auth-state-machine.md')
     const currentState = readRepoFile('docs/current-state.md')
     const index = readRepoFile('docs/release/index.md')
 
@@ -28,12 +29,31 @@ describe('retention cron live evidence', () => {
     expect(evidence).toMatch(/staging\s+\|\s+`0`\s+\|\s+`0`/)
     expect(evidence).toMatch(/production\s+\|\s+`0`\s+\|\s+`0`/)
     expect(evidence).toContain('rollback')
+    expect(evidence).toContain('HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED')
+    expect(evidence).toContain('2026-07-13')
+    expect(evidence).not.toMatch(/does not delete[^.]*refresh tokens/i)
 
     expect(runbook).toContain('docs/release/retention-cron-evidence.md')
     expect(runbook).toContain('synthetic `hon-51-cron-smoke` cleanup rows')
     expect(runbook).toContain('pnpm abuse:report')
+    expect(runbook).toContain('refresh_token_cleanup_candidates')
     expect(runbook).toContain('cleanup_candidate_rows')
     expect(runbook).toContain('scheduled_cleanup_failure')
+    expect(runbook).toContain('HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED')
+    expect(runbook).toMatch(/expired(?: for)? at least 30 days/i)
+    expect(runbook).toMatch(/at most `?100`? rows/i)
+    expect(runbook).toMatch(/disabled by default/i)
+    expect(runbook).toMatch(/staging[^.]*enabled/i)
+    expect(runbook).toMatch(/active[^.]*revoked-but-unexpired/i)
+    expect(runbook).toMatch(/replay|reuse/i)
+    expect(runbook).not.toMatch(/does not delete[^.]*refresh tokens/i)
+
+    expect(authStateMachine).toMatch(/Retention note/i)
+    expect(authStateMachine).toMatch(/entire validity period/i)
+    expect(authStateMachine).toMatch(/revoked-but-unexpired/i)
+    expect(authStateMachine).toContain(
+      'revoked token reuse invalidates the device session',
+    )
 
     expect(currentState).toContain('retention-cron-evidence.md')
     expect(currentState).toContain('outcome: ok')

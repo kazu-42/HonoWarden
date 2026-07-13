@@ -1,7 +1,8 @@
 # Retention Cleanup
 
 This runbook describes the alpha cleanup path for transient authentication
-defense rows, TOTP challenges, and retained audit events.
+defense rows, TOTP challenges, bounded refresh-token rotation history, and
+retained audit events.
 
 ## Scope
 
@@ -10,10 +11,11 @@ The cleanup path covers:
 - `auth_attempts`
 - `auth_failure_buckets`
 - `totp_challenges`
+- `refresh_tokens`
 - `audit_events`
 
-It does not delete users, devices, refresh tokens, folders, ciphers, backup
-manifests, or R2 objects.
+It does not delete users, devices, folders, ciphers, backup manifests, or R2
+objects.
 
 ## Schedule
 
@@ -48,8 +50,20 @@ Retention rules:
 - auth failure buckets older than the maximum login-defense window are eligible
   only when they are not locked, or the lock has already expired.
 - TOTP login challenges are eligible when they are expired or already consumed.
+- refresh-token rows that have been expired for at least 30 days are eligible
+  when `HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED=true`.
 - audit events older than 365 days are eligible for deletion when
   `HONOWARDEN_AUDIT_LOGS=true`.
+
+### Refresh-token history
+
+Refresh-token retention is disabled by default and in production; staging has
+it enabled. When enabled, each invocation deletes at most `100` rows whose
+`expires_at` value is 30 days or more in the past. Active and
+revoked-but-unexpired rows are never eligible. Keeping those revoked rows for
+their full validity window preserves replay detection: reuse can still
+invalidate the associated device session instead of degrading to an unknown
+token response.
 
 The queries are idempotent. Re-running a cleanup slice after all eligible rows
 are gone deletes zero rows. This is required because Cloudflare Cron Triggers
@@ -89,8 +103,13 @@ The report includes cleanup candidate queries for:
 - `auth_attempt_cleanup_candidates`
 - `auth_failure_cleanup_candidates`
 - `totp_challenge_cleanup_candidates`
+- `refresh_token_cleanup_candidates`
 - `audit_event_cleanup_candidates`
 - `request_quota_cleanup_candidates`
+
+The refresh-token candidate query emits only an aggregate row count and the
+oldest and newest eligible timestamps. It never selects token hashes, token
+values, email addresses, user identifiers, or device identifiers.
 
 The alert packet classifies cleanup backlog pressure with the
 `cleanup_candidate_rows` signal:
@@ -124,7 +143,8 @@ pnpm format
 ```
 
 The repository tests assert that cleanup is bounded, idempotent, does not delete
-active login-defense buckets, and deletes audit rows only past the 365-day
+active login-defense buckets, preserves active and revoked-but-unexpired refresh
+tokens for replay detection, and deletes audit rows only past the 365-day
 retention boundary.
 
 Live checks:

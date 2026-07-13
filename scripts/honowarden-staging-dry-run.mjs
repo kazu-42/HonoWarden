@@ -28,6 +28,7 @@ const expectedStaging = {
     HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
     HONOWARDEN_BOOTSTRAP_ENABLED: 'false',
     HONOWARDEN_ENV: 'staging',
+    HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED: 'true',
   },
 }
 const placeholderDatabaseId = '00000000-0000-0000-0000-000000000000'
@@ -188,6 +189,17 @@ function validateStagingConfig(config) {
       'production_auth_requests_fail_closed',
       production?.vars?.HONOWARDEN_AUTH_REQUESTS_ENABLED === 'false',
       production?.vars?.HONOWARDEN_AUTH_REQUESTS_ENABLED,
+    ),
+    check(
+      'staging_refresh_token_retention_enabled',
+      staging?.vars?.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED ===
+        expectedStaging.vars.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED,
+      staging?.vars?.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED,
+    ),
+    check(
+      'production_refresh_token_retention_fail_closed',
+      production?.vars?.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED === 'false',
+      production?.vars?.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED,
     ),
     check(
       'staging_d1_binding',

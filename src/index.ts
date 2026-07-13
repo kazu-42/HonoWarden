@@ -3,6 +3,7 @@ import type { Bindings } from './bindings'
 import { isAuditLoggingEnabled } from './domain/audit'
 import { isAuthRequestFeatureEnabled } from './domain/auth-request'
 import { isGlobalRequestQuotaEnabled } from './domain/request-quota'
+import { isRefreshTokenRetentionEnabled } from './domain/tokens'
 import { handleInquiryEmail } from './inquiry-email'
 import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
 
@@ -24,6 +25,9 @@ export default {
         auditEvents: isAuditLoggingEnabled(env.HONOWARDEN_AUDIT_LOGS),
         authRequests: isAuthRequestFeatureEnabled(
           env.HONOWARDEN_AUTH_REQUESTS_ENABLED,
+        ),
+        refreshTokens: isRefreshTokenRetentionEnabled(
+          env.HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED,
         ),
         requestQuotaBuckets:
           isGlobalRequestQuotaEnabled(env.HONOWARDEN_GLOBAL_REQUEST_QUOTA) ||

@@ -7,6 +7,7 @@ const allowedModes = new Set(['local', 'remote'])
 const retention = {
   authDefenseCleanupWindowSeconds: 15 * 60,
   auditEventRetentionDays: 365,
+  refreshTokenRetentionDays: 30,
   requestQuotaCleanupRetentionSeconds: 60 * 60,
   rowsPerCleanupSlice: 100,
 }
@@ -132,6 +133,17 @@ function buildQueries(limit) {
         'FROM totp_challenges',
         "WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         '  OR consumed_at IS NOT NULL;',
+      ].join('\n'),
+    },
+    {
+      id: 'refresh_token_cleanup_candidates',
+      sql: [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(expires_at) AS oldest_candidate_at,',
+        '  MAX(expires_at) AS newest_candidate_at',
+        'FROM refresh_tokens',
+        `WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${retention.refreshTokenRetentionDays} days');`,
       ].join('\n'),
     },
     {
