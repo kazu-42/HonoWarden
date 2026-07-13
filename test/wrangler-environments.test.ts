@@ -169,6 +169,16 @@ describe('wrangler deployment environments', () => {
     ).toBe('false')
   })
 
+  it('enables premium features only in staging by default', () => {
+    expect(config.vars.HONOWARDEN_PREMIUM_FEATURES_ENABLED).toBe('false')
+    expect(config.env.staging.vars.HONOWARDEN_PREMIUM_FEATURES_ENABLED).toBe(
+      'true',
+    )
+    expect(config.env.production.vars.HONOWARDEN_PREMIUM_FEATURES_ENABLED).toBe(
+      'false',
+    )
+  })
+
   it('keeps Workers Logpush and observability enabled for deployable environments', () => {
     expect(config.logpush).toBe(true)
     expect(config.env.staging.logpush).toBe(true)

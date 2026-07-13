@@ -1581,6 +1581,59 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('parses premium enablement explicitly and only changes the access-token premium claim', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T00:00:00.000Z'))
+
+    const claimsForFlag = async (flag: string | undefined) => {
+      const response = await app.request(
+        '/identity/connect/token',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Device-Identifier': 'fixture-device',
+            'Device-Name': 'Fixture Device',
+            'Device-Type': '9',
+          },
+          body: new URLSearchParams({
+            grant_type: 'password',
+            username: 'Person@Example.Test',
+            password: 'synthetic-master-password-hash',
+            scope: 'api offline_access',
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: authUserRecord(),
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          ...premiumFeatureBinding(flag),
+        },
+      )
+
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as { access_token: string }
+
+      return decodeJwtPayload(body.access_token)
+    }
+
+    const absentClaims = await claimsForFlag(undefined)
+    const falseClaims = await claimsForFlag('false')
+    const garbageClaims = await claimsForFlag('yes')
+    const enabledClaims = await claimsForFlag('true')
+    const normalizedEnabledClaims = await claimsForFlag(' TRUE ')
+
+    expect(absentClaims.premium).toBe(false)
+    expect(falseClaims).toEqual(absentClaims)
+    expect(garbageClaims).toEqual(absentClaims)
+    expect(enabledClaims).toEqual({
+      ...absentClaims,
+      premium: true,
+    })
+    expect(normalizedEnabledClaims).toEqual(enabledClaims)
+  })
+
   it('atomically consumes an approved auth request for one device-bound session', async () => {
     const user = authUserRecord()
     const secret = '0123456789abcdef0123456789abcdef'
@@ -1606,6 +1659,7 @@ describe('HonoWarden app', () => {
       DB: database as unknown as D1Database,
       HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
       HONOWARDEN_AUTH_REQUEST_SECRET: secret,
+      HONOWARDEN_PREMIUM_FEATURES_ENABLED: 'true',
       HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
     }
     const form = new URLSearchParams({
@@ -1639,6 +1693,7 @@ describe('HonoWarden app', () => {
       sub: user.id,
       device: 'requester-device',
       authMethod: 'auth_request',
+      premium: true,
     })
     expect(row.status).toBe('consumed')
 
@@ -2396,6 +2451,7 @@ describe('HonoWarden app', () => {
           refreshSession: refreshTokenSessionRecord(),
           refreshRotationChanges: 1,
         }),
+        HONOWARDEN_PREMIUM_FEATURES_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -2417,6 +2473,7 @@ describe('HonoWarden app', () => {
       ok: true,
       claims: {
         authMethod: 'refresh',
+        premium: true,
       },
     })
   })
@@ -4280,6 +4337,90 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('reports premium across profile shapes without changing other fields or storage', async () => {
+    const user = authUserRecord()
+    const accessToken = await signAccessToken('test-token-secret', {
+      sub: user.id,
+      email: user.emailNormalized,
+      device: 'fixture-device',
+      securityStamp: user.securityStamp,
+      iat: 1,
+      exp: 4_102_444_800,
+      premium: false,
+    })
+
+    const responsesForFlag = async (flag: string | undefined) => {
+      const env = {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          attachments: [attachmentRecord()],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        ...premiumFeatureBinding(flag),
+      }
+      const request = {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+      const syncResponse = await app.request('/api/sync', request, env)
+      const accountResponse = await app.request(
+        '/api/accounts/profile',
+        request,
+        env,
+      )
+
+      expect(syncResponse.status).toBe(200)
+      expect(accountResponse.status).toBe(200)
+
+      return {
+        sync: (await syncResponse.json()) as Record<string, unknown> & {
+          profile: Record<string, unknown>
+        },
+        account: (await accountResponse.json()) as Record<string, unknown>,
+      }
+    }
+
+    const absent = await responsesForFlag(undefined)
+    const disabled = await responsesForFlag('false')
+    const garbage = await responsesForFlag('yes')
+    const enabled = await responsesForFlag('true')
+
+    expect(disabled).toEqual(absent)
+    expect(garbage).toEqual(absent)
+    expect(enabled.sync).toEqual({
+      ...absent.sync,
+      profile: {
+        ...absent.sync.profile,
+        premium: true,
+      },
+    })
+    expect(enabled.account).toEqual({
+      ...absent.account,
+      premium: true,
+      Premium: true,
+    })
+    expect(enabled.sync.profile).toMatchObject({
+      premium: true,
+      premiumFromOrganization: false,
+      storage: 15,
+      maxStorageGb: attachmentStoragePolicy.maxStorageGb,
+    })
+    expect(enabled.account).toMatchObject({
+      premium: true,
+      Premium: true,
+      premiumFromOrganization: false,
+      PremiumFromOrganization: false,
+      storage: 15,
+      Storage: 15,
+      maxStorageGb: attachmentStoragePolicy.maxStorageGb,
+      MaxStorageGb: attachmentStoragePolicy.maxStorageGb,
+    })
+    expect(enabled.account.storage).toBe(enabled.account.Storage)
+    expect(enabled.account.maxStorageGb).toBe(enabled.account.MaxStorageGb)
+    expect(enabled.account.maxStorageGb).toBeGreaterThan(0)
+  })
+
   it('returns a zero-cost canceled billing subscription for mobile startup', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -4348,6 +4489,7 @@ describe('HonoWarden app', () => {
           userUpdateChanges: 1,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_PREMIUM_FEATURES_ENABLED: 'true',
       },
     )
 
@@ -4360,6 +4502,10 @@ describe('HonoWarden app', () => {
       Email: 'person@example.test',
       SecurityStamp: 'security-stamp',
       TwoFactorEnabled: false,
+      premium: true,
+      premiumFromOrganization: false,
+      Premium: true,
+      PremiumFromOrganization: false,
       storage: 15,
       maxStorageGb: 1,
       Storage: 15,
@@ -9406,6 +9552,14 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   return JSON.parse(
     Buffer.from(encodedPayload ?? '', 'base64url').toString('utf8'),
   ) as Record<string, unknown>
+}
+
+function premiumFeatureBinding(value: string | undefined): {
+  HONOWARDEN_PREMIUM_FEATURES_ENABLED?: string
+} {
+  return value === undefined
+    ? {}
+    : { HONOWARDEN_PREMIUM_FEATURES_ENABLED: value }
 }
 
 async function accessTokenFor(
