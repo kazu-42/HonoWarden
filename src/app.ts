@@ -4611,7 +4611,7 @@ function buildAttachmentMetadataResponse(attachment: CipherAttachmentRecord) {
     url: buildAttachmentDirectUploadUrl(attachment),
     fileName: attachment.fileName,
     key: attachment.attachmentKey,
-    size: attachment.size,
+    size: String(attachment.size),
     sizeName: formatByteSize(attachment.size),
   }
 }
@@ -4630,7 +4630,7 @@ function buildBackupAttachmentResponse(attachment: CipherAttachmentRecord) {
     cipherId: attachment.cipherId,
     fileName: attachment.fileName,
     key: attachment.attachmentKey,
-    size: attachment.size,
+    size: String(attachment.size),
     sizeName: formatByteSize(attachment.size),
     contentType: attachment.contentType,
     revisionDate: normalizeApiTimestamp(attachment.revisionDate),

@@ -2961,6 +2961,8 @@ describe('HonoWarden app', () => {
               id: 'alice-attachment-id',
               fileName: '2.alice-encrypted-file',
               key: '2.alice-attachment-key',
+              size: '15',
+              sizeName: '15 B',
             },
           ],
         },
@@ -2971,6 +2973,8 @@ describe('HonoWarden app', () => {
           cipherId: 'alice-cipher-id',
           fileName: '2.alice-encrypted-file',
           key: '2.alice-attachment-key',
+          size: '15',
+          sizeName: '15 B',
         },
       ],
       limits: {
@@ -2979,6 +2983,18 @@ describe('HonoWarden app', () => {
       },
     })
     expect(payload).toHaveProperty('generatedAt')
+
+    const backup = payload as {
+      ciphers: Array<{ attachments?: unknown[] }>
+      attachments: unknown[]
+    }
+    expectOfficialAttachmentFieldTypes(backup.ciphers[0]?.attachments?.[0])
+    expect(typeof (backup.attachments[0] as Record<string, unknown>).size).toBe(
+      'string',
+    )
+    expect(
+      typeof (backup.attachments[0] as Record<string, unknown>).sizeName,
+    ).toBe('string')
 
     const serialized = JSON.stringify(payload)
     expect(serialized).not.toContain('bob')
@@ -4239,7 +4255,7 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    const body = await response.json()
+    const body = (await response.json()) as Record<string, unknown>
     expect(body).toMatchObject({
       object: 'profile',
       id: 'user-id',
@@ -4335,6 +4351,10 @@ describe('HonoWarden app', () => {
       },
       KeyConnectorUrl: null,
     })
+    expect(typeof body.storage).toBe('number')
+    expect(typeof body.maxStorageGb).toBe('number')
+    expect(typeof body.Storage).toBe('number')
+    expect(typeof body.MaxStorageGb).toBe('number')
   })
 
   it('reports premium across profile shapes without changing other fields or storage', async () => {
@@ -6299,13 +6319,17 @@ describe('HonoWarden app', () => {
               createdAt: '2026-07-06T00:05:00.000Z',
             },
           ],
+          attachments: [attachmentRecord()],
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toMatchObject({
+    const body = (await response.json()) as {
+      data: Array<{ attachments?: unknown[] }>
+    }
+    expect(body).toMatchObject({
       object: 'list',
       data: [
         {
@@ -6316,6 +6340,16 @@ describe('HonoWarden app', () => {
           favorite: true,
           name: '2.encrypted-cipher-name',
           deletedDate: null,
+          attachments: [
+            {
+              id: 'attachment-id',
+              url: '/api/ciphers/cipher-id/attachment/attachment-id',
+              fileName: '2.encrypted-file-name',
+              key: '2.encrypted-attachment-key',
+              size: '15',
+              sizeName: '15 B',
+            },
+          ],
         },
         {
           object: 'cipher',
@@ -6329,6 +6363,7 @@ describe('HonoWarden app', () => {
       ],
       continuationToken: null,
     })
+    expectOfficialAttachmentFieldTypes(body.data[0]?.attachments?.[0])
   })
 
   it('paginates ciphers including trashed rows and rejects bad tokens', async () => {
@@ -6476,13 +6511,17 @@ describe('HonoWarden app', () => {
               createdAt: '2026-07-06T00:05:00.000Z',
             },
           ],
+          attachments: [attachmentRecord()],
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toMatchObject({
+    const body = (await response.json()) as Record<string, unknown> & {
+      attachments?: unknown[]
+    }
+    expect(body).toMatchObject({
       object: 'cipher',
       id: 'cipher-id',
       organizationId: null,
@@ -6496,7 +6535,18 @@ describe('HonoWarden app', () => {
       revisionDate: '2026-07-06T00:05:00.000Z',
       creationDate: '2026-07-06T00:04:00.000Z',
       deletedDate: null,
+      attachments: [
+        {
+          id: 'attachment-id',
+          url: '/api/ciphers/cipher-id/attachment/attachment-id',
+          fileName: '2.encrypted-file-name',
+          key: '2.encrypted-attachment-key',
+          size: '15',
+          sizeName: '15 B',
+        },
+      ],
     })
+    expectOfficialAttachmentFieldTypes(body.attachments?.[0])
   })
 
   it('gets a trashed cipher by id for the authenticated user', async () => {
@@ -6741,10 +6791,12 @@ describe('HonoWarden app', () => {
       cipherId: 'cipher-id',
       fileName: '2.encrypted-file-name',
       key: '2.encrypted-attachment-key',
-      size: 15,
+      size: '15',
+      sizeName: '15 B',
       url: expect.stringContaining('/api/ciphers/cipher-id/attachment/'),
       revisionDate: expect.any(String),
     })
+    expectOfficialAttachmentFieldTypes(body)
     expect(body).not.toHaveProperty('objectKey')
     expect(bucket.keys()).toHaveLength(1)
     const [objectKey] = bucket.keys()
@@ -6799,7 +6851,8 @@ describe('HonoWarden app', () => {
             id: expect.any(String),
             fileName: '2.encrypted-file-name',
             key: '2.encrypted-attachment-key',
-            size: 15,
+            size: '15',
+            sizeName: '15 B',
           },
         ],
       },
@@ -6810,8 +6863,25 @@ describe('HonoWarden app', () => {
       ),
       cipherResponse: {
         id: 'cipher-id',
+        attachments: [
+          {
+            id: expect.any(String),
+            fileName: '2.encrypted-file-name',
+            key: '2.encrypted-attachment-key',
+            size: '15',
+            sizeName: '15 B',
+          },
+        ],
       },
     })
+    const pascalCipherResponse = body.CipherResponse as {
+      attachments?: unknown[]
+    }
+    const camelCipherResponse = body.cipherResponse as {
+      attachments?: unknown[]
+    }
+    expectOfficialAttachmentFieldTypes(pascalCipherResponse.attachments?.[0])
+    expectOfficialAttachmentFieldTypes(camelCipherResponse.attachments?.[0])
     expect(body.AttachmentId).toBe(body.attachmentId)
     expect(body.Url).toBe(body.url)
     expect(bucket.putKeys).toEqual([])
@@ -7175,14 +7245,33 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toMatchObject({
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
       AttachmentId: 'attachment-id',
       FileUploadType: 0,
       Url: '/api/ciphers/cipher-id/attachment/attachment-id',
+      CipherResponse: {
+        attachments: [
+          {
+            size: '15',
+            sizeName: '15 B',
+          },
+        ],
+      },
       attachmentId: 'attachment-id',
       fileUploadType: 0,
       url: '/api/ciphers/cipher-id/attachment/attachment-id',
+      cipherResponse: {
+        attachments: [
+          {
+            size: '15',
+            sizeName: '15 B',
+          },
+        ],
+      },
     })
+    const renewedCipher = body.CipherResponse as { attachments?: unknown[] }
+    expectOfficialAttachmentFieldTypes(renewedCipher.attachments?.[0])
     expect(attachments).toEqual([pendingAttachmentRecord()])
     expect(bucket.putKeys).toEqual([])
     expect(bucket.deletedKeys).toEqual([])
@@ -7956,7 +8045,11 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toMatchObject({
+    const body = (await response.json()) as {
+      profile: Record<string, unknown>
+      ciphers: Array<{ attachments?: unknown[] }>
+    }
+    expect(body).toMatchObject({
       ciphers: [
         {
           object: 'cipher',
@@ -7975,7 +8068,7 @@ describe('HonoWarden app', () => {
               url: '/api/ciphers/cipher-id/attachment/attachment-id',
               fileName: '2.encrypted-file-name',
               key: '2.encrypted-attachment-key',
-              size: 15,
+              size: '15',
               sizeName: '15 B',
             },
           ],
@@ -7994,6 +8087,9 @@ describe('HonoWarden app', () => {
         },
       ],
     })
+    expectOfficialAttachmentFieldTypes(body.ciphers[0]?.attachments?.[0])
+    expect(typeof body.profile.storage).toBe('number')
+    expect(typeof body.profile.maxStorageGb).toBe('number')
   })
 
   it('keeps pending attachment allocations out of sync and storage usage', async () => {
@@ -9497,6 +9593,14 @@ function cipherRecord() {
     revisionDate: '2026-07-06T00:05:00.000Z',
     createdAt: '2026-07-06T00:04:00.000Z',
     deletedAt: null,
+  }
+}
+
+function expectOfficialAttachmentFieldTypes(value: unknown) {
+  const attachment = value as Record<string, unknown>
+
+  for (const field of ['id', 'url', 'fileName', 'key', 'size', 'sizeName']) {
+    expect(typeof attachment[field]).toBe('string')
   }
 }
 
