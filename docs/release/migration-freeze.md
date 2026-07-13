@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-10.
+Last updated: 2026-07-13.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -25,6 +25,7 @@ changes and update this document in the same change.
 | `migrations/0010a_inquiry_message_reconciliation.sql` | `27fc086baf750bfb75719581e4d7fbfd359b219a2ae6f60c174539a58422ab84` |
 | `migrations/0011_inquiry_inbox.sql`                   | `a8c9524b32ecd398d540b052dbb6e96fc3dc500669ca6806089162c21b857bb8` |
 | `migrations/0012_auth_requests.sql`                   | `71fc9ca16ea9dd2e6e8dbe9c7c93cc2899b8375b482eaeaf3a673b6d01b50b3d` |
+| `migrations/0013_auth_request_supersede.sql`          | `ad47a1465ca857903c97d837a943ace3ca2505ff20197e6533259c2154f6ac86` |
 
 ## Required Tables At Freeze
 

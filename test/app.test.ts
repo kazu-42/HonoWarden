@@ -60,6 +60,7 @@ function readBytes(value: string | ArrayBuffer | undefined): number[] {
 
 describe('HonoWarden app', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -787,6 +788,234 @@ describe('HonoWarden app', () => {
       requestApproved: true,
       key: 'opaque-encrypted-key',
     })
+  })
+
+  it('supersedes only older pending requests from the same requester device on resend', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const authRequests: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      authRequests,
+      requestQuotaBucket: unblockedRequestQuotaBucket(),
+      devices: [deviceRecord()],
+    })
+    const secret = '0123456789abcdef0123456789abcdef'
+    const env = {
+      DB: database as unknown as D1Database,
+      HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_AUTH_REQUEST_SECRET: secret,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const createRequest = async (
+      deviceIdentifier: string,
+      accessCode: string,
+    ) => {
+      const response = await app.request(
+        '/api/auth-requests',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Device-Identifier': deviceIdentifier,
+            'Device-Type': '8',
+          },
+          body: JSON.stringify({
+            email: user.email,
+            publicKey: `opaque-public-key-${deviceIdentifier}`,
+            deviceIdentifier,
+            accessCode,
+            type: 0,
+          }),
+        },
+        env,
+      )
+
+      expect(response.status).toBe(200)
+      return (await response.json()) as { id: string }
+    }
+
+    const firstAccessCode = 'first-high-entropy-access-code'
+    const first = await createRequest('requester-device', firstAccessCode)
+    const otherDevice = await createRequest(
+      'other-requester-device',
+      'other-high-entropy-access-code',
+    )
+    const replacement = await createRequest(
+      'requester-device',
+      'replacement-high-entropy-access-code',
+    )
+
+    const pendingResponse = await app.request(
+      '/api/auth-requests/pending',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      env,
+    )
+    expect(pendingResponse.status).toBe(200)
+    const pending = (await pendingResponse.json()) as {
+      data: Array<{ id: string }>
+    }
+    const pendingIds = pending.data.map((request) => request.id)
+    expect(pendingIds).toHaveLength(2)
+    expect(pendingIds).toEqual(
+      expect.arrayContaining([replacement.id, otherDevice.id]),
+    )
+    expect(pendingIds).not.toContain(first.id)
+    expect(
+      authRequests.find((request) => request.id === first.id),
+    ).toMatchObject({ status: 'superseded', requestApproved: 0 })
+    expect(
+      authRequests.find((request) => request.id === otherDevice.id),
+    ).toMatchObject({ status: 'pending' })
+
+    const obsoleteApprovalResponse = await app.request(
+      `/api/auth-requests/${first.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'obsolete-auth-request-approval',
+        },
+        body: JSON.stringify({
+          requestApproved: true,
+          key: 'opaque-encrypted-key',
+        }),
+      },
+      env,
+    )
+    expect(obsoleteApprovalResponse.status).toBe(409)
+    const obsoleteApproval = await obsoleteApprovalResponse.json()
+    expect(obsoleteApproval).toMatchObject({
+      error: { code: 'auth_request_conflict' },
+      requestId: 'obsolete-auth-request-approval',
+    })
+    expect(JSON.stringify(obsoleteApproval)).not.toContain('superseded')
+
+    const obsoletePollResponse = await app.request(
+      `/api/auth-requests/${first.id}/response?code=${firstAccessCode}`,
+      { headers: { 'X-Request-Id': 'obsolete-auth-request-poll' } },
+      env,
+    )
+    expect(obsoletePollResponse.status).toBe(404)
+    const obsoletePoll = await obsoletePollResponse.json()
+    expect(obsoletePoll).toMatchObject({
+      error: { code: 'auth_request_not_found' },
+      requestId: 'obsolete-auth-request-poll',
+    })
+    expect(JSON.stringify(obsoletePoll)).not.toContain('superseded')
+
+    const replacementApprovalResponse = await app.request(
+      `/api/auth-requests/${replacement.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestApproved: true,
+          key: 'replacement-encrypted-key',
+        }),
+      },
+      env,
+    )
+    expect(replacementApprovalResponse.status).toBe(200)
+    await expect(replacementApprovalResponse.json()).resolves.toMatchObject({
+      id: replacement.id,
+      requestApproved: true,
+      key: 'replacement-encrypted-key',
+    })
+    expect(
+      authRequests.find((request) => request.id === replacement.id),
+    ).toMatchObject({ status: 'approved' })
+    expect(
+      authRequests.find((request) => request.id === otherDevice.id),
+    ).toMatchObject({ status: 'pending' })
+  })
+
+  it('expires an unswept stored-pending request before a same-owner-device resend', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-11T00:00:00.000Z'))
+
+    const user = authUserRecord()
+    const authRequests: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      authRequests,
+      requestQuotaBucket: unblockedRequestQuotaBucket(),
+    })
+    const env = {
+      DB: database as unknown as D1Database,
+      HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_AUTH_REQUEST_SECRET: '0123456789abcdef0123456789abcdef',
+    }
+    const createRequest = () =>
+      app.request(
+        '/api/auth-requests',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Device-Identifier': 'requester-device',
+            'Device-Type': '8',
+          },
+          body: JSON.stringify({
+            email: user.email,
+            publicKey: 'opaque-public-key',
+            deviceIdentifier: 'requester-device',
+            accessCode: 'high-entropy-access-code',
+            type: 0,
+          }),
+        },
+        env,
+      )
+
+    const firstResponse = await createRequest()
+    expect(firstResponse.status).toBe(200)
+    const first = (await firstResponse.json()) as { id: string }
+    expect(authRequests).toHaveLength(1)
+    expect(authRequests[0]).toMatchObject({
+      id: first.id,
+      status: 'pending',
+      expiresAt: '2026-07-11T00:15:00.000Z',
+    })
+
+    vi.setSystemTime(new Date('2026-07-11T00:15:00.001Z'))
+
+    const replacementResponse = await createRequest()
+    expect(replacementResponse.status).toBe(200)
+    const replacement = (await replacementResponse.json()) as {
+      id: string
+      object: string
+      requestApproved: boolean
+    }
+    expect(replacement).toMatchObject({
+      object: 'auth-request',
+      publicKey: 'opaque-public-key',
+      requestDeviceType: 'Device 8',
+      requestDeviceTypeValue: 8,
+      requestDeviceIdentifier: 'requester-device',
+      type: 0,
+      creationDate: '2026-07-11T00:15:00.001Z',
+      responseDate: null,
+      requestApproved: false,
+      key: null,
+      requestDeviceId: null,
+    })
+    expect(replacement.id).not.toBe(first.id)
+    expect(authRequests).toHaveLength(2)
+    expect(
+      authRequests.find((request) => request.id === first.id),
+    ).toMatchObject({
+      status: 'expired',
+      requestApproved: null,
+      updatedAt: '2026-07-11T00:15:00.001Z',
+    })
+    expect(
+      authRequests.find((request) => request.id === replacement.id),
+    ).toMatchObject({ status: 'pending' })
   })
 
   it('keeps polling authoritative when auth-request notification delivery fails', async () => {
