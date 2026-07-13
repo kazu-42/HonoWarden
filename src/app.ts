@@ -3395,7 +3395,11 @@ app.put('/api/ciphers/:id/delete', async (c) => {
 })
 
 app.delete('/api/ciphers/:id', async (c) => {
-  return trashCipherById(c)
+  return permanentlyDeleteCipherById(c)
+})
+
+app.post('/api/ciphers/:id/delete', async (c) => {
+  return permanentlyDeleteCipherById(c)
 })
 
 async function trashCipherById(c: AppContext) {
