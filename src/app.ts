@@ -35,6 +35,7 @@ import {
   verifyBootstrapToken,
 } from './domain/bootstrap'
 import { normalizeEmail, resolvePrelogin } from './domain/prelogin'
+import { isPremiumFeaturesEnabled } from './domain/premium'
 import {
   buildAuthAttemptBucketKey,
   extractClientAddress,
@@ -822,7 +823,13 @@ app.get('/api/accounts/profile', async (c) => {
       c.env.DB,
       auth.user.id,
     )
-    return c.json(buildAccountProfileResponse(auth.user, storage))
+    return c.json(
+      buildAccountProfileResponse(
+        auth.user,
+        storage,
+        isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
+      ),
+    )
   } catch {
     return c.json(
       apiError(
@@ -1492,6 +1499,9 @@ app.post('/identity/connect/token', async (c) => {
           issuedAt,
           expiresAt: issuedAt + accessTokenTtlSeconds,
           authMethod: 'refresh',
+          premiumFeaturesEnabled: isPremiumFeaturesEnabled(
+            c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED,
+          ),
         }),
       )
 
@@ -1837,6 +1847,9 @@ app.post('/identity/connect/token', async (c) => {
         issuedAt,
         expiresAt,
         authMethod: 'password',
+        premiumFeaturesEnabled: isPremiumFeaturesEnabled(
+          c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED,
+        ),
       }),
     )
 
@@ -2003,6 +2016,9 @@ async function handleAuthRequestTokenGrant(
         issuedAt,
         expiresAt: issuedAt + accessTokenTtlSeconds,
         authMethod: 'auth_request',
+        premiumFeaturesEnabled: isPremiumFeaturesEnabled(
+          c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED,
+        ),
       }),
     )
 
@@ -2058,6 +2074,7 @@ app.get('/api/sync', async (c) => {
     return c.json(
       buildSyncResponse(
         auth.user,
+        isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
         folders,
         ciphers,
         attachments,
@@ -3851,13 +3868,14 @@ function buildAccessTokenClaims(input: {
   issuedAt: number
   expiresAt: number
   authMethod: AccessTokenAuthMethod
+  premiumFeaturesEnabled: boolean
 }) {
   return {
     sub: input.user.id,
     email: input.user.emailNormalized,
     email_verified: true,
     name: input.user.displayName,
-    premium: false,
+    premium: input.premiumFeaturesEnabled,
     amr: ['Application'],
     device: input.deviceIdentifier,
     securityStamp: input.user.securityStamp,
@@ -3996,6 +4014,7 @@ function buildTotpUri(emailNormalized: string, secret: string): string {
 
 function buildSyncResponse(
   user: AuthUserRecord,
+  premiumFeaturesEnabled: boolean,
   folders: readonly FolderRecord[] = [],
   ciphers: readonly CipherRecord[] = [],
   attachments: readonly CipherAttachmentRecord[] = [],
@@ -4005,6 +4024,7 @@ function buildSyncResponse(
   const profile = buildSyncProfileResponse(
     user,
     sumCipherAttachmentStorage(attachments),
+    premiumFeaturesEnabled,
   )
   const folderResponses = folders.map(buildFolderResponse)
   const cipherResponses = ciphers.map((cipher) =>
@@ -4272,7 +4292,8 @@ function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
 
 function buildAccountProfileResponse(
   user: AuthUserRecord,
-  storageBytes: number = 0,
+  storageBytes: number,
+  premiumFeaturesEnabled: boolean,
 ) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const userDecryptionOptions = masterPasswordUnlock
@@ -4290,7 +4311,7 @@ function buildAccountProfileResponse(
 
   return {
     object: 'profile',
-    ...buildProfileResponse(user, storageBytes),
+    ...buildProfileResponse(user, storageBytes, premiumFeaturesEnabled),
     UserDecryptionOptions: userDecryptionOptions,
     userDecryptionOptions,
     KeyConnectorUrl: null,
@@ -4325,7 +4346,11 @@ function buildBillingSubscriptionResponse() {
   }
 }
 
-function buildSyncProfileResponse(user: AuthUserRecord, storageBytes: number) {
+function buildSyncProfileResponse(
+  user: AuthUserRecord,
+  storageBytes: number,
+  premiumFeaturesEnabled: boolean,
+) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
 
@@ -4338,7 +4363,7 @@ function buildSyncProfileResponse(user: AuthUserRecord, storageBytes: number) {
     twoFactorEnabled: user.totpEnabled,
     privateKey: user.privateKey,
     accountKeys,
-    premium: false,
+    premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
     organizations: [],
@@ -4356,7 +4381,11 @@ function buildSyncProfileResponse(user: AuthUserRecord, storageBytes: number) {
   }
 }
 
-function buildProfileResponse(user: AuthUserRecord, storageBytes: number) {
+function buildProfileResponse(
+  user: AuthUserRecord,
+  storageBytes: number,
+  premiumFeaturesEnabled: boolean,
+) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
 
@@ -4369,7 +4398,7 @@ function buildProfileResponse(user: AuthUserRecord, storageBytes: number) {
     twoFactorEnabled: user.totpEnabled,
     privateKey: user.privateKey,
     accountKeys,
-    premium: false,
+    premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
     organizations: [],
@@ -4388,7 +4417,7 @@ function buildProfileResponse(user: AuthUserRecord, storageBytes: number) {
     Name: name,
     Email: user.emailNormalized,
     EmailVerified: true,
-    Premium: false,
+    Premium: premiumFeaturesEnabled,
     PremiumFromOrganization: false,
     Culture: 'en-US',
     TwoFactorEnabled: user.totpEnabled,
@@ -5317,6 +5346,7 @@ async function handleAccountProfileUpdate(c: AppContext) {
           revisionDate: result.revisionDate,
         },
         storage,
+        isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
       ),
     )
   } catch {
