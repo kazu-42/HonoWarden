@@ -30,42 +30,59 @@ Review the non-mutating packet:
 pnpm client:browser-profile -- prepare
 ```
 
-Prepare the default ignored root:
-
-```sh
-pnpm client:browser-profile -- prepare \
-  --execute --confirm clean-browser-profile
-```
+Run exactly one host-specific prepare command from the Launch section below.
+Do not prepare both hosts against the same root.
 
 The prepared root is `test/.tmp/hon-94-browser-profile/` and contains:
 
 - the mode-`0600` pinned release asset;
 - the unpacked official extension;
-- an initially empty, dedicated Brave profile;
+- an initially empty, dedicated evidence-browser profile;
 - a mode-`0600` non-secret state packet with release, manifest, browser host,
   and staging endpoint metadata.
 
-The CLI refuses paths outside ignored `test/.tmp/`, symlinks, existing roots,
-digest/size/manifest mismatches, and missing Brave version readback.
+The CLI refuses unsupported browser names, paths outside ignored `test/.tmp/`,
+symlinked roots or executables, executables under normal browser profile
+directories, existing roots, digest/size/manifest mismatches, and missing or
+invalid selected-host version readback. Launch arguments come only from the
+fixed per-host registry; operators cannot append arguments through this CLI.
 
 ## Launch
 
-Launch only the prepared profile. Keep the process in a dedicated terminal so
-it can be closed before cleanup:
+The CLI never starts a browser. Choose exactly one supported host while
+preparing the profile, then copy only `launch.executable` and the ordered, fixed
+`launch.args` from the emitted JSON packet into a dedicated terminal. This
+CLI-emitted per-host launch contract is authoritative; do not append or replace
+launch arguments. Both contracts keep CDP on `127.0.0.1` with the fixed
+`--remote-debugging-port=9224` argument.
+
+### Brave Browser (default)
 
 ```sh
-ROOT="$PWD/test/.tmp/hon-94-browser-profile"
-BRAVE="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
-
-"$BRAVE" \
-  --user-data-dir="$ROOT/profile" \
-  --disable-extensions-except="$ROOT/extension" \
-  --load-extension="$ROOT/extension" \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9224 \
-  --no-first-run \
-  --no-default-browser-check
+pnpm client:browser-profile -- prepare \
+  --browser brave \
+  --execute --confirm clean-browser-profile
 ```
+
+Brave Browser uses its registered default executable unless
+`--browser-executable` or the backward-compatible
+`HONOWARDEN_BRAVE_EXECUTABLE` override is supplied. Its emitted contract does
+not include `--enable-unsafe-extension-debugging`.
+
+### Chrome for Testing
+
+Chrome for Testing has no default executable. Supply its executable explicitly:
+
+```sh
+pnpm client:browser-profile -- prepare \
+  --browser chrome-for-testing \
+  --browser-executable "/path/to/Google Chrome for Testing" \
+  --execute --confirm clean-browser-profile
+```
+
+Its emitted fixed launch contract includes
+`--enable-unsafe-extension-debugging`. This flag is evidence-only and must
+never be used with a daily browser profile.
 
 Secret-safe startup readback:
 
@@ -74,9 +91,9 @@ curl -fsS http://127.0.0.1:9224/json/list | jq \
   '[.[] | select(.url | startswith("chrome-extension://")) | {type, url}]'
 ```
 
-Record the Brave version, extension release/digest, extension target type, and
-manifest version. Do not record account identifiers, tokens, profile LevelDB,
-extension storage, encrypted keys, or request payloads.
+Record the selected host name and version, extension release/digest, extension
+target type, and manifest version. Do not record account identifiers, tokens,
+profile LevelDB, extension storage, encrypted keys, or request payloads.
 
 ### HON-95 Chromium Host Note
 
@@ -86,21 +103,16 @@ unstable duplicate-app behavior during repeated extension popup launches, and
 current Chromium disabled the unpacked extension after popup close unless the
 explicit test-only flag was present.
 
-```sh
-"/path/to/Google Chrome for Testing" \
-  --user-data-dir="$ROOT/profile" \
-  --disable-extensions-except="$ROOT/extension" \
-  --load-extension="$ROOT/extension" \
-  --enable-unsafe-extension-debugging \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9224 \
-  --no-first-run \
-  --no-default-browser-check
-```
+Launcher update on 2026-07-13: select `chrome-for-testing` with the per-host
+command above. The CLI now emits the required test-only flag in its fixed launch
+contract; do not add it manually.
 
 This is an evidence-host override, not a compatibility pin or a recommended
 daily-browser setting. The extension asset, digest, ignored profile boundary,
 and cleanup requirements remain unchanged.
+
+`--enable-unsafe-extension-debugging` is evidence-only and must never be used
+with a daily browser profile.
 
 ## Staging Boundary
 
@@ -127,7 +139,7 @@ pnpm client:browser-profile -- status \
 
 An untouched prepared profile reports zero profile entries. A launched profile
 reports `used`; this is expected and does not claim whether credential storage
-exists. Close Brave before cleanup.
+exists. Close the selected evidence-browser host before cleanup.
 
 ```sh
 pnpm client:browser-profile -- cleanup \
