@@ -88,9 +88,12 @@ items.
 Never reuse the isolated profile with a real account.
 
 Current Chromium hardening can disable unpacked extensions after the popup
-closes. For the isolated evidence browser only, launch with
-`--enable-unsafe-extension-debugging` in addition to the arguments printed by
-`client:browser-profile`. Do not add that flag to a daily browser profile.
+closes. For the isolated evidence browser, select the host through
+`client:browser-profile` and use its CLI-emitted per-host launch contract
+unchanged. The `chrome-for-testing` contract includes
+`--enable-unsafe-extension-debugging` automatically; do not append it or any
+other launch argument manually. This flag is evidence-only and must never be
+used with a daily browser profile.
 
 The official login-with-device command appears only after
 `GET /api/devices/knowndevice` returns `true`. Bootstrap the same synthetic
