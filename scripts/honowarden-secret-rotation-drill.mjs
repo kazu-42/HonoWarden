@@ -144,6 +144,8 @@ const secretClasses = [
     rollbackPath:
       'keep previous scoped tokens active until replacements verify; if replacement fails, remove only the failed new token and keep read-only default',
   },
+  // The global key is inventoried only for explicit break-glass rotation
+  // planning; routine workflow authentication must reject it.
   {
     id: 'cloudflare_global_key_break_glass',
     envVars: ['CLOUDFLARE_GLOBAL_API_KEY', 'CLOUDFLARE_API_KEY'],

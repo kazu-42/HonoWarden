@@ -712,6 +712,8 @@ function requireCloudflareConfig(env) {
   return config
 }
 
+// Global-key auth is intentionally confined to this remediation tool so it can
+// bootstrap scoped routine tokens; it is never a routine workflow fallback.
 function resolveAuthMode(env, requested, options = {}) {
   if (requested === 'token') {
     if (stringValue(env.CLOUDFLARE_API_TOKEN)) {
