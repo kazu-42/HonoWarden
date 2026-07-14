@@ -1,6 +1,6 @@
 # Cloudflare Access-Control Review
 
-Last reviewed: 2026-07-09.
+Last reviewed: 2026-07-14.
 
 Status: scoped tokens created; formal dry-run exists; remaining 2FA,
 legacy-token, and break-glass gaps accepted temporarily.
@@ -107,8 +107,7 @@ The current account posture is not least privilege:
 - the current operator can see seven active user API tokens without expiration
 - visible token permissions include broad write surfaces unrelated to the
   HonoWarden alpha path
-- the local automation currently relies on a home-directory global key as a
-  break-glass fallback
+- a home-directory global key remains as an explicit break-glass credential
 
 Temporary acceptance:
 
@@ -132,6 +131,9 @@ Follow-up:
 ## Least-Privilege Token Plan
 
 Create separate scoped tokens instead of reusing the global key.
+
+Routine Cloudflare workflows are scoped-token-only. The global key is never an
+automatic or routine fallback.
 
 | Token class        | Scope                                       | Allowed operations                                                                  | Must not allow                                             |
 | ------------------ | ------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -170,6 +172,28 @@ The script manages five scoped account-token classes:
 | Email Routing      | `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` | Email Routing rules and DNS readback       |
 | D1/R2 operations   | `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         | D1 database and R2 bucket readback         |
 | Read-only evidence | `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | account token and DNS readback             |
+
+`CLOUDFLARE_API_TOKEN` may be used only as a command-local alias for the token
+in the table. The two repo-code carve-outs for the global key are
+`scripts/honowarden-cloudflare-token-remediation.mjs`, which bootstraps or
+replaces these scoped tokens, and
+`scripts/honowarden-secret-rotation-drill.mjs`, which inventories the explicit
+break-glass rotation plan. The email preflight and ops-readiness packet reject
+it. Direct Wrangler commands still inherit their shell environment, so operators
+must remove global-key variables and bind only the workflow token; Wrangler
+prefers complete global-key auth over an API token when both are present.
+
+The account setting `OAuth app access enabled` in the redacted readback is not a
+signal about local Wrangler authentication. Wrangler may also have a broad OAuth
+session in its operator-owned auth profiles and may silently use it when
+environment credentials are absent. The email preflight reports presence based
+only on auth-profile filenames without opening or modifying profile contents.
+While that warning is present, successful Wrangler execution cannot prove
+scoped-only operation. An
+operator who needs that proof must use a clean shell and run `wrangler logout`
+for the default profile first. Named profiles must also be deactivated with
+`wrangler auth deactivate` and removed with `wrangler auth delete <profile>` if
+they remain. Repository scripts must not automate any of those mutations.
 
 `apply --execute` creates missing tokens only, writes one-time token values to
 `~/.config/honowarden/cloudflare-scoped.env` with mode `0600`, and prints only
@@ -245,19 +269,22 @@ Post-remediation decision:
   tokens are explicitly re-accepted only for the current operator-owned
   transition window. They must be reviewed and retired or renewed on the next
   access-control review.
-- The global key remains loaded only as a break-glass credential until a
-  separate operator-owned live break-glass rotation window.
+- The global key remains stored outside the repository as a break-glass
+  credential and is not loaded into routine shells.
 - Account-level 2FA enforcement is documented as an operator action instead of
   being automated from this repository.
 
 ## Break-Glass Process
 
 The break-glass path is the local-only global key stored outside the repository
-under the operator home configuration and loaded through ignored direnv files.
+under the operator home configuration. Load it only inside an isolated,
+explicitly approved remediation or rotation window, then exit that shell.
 
 Rules:
 
-1. Use break-glass only when scoped tokens are unavailable or broken.
+1. Use the global key only to remediate scoped tokens or perform an explicitly
+   approved break-glass rotation drill. The email preflight and ops-readiness
+   packet reject it; direct Wrangler commands require the clean-shell invariant.
 2. Before use, record the reason, target resource, planned command, rollback
    command, and expected readback in Linear.
 3. Do not print or paste the global key, account email, private forwarding
@@ -277,7 +304,7 @@ Accepted temporary stale/broad credentials:
 - seven visible active user tokens without expiration
 - two Super Administrator members
 - account-level two-factor enforcement disabled
-- local global key break-glass fallback
+- local global key break-glass credential
 
 Reason for acceptance: removing or rotating these credentials could break
 unrelated account automation and requires operator-owned sequencing. The scoped
@@ -308,5 +335,7 @@ Minimum recurring review checklist:
    read-only evidence tasks.
 4. Confirm the global key is either removed or still explicitly accepted as
    break-glass.
-5. Confirm Cloudflare log retention/access evidence status.
-6. Record follow-up Linear issues for every unresolved gap.
+5. Confirm whether a local Wrangler OAuth session exists and do not claim
+   scoped-only evidence from command success while it does.
+6. Confirm Cloudflare log retention/access evidence status.
+7. Record follow-up Linear issues for every unresolved gap.

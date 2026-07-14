@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-13.
+Last reviewed: 2026-07-14.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -105,6 +105,14 @@ inputs, not minor documentation notes.
 
 ## Operational Gaps
 
+- 2026-07-14: A broad Wrangler OAuth session on an operator machine can silently
+  satisfy Wrangler commands when environment credentials are absent. A
+  successful Wrangler command alone cannot prove scoped-only operation. The
+  preflight detects default and named auth-profile filenames without opening or
+  modifying profile contents. An operator seeking scoped-only proof must run
+  `wrangler logout` for the default profile first, deactivate and delete any
+  remaining named profile, and then provide only the intended scoped token.
+  Repository scripts do not mutate that operator-owned session.
 - Production usage remains blocked by pre-alpha safety limits, unsupported
   surfaces, and lack of real-data dogfood evidence.
 - D1 audit-event persistence has a 365-day retention policy, but staging and

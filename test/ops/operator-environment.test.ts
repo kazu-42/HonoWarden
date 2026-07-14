@@ -81,6 +81,10 @@ describe('operator environment policy', () => {
     for (const secretName of localSecretPlaceholders) {
       expect(envExample).toMatch(new RegExp(`^${secretName}=$`, 'm'))
     }
+    expect(envExample).toContain('Break-glass only')
+    expect(envExample).not.toContain(
+      'Fallback for local-only Cloudflare automation',
+    )
   })
 
   it('documents external write gates for local operator automation', () => {
@@ -93,6 +97,19 @@ describe('operator environment policy', () => {
     expect(operatorDocs).toContain('HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE')
     expect(operatorDocs).toContain('pnpm cloudflare:tokens')
     expect(operatorDocs).toContain('Cloudflare Access-Control Review')
+    expect(operatorDocs).toContain(
+      'Routine Cloudflare workflows are scoped-token-only',
+    )
+    expect(operatorDocs).toContain('CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN')
+    expect(operatorDocs).toContain('wrangler logout')
+    expect(operatorDocs).toContain('wrangler auth delete')
+    expect(operatorDocs).toContain(
+      'scripts/honowarden-cloudflare-token-remediation.mjs',
+    )
+    expect(operatorDocs).toContain(
+      'scripts/honowarden-secret-rotation-drill.mjs',
+    )
+    expect(operatorDocs).not.toContain('Cloudflare API automation fallback')
     expect(operatorDocs).toContain('External Write Gates')
     expect(operatorDocs).toContain('Current Linear Access')
   })
@@ -114,6 +131,10 @@ describe('operator environment policy', () => {
     expect(accessReview).toContain('HON-64')
     expect(accessReview).toContain('HON-60')
     expect(accessReview).toContain('global key')
+    expect(accessReview).toContain(
+      'Routine Cloudflare workflows are scoped-token-only',
+    )
+    expect(accessReview).toContain('wrangler logout')
     expect(accessReview).not.toContain('X-Auth-Key')
     expect(accessReview).not.toContain('CLOUDFLARE_GLOBAL_API_KEY=')
     expect(accessReview).not.toMatch(

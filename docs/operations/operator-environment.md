@@ -66,8 +66,9 @@ tracked `.envrc` watches both ignored local files, loads `.env.local` with
 Changing local API keys or forwarding destinations prompts direnv to reload
 after the next `direnv allow`.
 
-For Cloudflare global API key auth, prefer a home-directory secret file instead
-of storing the value in the repository checkout:
+The Cloudflare global API key is a break-glass credential, not an automation
+fallback. If it is retained for scoped-token remediation or a rotation drill,
+keep it in a home-directory secret file instead of the repository checkout:
 
 ```sh
 mkdir -p ~/.config/honowarden
@@ -76,15 +77,17 @@ $EDITOR ~/.config/honowarden/cloudflare.env
 chmod 600 ~/.config/honowarden/cloudflare.env
 ```
 
-Then source it from ignored `.envrc.local`:
+Do not source this break-glass file from the repository's `.envrc.local` or any
+routine shell. Load it only inside the isolated, explicitly approved remediation
+or rotation window, then exit that shell.
 
-```sh
-source_env_if_exists ~/.config/honowarden/cloudflare.env
-```
-
-The current operator setup uses this pattern for local-only Cloudflare global
-key auth. Do not commit the home env file, `.envrc.local`, or any rendered
-Cloudflare key value.
+The two legitimate global-key carve-outs are
+`scripts/honowarden-cloudflare-token-remediation.mjs`, whose job is to mint the
+scoped tokens, and `scripts/honowarden-secret-rotation-drill.mjs`, whose job is
+to inventory the break-glass rotation plan. The email preflight inspects only
+whether a global-key variable is present so it can reject that auth path with a
+structural reason; it never accepts the key. Do not commit the home env file,
+`.envrc.local`, or any rendered Cloudflare key value.
 
 Scoped HonoWarden Cloudflare account tokens are generated and verified with:
 
@@ -111,10 +114,43 @@ Use command-local overrides for write operations so the default environment
 stays read-only:
 
 ```sh
-CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN" pnpm deploy
-CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN" pnpm wrangler d1 execute honowarden --remote --command "SELECT 1;"
-CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN" pnpm email:preflight -- --strict
+env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_GLOBAL_API_KEY -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_EMAIL CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN" pnpm deploy
+env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_GLOBAL_API_KEY -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_EMAIL CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN" pnpm wrangler d1 execute honowarden --remote --command "SELECT 1;"
+env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_GLOBAL_API_KEY -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_EMAIL CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN" pnpm email:preflight -- --strict
 ```
+
+### Routine Cloudflare Authentication Policy
+
+Routine Cloudflare workflows are scoped-token-only. Use the token assigned to
+the workflow; do not substitute the global key:
+
+| Routine workflow                               | Required scoped token                       |
+| ---------------------------------------------- | ------------------------------------------- |
+| Worker deploy and Worker route attachment      | `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        |
+| DNS records and Worker route changes           | `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    |
+| Email Routing rules and destination operations | `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` |
+| D1 migrations/readback and R2 backup/restore   | `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         |
+| Read-only account, zone, and resource evidence | `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      |
+
+`CLOUDFLARE_API_TOKEN` is only the command-local transport name for the selected
+workflow token. Its presence does not prove the token's permissions; retain the
+workflow-specific source variable in the command and verify the expected scope
+with Cloudflare. Wrangler prefers complete global-key auth over an API token, so
+the routine command examples explicitly remove both global-key and email aliases
+from the child environment.
+
+Wrangler can silently use an OAuth session from its operator-owned auth profiles
+when no environment credential is set. The email preflight detects profile
+filenames only, never opens their contents, and emits a non-blocking warning.
+While such a profile exists, a successful Wrangler command does not prove
+scoped-only operation. An operator who needs to prove scoped-only operation must
+first use a clean shell without Cloudflare environment credentials and run
+`wrangler logout` for the default profile. If a named profile is active or the
+warning remains, the operator must also use `wrangler auth deactivate` for its
+directory binding and `wrangler auth delete <profile>` for the stored profile
+before running the command with only the intended scoped token. These commands
+mutate operator-owned state, so repository scripts must never run them
+automatically.
 
 Remote backup R2 listing uses the S3-compatible R2 API. The current operator
 setup derives `R2_ACCESS_KEY_ID` from the D1/R2 scoped token id and derives
@@ -130,11 +166,11 @@ used by `.github/workflows/remote-backup.yml`.
 | ------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `LINEAR_API_KEY`                            | Linear API apply                          | Must belong to an account with access to `https://linear.app/honowarden/`.                                                        |
 | `GITHUB_TOKEN`                              | Website repository automation             | Optional if `gh auth status` already has the required repo permissions.                                                           |
-| `CLOUDFLARE_API_TOKEN`                      | Cloudflare API automation                 | Prefer a scoped token over a global key.                                                                                          |
-| `CLOUDFLARE_API_KEY`                        | Cloudflare API automation fallback        | Global key fallback; keep local-only and pair with account email.                                                                 |
-| `CLOUDFLARE_GLOBAL_API_KEY`                 | Cloudflare API automation fallback        | Alias for the global key fallback; keep local-only.                                                                               |
-| `CLOUDFLARE_EMAIL`                          | Cloudflare global key auth                | Required when using a global key.                                                                                                 |
-| `CLOUDFLARE_API_EMAIL`                      | Cloudflare global key auth                | Alias for the account email used by global key auth.                                                                              |
+| `CLOUDFLARE_API_TOKEN`                      | Command-local scoped-token transport      | Set to the workflow-specific scoped token; never bind it to a broad credential for routine work.                                  |
+| `CLOUDFLARE_API_KEY`                        | Cloudflare break-glass tooling            | Global key accepted only for scoped-token remediation and explicit rotation planning; never a routine fallback.                   |
+| `CLOUDFLARE_GLOBAL_API_KEY`                 | Cloudflare break-glass tooling            | Alias for the same break-glass key; keep local-only.                                                                              |
+| `CLOUDFLARE_EMAIL`                          | Cloudflare break-glass tooling            | Account email paired with the global key only in the two approved break-glass tooling paths.                                      |
+| `CLOUDFLARE_API_EMAIL`                      | Cloudflare break-glass tooling            | Alias for the break-glass account email.                                                                                          |
 | `CLOUDFLARE_ACCOUNT_ID`                     | Worker deploys and account resources      | Non-secret but operationally sensitive.                                                                                           |
 | `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM`         | DNS and email routing on `honowarden.com` | Non-secret but operationally sensitive.                                                                                           |
 | `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        | Worker deploy and route attach            | Scoped account token for HonoWarden deploys.                                                                                      |
@@ -230,7 +266,9 @@ Before applying external changes:
    proves the reviewed local ID map is complete before any guarded writer is
    used.
 7. `gh auth status` resolves to the intended GitHub user.
-8. `pnpm wrangler whoami` resolves to the intended Cloudflare account.
+8. `pnpm wrangler whoami` resolves to the intended Cloudflare account and reports
+   API Token auth for scoped-only evidence; account identity alone is not proof
+   when a Wrangler OAuth session exists on disk.
 9. `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM` points to `honowarden.com`.
 10. Destination inboxes for email routing are verified in Cloudflare.
 11. The current worktree is clean or the pending diff is intentionally scoped.
@@ -242,9 +280,14 @@ pnpm email:preflight -- --strict
 ```
 
 The report prints only configured/missing status for API auth and destination
-inboxes. It accepts either `CLOUDFLARE_API_TOKEN`, or a local-only global key
-with `CLOUDFLARE_EMAIL`. It does not print token values, global key values,
-operator emails, or forwarding addresses.
+inboxes. It accepts `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` or a
+workflow-scoped `CLOUDFLARE_API_TOKEN`. Any configured global key fails with a
+break-glass structural reason, including when a scoped token is also present,
+because Wrangler would prefer complete global-key auth. A detected
+Wrangler OAuth auth profile appears as a non-blocking warning because command
+success cannot prove which credential Wrangler used. The report does not print
+token values, global key values, operator emails, forwarding addresses,
+auth-profile paths, names, or contents.
 
 ## Current Linear Access
 
