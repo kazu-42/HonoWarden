@@ -85,6 +85,7 @@ import {
   deleteCipherAttachment,
   findCipherAttachment,
   getCipherAttachmentStorageUsage,
+  listCipherAttachmentObjectKeysForOwnedCiphers,
   listCipherAttachmentsByUser,
   markCipherAttachmentUploaded,
   reserveCipherAttachmentUpload,
@@ -102,6 +103,10 @@ import {
 import type { AuthRequestRecord } from './repositories/auth-request-repository'
 import type { CipherAttachmentRecord } from './repositories/attachment-repository'
 import {
+  bulkMoveCiphers,
+  bulkPermanentlyDeleteCiphers,
+  bulkRestoreCiphers,
+  bulkSoftDeleteCiphers,
   createCipher,
   findCipherById,
   listCiphersByUser,
@@ -249,6 +254,8 @@ const totpChallengeTtlSeconds = 5 * 60
 const recentPasswordAuthTtlSeconds = 5 * 60
 const defaultListPageSize = 100
 const maxListPageSize = 500
+const maxBulkCipherIds = 1_000
+const maxR2DeleteKeysPerRequest = 1_000
 const signalRHeartbeatIntervalMs = 15_000
 const signalRRecordSeparator = '\u001e'
 
@@ -3378,6 +3385,333 @@ app.get('/api/ciphers', async (c) => {
     )
   }
 })
+
+app.put('/api/ciphers/move', bulkMoveCiphersRoute)
+app.put('/api/ciphers/delete', bulkTrashCiphersRoute)
+app.put('/api/ciphers/restore', bulkRestoreCiphersRoute)
+app.delete('/api/ciphers', bulkPermanentlyDeleteCiphersRoute)
+
+async function bulkMoveCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkMoveRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const now = new Date().toISOString()
+
+  try {
+    if (request.ids.length === 0) {
+      return c.body(null, 200)
+    }
+
+    if (request.folderId !== null) {
+      const folderExists = await folderBelongsToUser(c.env.DB, {
+        folderId: request.folderId,
+        userId: auth.user.id,
+      })
+
+      if (!folderExists) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'cipher_folder_not_found',
+            'Cipher folder was not found.',
+          ),
+          404,
+        )
+      }
+    }
+
+    const affectedCount = await bulkMoveCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      folderId: request.folderId,
+      revisionDate: now,
+    })
+
+    if (affectedCount > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.update',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'updated',
+          operation: 'bulk_move',
+          requestedCount: request.ids.length,
+          affectedCount,
+          hasFolder: request.folderId !== null,
+        },
+      })
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk move failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function bulkTrashCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const affectedCount = await bulkSoftDeleteCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      revisionDate: new Date().toISOString(),
+    })
+
+    if (affectedCount > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.delete',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'deleted',
+          operation: 'bulk_delete',
+          requestedCount: request.ids.length,
+          affectedCount,
+        },
+      })
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function bulkRestoreCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const revisionDate = new Date().toISOString()
+
+  try {
+    const restoredIds = await bulkRestoreCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      revisionDate,
+    })
+
+    if (restoredIds.length > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.restore',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'restored',
+          operation: 'bulk_restore',
+          requestedCount: request.ids.length,
+          affectedCount: restoredIds.length,
+        },
+      })
+    }
+
+    if (restoredIds.length === 0) {
+      return c.json(buildEmptyListResponse())
+    }
+
+    const restoredIdSet = new Set(restoredIds)
+    const restoredCiphers = request.ids.flatMap((id) => {
+      if (!restoredIdSet.has(id)) {
+        return []
+      }
+
+      return [
+        {
+          object: 'cipher',
+          id,
+          revisionDate,
+          deletedDate: null,
+        },
+      ]
+    })
+
+    return c.json({
+      object: 'list',
+      data: restoredCiphers,
+      continuationToken: null,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk restore failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function bulkPermanentlyDeleteCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  let attachmentObjectKeys: string[]
+  try {
+    const attachments = await listCipherAttachmentObjectKeysForOwnedCiphers(
+      c.env.DB,
+      {
+        cipherIds: request.ids,
+        userId: auth.user.id,
+      },
+    )
+    attachmentObjectKeys = [
+      ...new Set(attachments.map((attachment) => attachment.objectKey)),
+    ]
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    await deleteR2Objects(c.env.VAULT_OBJECTS, attachmentObjectKeys)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const affectedCount = await bulkPermanentlyDeleteCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      revisionDate: new Date().toISOString(),
+    })
+
+    if (affectedCount > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.permanent_delete',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'permanently_deleted',
+          operation: 'bulk_permanent_delete',
+          requestedCount: request.ids.length,
+          affectedCount,
+          attachmentCount: attachmentObjectKeys.length,
+        },
+      })
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function deleteR2Objects(
+  bucket: R2Bucket,
+  objectKeys: readonly string[],
+): Promise<void> {
+  const uniqueObjectKeys = [...new Set(objectKeys)]
+
+  for (
+    let index = 0;
+    index < uniqueObjectKeys.length;
+    index += maxR2DeleteKeysPerRequest
+  ) {
+    await bucket.delete(
+      uniqueObjectKeys.slice(index, index + maxR2DeleteKeysPerRequest),
+    )
+  }
+}
 
 app.get('/api/ciphers/:id', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -6812,6 +7146,62 @@ function parseFolderUpdateRequestBody(
     ok: true,
     name: folderRequest.name,
     revisionDate,
+  }
+}
+
+function parseCipherBulkRequestBody(
+  body: unknown,
+): { ok: true; ids: string[] } | { ok: false } {
+  if (!isPlainObject(body) || body.organizationId != null) {
+    return { ok: false }
+  }
+
+  if (!Array.isArray(body.ids) || body.ids.length > maxBulkCipherIds) {
+    return { ok: false }
+  }
+
+  const ids: string[] = []
+  const seenIds = new Set<string>()
+
+  for (const value of body.ids) {
+    if (typeof value !== 'string' || !value.trim()) {
+      return { ok: false }
+    }
+
+    const id = value.trim()
+    if (!seenIds.has(id)) {
+      ids.push(id)
+      seenIds.add(id)
+    }
+  }
+
+  return { ok: true, ids }
+}
+
+function parseCipherBulkMoveRequestBody(body: unknown):
+  | {
+      ok: true
+      ids: string[]
+      folderId: string | null
+    }
+  | { ok: false } {
+  const request = parseCipherBulkRequestBody(body)
+  if (!request.ok || !isPlainObject(body) || !Object.hasOwn(body, 'folderId')) {
+    return { ok: false }
+  }
+
+  if (body.folderId === null) {
+    return { ok: true, ids: request.ids, folderId: null }
+  }
+
+  if (typeof body.folderId !== 'string' || !body.folderId.trim()) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    ids: request.ids,
+    folderId: body.folderId.trim(),
   }
 }
 

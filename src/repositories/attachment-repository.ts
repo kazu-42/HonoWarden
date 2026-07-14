@@ -46,6 +46,11 @@ export type CipherAttachmentLookupInput = {
   userId: string
 }
 
+export type CipherAttachmentObjectKey = {
+  cipherId: string
+  objectKey: string
+}
+
 export type CipherAttachmentDeleteResult =
   | {
       status: 'deleted'
@@ -80,6 +85,9 @@ export type PendingCipherAttachmentCreateResult =
     }
 
 type AttachmentDatabase = Pick<D1Database, 'prepare'>
+type AttachmentBatchDatabase = Pick<D1Database, 'batch' | 'prepare'>
+
+const attachmentCipherIdChunkSize = 90
 
 type CipherAttachmentRow = {
   id: string
@@ -97,6 +105,11 @@ type CipherAttachmentRow = {
 
 type CipherAttachmentStorageRow = {
   storageBytes: number | null
+}
+
+type CipherAttachmentObjectKeyRow = {
+  cipherId: string
+  objectKey: string
 }
 
 export async function createCipherAttachment(
@@ -233,6 +246,53 @@ export async function listCipherAttachmentsByUser(
     .all<CipherAttachmentRow>()
 
   return result.results.map(attachmentFromRow)
+}
+
+export async function listCipherAttachmentObjectKeysForOwnedCiphers(
+  database: AttachmentBatchDatabase,
+  input: {
+    cipherIds: readonly string[]
+    userId: string
+  },
+): Promise<CipherAttachmentObjectKey[]> {
+  if (input.cipherIds.length === 0) {
+    return []
+  }
+
+  const cipherIdChunks: string[][] = []
+  for (
+    let index = 0;
+    index < input.cipherIds.length;
+    index += attachmentCipherIdChunkSize
+  ) {
+    cipherIdChunks.push(
+      input.cipherIds.slice(index, index + attachmentCipherIdChunkSize),
+    )
+  }
+
+  const results = await database.batch<CipherAttachmentObjectKeyRow>(
+    cipherIdChunks.map((cipherIds) =>
+      database
+        .prepare(
+          `
+            SELECT
+              attachment.cipher_id as cipherId,
+              attachment.object_key as objectKey
+            FROM cipher_attachments attachment
+            INNER JOIN ciphers cipher
+              ON cipher.id = attachment.cipher_id
+              AND cipher.user_id = attachment.user_id
+            WHERE cipher.id IN (${cipherIds.map(() => '?').join(', ')})
+              AND cipher.user_id = ?
+              AND attachment.user_id = ?
+            ORDER BY attachment.id ASC
+          `,
+        )
+        .bind(...cipherIds, input.userId, input.userId),
+    ),
+  )
+
+  return results.flatMap((result) => result.results)
 }
 
 export async function findCipherAttachment(
