@@ -68,9 +68,11 @@ export class FakeR2Bucket {
     } as unknown as R2ObjectBody
   }
 
-  async delete(key: string): Promise<void> {
-    this.deletedKeys.push(key)
-    this.objects.delete(key)
+  async delete(keys: string | string[]): Promise<void> {
+    for (const key of typeof keys === 'string' ? [keys] : keys) {
+      this.deletedKeys.push(key)
+      this.objects.delete(key)
+    }
   }
 
   has(key: string): boolean {

@@ -34,6 +34,16 @@ export type CipherPermanentDeleteInput = {
   revisionDate: string
 }
 
+export type CipherBulkMutationInput = {
+  ids: readonly string[]
+  userId: string
+  revisionDate: string
+}
+
+export type CipherBulkMoveInput = CipherBulkMutationInput & {
+  folderId: string | null
+}
+
 export type CipherListCursor = {
   revisionDate: string
   id: string
@@ -95,6 +105,9 @@ export type CipherPermanentDeleteResult =
     }
 
 type CipherDatabase = Pick<D1Database, 'prepare'>
+type CipherBatchDatabase = Pick<D1Database, 'batch' | 'prepare'>
+
+const cipherBulkMutationChunkSize = 90
 
 type CipherRow = {
   id: string
@@ -409,6 +422,167 @@ export async function permanentlyDeleteCipher(
     id: input.id,
     revisionDate: input.revisionDate,
   }
+}
+
+export async function bulkMoveCiphers(
+  database: CipherBatchDatabase,
+  input: CipherBulkMoveInput,
+): Promise<number> {
+  const statements = chunkCipherIds(input.ids).map((ids) =>
+    database
+      .prepare(
+        `
+          UPDATE ciphers
+          SET
+            folder_id = ?,
+            revision_date = ?,
+            updated_at = ?
+          WHERE id IN (${cipherIdPlaceholders(ids)})
+            AND user_id = ?
+            AND deleted_at IS NULL
+        `,
+      )
+      .bind(
+        input.folderId,
+        input.revisionDate,
+        input.revisionDate,
+        ...ids,
+        input.userId,
+      ),
+  )
+
+  return runCipherMutationBatch(database, statements)
+}
+
+export async function bulkSoftDeleteCiphers(
+  database: CipherBatchDatabase,
+  input: CipherBulkMutationInput,
+): Promise<number> {
+  const statements = chunkCipherIds(input.ids).map((ids) =>
+    database
+      .prepare(
+        `
+          UPDATE ciphers
+          SET
+            deleted_at = ?,
+            revision_date = ?,
+            updated_at = ?
+          WHERE id IN (${cipherIdPlaceholders(ids)})
+            AND user_id = ?
+            AND deleted_at IS NULL
+        `,
+      )
+      .bind(
+        input.revisionDate,
+        input.revisionDate,
+        input.revisionDate,
+        ...ids,
+        input.userId,
+      ),
+  )
+
+  return runCipherMutationBatch(database, statements)
+}
+
+export async function bulkRestoreCiphers(
+  database: CipherBatchDatabase,
+  input: CipherBulkMutationInput,
+): Promise<string[]> {
+  if (input.ids.length === 0) {
+    return []
+  }
+
+  const statements = chunkCipherIds(input.ids).flatMap((ids) => {
+    const placeholders = cipherIdPlaceholders(ids)
+
+    return [
+      database
+        .prepare(
+          `
+            SELECT id
+            FROM ciphers
+            WHERE id IN (${placeholders})
+              AND user_id = ?
+              AND deleted_at IS NOT NULL
+          `,
+        )
+        .bind(...ids, input.userId),
+      database
+        .prepare(
+          `
+            UPDATE ciphers
+            SET
+              deleted_at = NULL,
+              revision_date = ?,
+              updated_at = ?
+            WHERE id IN (${placeholders})
+              AND user_id = ?
+              AND deleted_at IS NOT NULL
+          `,
+        )
+        .bind(input.revisionDate, input.revisionDate, ...ids, input.userId),
+    ]
+  })
+  const results = await database.batch<{ id: string }>(statements)
+  const restoredIds: string[] = []
+
+  for (let index = 0; index < results.length; index += 2) {
+    restoredIds.push(
+      ...(results[index]?.results ?? []).map((row) => String(row.id)),
+    )
+  }
+
+  return restoredIds
+}
+
+export async function bulkPermanentlyDeleteCiphers(
+  database: CipherBatchDatabase,
+  input: CipherBulkMutationInput,
+): Promise<number> {
+  const statements = chunkCipherIds(input.ids).map((ids) =>
+    database
+      .prepare(
+        `
+          DELETE FROM ciphers
+          WHERE id IN (${cipherIdPlaceholders(ids)})
+            AND user_id = ?
+        `,
+      )
+      .bind(...ids, input.userId),
+  )
+
+  return runCipherMutationBatch(database, statements)
+}
+
+async function runCipherMutationBatch(
+  database: CipherBatchDatabase,
+  statements: D1PreparedStatement[],
+): Promise<number> {
+  if (statements.length === 0) {
+    return 0
+  }
+
+  const results = await database.batch(statements)
+
+  return results.reduce((total, result) => total + result.meta.changes, 0)
+}
+
+function chunkCipherIds(ids: readonly string[]): string[][] {
+  const chunks: string[][] = []
+
+  for (
+    let index = 0;
+    index < ids.length;
+    index += cipherBulkMutationChunkSize
+  ) {
+    chunks.push(ids.slice(index, index + cipherBulkMutationChunkSize))
+  }
+
+  return chunks
+}
+
+function cipherIdPlaceholders(ids: readonly string[]): string {
+  return ids.map(() => '?').join(', ')
 }
 
 function cipherFromRow(row: CipherRow): CipherRecord {

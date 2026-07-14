@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  bulkMoveCiphers,
+  bulkPermanentlyDeleteCiphers,
+  bulkRestoreCiphers,
+  bulkSoftDeleteCiphers,
   createCipher,
   findCipherById,
   permanentlyDeleteCipher,
@@ -369,6 +373,85 @@ describe('cipher repository', () => {
     expect(database.queries.join('\n')).toContain('user_id = ?')
   })
 
+  it('batches bulk mutations with owner-scoped lifecycle predicates', async () => {
+    const input = {
+      ids: ['cipher-one', 'cipher-two'],
+      userId: 'user-id',
+      revisionDate: '2026-07-06T00:10:00.000Z',
+    }
+
+    const moveDatabase = new RecordingCipherD1Database([], {
+      batchChanges: [1],
+    })
+    await expect(
+      bulkMoveCiphers(moveDatabase, { ...input, folderId: 'folder-id' }),
+    ).resolves.toBe(1)
+    expectOwnerScopedBatch(moveDatabase, 1, 'deleted_at IS NULL')
+    expect(moveDatabase.queries.join('\n')).toContain('folder_id = ?')
+
+    const trashDatabase = new RecordingCipherD1Database([], {
+      batchChanges: [1],
+    })
+    await expect(bulkSoftDeleteCiphers(trashDatabase, input)).resolves.toBe(1)
+    expectOwnerScopedBatch(trashDatabase, 1, 'deleted_at IS NULL')
+    expect(trashDatabase.queries.join('\n')).toContain('deleted_at = ?')
+
+    const restoreDatabase = new RecordingCipherD1Database(
+      [{ id: 'cipher-one' }],
+      {
+        batchChanges: [0, 1],
+      },
+    )
+    await expect(bulkRestoreCiphers(restoreDatabase, input)).resolves.toEqual([
+      'cipher-one',
+    ])
+    expectOwnerScopedBatch(restoreDatabase, 2, 'deleted_at IS NOT NULL')
+    expect(restoreDatabase.queries.join('\n')).toContain('deleted_at = NULL')
+
+    const deleteDatabase = new RecordingCipherD1Database([], {
+      batchChanges: [1],
+    })
+    await expect(
+      bulkPermanentlyDeleteCiphers(deleteDatabase, input),
+    ).resolves.toBe(1)
+    expectOwnerScopedBatch(deleteDatabase, 1)
+    expect(deleteDatabase.queries.join('\n')).toContain('DELETE FROM ciphers')
+  })
+
+  it('chunks the 1000-id bulk boundary below the D1 parameter limit', async () => {
+    const input = {
+      ids: Array.from({ length: 1_000 }, (_, index) => `cipher-${index}`),
+      userId: 'user-id',
+      revisionDate: '2026-07-06T00:10:00.000Z',
+    }
+
+    for (const run of [
+      (database: RecordingCipherD1Database) =>
+        bulkMoveCiphers(database, { ...input, folderId: null }),
+      (database: RecordingCipherD1Database) =>
+        bulkSoftDeleteCiphers(database, input),
+      (database: RecordingCipherD1Database) =>
+        bulkRestoreCiphers(database, input),
+      (database: RecordingCipherD1Database) =>
+        bulkPermanentlyDeleteCiphers(database, input),
+    ]) {
+      const database = new RecordingCipherD1Database([])
+
+      await expect(run(database)).resolves.toBeDefined()
+      expect(database.queries.length).toBeLessThanOrEqual(24)
+      expect(database.boundValueSets.length).toBe(database.queries.length)
+      expect(
+        database.boundValueSets.every((values) => values.length <= 100),
+      ).toBe(true)
+      expect(database.queries.every((query) => query.includes('id IN ('))).toBe(
+        true,
+      )
+      expect(
+        database.queries.every((query) => query.includes('user_id = ?')),
+      ).toBe(true)
+    }
+  })
+
   it('returns not found when lifecycle mutations affect no rows', async () => {
     const database = new RecordingCipherD1Database([], {
       permanentDeleteChanges: 0,
@@ -402,11 +485,13 @@ describe('cipher repository', () => {
 
 class RecordingCipherD1Database {
   boundValues: unknown[] = []
+  boundValueSets: unknown[][] = []
   queries: string[] = []
 
   constructor(
     private readonly cipherRows: unknown[],
     private readonly options: {
+      batchChanges?: number[]
       permanentDeleteChanges?: number
       restoreChanges?: number
       softDeleteChanges?: number
@@ -418,6 +503,7 @@ class RecordingCipherD1Database {
     this.queries.push(query)
     const pushValues = (values: unknown[]) => {
       this.boundValues.push(...values)
+      this.boundValueSets.push(values)
     }
     const getRows = () => this.cipherRows
     const getOptions = () => this.options
@@ -466,4 +552,48 @@ class RecordingCipherD1Database {
 
     return statement
   }
+
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
+    const firstQueryIndex = this.queries.length - statements.length
+
+    return statements.map((_, index) => {
+      const query = this.queries[firstQueryIndex + index] ?? ''
+
+      return {
+        success: true,
+        results: query.includes('SELECT id') ? (this.cipherRows as T[]) : [],
+        meta: {
+          ...fakeMeta,
+          changes: this.options.batchChanges?.[index] ?? 1,
+        },
+      }
+    })
+  }
+}
+
+function expectOwnerScopedBatch(
+  database: RecordingCipherD1Database,
+  expectedQueryCount: number,
+  lifecyclePredicate?: string,
+) {
+  expect(database.queries).toHaveLength(expectedQueryCount)
+  expect(database.queries.every((query) => query.includes('user_id = ?'))).toBe(
+    true,
+  )
+  if (lifecyclePredicate) {
+    expect(
+      database.queries.every((query) => query.includes(lifecyclePredicate)),
+    ).toBe(true)
+  }
+  expect(
+    database.boundValues.filter((value) => value === 'user-id'),
+  ).toHaveLength(expectedQueryCount)
+  expect(database.boundValues).toEqual(
+    expect.arrayContaining(['cipher-one', 'cipher-two']),
+  )
+  expect(database.queries.every((query) => query.includes('id IN ('))).toBe(
+    true,
+  )
 }

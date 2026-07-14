@@ -8443,6 +8443,773 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('bulk-moves only owned ciphers to a folder and back to no folder', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ownedOne = {
+      ...cipherRecord(),
+      id: '11111111-1111-4111-8111-111111111111',
+    }
+    const ownedTwo = {
+      ...cipherRecord(),
+      id: '22222222-2222-4222-8222-222222222222',
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: '33333333-3333-4333-8333-333333333333',
+      userId: 'other-user-id',
+      folderId: 'other-folder-id',
+    }
+    const ciphers = [ownedOne, ownedTwo, unowned]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers,
+      folders: [
+        {
+          id: 'target-folder-id',
+          userId: user.id,
+          name: '2.encrypted-target-folder',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+      ],
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const moveResponse = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [ownedOne.id, ownedTwo.id, unowned.id, 'missing-cipher-id'],
+          folderId: 'target-folder-id',
+        }),
+      },
+      env,
+    )
+
+    expect(moveResponse.status).toBe(200)
+    expect(ownedOne.folderId).toBe('target-folder-id')
+    expect(ownedTwo.folderId).toBe('target-folder-id')
+    expect(unowned).toMatchObject({
+      folderId: 'other-folder-id',
+      revisionDate: '2026-07-06T00:05:00.000Z',
+    })
+
+    const removeResponse = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [ownedOne.id, ownedTwo.id],
+          folderId: null,
+          organizationId: null,
+        }),
+      },
+      env,
+    )
+
+    expect(removeResponse.status).toBe(200)
+    expect(ownedOne.folderId).toBeNull()
+    expect(ownedTwo.folderId).toBeNull()
+
+    const singleUpdateResponse = await app.request(
+      `/api/ciphers/${ownedOne.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          folderId: null,
+          revisionDate: ownedOne.revisionDate,
+          name: '2.single-update-after-bulk-routing',
+        }),
+      },
+      env,
+    )
+
+    expect(singleUpdateResponse.status).toBe(200)
+    await expect(singleUpdateResponse.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: ownedOne.id,
+      name: '2.single-update-after-bulk-routing',
+    })
+  })
+
+  it('bulk-trashes only active ciphers owned by the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const activeOwned = { ...cipherRecord(), id: 'active-owned-cipher' }
+    const alreadyTrashed = {
+      ...cipherRecord(),
+      id: 'already-trashed-cipher',
+      deletedAt: '2026-07-06T00:06:00.000Z',
+      revisionDate: '2026-07-06T00:06:00.000Z',
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'unowned-active-cipher',
+      userId: 'other-user-id',
+    }
+    const unownedBefore = { ...unowned }
+
+    const response = await app.request(
+      '/api/ciphers/delete',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [
+            activeOwned.id,
+            alreadyTrashed.id,
+            unowned.id,
+            'missing-cipher-id',
+          ],
+          organizationId: null,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [activeOwned, alreadyTrashed, unowned],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(activeOwned.deletedAt).toEqual(expect.any(String))
+    expect(activeOwned.revisionDate).toBe(activeOwned.deletedAt)
+    expect(alreadyTrashed.deletedAt).toBe('2026-07-06T00:06:00.000Z')
+    expect(unowned).toEqual(unownedBefore)
+  })
+
+  it('bulk-restores owned trashed ciphers and returns the official list response', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const trashedOne = {
+      ...cipherRecord(),
+      id: 'trashed-owned-one',
+      deletedAt: '2026-07-06T00:06:00.000Z',
+    }
+    const trashedTwo = {
+      ...cipherRecord(),
+      id: 'trashed-owned-two',
+      deletedAt: '2026-07-06T00:07:00.000Z',
+    }
+    const activeOwned = { ...cipherRecord(), id: 'active-owned-cipher' }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'trashed-unowned-cipher',
+      userId: 'other-user-id',
+      deletedAt: '2026-07-06T00:08:00.000Z',
+    }
+
+    const response = await app.request(
+      '/api/ciphers/restore',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [
+            trashedOne.id,
+            trashedTwo.id,
+            activeOwned.id,
+            unowned.id,
+            'missing-cipher-id',
+          ],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [trashedOne, trashedTwo, activeOwned, unowned],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      object: string
+      data: Array<Record<string, unknown>>
+      continuationToken: string | null
+    }
+    expect(body.object).toBe('list')
+    expect(body.continuationToken).toBeNull()
+    expect(body.data.map((cipher) => cipher.id).sort()).toEqual(
+      [trashedOne.id, trashedTwo.id].sort(),
+    )
+    expect(body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          object: 'cipher',
+          id: trashedOne.id,
+          deletedDate: null,
+          revisionDate: expect.any(String),
+        }),
+        expect.objectContaining({
+          object: 'cipher',
+          id: trashedTwo.id,
+          deletedDate: null,
+          revisionDate: expect.any(String),
+        }),
+      ]),
+    )
+    expect(trashedOne.deletedAt).toBeNull()
+    expect(trashedTwo.deletedAt).toBeNull()
+    expect(unowned.deletedAt).toBe('2026-07-06T00:08:00.000Z')
+  })
+
+  it('bulk-permanently deletes owned ciphers and only their R2 attachments', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const activeOwned = { ...cipherRecord(), id: 'active-owned-cipher' }
+    const trashedOwned = {
+      ...cipherRecord(),
+      id: 'trashed-owned-cipher',
+      deletedAt: '2026-07-06T00:06:00.000Z',
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'unowned-cipher',
+      userId: 'other-user-id',
+    }
+    const ciphers = [activeOwned, trashedOwned, unowned]
+    const uploadedAttachment = {
+      ...attachmentRecord(),
+      id: 'owned-uploaded-attachment',
+      cipherId: activeOwned.id,
+      objectKey: 'attachments/owned-uploaded-object',
+    }
+    const pendingAttachment = {
+      ...pendingAttachmentRecord(),
+      id: 'owned-pending-attachment',
+      cipherId: trashedOwned.id,
+      objectKey: 'attachments/owned-pending-object',
+    }
+    const unownedAttachment = {
+      ...attachmentRecord(),
+      id: 'unowned-attachment',
+      userId: 'other-user-id',
+      cipherId: unowned.id,
+      objectKey: 'attachments/unowned-object',
+    }
+    const attachments = [
+      uploadedAttachment,
+      pendingAttachment,
+      unownedAttachment,
+    ]
+    const bucket = new FakeR2Bucket()
+    for (const attachment of attachments) {
+      await bucket.put(attachment.objectKey, attachment.id)
+    }
+
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [
+            activeOwned.id,
+            trashedOwned.id,
+            unowned.id,
+            'missing-cipher-id',
+          ],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          attachments,
+          authUser: user,
+          ciphers,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(ciphers).toEqual([unowned])
+    expect(attachments).toEqual([unownedAttachment])
+    expect(bucket.deletedKeys.sort()).toEqual(
+      [uploadedAttachment.objectKey, pendingAttachment.objectKey].sort(),
+    )
+    expect(bucket.has(uploadedAttachment.objectKey)).toBe(false)
+    expect(bucket.has(pendingAttachment.objectKey)).toBe(false)
+    expect(bucket.has(unownedAttachment.objectKey)).toBe(true)
+  })
+
+  it('emits secret-safe aggregate audit events for bulk cipher mutations', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ownedOne = {
+      ...cipherRecord(),
+      id: 'bulk-audit-owned-one',
+      encryptedJson: JSON.stringify({
+        name: '2.bulk-audit-secret-one',
+        type: 1,
+      }),
+    }
+    const ownedTwo = {
+      ...cipherRecord(),
+      id: 'bulk-audit-owned-two',
+      encryptedJson: JSON.stringify({
+        name: '2.bulk-audit-secret-two',
+        type: 1,
+      }),
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'bulk-audit-unowned',
+      userId: 'other-user-id',
+    }
+    const attachment = {
+      ...attachmentRecord(),
+      id: 'bulk-audit-attachment',
+      cipherId: ownedOne.id,
+      objectKey: 'attachments/bulk-audit-object-key',
+    }
+    const database = new FakeD1Database(null, [], {
+      attachments: [attachment],
+      authUser: user,
+      ciphers: [ownedOne, ownedTwo, unowned],
+      folders: [
+        {
+          id: 'bulk-audit-folder',
+          userId: user.id,
+          name: '2.bulk-audit-folder-secret',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+      ],
+    })
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'bulk-audit-attachment-bytes')
+    const env = {
+      DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+    const ids = [ownedOne.id, ownedTwo.id, unowned.id, 'missing-cipher-id']
+
+    const moveResponse = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-move-request',
+        },
+        body: JSON.stringify({ ids, folderId: 'bulk-audit-folder' }),
+      },
+      env,
+    )
+    const trashResponse = await app.request(
+      '/api/ciphers/delete',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-delete-request',
+        },
+        body: JSON.stringify({ ids }),
+      },
+      env,
+    )
+    const restoreResponse = await app.request(
+      '/api/ciphers/restore',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-restore-request',
+        },
+        body: JSON.stringify({ ids }),
+      },
+      env,
+    )
+    const permanentDeleteResponse = await app.request(
+      '/api/ciphers',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-permanent-delete-request',
+        },
+        body: JSON.stringify({ ids }),
+      },
+      env,
+    )
+
+    expect([
+      moveResponse.status,
+      trashResponse.status,
+      restoreResponse.status,
+      permanentDeleteResponse.status,
+    ]).toEqual([200, 200, 200, 200])
+    expect(database.auditEventInserts.map((event) => event.name)).toEqual([
+      'cipher.update',
+      'cipher.delete',
+      'cipher.restore',
+      'cipher.permanent_delete',
+    ])
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        requestId: 'bulk-audit-move-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'updated',
+          operation: 'bulk_move',
+          requestedCount: 4,
+          affectedCount: 2,
+          hasFolder: true,
+        }),
+      }),
+      expect.objectContaining({
+        requestId: 'bulk-audit-delete-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'deleted',
+          operation: 'bulk_delete',
+          requestedCount: 4,
+          affectedCount: 2,
+        }),
+      }),
+      expect.objectContaining({
+        requestId: 'bulk-audit-restore-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'restored',
+          operation: 'bulk_restore',
+          requestedCount: 4,
+          affectedCount: 2,
+        }),
+      }),
+      expect.objectContaining({
+        requestId: 'bulk-audit-permanent-delete-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'permanently_deleted',
+          operation: 'bulk_permanent_delete',
+          requestedCount: 4,
+          affectedCount: 2,
+          attachmentCount: 1,
+        }),
+      }),
+    ])
+    const serialized = JSON.stringify(database.auditEventInserts)
+    for (const secret of [
+      ...ids,
+      'bulk-audit-folder',
+      attachment.objectKey,
+      '2.bulk-audit-secret-one',
+      '2.bulk-audit-secret-two',
+      accessToken,
+      'test-token-secret',
+    ]) {
+      expect(serialized).not.toContain(secret)
+    }
+  })
+
+  it('treats empty and unknown bulk cipher ids as successful no-ops', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const ids of [[], ['missing-cipher-id']]) {
+      for (const { method, path, extraBody } of [
+        {
+          method: 'PUT',
+          path: '/api/ciphers/move',
+          extraBody: { folderId: null },
+        },
+        { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+        { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+        { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+      ] as const) {
+        const cipher = { ...cipherRecord() }
+        const ciphers = [cipher]
+        const bucket = new FakeR2Bucket()
+        const response = await app.request(
+          path,
+          {
+            method,
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids, ...extraBody }),
+          },
+          {
+            DB: new FakeD1Database(null, [], {
+              authUser: user,
+              ciphers,
+            }),
+            HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+            VAULT_OBJECTS: bucket as unknown as R2Bucket,
+          },
+        )
+
+        expect(response.status, `${method} ${path}`).toBe(200)
+        expect(ciphers).toEqual([cipher])
+        expect(bucket.deletedKeys).toEqual([])
+        if (path === '/api/ciphers/restore') {
+          await expect(response.json()).resolves.toEqual({
+            object: 'list',
+            data: [],
+            continuationToken: null,
+          })
+        }
+      }
+    }
+  })
+
+  it('rejects malformed and oversized bulk cipher id lists without mutation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const invalidIds = [
+      'not-an-array',
+      [''],
+      [1],
+      Array.from({ length: 1_001 }, (_, index) => `cipher-${index}`),
+    ]
+
+    for (const ids of invalidIds) {
+      for (const { method, path, extraBody } of [
+        {
+          method: 'PUT',
+          path: '/api/ciphers/move',
+          extraBody: { folderId: null },
+        },
+        { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+        { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+        { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+      ] as const) {
+        const cipher = { ...cipherRecord() }
+        const ciphers = [cipher]
+        const response = await app.request(
+          path,
+          {
+            method,
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids, ...extraBody }),
+          },
+          {
+            DB: new FakeD1Database(null, [], {
+              authUser: user,
+              ciphers,
+            }),
+            HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          },
+        )
+
+        expect(response.status, `${method} ${path}`).toBe(400)
+        await expect(response.json()).resolves.toMatchObject({
+          error: { code: 'invalid_request' },
+        })
+        expect(ciphers).toEqual([cipher])
+      }
+    }
+  })
+
+  it('accepts exactly 1000 ids on every bulk cipher route', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ids = Array.from({ length: 1_000 }, (_, index) => `cipher-${index}`)
+
+    for (const { method, path, extraBody } of [
+      {
+        method: 'PUT',
+        path: '/api/ciphers/move',
+        extraBody: { folderId: null },
+      },
+      { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+      { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+      { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+    ] as const) {
+      const response = await app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ids, ...extraBody }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers: [],
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          VAULT_OBJECTS: new FakeR2Bucket() as unknown as R2Bucket,
+        },
+      )
+
+      expect(response.status, `${method} ${path}`).toBe(200)
+    }
+  })
+
+  it('requires bulk move folderId to be a non-empty string or null', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const body of [
+      { ids: ['cipher-id'] },
+      { ids: ['cipher-id'], folderId: '' },
+      { ids: ['cipher-id'], folderId: '   ' },
+      { ids: ['cipher-id'], folderId: 42 },
+    ]) {
+      const response = await app.request(
+        '/api/ciphers/move',
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers: [{ ...cipherRecord() }],
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+    }
+  })
+
+  it('rejects non-null organizations on every bulk cipher route', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const { method, path, extraBody } of [
+      {
+        method: 'PUT',
+        path: '/api/ciphers/move',
+        extraBody: { folderId: null },
+      },
+      { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+      { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+      { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+    ] as const) {
+      const cipher = { ...cipherRecord() }
+      const ciphers = [cipher]
+      const response = await app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ids: [cipher.id],
+            organizationId: 'unsupported-organization-id',
+            ...extraBody,
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status, `${method} ${path}`).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+      expect(ciphers).toEqual([cipher])
+    }
+  })
+
+  it('rejects bulk moves to missing or unowned folders without mutation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const cipher = { ...cipherRecord() }
+    const ciphers = [cipher]
+    const response = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [cipher.id],
+          folderId: 'unowned-folder-id',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers,
+          folders: [
+            {
+              id: 'unowned-folder-id',
+              userId: 'other-user-id',
+              name: '2.encrypted-unowned-folder',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'cipher_folder_not_found' },
+    })
+    expect(ciphers).toEqual([cipher])
+  })
+
   it('updates a cipher for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)

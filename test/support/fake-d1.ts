@@ -580,20 +580,36 @@ export class FakeD1Database {
         }
 
         if (/DELETE\s+FROM\s+ciphers/.test(query)) {
+          const statefulChanges =
+            options.cipherPermanentDeleteChanges === undefined
+              ? mutateCipherRows(options, boundValues, query)
+              : null
+
           return {
             success: true,
             results: [],
             meta: {
               ...fakeMeta,
-              changes: options.cipherPermanentDeleteChanges ?? 1,
+              changes:
+                statefulChanges ?? options.cipherPermanentDeleteChanges ?? 1,
             },
           }
         }
 
         if (/UPDATE\s+ciphers/.test(query)) {
-          let changes = options.cipherUpdateChanges ?? 1
+          const explicitChanges = query.includes('deleted_at = NULL')
+            ? options.cipherRestoreChanges
+            : query.includes('deleted_at = ?')
+              ? options.cipherSoftDeleteChanges
+              : options.cipherUpdateChanges
+          const statefulChanges =
+            explicitChanges === undefined
+              ? mutateCipherRows(options, boundValues, query)
+              : null
+          let changes = statefulChanges ?? explicitChanges ?? 1
 
           if (
+            statefulChanges === null &&
             options.ciphers &&
             query.includes('WHERE id = ? AND user_id = ?')
           ) {
@@ -607,9 +623,12 @@ export class FakeD1Database {
               : 0
           }
 
-          if (query.includes('deleted_at = NULL')) {
+          if (statefulChanges === null && query.includes('deleted_at = NULL')) {
             changes = options.cipherRestoreChanges ?? 1
-          } else if (query.includes('deleted_at = ?')) {
+          } else if (
+            statefulChanges === null &&
+            query.includes('deleted_at = ?')
+          ) {
             changes = options.cipherSoftDeleteChanges ?? 1
           }
 
@@ -1074,6 +1093,25 @@ export class FakeD1Database {
       __fakeQuery: string
       __fakeBoundValues: unknown[]
     }>
+
+    if (
+      fakeStatements.every(
+        (statement) =>
+          statement.__fakeQuery.includes(
+            'FROM cipher_attachments attachment',
+          ) && statement.__fakeQuery.includes('INNER JOIN ciphers cipher'),
+      )
+    ) {
+      return fakeStatements.map((statement) => ({
+        success: true,
+        results: findOwnedCipherAttachmentObjectKeys(
+          this.options,
+          statement.__fakeBoundValues,
+        ) as T[],
+        meta: fakeMeta,
+      }))
+    }
+
     const expireStatement = fakeStatements.find(
       (statement) =>
         /UPDATE\s+auth_requests/.test(statement.__fakeQuery) &&
@@ -1173,6 +1211,57 @@ export class FakeD1Database {
       }))
     }
 
+    if (
+      fakeStatements.every(
+        (statement) =>
+          statement.__fakeQuery.includes('id IN (') &&
+          statement.__fakeQuery.includes('user_id = ?') &&
+          /(?:SELECT\s+id\s+FROM|UPDATE|DELETE\s+FROM)\s+ciphers/.test(
+            statement.__fakeQuery,
+          ),
+      )
+    ) {
+      const results: D1Result<T>[] = []
+
+      for (let index = 0; index < fakeStatements.length; index += 1) {
+        const fakeStatement = fakeStatements[index]
+        const statement = statements[index]
+
+        if (!fakeStatement || !statement) {
+          continue
+        }
+
+        if (/SELECT\s+id\s+FROM\s+ciphers/.test(fakeStatement.__fakeQuery)) {
+          results.push({
+            success: true,
+            results: findBulkCipherIds(
+              this.options,
+              fakeStatement.__fakeBoundValues,
+              fakeStatement.__fakeQuery,
+            ) as T[],
+            meta: fakeMeta,
+          })
+          continue
+        }
+
+        results.push(await statement.run<T>())
+      }
+
+      return results
+    }
+
+    if (
+      fakeStatements.every((statement) =>
+        /(?:UPDATE|DELETE\s+FROM)\s+ciphers/.test(statement.__fakeQuery),
+      )
+    ) {
+      const results: D1Result<T>[] = []
+      for (const statement of statements) {
+        results.push(await statement.run<T>())
+      }
+      return results
+    }
+
     return statements.map(() => ({
       success: true,
       results: [],
@@ -1182,6 +1271,272 @@ export class FakeD1Database {
       },
     }))
   }
+}
+
+function mutateCipherRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number | null {
+  if (!options.ciphers) {
+    return null
+  }
+
+  if (/DELETE\s+FROM\s+ciphers/.test(query)) {
+    if (query.includes('id IN (')) {
+      const userId = boundValues.at(-1)
+      const ids = new Set(boundValues.slice(0, -1))
+      const deletedCipherIds = options.ciphers
+        .filter((row) => row.userId === userId && ids.has(row.id))
+        .map((row) => row.id)
+
+      options.ciphers.splice(
+        0,
+        options.ciphers.length,
+        ...options.ciphers.filter(
+          (row) => row.userId !== userId || !ids.has(row.id),
+        ),
+      )
+      if (options.attachments && deletedCipherIds.length > 0) {
+        const deletedCipherIdSet = new Set(deletedCipherIds)
+        options.attachments.splice(
+          0,
+          options.attachments.length,
+          ...options.attachments.filter(
+            (attachment) => !deletedCipherIdSet.has(attachment.cipherId),
+          ),
+        )
+      }
+
+      return deletedCipherIds.length
+    }
+
+    const [id, userId] = boundValues
+    const index = options.ciphers.findIndex(
+      (row) => row.id === id && row.userId === userId,
+    )
+    if (index < 0) {
+      return 0
+    }
+
+    const [deletedCipher] = options.ciphers.splice(index, 1)
+    if (options.attachments && deletedCipher) {
+      options.attachments.splice(
+        0,
+        options.attachments.length,
+        ...options.attachments.filter(
+          (attachment) => attachment.cipherId !== deletedCipher.id,
+        ),
+      )
+    }
+    return 1
+  }
+
+  if (query.includes('deleted_at = NULL')) {
+    if (query.includes('id IN (')) {
+      const [revisionDate, updatedAt] = boundValues
+      const userId = boundValues.at(-1)
+      const ids = new Set(boundValues.slice(2, -1))
+      const rows = options.ciphers.filter(
+        (candidate) =>
+          ids.has(candidate.id) &&
+          candidate.userId === userId &&
+          candidate.deletedAt != null,
+      )
+
+      for (const row of rows) {
+        Object.assign(row, {
+          deletedAt: null,
+          revisionDate,
+          updatedAt,
+        })
+      }
+
+      return rows.length
+    }
+
+    const [revisionDate, updatedAt, id, userId] = boundValues
+    const row = options.ciphers.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.userId === userId &&
+        candidate.deletedAt != null,
+    )
+    if (!row) {
+      return 0
+    }
+
+    Object.assign(row, {
+      deletedAt: null,
+      revisionDate,
+      updatedAt,
+    })
+    return 1
+  }
+
+  if (query.includes('deleted_at = ?')) {
+    if (query.includes('id IN (')) {
+      const [deletedAt, revisionDate, updatedAt] = boundValues
+      const userId = boundValues.at(-1)
+      const ids = new Set(boundValues.slice(3, -1))
+      const rows = options.ciphers.filter(
+        (candidate) =>
+          ids.has(candidate.id) &&
+          candidate.userId === userId &&
+          candidate.deletedAt == null,
+      )
+
+      for (const row of rows) {
+        Object.assign(row, {
+          deletedAt,
+          revisionDate,
+          updatedAt,
+        })
+      }
+
+      return rows.length
+    }
+
+    const [deletedAt, revisionDate, updatedAt, id, userId] = boundValues
+    const row = options.ciphers.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.userId === userId &&
+        candidate.deletedAt == null,
+    )
+    if (!row) {
+      return 0
+    }
+
+    Object.assign(row, {
+      deletedAt,
+      revisionDate,
+      updatedAt,
+    })
+    return 1
+  }
+
+  if (query.includes('type = ?') && query.includes('revision_date = ?')) {
+    const [
+      folderId,
+      type,
+      favorite,
+      encryptedJson,
+      revisionDate,
+      updatedAt,
+      id,
+      userId,
+      expectedRevisionDate,
+    ] = boundValues
+    const row = options.ciphers.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.userId === userId &&
+        candidate.deletedAt == null &&
+        candidate.revisionDate === expectedRevisionDate,
+    )
+    if (!row) {
+      return 0
+    }
+
+    Object.assign(row, {
+      folderId,
+      type,
+      favorite,
+      encryptedJson,
+      revisionDate,
+      updatedAt,
+    })
+    return 1
+  }
+
+  if (query.includes('folder_id = ?')) {
+    if (query.includes('id IN (')) {
+      const [folderId, revisionDate, updatedAt] = boundValues
+      const userId = boundValues.at(-1)
+      const ids = new Set(boundValues.slice(3, -1))
+      const rows = options.ciphers.filter(
+        (candidate) =>
+          ids.has(candidate.id) &&
+          candidate.userId === userId &&
+          candidate.deletedAt == null,
+      )
+
+      for (const row of rows) {
+        Object.assign(row, {
+          folderId,
+          revisionDate,
+          updatedAt,
+        })
+      }
+
+      return rows.length
+    }
+
+    const [folderId, revisionDate, updatedAt, id, userId] = boundValues
+    const row = options.ciphers.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.userId === userId &&
+        candidate.deletedAt == null,
+    )
+    if (!row) {
+      return 0
+    }
+
+    Object.assign(row, {
+      folderId,
+      revisionDate,
+      updatedAt,
+    })
+    return 1
+  }
+
+  return null
+}
+
+function findOwnedCipherAttachmentObjectKeys(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Array<{ cipherId: string; objectKey: string }> {
+  const userId = boundValues.at(-2)
+  const attachmentUserId = boundValues.at(-1)
+  const requestedCipherIds = new Set(boundValues.slice(0, -2))
+  if (userId !== attachmentUserId) {
+    return []
+  }
+
+  const ownedCipherIds = new Set(
+    (options.ciphers ?? [])
+      .filter(
+        (cipher) =>
+          requestedCipherIds.has(cipher.id) && cipher.userId === userId,
+      )
+      .map((cipher) => cipher.id),
+  )
+
+  return (options.attachments ?? [])
+    .filter(
+      (attachment) =>
+        ownedCipherIds.has(attachment.cipherId) && attachment.userId === userId,
+    )
+    .map((attachment) => ({
+      cipherId: String(attachment.cipherId),
+      objectKey: String(attachment.objectKey),
+    }))
+}
+
+function findBulkCipherIds(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): Array<{ id: string }> {
+  const userId = boundValues.at(-1)
+  const requestedIds = new Set(boundValues.slice(0, -1))
+
+  return applyDeletedFilter(options.ciphers ?? [], query)
+    .filter((cipher) => requestedIds.has(cipher.id) && cipher.userId === userId)
+    .map((cipher) => ({ id: String(cipher.id) }))
 }
 
 function insertAuthUserIfStateful(

@@ -8,6 +8,7 @@ import {
   findCipherAttachment,
   getCipherAttachmentReservedStorage,
   getCipherAttachmentStorageUsage,
+  listCipherAttachmentObjectKeysForOwnedCiphers,
   listCipherAttachmentsByUser,
   markCipherAttachmentUploaded,
   reserveCipherAttachmentUpload,
@@ -77,6 +78,57 @@ describe('attachment repository', () => {
       'ORDER BY revision_date ASC, id ASC',
     )
     expect(database.queries.join('\n')).toContain('content_type IS NOT NULL')
+  })
+
+  it('lists permanent-delete object keys through the owned cipher join', async () => {
+    const database = new RecordingAttachmentD1Database([
+      {
+        cipherId: 'cipher-id',
+        objectKey: 'attachments/opaque-object-id',
+      },
+    ])
+
+    await expect(
+      listCipherAttachmentObjectKeysForOwnedCiphers(database, {
+        cipherIds: ['cipher-id'],
+        userId: 'user-id',
+      }),
+    ).resolves.toEqual([
+      {
+        cipherId: 'cipher-id',
+        objectKey: 'attachments/opaque-object-id',
+      },
+    ])
+    expect(database.boundValues).toEqual(['cipher-id', 'user-id', 'user-id'])
+    expect(database.queries.join('\n')).toContain('INNER JOIN ciphers cipher')
+    expect(database.queries.join('\n')).toContain(
+      'cipher.user_id = attachment.user_id',
+    )
+    expect(database.queries.join('\n')).not.toContain(
+      'content_type IS NOT NULL',
+    )
+  })
+
+  it('chunks 1000 owned cipher ids below the D1 parameter limit', async () => {
+    const database = new RecordingAttachmentD1Database([])
+
+    await expect(
+      listCipherAttachmentObjectKeysForOwnedCiphers(database, {
+        cipherIds: Array.from(
+          { length: 1_000 },
+          (_, index) => `cipher-${index}`,
+        ),
+        userId: 'user-id',
+      }),
+    ).resolves.toEqual([])
+    expect(database.queries.length).toBeLessThanOrEqual(12)
+    expect(database.boundValueSets.length).toBe(database.queries.length)
+    expect(
+      database.boundValueSets.every((values) => values.length <= 100),
+    ).toBe(true)
+    expect(
+      database.queries.every((query) => query.includes('cipher.id IN (')),
+    ).toBe(true)
   })
 
   it('atomically creates pending metadata only while reserved storage fits', async () => {
@@ -286,6 +338,7 @@ describe('attachment repository', () => {
 
 class RecordingAttachmentD1Database {
   boundValues: unknown[] = []
+  boundValueSets: unknown[][] = []
   queries: string[] = []
 
   constructor(
@@ -301,6 +354,7 @@ class RecordingAttachmentD1Database {
     this.queries.push(query)
     const pushValues = (values: unknown[]) => {
       this.boundValues.push(...values)
+      this.boundValueSets.push(values)
     }
     const getRows = () => this.rows
     const getOptions = () => this.options
@@ -342,5 +396,11 @@ class RecordingAttachmentD1Database {
     } as D1PreparedStatement
 
     return statement
+  }
+
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
+    return Promise.all(statements.map((statement) => statement.all<T>()))
   }
 }
