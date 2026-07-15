@@ -112,11 +112,23 @@ import {
   listCiphersByUser,
   listCiphersByUserPage,
   permanentlyDeleteCipher,
+  resolveCipherAccess,
   restoreCipher,
   softDeleteCipher,
   updateCipher,
 } from './repositories/cipher-repository'
 import type { CipherRecord } from './repositories/cipher-repository'
+import {
+  createOrganizationFoundation,
+  findOrganizationForConfirmedMember,
+  listAccessibleOrganizationCollections,
+  listConfirmedOrganizationMemberships,
+} from './repositories/organization-repository'
+import type {
+  OrganizationCollectionRecord,
+  OrganizationMembershipRecord,
+  OrganizationRecord,
+} from './repositories/organization-repository'
 import {
   createFolder,
   deleteFolder,
@@ -826,15 +838,16 @@ app.get('/api/accounts/profile', async (c) => {
   }
 
   try {
-    const storage = await getCipherAttachmentStorageUsage(
-      c.env.DB,
-      auth.user.id,
-    )
+    const [storage, organizations] = await Promise.all([
+      getCipherAttachmentStorageUsage(c.env.DB, auth.user.id),
+      listConfirmedOrganizationMemberships(c.env.DB, auth.user.id),
+    ])
     return c.json(
       buildAccountProfileResponse(
         auth.user,
         storage,
         isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
+        organizations,
       ),
     )
   } catch {
@@ -886,11 +899,93 @@ app.post('/identity/accounts/register', (c) => {
   )
 })
 
+app.post('/api/organizations', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseOrganizationCreateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Organization payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const now = new Date().toISOString()
+    const foundation = await createOrganizationFoundation(c.env.DB, {
+      organizationId: crypto.randomUUID(),
+      organizationUserId: crypto.randomUUID(),
+      collectionId: crypto.randomUUID(),
+      userId: auth.user.id,
+      email: auth.user.email,
+      name: request.name,
+      billingEmail: request.billingEmail,
+      planType: request.planType,
+      orgKey: request.orgKey,
+      publicKey: request.publicKey,
+      privateKey: request.privateKey,
+      encryptedCollectionName: request.encryptedCollectionName,
+      now,
+    })
+
+    return c.json(buildOrganizationResponse(foundation.organization))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Organization creation failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/organizations/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const organization = await findOrganizationForConfirmedMember(c.env.DB, {
+      organizationId: c.req.param('id'),
+      userId: auth.user.id,
+    })
+    if (!organization) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json(buildOrganizationResponse(organization))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Organization lookup failed.',
+      ),
+      503,
+    )
+  }
+})
+
 app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
 app.all('/api/sends', unsupportedPremiumFeature)
 app.all('/api/sends/*', unsupportedPremiumFeature)
 app.get('/api/hibp/breach', unsupportedPremiumFeature)
+// Collection metadata reads remain a supported empty response (ADR 0007); the
+// official client expects a list/not-found here, not a 501. Slice 2 replaces the
+// empty projection with the caller's assigned collections. Mutations stay 501.
 app.get('/api/collections', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -899,7 +994,6 @@ app.get('/api/collections', async (c) => {
 
   return c.json(buildEmptyListResponse())
 })
-
 app.get('/api/collections/:id', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -915,9 +1009,12 @@ app.get('/api/collections/:id', async (c) => {
     404,
   )
 })
-
 app.all('/api/collections', unsupportedAlphaFeature)
 app.all('/api/collections/*', unsupportedAlphaFeature)
+app.all('/api/ciphers/create', unsupportedAlphaFeature)
+app.all('/api/ciphers/share', unsupportedAlphaFeature)
+app.all('/api/ciphers/:id/share', unsupportedAlphaFeature)
+app.all('/api/ciphers/:id/collections_v2', unsupportedAlphaFeature)
 app.all('/api/emergency-access', unsupportedPremiumFeature)
 app.all('/api/emergency-access/*', unsupportedPremiumFeature)
 app.post('/api/auth-requests', createAuthRequestRoute)
@@ -2071,11 +2168,20 @@ app.get('/api/sync', async (c) => {
   }
 
   try {
-    const [folders, ciphers, attachments, domainSettings] = await Promise.all([
+    const [
+      folders,
+      ciphers,
+      attachments,
+      domainSettings,
+      organizations,
+      collections,
+    ] = await Promise.all([
       listFoldersByUser(c.env.DB, auth.user.id),
       listCiphersByUser(c.env.DB, auth.user.id),
       listCipherAttachmentsByUser(c.env.DB, auth.user.id),
       getDomainSettingsForUser(c.env.DB, auth.user.id),
+      listConfirmedOrganizationMemberships(c.env.DB, auth.user.id),
+      listAccessibleOrganizationCollections(c.env.DB, auth.user.id),
     ])
 
     return c.json(
@@ -2086,6 +2192,8 @@ app.get('/api/sync', async (c) => {
         ciphers,
         attachments,
         domainSettings,
+        organizations,
+        collections,
       ),
     )
   } catch {
@@ -3720,6 +3828,15 @@ app.get('/api/ciphers/:id', async (c) => {
   }
 
   try {
+    const access = await resolveCipherAccess(
+      c.env.DB,
+      auth.user.id,
+      c.req.param('id'),
+    )
+    if (!access.canRead) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
     const [cipher, attachments] = await Promise.all([
       findCipherById(c.env.DB, {
         id: c.req.param('id'),
@@ -3789,6 +3906,15 @@ app.put('/api/ciphers/:id', async (c) => {
           404,
         )
       }
+    }
+
+    const access = await resolveCipherAccess(
+      c.env.DB,
+      auth.user.id,
+      c.req.param('id'),
+    )
+    if (!access.canEdit) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
     const cipher = await updateCipher(c.env.DB, {
@@ -3978,6 +4104,11 @@ async function permanentlyDeleteCipherById(c: AppContext) {
   const now = new Date().toISOString()
 
   try {
+    const access = await resolveCipherAccess(c.env.DB, auth.user.id, cipherId)
+    if (!access.canDelete) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
     const attachments = await listCipherAttachmentObjectKeysForOwnedCiphers(
       c.env.DB,
       {
@@ -4365,12 +4496,15 @@ function buildSyncResponse(
   ciphers: readonly CipherRecord[] = [],
   attachments: readonly CipherAttachmentRecord[] = [],
   domainSettings: DomainSettings = emptyDomainSettings,
+  organizations: readonly OrganizationMembershipRecord[] = [],
+  collections: readonly OrganizationCollectionRecord[] = [],
 ) {
   const attachmentsByCipherId = buildAttachmentsByCipherId(attachments)
   const profile = buildSyncProfileResponse(
     user,
     sumCipherAttachmentStorage(attachments),
     premiumFeaturesEnabled,
+    organizations,
   )
   const folderResponses = folders.map(buildFolderResponse)
   const cipherResponses = ciphers.map((cipher) =>
@@ -4383,7 +4517,7 @@ function buildSyncResponse(
     object: 'sync',
     profile,
     folders: folderResponses,
-    collections: [],
+    collections: collections.map(buildCollectionDetailsResponse),
     ciphers: cipherResponses,
     domains,
     policies: [],
@@ -4636,10 +4770,76 @@ function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
   }
 }
 
+function buildOrganizationResponse(organization: OrganizationRecord) {
+  return {
+    Object: 'organization',
+    ...buildOrganizationFeatureResponse(organization),
+  }
+}
+
+function buildProfileOrganizationResponse(
+  membership: OrganizationMembershipRecord,
+) {
+  return {
+    ...buildOrganizationFeatureResponse(membership),
+    Key: membership.orgKey,
+    Status: 2,
+    Type: membership.type,
+    Permissions: {},
+  }
+}
+
+function buildOrganizationFeatureResponse(organization: OrganizationRecord) {
+  return {
+    Id: organization.id,
+    Name: organization.name,
+    Enabled: organization.enabled,
+    UsePolicies: false,
+    UseSso: false,
+    UseKeyConnector: false,
+    UseScim: false,
+    UseGroups: false,
+    UseEvents: false,
+    UseDirectory: false,
+    UseTotp: organization.useTotp,
+    Use2fa: false,
+    UseApi: false,
+    UseResetPassword: false,
+    UseSecretsManager: false,
+    UsePasswordManager: true,
+    SelfHost: false,
+    Seats: 0,
+    MaxCollections: null,
+    MaxStorageGb: null,
+    MaxSeats: null,
+    MaxUsers: null,
+    MaxServiceAccounts: null,
+    PlanType: organization.planType,
+    ProviderId: null,
+    ProviderName: null,
+  }
+}
+
+function buildCollectionDetailsResponse(
+  collection: OrganizationCollectionRecord,
+) {
+  return {
+    Object: 'collectionDetails',
+    Id: collection.id,
+    OrganizationId: collection.organizationId,
+    Name: collection.encryptedName,
+    ReadOnly: collection.readOnly,
+    HidePasswords: collection.hidePasswords,
+    Manage: collection.manage,
+    Type: collection.type,
+  }
+}
+
 function buildAccountProfileResponse(
   user: AuthUserRecord,
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
+  organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const userDecryptionOptions = masterPasswordUnlock
@@ -4657,7 +4857,12 @@ function buildAccountProfileResponse(
 
   return {
     object: 'profile',
-    ...buildProfileResponse(user, storageBytes, premiumFeaturesEnabled),
+    ...buildProfileResponse(
+      user,
+      storageBytes,
+      premiumFeaturesEnabled,
+      organizations,
+    ),
     UserDecryptionOptions: userDecryptionOptions,
     userDecryptionOptions,
     KeyConnectorUrl: null,
@@ -4696,9 +4901,13 @@ function buildSyncProfileResponse(
   user: AuthUserRecord,
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
+  organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
+  const organizationResponses = organizations.map(
+    buildProfileOrganizationResponse,
+  )
 
   return {
     providerOrganizations: [],
@@ -4712,8 +4921,8 @@ function buildSyncProfileResponse(
     premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
-    organizations: [],
-    organizationsNew: [],
+    organizations: organizationResponses,
+    organizationsNew: organizationResponses,
     usesKeyConnector: false,
     id: user.id,
     masterPasswordHint: null,
@@ -4731,9 +4940,13 @@ function buildProfileResponse(
   user: AuthUserRecord,
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
+  organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
+  const organizationResponses = organizations.map(
+    buildProfileOrganizationResponse,
+  )
 
   return {
     providerOrganizations: [],
@@ -4747,8 +4960,8 @@ function buildProfileResponse(
     premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
-    organizations: [],
-    organizationsNew: [],
+    organizations: organizationResponses,
+    organizationsNew: organizationResponses,
     usesKeyConnector: false,
     id: user.id,
     masterPasswordHint: null,
@@ -4776,8 +4989,8 @@ function buildProfileResponse(
     ForcePasswordReset: false,
     UsesKeyConnector: false,
     VerifyDevices: false,
-    Organizations: [],
-    OrganizationsNew: [],
+    Organizations: organizationResponses,
+    OrganizationsNew: organizationResponses,
     Providers: [],
     ProviderOrganizations: [],
     Storage: storageBytes,
@@ -5079,6 +5292,7 @@ function apiError(
     | 'invalid_token'
     | 'missing_token'
     | 'notification_unavailable'
+    | 'organization_not_found'
     | 'rate_limited'
     | 'reauth_required'
     | 'revision_conflict'
@@ -5709,6 +5923,14 @@ async function handleAccountProfileUpdate(c: AppContext) {
 
 function cipherNotFoundError(requestIdValue: string) {
   return apiError(requestIdValue, 'cipher_not_found', 'Cipher was not found.')
+}
+
+function organizationNotFoundError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'organization_not_found',
+    'Organization was not found.',
+  )
 }
 
 function attachmentNotFoundError(requestIdValue: string) {
@@ -7011,6 +7233,66 @@ function parseAccountProfileUpdateRequestBody(
   }
 }
 
+function parseOrganizationCreateRequestBody(body: unknown):
+  | {
+      ok: true
+      name: string
+      billingEmail: string | null
+      planType: number
+      orgKey: string
+      publicKey: string
+      privateKey: string
+      encryptedCollectionName: string
+    }
+  | { ok: false } {
+  if (!isPlainObject(body) || !isPlainObject(body.keys)) {
+    return { ok: false }
+  }
+
+  const name = parseRequiredString(body.name)
+  const orgKey = parseRequiredOpaqueString(body.key)
+  const publicKey = parseRequiredOpaqueString(body.keys.publicKey)
+  const privateKey = parseRequiredOpaqueString(body.keys.encryptedPrivateKey)
+  const encryptedCollectionName = parseRequiredOpaqueString(body.collectionName)
+  const billingEmailValue = body.billingEmail
+  const billingEmail =
+    billingEmailValue === undefined || billingEmailValue === null
+      ? null
+      : typeof billingEmailValue === 'string'
+        ? billingEmailValue
+        : undefined
+  const planTypeValue = body.planType ?? 0
+  const planType =
+    typeof planTypeValue === 'number' &&
+    Number.isSafeInteger(planTypeValue) &&
+    planTypeValue >= 0
+      ? planTypeValue
+      : undefined
+
+  if (
+    !name ||
+    !orgKey ||
+    !publicKey ||
+    !privateKey ||
+    !encryptedCollectionName ||
+    billingEmail === undefined ||
+    planType === undefined
+  ) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    name,
+    billingEmail,
+    planType,
+    orgKey,
+    publicKey,
+    privateKey,
+    encryptedCollectionName,
+  }
+}
+
 function parseDomainSettingsRequestBody(body: unknown):
   | {
       ok: true
@@ -7294,6 +7576,10 @@ function parseRequiredString(value: unknown): string | undefined {
   }
 
   return value
+}
+
+function parseRequiredOpaqueString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 function parseOptionalId(value: unknown): string | null | undefined {
