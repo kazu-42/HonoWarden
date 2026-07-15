@@ -9570,6 +9570,118 @@ describe('HonoWarden app', () => {
     expect(body).not.toHaveProperty('deletedDate')
   })
 
+  it('deletes uploaded attachment R2 objects when permanently deleting a cipher', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const cipher = {
+      ...cipherRecord(),
+      deletedAt: '2026-07-06T00:06:00.000Z',
+    }
+    const attachment = attachmentRecord()
+    const ciphers = [cipher]
+    const attachments = [attachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'encrypted-bytes')
+
+    const response = await app.request(
+      `/api/ciphers/${cipher.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          attachments,
+          authUser: user,
+          ciphers,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(bucket.has(attachment.objectKey)).toBe(false)
+    expect(bucket.deletedKeys).toEqual([attachment.objectKey])
+  })
+
+  it('does not delete foreign cipher R2 objects on owned or forbidden permanent deletes', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ownedCipher = cipherRecord()
+    const foreignCipher = {
+      ...cipherRecord(),
+      id: 'foreign-cipher-id',
+      userId: 'foreign-user-id',
+    }
+    const ownedAttachment = attachmentRecord()
+    const foreignAttachment = {
+      ...attachmentRecord(),
+      id: 'foreign-attachment-id',
+      userId: foreignCipher.userId,
+      cipherId: foreignCipher.id,
+      objectKey: 'attachments/foreign-object-id',
+    }
+    const ciphers = [ownedCipher, foreignCipher]
+    const attachments = [ownedAttachment, foreignAttachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(ownedAttachment.objectKey, 'owned-encrypted-bytes')
+    await bucket.put(foreignAttachment.objectKey, 'foreign-encrypted-bytes')
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        attachments,
+        authUser: user,
+        ciphers,
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+
+    const ownedDeleteResponse = await app.request(
+      `/api/ciphers/${ownedCipher.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      env,
+    )
+
+    expect(ownedDeleteResponse.status).toBe(200)
+    expect(bucket.has(ownedAttachment.objectKey)).toBe(false)
+    expect(bucket.has(foreignAttachment.objectKey)).toBe(true)
+    expect(ciphers).toEqual([foreignCipher])
+    expect(attachments).toEqual([foreignAttachment])
+
+    const foreignDeleteResponse = await app.request(
+      `/api/ciphers/${foreignCipher.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'foreign-cipher-delete-request',
+        },
+      },
+      env,
+    )
+
+    expect(foreignDeleteResponse.status).toBe(404)
+    await expect(foreignDeleteResponse.json()).resolves.toEqual({
+      error: {
+        code: 'cipher_not_found',
+        message: 'Cipher was not found.',
+      },
+      requestId: 'foreign-cipher-delete-request',
+    })
+    expect(bucket.deletedKeys).toEqual([ownedAttachment.objectKey])
+    expect(bucket.has(foreignAttachment.objectKey)).toBe(true)
+    expect(ciphers).toEqual([foreignCipher])
+    expect(attachments).toEqual([foreignAttachment])
+  })
+
   it('permanently deletes a non-trashed cipher through the upstream DELETE route', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -9599,11 +9711,17 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('permanently deletes a cipher through the upstream POST delete alias', async () => {
+  it('deletes pending attachment R2 objects through the upstream POST delete alias', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
+    const cipher = cipherRecord()
+    const attachment = pendingAttachmentRecord()
+    const ciphers = [cipher]
+    const attachments = [attachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'pending-encrypted-bytes')
     const response = await app.request(
-      '/api/ciphers/cipher-id/delete',
+      `/api/ciphers/${cipher.id}/delete`,
       {
         method: 'POST',
         headers: {
@@ -9612,11 +9730,12 @@ describe('HonoWarden app', () => {
       },
       {
         DB: new FakeD1Database(null, [], {
+          attachments,
           authUser: user,
-          cipherPermanentDeleteChanges: 1,
-          cipherSoftDeleteChanges: 0,
+          ciphers,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
       },
     )
 
@@ -9626,6 +9745,8 @@ describe('HonoWarden app', () => {
       id: 'cipher-id',
       revisionDate: expect.any(String),
     })
+    expect(bucket.has(attachment.objectKey)).toBe(false)
+    expect(bucket.deletedKeys).toEqual([attachment.objectKey])
   })
 
   it('restores a trashed cipher for the authenticated user', async () => {
@@ -9657,11 +9778,17 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('retains DELETE /api/ciphers/:id/delete as a permanent-delete alias', async () => {
+  it('retains DELETE /api/ciphers/:id/delete with attachment R2 cleanup', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
+    const cipher = cipherRecord()
+    const attachment = attachmentRecord()
+    const ciphers = [cipher]
+    const attachments = [attachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'encrypted-bytes')
     const response = await app.request(
-      '/api/ciphers/cipher-id/delete',
+      `/api/ciphers/${cipher.id}/delete`,
       {
         method: 'DELETE',
         headers: {
@@ -9670,10 +9797,12 @@ describe('HonoWarden app', () => {
       },
       {
         DB: new FakeD1Database(null, [], {
+          attachments,
           authUser: user,
-          cipherPermanentDeleteChanges: 1,
+          ciphers,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
       },
     )
 
@@ -9683,6 +9812,8 @@ describe('HonoWarden app', () => {
       id: 'cipher-id',
       revisionDate: expect.any(String),
     })
+    expect(bucket.has(attachment.objectKey)).toBe(false)
+    expect(bucket.deletedKeys).toEqual([attachment.objectKey])
   })
 
   it('emits secret-safe audit events for cipher mutations', async () => {

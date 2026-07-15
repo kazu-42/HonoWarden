@@ -3978,6 +3978,18 @@ async function permanentlyDeleteCipherById(c: AppContext) {
   const now = new Date().toISOString()
 
   try {
+    const attachments = await listCipherAttachmentObjectKeysForOwnedCiphers(
+      c.env.DB,
+      {
+        cipherIds: [cipherId],
+        userId: auth.user.id,
+      },
+    )
+    const attachmentObjectKeys = [
+      ...new Set(attachments.map((attachment) => attachment.objectKey)),
+    ]
+    await deleteR2Objects(c.env.VAULT_OBJECTS, attachmentObjectKeys)
+
     const result = await permanentlyDeleteCipher(c.env.DB, {
       id: cipherId,
       userId: auth.user.id,
