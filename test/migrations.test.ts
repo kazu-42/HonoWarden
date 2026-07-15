@@ -11,6 +11,10 @@ const authRequestSupersedeMigration = readFileSync(
   'migrations/0013_auth_request_supersede.sql',
   'utf8',
 )
+const organizationsMigration = readFileSync(
+  'migrations/0014_organizations.sql',
+  'utf8',
+)
 const legacyInquiryMigration = readFileSync(
   'migrations/0009_inquiry_messages.sql',
   'utf8',
@@ -290,6 +294,37 @@ describe('initial D1 migration', () => {
     expect(allMigrations).not.toContain('password TEXT')
     expect(allMigrations).not.toContain('uri TEXT')
   })
+
+  it('adds the organizations foundation without changing personal cipher ownership', () => {
+    for (const tableName of [
+      'organizations',
+      'organization_users',
+      'collections',
+      'collection_users',
+      'collection_ciphers',
+    ]) {
+      expect(organizationsMigration).toContain(`CREATE TABLE ${tableName}`)
+    }
+
+    expect(organizationsMigration).toContain(
+      'ALTER TABLE ciphers ADD COLUMN organization_id TEXT',
+    )
+    expect(organizationsMigration).toContain(
+      'ALTER TABLE ciphers ADD COLUMN cipher_key TEXT',
+    )
+    for (const indexName of [
+      'idx_org_users_user',
+      'idx_org_users_org',
+      'idx_collections_org',
+      'idx_ciphers_org',
+    ]) {
+      expect(organizationsMigration).toContain(`CREATE INDEX ${indexName}`)
+    }
+    expect(organizationsMigration).toContain("VALUES ('0014')")
+    expect(organizationsMigration).not.toContain(
+      'ALTER COLUMN organization_id SET NOT NULL',
+    )
+  })
 })
 
 const allMigrations = [
@@ -307,4 +342,5 @@ const allMigrations = [
   readFileSync('migrations/0011_inquiry_inbox.sql', 'utf8'),
   authRequestMigration,
   authRequestSupersedeMigration,
+  organizationsMigration,
 ].join('\n')

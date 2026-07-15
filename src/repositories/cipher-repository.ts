@@ -60,6 +60,14 @@ export type CipherListPage = {
   hasMore: boolean
 }
 
+export type CipherAccess = {
+  found: boolean
+  canRead: boolean
+  canEdit: boolean
+  canDelete: boolean
+  organizationId: string | null
+}
+
 export type CipherSoftDeleteResult =
   | {
       status: 'deleted'
@@ -125,6 +133,12 @@ type CipherRevisionRow = {
   revisionDate: string
 }
 
+type CipherAccessRow = {
+  id: string
+  userId: string
+  organizationId: string | null
+}
+
 export async function listCiphersByUser(
   database: CipherDatabase,
   userId: string,
@@ -144,6 +158,7 @@ export async function listCiphersByUser(
           deleted_at as deletedAt
         FROM ciphers
         WHERE user_id = ?
+          AND organization_id IS NULL
         ORDER BY revision_date ASC, id ASC
       `,
     )
@@ -175,6 +190,7 @@ export async function listCiphersByUserPage(
           deleted_at as deletedAt
         FROM ciphers
         WHERE user_id = ?
+          AND organization_id IS NULL
           ${cursorPredicate}
         ORDER BY revision_date ASC, id ASC
         LIMIT ?
@@ -226,6 +242,90 @@ export async function findCipherById(
     .first<CipherRow>()
 
   return row ? cipherFromRow(row) : null
+}
+
+export async function resolveCipherAccess(
+  database: CipherDatabase,
+  callerUserId: string,
+  cipherId: string,
+): Promise<CipherAccess> {
+  const cipher = await database
+    .prepare(
+      `
+        SELECT
+          id,
+          user_id as userId,
+          organization_id as organizationId
+        FROM ciphers
+        WHERE id = ?
+        LIMIT 1
+      `,
+    )
+    .bind(cipherId)
+    .first<CipherAccessRow>()
+
+  if (!cipher) {
+    return deniedCipherAccess(false, null)
+  }
+
+  const organizationId = cipher.organizationId ?? null
+  if (organizationId === null) {
+    const isOwner = cipher.userId === callerUserId
+
+    return {
+      found: true,
+      canRead: isOwner,
+      canEdit: isOwner,
+      canDelete: isOwner,
+      organizationId: null,
+    }
+  }
+
+  const managedCollection = await database
+    .prepare(
+      `
+        SELECT 1 as hasManageAccess
+        FROM organization_users membership
+        INNER JOIN collection_users collection_user
+          ON collection_user.organization_user_id = membership.id
+          AND collection_user.manage = 1
+        INNER JOIN collections collection
+          ON collection.id = collection_user.collection_id
+          AND collection.organization_id = membership.organization_id
+        INNER JOIN collection_ciphers collection_cipher
+          ON collection_cipher.collection_id = collection.id
+        WHERE membership.user_id = ?
+          AND membership.status = 2
+          AND membership.organization_id = ?
+          AND collection.organization_id = ?
+          AND collection_cipher.cipher_id = ?
+        LIMIT 1
+      `,
+    )
+    .bind(callerUserId, organizationId, organizationId, cipherId)
+    .first<{ hasManageAccess: number }>()
+  const hasManageAccess = Boolean(managedCollection?.hasManageAccess)
+
+  return {
+    found: true,
+    canRead: hasManageAccess,
+    canEdit: hasManageAccess,
+    canDelete: hasManageAccess,
+    organizationId,
+  }
+}
+
+function deniedCipherAccess(
+  found: boolean,
+  organizationId: string | null,
+): CipherAccess {
+  return {
+    found,
+    canRead: false,
+    canEdit: false,
+    canDelete: false,
+    organizationId,
+  }
 }
 
 export async function createCipher(

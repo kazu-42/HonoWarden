@@ -129,20 +129,20 @@ Legend: 🟢 working with evidence · 🟡 works in synthetic/staging but not re
 flagged off in production · 🔴 not yet available / blocked. "Synthetic‑usable" = proven with
 synthetic accounts/data; "Real‑secret‑ready" = safe for real users/secrets in production.
 
-| Capability | Synthetic‑usable | Real‑secret‑ready | Evidence | Blocker |
-|---|:--:|:--:|---|---|
-| Vault CRUD + official clients (browser/desktop/mobile) | 🟢 | 🟡 | HON‑52/53/54, live‑client evidence | Prod login signing key not configured |
-| Bulk cipher ops (move/trash/restore/permanent‑delete) | 🟢 | 🟡 | HON‑127 (staging 200s) | Prod real‑secret activation |
-| Attachment permanent‑delete R2 reclamation | 🟢 | 🟢 | HON‑128 (762/762 tests; staging+prod deployed) | — (existing orphans need a separate reclaim pass) |
-| Premium surfaces (TOTP, attachments) | 🟢 | 🟡 | HON‑121/122/124/125 | Prod `HONOWARDEN_PREMIUM_FEATURES_ENABLED=false` |
-| Login‑with‑device / auth requests | 🟢 | 🟡 | HON‑72/80/85/88 | Prod `HONOWARDEN_AUTH_REQUESTS_ENABLED=false` |
-| Inquiry inbox loop (inbound→triage→approve→reply) | 🟢 | 🟢 | HON‑91, HON‑99 (human‑approved send), HON‑129 | — (deployed staging+production) |
-| Outbound email via Resend | 🟢 | 🟢 | HON‑129 (Resend Sent→Delivered) | — |
-| Backup / restore | 🟢 | 🟡 | HON‑5/42/111 | Prod backup evidence + `HONOWARDEN_AUDIT_LOGS` |
-| Audit events + retention cleanup | 🟢 | 🟡 | HON‑47/48/51 | Prod `HONOWARDEN_AUDIT_LOGS=false` |
-| **Production real‑secret readiness** | n/a | 🔴 | Prod `Token exchange is not configured`, `ALLOWED_EMAILS=""`, bootstrap off | Separate authorized activation issue |
-| Operator 2FA + least‑privilege | 🔴 | 🔴 | HON‑101 inventory | Both operators Super Admin + 2FA off (HON‑73/102); scoped‑token gaps (HON‑74) |
-| Independent security assessment | 🔴 | 🔴 | HON‑86 engagement pack ready | Assessor not engaged (HON‑57/87/107) |
+| Capability                                             | Synthetic‑usable | Real‑secret‑ready | Evidence                                                                    | Blocker                                                                       |
+| ------------------------------------------------------ | :--------------: | :---------------: | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Vault CRUD + official clients (browser/desktop/mobile) |        🟢        |        🟡         | HON‑52/53/54, live‑client evidence                                          | Prod login signing key not configured                                         |
+| Bulk cipher ops (move/trash/restore/permanent‑delete)  |        🟢        |        🟡         | HON‑127 (staging 200s)                                                      | Prod real‑secret activation                                                   |
+| Attachment permanent‑delete R2 reclamation             |        🟢        |        🟢         | HON‑128 (762/762 tests; staging+prod deployed)                              | — (existing orphans need a separate reclaim pass)                             |
+| Premium surfaces (TOTP, attachments)                   |        🟢        |        🟡         | HON‑121/122/124/125                                                         | Prod `HONOWARDEN_PREMIUM_FEATURES_ENABLED=false`                              |
+| Login‑with‑device / auth requests                      |        🟢        |        🟡         | HON‑72/80/85/88                                                             | Prod `HONOWARDEN_AUTH_REQUESTS_ENABLED=false`                                 |
+| Inquiry inbox loop (inbound→triage→approve→reply)      |        🟢        |        🟢         | HON‑91, HON‑99 (human‑approved send), HON‑129                               | — (deployed staging+production)                                               |
+| Outbound email via Resend                              |        🟢        |        🟢         | HON‑129 (Resend Sent→Delivered)                                             | —                                                                             |
+| Backup / restore                                       |        🟢        |        🟡         | HON‑5/42/111                                                                | Prod backup evidence + `HONOWARDEN_AUDIT_LOGS`                                |
+| Audit events + retention cleanup                       |        🟢        |        🟡         | HON‑47/48/51                                                                | Prod `HONOWARDEN_AUDIT_LOGS=false`                                            |
+| **Production real‑secret readiness**                   |       n/a        |        🔴         | Prod `Token exchange is not configured`, `ALLOWED_EMAILS=""`, bootstrap off | Separate authorized activation issue                                          |
+| Operator 2FA + least‑privilege                         |        🔴        |        🔴         | HON‑101 inventory                                                           | Both operators Super Admin + 2FA off (HON‑73/102); scoped‑token gaps (HON‑74) |
+| Independent security assessment                        |        🔴        |        🔴         | HON‑86 engagement pack ready                                                | Assessor not engaged (HON‑57/87/107)                                          |
 
 ## Blockers & gates
 

@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-13.
+Last updated: 2026-07-15.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -26,6 +26,7 @@ changes and update this document in the same change.
 | `migrations/0011_inquiry_inbox.sql`                   | `a8c9524b32ecd398d540b052dbb6e96fc3dc500669ca6806089162c21b857bb8` |
 | `migrations/0012_auth_requests.sql`                   | `71fc9ca16ea9dd2e6e8dbe9c7c93cc2899b8375b482eaeaf3a673b6d01b50b3d` |
 | `migrations/0013_auth_request_supersede.sql`          | `ad47a1465ca857903c97d837a943ace3ca2505ff20197e6533259c2154f6ac86` |
+| `migrations/0014_organizations.sql`                   | `95cc696e345d309a32e548f44e7ab7ebd91e8b2ba335f59c2048e36b9f27f9cb` |
 
 ## Required Tables At Freeze
 
@@ -47,6 +48,11 @@ changes and update this document in the same change.
 - `auth_requests`
 - `user_totp`
 - `totp_challenges`
+- `organizations`
+- `organization_users`
+- `collections`
+- `collection_users`
+- `collection_ciphers`
 
 ## Policy
 

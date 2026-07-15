@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-09
+Last updated: 2026-07-15
 
 ## Week 1 Status
 
@@ -1248,24 +1248,23 @@ Not implemented:
 - organization-scoped equivalent-domain configuration
 - live client evidence for metadata read endpoints
 
-## Week 26 Collection Metadata Read API
+## Week 26 Collection Metadata Read API (Superseded By ADR 0010)
 
 Implemented:
 
-- authenticated `GET /api/collections`
-- authenticated `GET /api/collections/:id`
-- collection list returns an empty list response for the alpha personal-vault
-  scope
-- collection lookup returns stable `collection_not_found`
-- collection mutation routes remain explicit `unsupported_feature` responses
-- collection create/update/delete and cipher assignment remain excluded by ADR
-  0007 until shared/team vault scope is reopened
-- compatibility fixture coverage under the `metadata_read` flow
+- ADR 0007 originally exposed authenticated empty/not-found collection metadata
+  for the alpha personal-vault product line
+- ADR 0010 superseded that staged boundary when the team-vault product line was
+  adopted
+- until Organizations Slice 2 lands, collection reads and mutations now return
+  explicit `unsupported_feature` responses so clients cannot infer partial
+  collection support
+- compatibility fixtures under `metadata_read` record that typed boundary
 
 Not implemented:
 
-- collection creation, update, deletion, or assignment behavior
-- organization-scoped collections
+- collection reads, creation, update, deletion, or assignment behavior
+- organization-scoped collection APIs
 - live client evidence for collection metadata reads
 
 ## Week 26 Fixture Route Replay
@@ -2238,3 +2237,29 @@ Not implemented or not yet verified:
   response notification delivery is unavailable
 - superseding older pending requests created by repeated resend attempts
 - production login-with-device enablement or any real-vault-data run
+
+## Organizations Slice 1 Foundation
+
+Implemented:
+
+- forward-only migration `0014_organizations.sql` with organization,
+  membership, collection, collection-access, and collection-cipher join tables
+- nullable `organization_id` and opaque `cipher_key` columns on `ciphers`, so
+  existing personal-vault records retain their prior ownership semantics
+- authenticated organization creation with a confirmed owner membership and a
+  managed default collection created in one D1 batch
+- confirmed-member-only organization lookup with existence-obscuring 404
+  responses for unknown organizations and non-members
+- confirmed membership projection into sync and account profile responses,
+  including each member's own wrapped organization key
+- accessible collection projection into sync with explicit same-organization
+  join predicates
+- a reusable single-cipher access resolver for personal ownership and confirmed
+  managed-collection organization access
+
+Not implemented in this slice:
+
+- organization membership mutation, invitations, or role administration
+- organization collection CRUD
+- organization cipher sharing or collection assignment APIs
+- organization policy mutation or enforcement

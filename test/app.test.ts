@@ -574,10 +574,14 @@ describe('HonoWarden app', () => {
 
   it('returns explicit errors for unsupported alpha surfaces', async () => {
     for (const request of [
-      { method: 'POST', path: '/api/organizations' },
+      { method: 'GET', path: '/api/organizations' },
       { method: 'POST', path: '/api/organizations/org-id/collections' },
       { method: 'POST', path: '/api/collections' },
       { method: 'POST', path: '/api/collections/collection-id' },
+      { method: 'POST', path: '/api/ciphers/create' },
+      { method: 'PUT', path: '/api/ciphers/cipher-id/share' },
+      { method: 'PUT', path: '/api/ciphers/cipher-id/collections_v2' },
+      { method: 'PUT', path: '/api/ciphers/share' },
       { method: 'POST', path: '/api/auth-requests' },
       { method: 'POST', path: '/api/auth-requests/auth-request-id' },
       { method: 'POST', path: '/api/attachments' },
@@ -599,6 +603,293 @@ describe('HonoWarden app', () => {
             'This feature is intentionally not implemented in the alpha scope.',
         },
         requestId: 'unsupported-surface-request',
+      })
+    }
+  })
+
+  it('creates an organization and projects its confirmed owner and default collection', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [user],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const requestBody = organizationCreateBody()
+    const authorization = {
+      Authorization: `Bearer ${accessToken}`,
+    }
+
+    const createResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          ...authorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      },
+      env,
+    )
+
+    expect(createResponse.status).toBe(200)
+    const created = (await createResponse.json()) as Record<string, unknown>
+    expect(created).toEqual(
+      organizationResponseShape({
+        id: expect.any(String),
+        name: requestBody.name,
+        planType: requestBody.planType,
+      }),
+    )
+    const organizationId = String(created.Id)
+    expect(organizations).toEqual([
+      expect.objectContaining({
+        id: organizationId,
+        name: requestBody.name,
+        billingEmail: requestBody.billingEmail,
+        planType: requestBody.planType,
+        publicKey: requestBody.keys.publicKey,
+        privateKey: requestBody.keys.encryptedPrivateKey,
+        enabled: 1,
+        useTotp: 1,
+      }),
+    ])
+    expect(organizationUsers).toEqual([
+      expect.objectContaining({
+        id: expect.any(String),
+        organizationId,
+        userId: user.id,
+        email: user.email,
+        orgKey: requestBody.key,
+        status: 2,
+        type: 0,
+      }),
+    ])
+    const organizationUserId = String(organizationUsers[0]?.id)
+    expect(collections).toEqual([
+      expect.objectContaining({
+        id: expect.any(String),
+        organizationId,
+        encryptedName: requestBody.collectionName,
+        type: 0,
+      }),
+    ])
+    expect(collectionUsers).toEqual([
+      {
+        collectionId: collections[0]?.id,
+        organizationUserId,
+        readOnly: 0,
+        hidePasswords: 0,
+        manage: 1,
+      },
+    ])
+
+    const getResponse = await app.request(
+      `/api/organizations/${organizationId}`,
+      { headers: authorization },
+      env,
+    )
+    expect(getResponse.status).toBe(200)
+    await expect(getResponse.json()).resolves.toEqual(created)
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    const sync = (await syncResponse.json()) as {
+      profile: {
+        organizations: unknown[]
+        organizationsNew: unknown[]
+      }
+      collections: unknown[]
+      ciphers: unknown[]
+    }
+    const projectedOrganization = profileOrganizationShape({
+      id: organizationId,
+      key: requestBody.key,
+      name: requestBody.name,
+      planType: requestBody.planType,
+    })
+    expect(sync.profile.organizations).toEqual([projectedOrganization])
+    expect(sync.profile.organizationsNew).toEqual([projectedOrganization])
+    expect(sync.collections).toEqual([
+      {
+        Object: 'collectionDetails',
+        Id: collections[0]?.id,
+        OrganizationId: organizationId,
+        Name: requestBody.collectionName,
+        ReadOnly: false,
+        HidePasswords: false,
+        Manage: true,
+        Type: 0,
+      },
+    ])
+    expect(sync.ciphers).toEqual([])
+
+    const profileResponse = await app.request(
+      '/api/accounts/profile',
+      { headers: authorization },
+      env,
+    )
+    expect(profileResponse.status).toBe(200)
+    const profile = (await profileResponse.json()) as Record<string, unknown>
+    expect(profile.organizations).toEqual([projectedOrganization])
+    expect(profile.organizationsNew).toEqual([projectedOrganization])
+    expect(profile.Organizations).toEqual([projectedOrganization])
+    expect(profile.OrganizationsNew).toEqual([projectedOrganization])
+  })
+
+  it.each([
+    ['name', { name: undefined }],
+    ['key', { key: undefined }],
+    ['keys', { keys: undefined }],
+    [
+      'keys.publicKey',
+      { keys: { encryptedPrivateKey: '2.opaque-org-private-key' } },
+    ],
+    [
+      'keys.encryptedPrivateKey',
+      { keys: { publicKey: 'opaque-org-public-key' } },
+    ],
+    ['collectionName', { collectionName: undefined }],
+  ])('rejects organization creation missing %s', async (_, override) => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-organization-request',
+        },
+        body: JSON.stringify({
+          ...organizationCreateBody(),
+          ...override,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'invalid_request',
+        message: 'Organization payload is invalid.',
+      },
+      requestId: 'invalid-organization-request',
+    })
+  })
+
+  it('requires vault authentication to create an organization', async () => {
+    const response = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'unauthenticated-organization-request',
+        },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      { HONOWARDEN_TOKEN_SECRET: 'test-token-secret' },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'missing_token' },
+      requestId: 'unauthenticated-organization-request',
+    })
+  })
+
+  it('hides organizations and collections from another user', async () => {
+    const owner = authUserRecord()
+    const otherUser = {
+      ...authUserRecord(),
+      id: 'other-user-id',
+      email: 'Other@Example.Test',
+      emailNormalized: 'other@example.test',
+      securityStamp: 'other-security-stamp',
+    }
+    const ownerAccessToken = await accessTokenFor(owner)
+    const otherAccessToken = await accessTokenFor(otherUser)
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner, otherUser],
+      organizations: [],
+      organizationUsers: [],
+      collections: [],
+      collectionUsers: [],
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const createResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${ownerAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    expect(createResponse.status).toBe(200)
+    const created = (await createResponse.json()) as { Id: string }
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      {
+        headers: { Authorization: `Bearer ${otherAccessToken}` },
+      },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      profile: {
+        organizations: [],
+        organizationsNew: [],
+      },
+      collections: [],
+    })
+
+    for (const organizationId of [created.Id, 'missing-organization-id']) {
+      const getResponse = await app.request(
+        `/api/organizations/${organizationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${otherAccessToken}`,
+            'X-Request-Id': 'hidden-organization-request',
+          },
+        },
+        env,
+      )
+      expect(getResponse.status).toBe(404)
+      await expect(getResponse.json()).resolves.toEqual({
+        error: {
+          code: 'organization_not_found',
+          message: 'Organization was not found.',
+        },
+        requestId: 'hidden-organization-request',
       })
     }
   })
@@ -1306,83 +1597,6 @@ describe('HonoWarden app', () => {
     expect(response.status).toBe(429)
     expect(response.headers.get('Retry-After')).toBe('900')
     expect(authRequests).toHaveLength(0)
-  })
-
-  it('returns empty collection metadata for authenticated users', async () => {
-    const user = authUserRecord()
-    const accessToken = await accessTokenFor(user)
-    const response = await app.request(
-      '/api/collections',
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-      {
-        DB: new FakeD1Database(null, [], {
-          authUser: user,
-        }),
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-      },
-    )
-
-    expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
-      object: 'list',
-      data: [],
-      continuationToken: null,
-    })
-  })
-
-  it('returns not found for collection metadata lookups', async () => {
-    const user = authUserRecord()
-    const accessToken = await accessTokenFor(user)
-    const response = await app.request(
-      '/api/collections/collection-id',
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'X-Request-Id': 'collection-read-request',
-        },
-      },
-      {
-        DB: new FakeD1Database(null, [], {
-          authUser: user,
-        }),
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-      },
-    )
-
-    expect(response.status).toBe(404)
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: 'collection_not_found',
-        message: 'Collection was not found.',
-      },
-      requestId: 'collection-read-request',
-    })
-  })
-
-  it('requires bearer authorization for collection metadata reads', async () => {
-    const response = await app.request(
-      '/api/collections',
-      {
-        headers: {
-          'X-Request-Id': 'collection-missing-token-request',
-        },
-      },
-      {
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-      },
-    )
-
-    expect(response.status).toBe(401)
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: 'missing_token',
-      },
-      requestId: 'collection-missing-token-request',
-    })
   })
 
   it('keeps account bootstrap disabled by default', async () => {
@@ -6521,20 +6735,11 @@ describe('HonoWarden app', () => {
     const body = (await response.json()) as Record<string, unknown> & {
       attachments?: unknown[]
     }
-    expect(body).toMatchObject({
-      object: 'cipher',
-      id: 'cipher-id',
-      organizationId: null,
-      folderId: 'folder-id',
-      type: 1,
-      favorite: true,
-      name: '2.encrypted-cipher-name',
+    expect(body).toEqual({
+      ...cipherCreateBody(),
       futureEncryptedShape: {
         value: '2.encrypted-future-field',
       },
-      revisionDate: '2026-07-06T00:05:00.000Z',
-      creationDate: '2026-07-06T00:04:00.000Z',
-      deletedDate: null,
       attachments: [
         {
           id: 'attachment-id',
@@ -6545,6 +6750,24 @@ describe('HonoWarden app', () => {
           sizeName: '15 B',
         },
       ],
+      object: 'cipher',
+      id: 'cipher-id',
+      organizationId: null,
+      folderId: 'folder-id',
+      type: 1,
+      favorite: true,
+      name: '2.encrypted-cipher-name',
+      edit: true,
+      viewPassword: true,
+      organizationUseTotp: false,
+      collectionIds: [],
+      permissions: {
+        delete: true,
+        restore: true,
+      },
+      revisionDate: '2026-07-06T00:05:00.000Z',
+      creationDate: '2026-07-06T00:04:00.000Z',
+      deletedDate: null,
     })
     expectOfficialAttachmentFieldTypes(body.attachments?.[0])
   })
@@ -6610,6 +6833,7 @@ describe('HonoWarden app', () => {
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            'X-Request-Id': 'opaque-cipher-not-found-request',
           },
         },
         {
@@ -6633,10 +6857,12 @@ describe('HonoWarden app', () => {
       )
 
       expect(response.status).toBe(404)
-      await expect(response.json()).resolves.toMatchObject({
+      await expect(response.json()).resolves.toEqual({
         error: {
           code: 'cipher_not_found',
+          message: 'Cipher was not found.',
         },
+        requestId: 'opaque-cipher-not-found-request',
       })
     }
   })
@@ -9231,6 +9457,7 @@ describe('HonoWarden app', () => {
         DB: new FakeD1Database(null, [], {
           authUser: user,
           cipher: {
+            ...cipherRecord(),
             createdAt: '2026-07-06T00:04:00.000Z',
           },
           cipherUpdateChanges: 1,
@@ -9280,6 +9507,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: cipherRecord(),
           cipherUpdateChanges: 1,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -9320,6 +9548,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: cipherRecord(),
           cipherUpdateChanges: 1,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -9492,6 +9721,7 @@ describe('HonoWarden app', () => {
         DB: new FakeD1Database(null, [], {
           authUser: user,
           cipher: {
+            ...cipherRecord(),
             revisionDate: '2026-07-06T00:05:00.000Z',
           },
           cipherUpdateChanges: 0,
@@ -9553,6 +9783,10 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: {
+            ...cipherRecord(),
+            deletedAt: '2026-07-06T00:06:00.000Z',
+          },
           cipherPermanentDeleteChanges: 1,
           cipherSoftDeleteChanges: 0,
         }),
@@ -9696,6 +9930,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: cipherRecord(),
           cipherPermanentDeleteChanges: 1,
           cipherSoftDeleteChanges: 1,
         }),
@@ -9822,6 +10057,7 @@ describe('HonoWarden app', () => {
     const database = new FakeD1Database(null, [], {
       authUser: user,
       cipher: {
+        ...cipherRecord(),
         createdAt: '2026-07-06T00:04:00.000Z',
       },
       cipherPermanentDeleteChanges: 1,
@@ -10477,6 +10713,81 @@ function cipherCreateBody() {
       password: '2.encrypted-password',
       uris: [],
     },
+  }
+}
+
+function organizationCreateBody() {
+  return {
+    name: 'Example Organization',
+    billingEmail: 'billing@example.test',
+    planType: 0,
+    key: ' 2.opaque-member-wrapped-org-key\n',
+    keys: {
+      publicKey: '\topaque-org-public-key ',
+      encryptedPrivateKey: ' 2.opaque-org-private-key\n',
+    },
+    collectionName: '\t2.opaque-encrypted-default-collection ',
+  }
+}
+
+function organizationResponseShape(input: {
+  id: unknown
+  name: string
+  planType: number
+}) {
+  return {
+    Object: 'organization',
+    ...organizationFeatureShape(input),
+  }
+}
+
+function organizationFeatureShape(input: {
+  id: unknown
+  name: string
+  planType: number
+}) {
+  return {
+    Id: input.id,
+    Name: input.name,
+    Enabled: true,
+    UsePolicies: false,
+    UseSso: false,
+    UseKeyConnector: false,
+    UseScim: false,
+    UseGroups: false,
+    UseEvents: false,
+    UseDirectory: false,
+    UseTotp: true,
+    Use2fa: false,
+    UseApi: false,
+    UseResetPassword: false,
+    UseSecretsManager: false,
+    UsePasswordManager: true,
+    SelfHost: false,
+    Seats: 0,
+    MaxCollections: null,
+    MaxStorageGb: null,
+    MaxSeats: null,
+    MaxUsers: null,
+    MaxServiceAccounts: null,
+    PlanType: input.planType,
+    ProviderId: null,
+    ProviderName: null,
+  }
+}
+
+function profileOrganizationShape(input: {
+  id: string
+  key: string
+  name: string
+  planType: number
+}) {
+  return {
+    ...organizationFeatureShape(input),
+    Key: input.key,
+    Status: 2,
+    Type: 0,
+    Permissions: {},
   }
 }
 

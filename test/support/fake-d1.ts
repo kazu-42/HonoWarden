@@ -54,6 +54,11 @@ type FakeD1DatabaseOptions = {
   requestQuotaInsertThrows?: boolean
   inquiryForwardUpdateThrows?: boolean
   inquiryInsertThrows?: boolean
+  organizations?: Record<string, unknown>[]
+  organizationUsers?: Record<string, unknown>[]
+  collections?: Record<string, unknown>[]
+  collectionUsers?: Record<string, unknown>[]
+  collectionCiphers?: Record<string, unknown>[]
 }
 
 export type FakeAuditEventInsert = {
@@ -201,6 +206,42 @@ export class FakeD1Database {
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (
+          query.includes('FROM organizations organization') &&
+          query.includes('INNER JOIN organization_users membership') &&
+          query.includes('organization.id = ?') &&
+          query.includes('membership.user_id = ?') &&
+          query.includes('membership.status = 2')
+        ) {
+          return findConfirmedOrganizationRow(options, boundValues) as T | null
+        }
+
+        if (
+          query.includes('FROM organization_users membership') &&
+          query.includes('INNER JOIN collection_ciphers collection_cipher') &&
+          query.includes('collection_user.manage = 1') &&
+          query.includes(
+            'collection.organization_id = membership.organization_id',
+          ) &&
+          query.includes('membership.user_id = ?') &&
+          query.includes('membership.status = 2') &&
+          query.includes('membership.organization_id = ?') &&
+          query.includes('collection_cipher.cipher_id = ?')
+        ) {
+          return findManagedOrganizationCipherAccess(
+            options,
+            boundValues,
+          ) as T | null
+        }
+
+        if (
+          query.includes('FROM ciphers') &&
+          query.includes('organization_id as organizationId') &&
+          query.includes('WHERE id = ?')
+        ) {
+          return findCipherAccessRow(options, boundValues) as T | null
+        }
+
         if (query.includes('FROM auth_requests')) {
           return findAuthRequestRow(
             options.authRequests ?? [],
@@ -353,6 +394,42 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (
+          query.includes('FROM organization_users membership') &&
+          query.includes('INNER JOIN organizations organization') &&
+          query.includes('membership.user_id = ?') &&
+          query.includes('membership.status = 2')
+        ) {
+          return {
+            success: true,
+            results: listConfirmedOrganizationRows(options, boundValues) as T[],
+            meta: fakeMeta,
+          }
+        }
+
+        if (
+          query.includes('FROM collections collection') &&
+          query.includes('INNER JOIN collection_users collection_user') &&
+          query.includes('INNER JOIN organization_users membership') &&
+          query.includes(
+            'membership.id = collection_user.organization_user_id',
+          ) &&
+          query.includes(
+            'membership.organization_id = collection.organization_id',
+          ) &&
+          query.includes('membership.user_id = ?') &&
+          query.includes('membership.status = 2')
+        ) {
+          return {
+            success: true,
+            results: listAccessibleOrganizationCollectionRows(
+              options,
+              boundValues,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('FROM auth_requests')) {
           return {
             success: true,
@@ -1094,6 +1171,13 @@ export class FakeD1Database {
       __fakeBoundValues: unknown[]
     }>
 
+    if (isOrganizationFoundationBatch(fakeStatements)) {
+      return applyOrganizationFoundationBatch(
+        this.options,
+        fakeStatements,
+      ) as D1Result<T>[]
+    }
+
     if (
       fakeStatements.every(
         (statement) =>
@@ -1271,6 +1355,298 @@ export class FakeD1Database {
       },
     }))
   }
+}
+
+type FakePreparedStatement = {
+  __fakeQuery: string
+  __fakeBoundValues: unknown[]
+}
+
+function isOrganizationFoundationBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  return (
+    statements.length === 4 &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO organizations'),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO organization_users'),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO collections'),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO collection_users'),
+    )
+  )
+}
+
+function applyOrganizationFoundationBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+): D1Result[] {
+  const statefulTables = [
+    options.organizations,
+    options.organizationUsers,
+    options.collections,
+    options.collectionUsers,
+  ].filter((rows): rows is Record<string, unknown>[] => Boolean(rows))
+  const snapshots = statefulTables.map((rows) => ({
+    rows,
+    values: rows.map((row) => ({ ...row })),
+  }))
+
+  try {
+    for (const statement of statements) {
+      applyOrganizationFoundationStatement(options, statement)
+    }
+  } catch (error) {
+    for (const snapshot of snapshots) {
+      snapshot.rows.splice(0, snapshot.rows.length, ...snapshot.values)
+    }
+    throw error
+  }
+
+  return statements.map(() => ({
+    success: true,
+    results: [],
+    meta: { ...fakeMeta, changes: 1 },
+  }))
+}
+
+function applyOrganizationFoundationStatement(
+  options: FakeD1DatabaseOptions,
+  statement: FakePreparedStatement,
+): void {
+  const values = statement.__fakeBoundValues
+  const query = statement.__fakeQuery
+
+  if (query.includes('INSERT INTO organizations')) {
+    pushUniqueFakeRow(options.organizations, 'id', {
+      id: String(values[0]),
+      name: String(values[1]),
+      billingEmail: values[2] === null ? null : String(values[2]),
+      planType: Number(values[3]),
+      publicKey: values[4] === null ? null : String(values[4]),
+      privateKey: values[5] === null ? null : String(values[5]),
+      enabled: Number(values[6]),
+      useTotp: Number(values[7]),
+      revisionDate: String(values[8]),
+      createdAt: String(values[9]),
+      updatedAt: String(values[10]),
+    })
+    return
+  }
+
+  if (query.includes('INSERT INTO organization_users')) {
+    pushUniqueFakeRow(options.organizationUsers, 'id', {
+      id: String(values[0]),
+      organizationId: String(values[1]),
+      userId: values[2] === null ? null : String(values[2]),
+      email: String(values[3]),
+      orgKey: values[4] === null ? null : String(values[4]),
+      status: Number(values[5]),
+      type: Number(values[6]),
+      permissions: values[7] === null ? null : String(values[7]),
+      createdAt: String(values[8]),
+      updatedAt: String(values[9]),
+    })
+    return
+  }
+
+  if (query.includes('INSERT INTO collections')) {
+    pushUniqueFakeRow(options.collections, 'id', {
+      id: String(values[0]),
+      organizationId: String(values[1]),
+      encryptedName: String(values[2]),
+      externalId: values[3] === null ? null : String(values[3]),
+      type: Number(values[4]),
+      revisionDate: String(values[5]),
+      createdAt: String(values[6]),
+    })
+    return
+  }
+
+  if (query.includes('INSERT INTO collection_users')) {
+    const row = {
+      collectionId: String(values[0]),
+      organizationUserId: String(values[1]),
+      readOnly: Number(values[2]),
+      hidePasswords: Number(values[3]),
+      manage: Number(values[4]),
+    }
+    const duplicate = options.collectionUsers?.some(
+      (candidate) =>
+        candidate.collectionId === row.collectionId &&
+        candidate.organizationUserId === row.organizationUserId,
+    )
+    if (duplicate) {
+      throw new Error('Duplicate collection user')
+    }
+    options.collectionUsers?.push(row)
+  }
+}
+
+function pushUniqueFakeRow(
+  rows: Record<string, unknown>[] | undefined,
+  key: string,
+  row: Record<string, unknown>,
+): void {
+  if (!rows) {
+    return
+  }
+  if (rows.some((candidate) => candidate[key] === row[key])) {
+    throw new Error(`Duplicate fake row key: ${String(row[key])}`)
+  }
+  rows.push(row)
+}
+
+function findConfirmedOrganizationRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  const [organizationId, userId] = boundValues
+  const membership = options.organizationUsers?.find(
+    (row) =>
+      row.organizationId === organizationId &&
+      row.userId === userId &&
+      Number(row.status) === 2,
+  )
+  if (!membership) {
+    return null
+  }
+
+  return options.organizations?.find((row) => row.id === organizationId) ?? null
+}
+
+function listConfirmedOrganizationRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  const [userId] = boundValues
+  const rows: Record<string, unknown>[] = []
+
+  for (const membership of options.organizationUsers ?? []) {
+    if (membership.userId !== userId || Number(membership.status) !== 2) {
+      continue
+    }
+    const organization = options.organizations?.find(
+      (row) => row.id === membership.organizationId,
+    )
+    if (organization) {
+      rows.push({
+        ...organization,
+        organizationUserId: membership.id,
+        orgKey: membership.orgKey ?? null,
+        status: Number(membership.status),
+        type: Number(membership.type),
+        permissions: membership.permissions ?? null,
+      })
+    }
+  }
+
+  return rows.sort((left, right) =>
+    String(left.id).localeCompare(String(right.id)),
+  )
+}
+
+function listAccessibleOrganizationCollectionRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  const [userId] = boundValues
+  const rows: Record<string, unknown>[] = []
+
+  for (const membership of options.organizationUsers ?? []) {
+    if (membership.userId !== userId || Number(membership.status) !== 2) {
+      continue
+    }
+    for (const collectionUser of options.collectionUsers ?? []) {
+      if (collectionUser.organizationUserId !== membership.id) {
+        continue
+      }
+      const collection = options.collections?.find(
+        (row) =>
+          row.id === collectionUser.collectionId &&
+          row.organizationId === membership.organizationId,
+      )
+      if (!collection) {
+        continue
+      }
+      rows.push({
+        ...collection,
+        readOnly: Number(collectionUser.readOnly ?? 0),
+        hidePasswords: Number(collectionUser.hidePasswords ?? 0),
+        manage: Number(collectionUser.manage ?? 0),
+      })
+    }
+  }
+
+  return rows.sort((left, right) =>
+    String(left.id).localeCompare(String(right.id)),
+  )
+}
+
+function findCipherAccessRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  const cipherId = boundValues[0]
+  if (options.cipher !== undefined) {
+    if (options.cipher === null) {
+      return null
+    }
+    if (options.cipher.id !== undefined && options.cipher.id !== cipherId) {
+      return null
+    }
+    return options.cipher
+  }
+
+  return options.ciphers?.find((row) => row.id === cipherId) ?? null
+}
+
+function findManagedOrganizationCipherAccess(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  const [userId, membershipOrganizationId, collectionOrganizationId, cipherId] =
+    boundValues
+  if (membershipOrganizationId !== collectionOrganizationId) {
+    return null
+  }
+
+  for (const membership of options.organizationUsers ?? []) {
+    if (
+      membership.userId !== userId ||
+      membership.organizationId !== membershipOrganizationId ||
+      Number(membership.status) !== 2
+    ) {
+      continue
+    }
+    for (const collectionUser of options.collectionUsers ?? []) {
+      if (
+        collectionUser.organizationUserId !== membership.id ||
+        Number(collectionUser.manage) !== 1
+      ) {
+        continue
+      }
+      const collection = options.collections?.find(
+        (row) =>
+          row.id === collectionUser.collectionId &&
+          row.organizationId === membershipOrganizationId,
+      )
+      const collectionCipher = options.collectionCiphers?.find(
+        (row) =>
+          row.collectionId === collection?.id && row.cipherId === cipherId,
+      )
+      if (collection && collectionCipher) {
+        return { hasManageAccess: 1 }
+      }
+    }
+  }
+
+  return null
 }
 
 function mutateCipherRows(
@@ -1691,8 +2067,8 @@ function filterRowsByQuery(
   boundValues: unknown[],
   query: string,
 ): Record<string, unknown>[] {
-  let scopedRows = applyDeletedFilter(
-    filterRowsByUserId(rows, boundValues),
+  let scopedRows = applyOrganizationFilter(
+    applyDeletedFilter(filterRowsByUserId(rows, boundValues), query),
     query,
   ).sort(compareRevisionThenId)
 
@@ -1719,6 +2095,17 @@ function filterRowsByQuery(
   }
 
   return scopedRows
+}
+
+function applyOrganizationFilter(
+  rows: Record<string, unknown>[],
+  query: string,
+): Record<string, unknown>[] {
+  if (query.includes('organization_id IS NULL')) {
+    return rows.filter((row) => row.organizationId == null)
+  }
+
+  return rows
 }
 
 function compareRevisionThenId(
@@ -2340,4 +2727,9 @@ export const requiredTables = [
   'audit_events',
   'user_totp',
   'totp_challenges',
+  'organizations',
+  'organization_users',
+  'collections',
+  'collection_users',
+  'collection_ciphers',
 ] as const
