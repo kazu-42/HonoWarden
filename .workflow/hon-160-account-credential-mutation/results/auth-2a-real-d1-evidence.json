@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-07-18T16:59:30.787Z",
+  "status": "passed",
+  "scope": "fresh local D1 and local Worker with synthetic data only",
+  "migrations": {
+    "count": 15,
+    "latest": "0014",
+    "files": [
+      "0001_initial_schema.sql",
+      "0002_login_defenses.sql",
+      "0003_totp_login.sql",
+      "0004_totp_change.sql",
+      "0005_device_keys.sql",
+      "0006_cipher_attachments.sql",
+      "0007_audit_events.sql",
+      "0008_request_quotas.sql",
+      "0009_inquiry_messages.sql",
+      "0010_equivalent_domains.sql",
+      "0010a_inquiry_message_reconciliation.sql",
+      "0011_inquiry_inbox.sql",
+      "0012_auth_requests.sql",
+      "0013_auth_request_supersede.sql",
+      "0014_organizations.sql"
+    ],
+    "schemaChangeRequired": false
+  },
+  "success": {
+    "responseStatus": 200,
+    "oldAccessTokenStatus": 401,
+    "state": {
+      "securityStampIsOld": false,
+      "revisionIsOld": false,
+      "ownerActiveDevices": 0,
+      "ownerRevokedDevices": 2,
+      "ownerActiveRefreshTokens": 0,
+      "ownerRevokedRefreshTokens": 2,
+      "credentialAuditEvents": 1,
+      "externalActiveDevices": 1,
+      "externalActiveRefreshTokens": 1
+    },
+    "requiredAuditLogged": true
+  },
+  "relogin": {
+    "passwordGrantStatus": 200,
+    "newAccessTokenSyncStatus": 200,
+    "state": {
+      "securityStampIsOld": false,
+      "revisionIsOld": false,
+      "ownerActiveDevices": 1,
+      "ownerRevokedDevices": 1,
+      "ownerActiveRefreshTokens": 1,
+      "ownerRevokedRefreshTokens": 2,
+      "credentialAuditEvents": 1,
+      "externalActiveDevices": 1,
+      "externalActiveRefreshTokens": 1
+    }
+  },
+  "rollback": {
+    "forcedFailure": "audit trigger abort",
+    "responseStatus": 503,
+    "state": {
+      "securityStampIsOld": true,
+      "revisionIsOld": true,
+      "ownerActiveDevices": 2,
+      "ownerRevokedDevices": 0,
+      "ownerActiveRefreshTokens": 2,
+      "ownerRevokedRefreshTokens": 0,
+      "credentialAuditEvents": 0,
+      "externalActiveDevices": 1,
+      "externalActiveRefreshTokens": 1
+    },
+    "structuredFailureLogged": true
+  },
+  "concurrency": {
+    "responseStatuses": [200, 401],
+    "exactlyOneSuccess": true,
+    "state": {
+      "securityStampIsOld": false,
+      "revisionIsOld": false,
+      "ownerActiveDevices": 0,
+      "ownerRevokedDevices": 2,
+      "ownerActiveRefreshTokens": 0,
+      "ownerRevokedRefreshTokens": 2,
+      "credentialAuditEvents": 1,
+      "externalActiveDevices": 1,
+      "externalActiveRefreshTokens": 1
+    }
+  },
+  "safety": {
+    "remoteDatabaseUsed": false,
+    "productionAccountUsed": false,
+    "realCredentialUsed": false,
+    "plaintextVaultDataUsed": false,
+    "temporaryStateRemovedAfterSuccess": true
+  }
+}

@@ -164,12 +164,14 @@ Secrets:
 
 ## Audit Logs
 
-Audit JSON lines and D1 `audit_events` rows are emitted only when
-`HONOWARDEN_AUDIT_LOGS=true`.
+Most audit JSON lines and D1 `audit_events` rows are emitted only when
+`HONOWARDEN_AUDIT_LOGS=true`. Required credential-generation audit rows are
+persisted atomically with their mutation regardless of that optional setting.
 
 Current event coverage:
 
 - bootstrap success
+- security-stamp generation rotation and account-wide session revocation
 - password-grant failures that reach credential validation
 - refresh-token reuse
 - user backup export success and database-failure outcomes

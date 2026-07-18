@@ -29,6 +29,10 @@ import {
 } from './domain/audit'
 import type { AuditEventName, AuditEventOutcome } from './domain/audit'
 import {
+  nextCredentialRevisionDate,
+  parseSecurityStampRotationBody,
+} from './domain/account-credentials'
+import {
   buildBootstrapUserRecord,
   isBootstrapEnabled,
   resolveBootstrapAccount,
@@ -91,6 +95,7 @@ import {
   reserveCipherAttachmentUpload,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
+import { rotateAccountSecurityStamp } from './repositories/credential-repository'
 import {
   approveAuthRequest,
   consumeAuthRequestWithSession,
@@ -2314,6 +2319,108 @@ app.post('/api/accounts/export', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Backup export failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/security-stamp', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseSecurityStampRotationBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'The request body is invalid.',
+      ),
+      400,
+    )
+  }
+  if (
+    !verifyPresentedPasswordHash(
+      auth.user.masterPasswordHash,
+      request.masterPasswordHash,
+    )
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'The supplied credentials are invalid.',
+      ),
+      400,
+    )
+  }
+
+  const candidateRevisionDate = new Date().toISOString()
+  const nextRevisionDate = nextCredentialRevisionDate(
+    auth.user.revisionDate,
+    candidateRevisionDate,
+  )
+  const nextSecurityStamp = crypto.randomUUID()
+  const auditEventId = crypto.randomUUID()
+  const auditEvent = buildAuditEvent({
+    name: 'account.security_stamp.rotate',
+    outcome: 'success',
+    requestId: c.get('requestId'),
+    occurredAt: nextRevisionDate,
+    actor: {
+      userId: auth.user.id,
+      deviceIdentifier: auth.deviceIdentifier,
+    },
+    target: {
+      type: 'account',
+      id: auth.user.id,
+    },
+    context: {
+      allSessionsRevoked: true,
+    },
+  })
+
+  try {
+    const result = await rotateAccountSecurityStamp(c.env.DB, {
+      userId: auth.user.id,
+      expectedMasterPasswordHash: auth.user.masterPasswordHash,
+      expectedSecurityStamp: auth.user.securityStamp,
+      expectedRevisionDate: auth.user.revisionDate,
+      nextSecurityStamp,
+      nextRevisionDate,
+      auditEventId,
+      auditEvent,
+    })
+    if (result.status === 'conflict') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'The account credential generation changed concurrently.',
+        ),
+        409,
+      )
+    }
+
+    console.info(serializeAuditEvent(auditEvent))
+    c.header('Cache-Control', 'no-store')
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_security_stamp_rotation_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Security-stamp rotation failed.',
       ),
       503,
     )

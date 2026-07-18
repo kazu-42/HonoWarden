@@ -1,0 +1,54 @@
+{
+  "title": "HON-160 Account Credential Mutation",
+  "slug": "hon-160-account-credential-mutation",
+  "created_at": "2026-07-18T16:14:20+00:00",
+  "updated_at": "2026-07-19T02:22:28+09:00",
+  "status": "source_ready",
+  "approval": {
+    "required": true,
+    "granted": false,
+    "notes": "Local implementation and normal Linear writes are authorized. GitHub publication and production/secret/user/rotation actions remain separate gates."
+  },
+  "linear_issue": "HON-160",
+  "source_pins": {
+    "clients": "web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1",
+    "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+  },
+  "linear_checkpoint": {
+    "issue": "HON-202",
+    "state": "In Progress",
+    "status": "exact",
+    "comment_id": "0c373036-cfb6-4b39-aeae-d397852645ef",
+    "comment_bytes": 1667,
+    "comment_sha256": "d6e492c056bee7afbaa0accbf12ba98b666887e254254ef4c810cf8cae8380af",
+    "sync_readback": "results/hon-202-source-ready-readback.json",
+    "independent_readback": "results/hon-202-source-ready-independent-readback.json"
+  },
+  "packets": [
+    { "id": "01-official-contract", "status": "done" },
+    { "id": "02-current-boundary", "status": "done" },
+    { "id": "03-test-rollback", "status": "done" },
+    { "id": "04-linear-decomposition", "status": "done" },
+    { "id": "05-auth-2a-implementation", "status": "done" },
+    { "id": "06-verification-review", "status": "done" }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "focused domain/repository: 2 files, 11 tests",
+      "focused route: 5 tests",
+      "scheduled retention: 9 tests",
+      "full Vitest: 80 files, 787 tests",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm format",
+      "pnpm brand:scan",
+      "workflow Node tests: 17 tests",
+      "fresh local D1 transaction smoke",
+      "git diff --check",
+      "independent complete-diff review: no actionable findings",
+      "focused managed-checkpoint review: no actionable findings"
+    ],
+    "boundary": "Local source-ready only. GitHub publication, reviewed merge, main readback, deployment, production operation, compatibility promotion, and Linear Done remain pending."
+  }
+}

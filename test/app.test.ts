@@ -6733,6 +6733,291 @@ describe('HonoWarden app', () => {
     expect(JSON.stringify(event)).not.toContain('test-token-secret')
   })
 
+  it('rotates the security stamp and invalidates every existing session atomically', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+      {
+        id: buildDevicePathId('other-device'),
+        userId: user.id,
+        identifier: 'other-device',
+      },
+      {
+        id: 'external-user:device',
+        userId: 'external-user',
+        identifier: 'external-device',
+      },
+    ]
+    const refreshTokens = [
+      { id: 'current-token', userId: user.id },
+      { id: 'other-token', userId: user.id },
+      { id: 'external-token', userId: 'external-user' },
+    ]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+    })
+    const bindings = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-rotation-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      bindings,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.text()).resolves.toBe('')
+    expect(user.securityStamp).not.toBe('security-stamp')
+    expect(user.revisionDate).not.toBe('2026-07-06T00:00:00.000Z')
+    expect(devices.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(devices[2]).not.toHaveProperty('revokedAt')
+    expect(refreshTokens.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(refreshTokens[2]).not.toHaveProperty('revokedAt')
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'account.security_stamp.rotate',
+        outcome: 'success',
+        requestId: 'security-stamp-rotation-request',
+        actorUserId: user.id,
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'account',
+        targetId: user.id,
+      }),
+    ])
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      user.masterPasswordHash,
+    )
+    expect(JSON.stringify(auditLog.mock.calls)).not.toContain(accessToken)
+
+    const oldTokenResponse = await app.request(
+      '/api/sync',
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      bindings,
+    )
+    expect(oldTokenResponse.status).toBe(401)
+    await expect(oldTokenResponse.json()).resolves.toMatchObject({
+      error: { code: 'invalid_token' },
+    })
+  })
+
+  it('rejects invalid security-stamp proofs without mutating account state', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const before = structuredClone(user)
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-security-stamp-proof-request',
+        },
+        body: JSON.stringify({ masterPasswordHash: 'wrong-hash' }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+        message: 'The supplied credentials are invalid.',
+      },
+      requestId: 'invalid-security-stamp-proof-request',
+    })
+    expect(user).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('returns a revision conflict without partial session or audit changes', async () => {
+    const user = authUserRecord()
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+    ]
+    const refreshTokens = [{ id: 'current-token', userId: user.id }]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      credentialRotationConflict: true,
+    })
+    const before = structuredClone({ user, devices, refreshTokens })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-conflict-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'revision_conflict' },
+      requestId: 'security-stamp-conflict-request',
+    })
+    expect({ user, devices, refreshTokens }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('requires a supported body and recent password authentication for stamp rotation', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+
+    const malformed = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'malformed-security-stamp-request',
+        },
+        body: JSON.stringify({ otp: 'unsupported' }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    expect(malformed.status).toBe(400)
+    await expect(malformed.json()).resolves.toMatchObject({
+      error: { code: 'invalid_request' },
+    })
+
+    for (const accessToken of [
+      await refreshAccessTokenFor(user),
+      await stalePasswordAccessTokenFor(user),
+    ]) {
+      const response = await app.request(
+        '/api/accounts/security-stamp',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            MasterPasswordHash: user.masterPasswordHash,
+          }),
+        },
+        {
+          DB: database,
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+      expect(response.status).toBe(401)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'reauth_required' },
+      })
+    }
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('rolls back stamp and sessions when mandatory audit persistence fails', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+    ]
+    const refreshTokens = [{ id: 'current-token', userId: user.id }]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      credentialRotationFailureAt: 'audit',
+    })
+    const before = structuredClone({ user, devices, refreshTokens })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-audit-failure-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'database_unavailable',
+        message: 'Security-stamp rotation failed.',
+      },
+      requestId: 'security-stamp-audit-failure-request',
+    })
+    expect({ user, devices, refreshTokens }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining('account_security_stamp_rotation_failed'),
+    )
+  })
+
   it('lists folders for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
