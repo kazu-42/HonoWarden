@@ -4,9 +4,9 @@ Status: P1/P2 remediations passed locally; fresh publication checks pending.
 
 ## Host verification
 
-- Complete app and notification-hub tests: 254 tests passed.
+- Complete app and notification-hub tests: 256 tests passed.
 - Scheduled-retention tests after the review correction: 9 tests passed.
-- Full Vitest suite: 84 files, 954 tests passed.
+- Full Vitest suite: 84 files, 956 tests passed.
 - `pnpm check`, `pnpm lint`, `pnpm format`, and `pnpm brand:scan` passed.
 - Workflow Node tests: 17 tests passed, including deterministic
   managed-checkpoint coverage.
@@ -64,6 +64,14 @@ failure containment, binding preflight, and explicit post-commit transport
 failure. The current local head must receive fresh CI and a clean Codex review
 before merge.
 
+The subsequent exact-head review found another P2: ordinary profile updates
+advance the account revision without rotating the security stamp, but the first
+socket remediation disconnected registrations on either change. The Durable
+Object now uses the stamp as the session identity and the revision only to order
+different stamps. New regressions prove that a same-stamp profile revision keeps
+the socket and that delayed same-stamp delivery cannot downgrade active ordering.
+The current local head must still receive fresh CI and a clean Codex review.
+
 ## Linear source-ready checkpoint
 
 The deterministic writer and an independently implemented GraphQL readback
@@ -83,5 +91,5 @@ both verified HON-202 as In Progress with one exact managed comment:
 This evidence proves source readiness only. PR checks, reviewed merge,
 main-branch readback, deployment, production operation, and compatibility
 promotion remain unclaimed. The current published PR head and CI are superseded
-by the locally verified durable notification remediation until that exact new
+by the locally verified same-stamp notification remediation until that exact new
 head passes CI and review.

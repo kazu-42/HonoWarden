@@ -50,7 +50,9 @@ Fields:
 - `account.security_stamp.rotate`: successful security-stamp generation
   commit that makes prior token/device and notification credentials
   unauthorized and revokes outstanding login-with-device authorizations. The
-  Worker then synchronously unregisters prior notification sockets. A
+  Worker then synchronously unregisters notification sockets carrying the prior
+  stamp; ordinary profile revisions that retain the stamp preserve those
+  sockets. A
   subsequent Durable Object transport failure is emitted separately as
   `account_notification_session_invalidation_failed` and returned to the client
   as `session_revocation_incomplete`

@@ -1,7 +1,7 @@
 # Final Report: HON-160 Account Credential Mutation
 
-Status: AUTH-2A durable-notification remediation verified locally for draft PR
-#101; HON-160 remains In Progress.
+Status: AUTH-2A notification-generation remediations verified locally for draft
+PR #101; HON-160 remains In Progress.
 
 ## Outcome
 
@@ -72,12 +72,19 @@ connections and removes stale registrations before sending metadata. Missing
 configuration fails before D1 mutation; a transport failure after commit is an
 explicit forward-only partial completion and never restores an old stamp.
 
+The subsequent exact-head review found another P2: ordinary profile updates
+advance the account revision without rotating the security stamp, but the first
+remediation disconnected a still-authorized socket on either change. The Durable
+Object now treats the stamp as the session identity and uses revision only to
+order different stamps. Same-stamp profile changes and delayed delivery preserve
+the socket without downgrading the active revision.
+
 ## Verification Evidence
 
-- Complete app and notification-hub tests after all remediations: 254 tests
+- Complete app and notification-hub tests after all remediations: 256 tests
   passed.
 - Scheduled retention: 9 tests passed.
-- Current full Vitest: 84 files, 954 tests passed.
+- Current full Vitest: 84 files, 956 tests passed.
 - TypeScript, ESLint, Prettier, brand policy, and diff checks passed.
 - Workflow Node tests: 17 tests passed, including managed Linear checkpoint
   tests.
@@ -117,15 +124,16 @@ explicit forward-only partial completion and never restores an old stamp.
   host full suite above passed all 84 files and 944 tests.
 - Codex review of the first published head then found the auth-request P1. The
   next review found the two proof-defense and audit-console P2 issues described
-  above. The following review found the durable notification-socket P2. The
-  current local remediation passes 84 files and 954 tests, fresh local D1
-  evidence, 17 workflow tests, TypeScript, ESLint, Prettier, brand policy, diff
-  checks, and the strict release gate at 11 pass, 0 manual, and 0 block.
+  above. The following reviews found the durable notification-socket P2 and the
+  ordinary-profile-revision P2. The current local remediation passes 84 files
+  and 956 tests, fresh local D1 evidence, 17 workflow tests, TypeScript, ESLint,
+  Prettier, brand policy, diff checks, and the strict release gate at 11 pass, 0
+  manual, and 0 block.
 
 ## Remaining Risks
 
 - PR #101's current published head and CI are superseded by the locally verified
-  durable-notification remediation; the exact remediated head still needs
+  same-stamp notification remediation; the exact remediated head still needs
   commit, push, CI, and a clean review.
 - No merge or `main` readback exists, so HON-202 must not move to Done.
 - HON-203 through HON-207 remain blocked or pending and own password, KDF,

@@ -12,10 +12,12 @@ Positive evidence:
 - A subsequent login can recreate/unrevoke its device session while old access
   and refresh tokens remain invalid. An approval issued before rotation cannot
   mint a new session afterward.
-- Authenticated notification sockets carry the current credential generation;
-  rotation invalidates stale user-scoped Durable Object registrations before a
-  success response, and pending notification delivery checks the generation
-  again before sending request metadata.
+- Authenticated notification sockets carry the current security stamp. The
+  account revision orders competing stamp generations but is not itself a
+  session identity: ordinary same-stamp profile revisions preserve the socket.
+  Rotation invalidates stale user-scoped Durable Object registrations before a
+  success response, and pending notification delivery checks the stamp again
+  before sending request metadata.
 
 Fail-closed evidence:
 
@@ -31,9 +33,10 @@ Fail-closed evidence:
 - Disabled user and database failure are distinct operational failures without
   leaking credential data.
 - Durable notifications enabled without their binding fail before the D1
-  mutation. A delayed connection from an older revision is rejected, and one
-  peer close failure cannot prevent the remaining stale registrations from
-  being removed.
+  mutation. A delayed connection carrying an older, different stamp is rejected;
+  a delayed request carrying the current stamp is accepted without downgrading
+  the active revision. One peer close failure cannot prevent the remaining stale
+  registrations from being removed.
 
 ## Later child matrix
 

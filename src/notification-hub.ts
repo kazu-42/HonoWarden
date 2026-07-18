@@ -213,14 +213,13 @@ export class NotificationHub {
     | { accepted: true; invalidated: number }
     | { accepted: false; invalidated: 0 } {
     const active = this.activeCredentialGeneration
-    if (active && generation.revisionTime < active.revisionTime) {
-      return { accepted: false, invalidated: 0 }
+    if (active?.securityStamp === generation.securityStamp) {
+      if (generation.revisionTime > active.revisionTime) {
+        this.activeCredentialGeneration = generation
+      }
+      return { accepted: true, invalidated: 0 }
     }
-    if (
-      active &&
-      generation.revisionTime === active.revisionTime &&
-      generation.securityStamp !== active.securityStamp
-    ) {
+    if (active && generation.revisionTime <= active.revisionTime) {
       return { accepted: false, invalidated: 0 }
     }
 
@@ -230,7 +229,6 @@ export class NotificationHub {
       const socketGeneration = registration.credentialGeneration
       if (
         !socketGeneration ||
-        socketGeneration.revisionTime !== generation.revisionTime ||
         socketGeneration.securityStamp !== generation.securityStamp
       ) {
         this.closeSocket(socket)

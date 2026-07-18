@@ -172,8 +172,9 @@ Current event coverage:
 
 - bootstrap success
 - security-stamp generation rotation, account-wide token/device revocation,
-  credential-generation invalidation of authenticated notification sockets,
-  and invalidation of outstanding login-with-device authorizations
+  prior-stamp invalidation of authenticated notification sockets, and
+  invalidation of outstanding login-with-device authorizations; ordinary
+  account revisions that retain the stamp preserve notification sessions
 - password-grant failures that reach credential validation
 - refresh-token reuse
 - user backup export success and database-failure outcomes

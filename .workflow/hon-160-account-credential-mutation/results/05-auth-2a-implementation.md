@@ -23,10 +23,12 @@ Status: source-ready locally.
 - Kept the mandatory transactional D1 audit row independent from optional
   Worker JSON-line emission; `HONOWARDEN_AUDIT_LOGS=false` suppresses only the
   console event.
-- Bound authenticated notification WebSockets to the account security stamp and
-  monotonic credential revision. Rotation synchronously invalidates the
-  user-scoped Durable Object before returning success, and pending auth-request
-  delivery revalidates the same generation before exposing request metadata.
+- Bound authenticated notification WebSockets to the account security stamp,
+  using the monotonic account revision only to order competing stamp
+  generations. Rotation synchronously invalidates the user-scoped Durable Object
+  before returning success, while ordinary same-stamp profile revisions preserve
+  the socket. Pending auth-request delivery revalidates the stamp before exposing
+  request metadata.
 - Kept password, KDF, account-key, and user-key mutation routes out of this
   slice.
 - Extended fake D1 with transactional credential-rotation behavior and rollback
@@ -42,8 +44,9 @@ Status: source-ready locally.
 - Successful rotation invalidates old access and refresh tokens; a new password
   login creates only a new forward session generation.
 - A notification connection authenticated immediately before rotation cannot
-  arrive afterward and re-register: the Durable Object rejects older revisions
-  and closes or unregisters every socket from another generation.
+  arrive afterward and re-register: the Durable Object rejects an older,
+  different stamp and closes or unregisters every socket carrying another stamp.
+  Same-stamp requests remain valid across ordinary account revision changes.
 - Login-with-device approvals issued before rotation cannot mint a new session
   afterward.
 - Repeated invalid proofs cannot remain an unthrottled online verifier, and a
@@ -85,6 +88,14 @@ notifications are configured but their binding is missing, the route fails
 before D1 mutation; a transport failure after commit is reported as explicit
 forward-only partial completion rather than rolling the credential generation
 back.
+
+The subsequent exact-head review found that the first remediation treated every
+account revision as a new notification credential, so an unrelated profile
+update disconnected a still-authorized socket and could drop the one-shot auth
+request hint. The security stamp is now the socket authorization identity. The
+revision only prevents an older, different stamp from becoming active; delayed
+same-stamp delivery is accepted without downgrading the active revision. Focused
+tests cover both profile-update preservation and delayed same-stamp delivery.
 
 ## Excluded
 

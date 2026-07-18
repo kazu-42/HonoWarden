@@ -180,6 +180,84 @@ describe('notification hub protocol', () => {
     expect(currentSocket.sent).toHaveLength(1)
   })
 
+  it('preserves same-stamp sockets across ordinary account revisions', async () => {
+    const hub = new NotificationHub({} as DurableObjectState, {} as never)
+    const socket = new FakeNotificationSocket()
+    registerSocket(
+      hub,
+      socket,
+      'current-security-stamp',
+      '2026-07-19T00:00:00.000Z',
+    )
+
+    const response = await hub.fetch(
+      new Request('https://notification-hub/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: 'request-after-profile-update',
+          userId: 'user-456',
+          type: 15,
+          securityStamp: 'current-security-stamp',
+          revisionDate: '2026-07-19T00:00:01.000Z',
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      delivered: 1,
+      failed: 0,
+      invalidated: 0,
+    })
+    expect(socket.closed).toEqual([])
+    expect(socket.sent).toHaveLength(1)
+  })
+
+  it('accepts an older revision when the security stamp is still current', async () => {
+    const hub = new NotificationHub({} as DurableObjectState, {} as never)
+    const socket = new FakeNotificationSocket()
+    registerSocket(
+      hub,
+      socket,
+      'current-security-stamp',
+      '2026-07-19T00:00:02.000Z',
+    )
+    const current = await hub.fetch(
+      new Request('https://notification-hub/invalidate', {
+        method: 'POST',
+        headers: {
+          [notificationSecurityStampHeader]: 'current-security-stamp',
+          [notificationCredentialRevisionHeader]: '2026-07-19T00:00:02.000Z',
+        },
+      }),
+    )
+    expect(current.status).toBe(200)
+
+    const response = await hub.fetch(
+      new Request('https://notification-hub/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: 'delayed-same-session-request',
+          userId: 'user-456',
+          type: 15,
+          securityStamp: 'current-security-stamp',
+          revisionDate: '2026-07-19T00:00:01.000Z',
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      delivered: 1,
+      failed: 0,
+      invalidated: 0,
+    })
+    expect(socket.closed).toEqual([])
+    expect(socket.sent).toHaveLength(1)
+  })
+
   it('invalidates every socket outside the new credential generation', async () => {
     const hub = new NotificationHub({} as DurableObjectState, {} as never)
     const staleSocket = new FakeNotificationSocket()
