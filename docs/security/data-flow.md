@@ -171,8 +171,9 @@ persisted atomically with their mutation regardless of that optional setting.
 Current event coverage:
 
 - bootstrap success
-- security-stamp generation rotation, account-wide session revocation, and
-  invalidation of outstanding login-with-device authorizations
+- security-stamp generation rotation, account-wide token/device revocation,
+  credential-generation invalidation of authenticated notification sockets,
+  and invalidation of outstanding login-with-device authorizations
 - password-grant failures that reach credential validation
 - refresh-token reuse
 - user backup export success and database-failure outcomes

@@ -1,7 +1,7 @@
 # Final Report: HON-160 Account Credential Mutation
 
-Status: AUTH-2A remediation-ready on draft PR #101; HON-160 remains In
-Progress.
+Status: AUTH-2A durable-notification remediation verified locally for draft PR
+#101; HON-160 remains In Progress.
 
 ## Outcome
 
@@ -62,14 +62,26 @@ The mandatory D1 audit row remains unconditional while console emission obeys
 the operator toggle. Focused app tests and fresh real-D1 lockout, rate-limit,
 credential non-mutation, and disabled-console readbacks pass.
 
+The latest exact-head review found one further P2: a durable authenticated
+notification WebSocket was checked only at upgrade and survived the D1
+generation rotation. The Worker now forwards the authoritative stamp and
+monotonic revision to the user-scoped Durable Object, waits for generation
+invalidation before returning success, and includes the same generation on
+pending auth-request notification delivery. The object rejects delayed older
+connections and removes stale registrations before sending metadata. Missing
+configuration fails before D1 mutation; a transport failure after commit is an
+explicit forward-only partial completion and never restores an old stamp.
+
 ## Verification Evidence
 
-- Complete app tests after the P1/P2 remediations: 243 tests passed.
+- Complete app and notification-hub tests after all remediations: 254 tests
+  passed.
 - Scheduled retention: 9 tests passed.
-- Current full Vitest: 84 files, 947 tests passed.
+- Current full Vitest: 84 files, 954 tests passed.
 - TypeScript, ESLint, Prettier, brand policy, and diff checks passed.
 - Workflow Node tests: 17 tests passed, including managed Linear checkpoint
   tests.
+- Strict release gate: 11 pass, 0 manual, 0 block.
 - `results/auth-2a-real-d1-evidence.json` proves fresh migrations, success,
   old-token and stale-auth-request rejection, owner-wide revocation and
   authorization invalidation, response-key clearing, relogin/sync, audit
@@ -105,16 +117,16 @@ credential non-mutation, and disabled-console readbacks pass.
   host full suite above passed all 84 files and 944 tests.
 - Codex review of the first published head then found the auth-request P1. The
   next review found the two proof-defense and audit-console P2 issues described
-  above. The current local remediation passes 84 files and 947 tests, fresh
-  local D1 evidence, 17 workflow tests, TypeScript, ESLint, Prettier, brand
-  policy, diff checks, and the strict release gate at 11 pass, 0 manual, and 0
-  block.
+  above. The following review found the durable notification-socket P2. The
+  current local remediation passes 84 files and 954 tests, fresh local D1
+  evidence, 17 workflow tests, TypeScript, ESLint, Prettier, brand policy, diff
+  checks, and the strict release gate at 11 pass, 0 manual, and 0 block.
 
 ## Remaining Risks
 
 - PR #101's current published head and CI are superseded by the locally verified
-  P2 remediation; the exact remediated head still needs commit, push, CI, and a
-  clean review.
+  durable-notification remediation; the exact remediated head still needs
+  commit, push, CI, and a clean review.
 - No merge or `main` readback exists, so HON-202 must not move to Done.
 - HON-203 through HON-207 remain blocked or pending and own password, KDF,
   keypair, user-key rotation, and official-client lifecycle work.

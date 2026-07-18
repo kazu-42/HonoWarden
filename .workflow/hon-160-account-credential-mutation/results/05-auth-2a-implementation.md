@@ -23,6 +23,10 @@ Status: source-ready locally.
 - Kept the mandatory transactional D1 audit row independent from optional
   Worker JSON-line emission; `HONOWARDEN_AUDIT_LOGS=false` suppresses only the
   console event.
+- Bound authenticated notification WebSockets to the account security stamp and
+  monotonic credential revision. Rotation synchronously invalidates the
+  user-scoped Durable Object before returning success, and pending auth-request
+  delivery revalidates the same generation before exposing request metadata.
 - Kept password, KDF, account-key, and user-key mutation routes out of this
   slice.
 - Extended fake D1 with transactional credential-rotation behavior and rollback
@@ -37,6 +41,9 @@ Status: source-ready locally.
   mutation.
 - Successful rotation invalidates old access and refresh tokens; a new password
   login creates only a new forward session generation.
+- A notification connection authenticated immediately before rotation cannot
+  arrive afterward and re-register: the Durable Object rejects older revisions
+  and closes or unregisters every socket from another generation.
 - Login-with-device approvals issued before rotation cannot mint a new session
   afterward.
 - Repeated invalid proofs cannot remain an unthrottled online verifier, and a
@@ -67,8 +74,20 @@ mandatory D1 audit insert. Focused tests and real-D1 readback cover account/IP
 thresholds, blocked valid proofs, credential non-mutation, and disabled console
 emission.
 
+The following exact-head review found that already-authenticated durable
+notification sockets survived account-wide rotation and could continue
+receiving future auth-request identifiers. Account notification connections,
+pending notification deliveries, and the rotation invalidation call now carry
+the authoritative stamp plus monotonic revision. The user-scoped Durable Object
+rejects delayed older connections, unregisters stale sockets even when a peer
+close frame fails, and revalidates again before delivery. When durable
+notifications are configured but their binding is missing, the route fails
+before D1 mutation; a transport failure after commit is reported as explicit
+forward-only partial completion rather than rolling the credential generation
+back.
+
 ## Excluded
 
 No password/KDF/key mutation, official-client compatibility promotion, remote
-D1 write, production change, credential rotation for a real user, or GitHub
-publication was performed.
+D1 write, production change, credential rotation for a real user, or reviewed
+merge was performed.

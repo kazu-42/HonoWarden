@@ -8,6 +8,10 @@ import {
   loginDefensePolicy,
 } from '../src/domain/login-defense'
 import { requestQuotaPolicy } from '../src/domain/request-quota'
+import {
+  notificationCredentialRevisionHeader,
+  notificationSecurityStampHeader,
+} from '../src/notification-hub'
 import { encryptTotpSecret } from '../src/domain/totp-secret'
 import { signAccessToken, verifyAccessToken } from '../src/domain/tokens'
 import { hotp } from '../src/domain/totp'
@@ -1989,6 +1993,8 @@ describe('HonoWarden app', () => {
           requestId: created.id,
           userId: user.id,
           type: 15,
+          securityStamp: user.securityStamp,
+          revisionDate: user.revisionDate,
         }),
       }),
     )
@@ -6781,10 +6787,19 @@ describe('HonoWarden app', () => {
       authRequests: [approvedAuthRequest],
       requestQuotaBucket: unblockedRequestQuotaBucket(),
     })
+    const notificationFetch = vi
+      .fn()
+      .mockResolvedValue(Response.json({ invalidated: 2 }))
+    const notificationHub = {
+      idFromName: vi.fn((name: string) => `do:${name}`),
+      get: vi.fn(() => ({ fetch: notificationFetch })),
+    }
     const bindings = {
       DB: database,
+      NOTIFICATION_HUB: notificationHub as unknown as DurableObjectNamespace,
       HONOWARDEN_AUDIT_LOGS: 'true',
       HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
       HONOWARDEN_AUTH_REQUEST_SECRET: authRequestSecret,
       HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
     }
@@ -6839,6 +6854,17 @@ describe('HonoWarden app', () => {
         targetId: user.id,
       }),
     ])
+    expect(notificationHub.idFromName).toHaveBeenCalledWith(user.id)
+    expect(notificationFetch).toHaveBeenCalledOnce()
+    const invalidationRequest = notificationFetch.mock.calls[0]?.[0] as Request
+    expect(invalidationRequest.url).toBe('https://notification-hub/invalidate')
+    expect(invalidationRequest.method).toBe('POST')
+    expect(
+      invalidationRequest.headers.get(notificationSecurityStampHeader),
+    ).toBe(user.securityStamp)
+    expect(
+      invalidationRequest.headers.get(notificationCredentialRevisionHeader),
+    ).toBe(user.revisionDate)
     expect(auditLog).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(database.auditEventInserts)).not.toContain(
       user.masterPasswordHash,
@@ -6878,6 +6904,91 @@ describe('HonoWarden app', () => {
     await expect(staleApprovalResponse.json()).resolves.toMatchObject({
       error: 'invalid_grant',
     })
+  })
+
+  it('reports incomplete durable notification cleanup after committing rotation', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const previousSecurityStamp = user.securityStamp
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-notification-failure-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        NOTIFICATION_HUB: {
+          idFromName: () => 'user-object',
+          get: () => ({
+            fetch: vi.fn().mockRejectedValue(new Error('do unavailable')),
+          }),
+        } as unknown as DurableObjectNamespace,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'session_revocation_incomplete',
+        message:
+          'Account credentials rotated, but notification session cleanup is incomplete.',
+      },
+      requestId: 'security-stamp-notification-failure-request',
+    })
+    expect(user.securityStamp).not.toBe(previousSecurityStamp)
+    expect(database.auditEventInserts).toHaveLength(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'account_notification_session_invalidation_failed',
+      ),
+    )
+  })
+
+  it('rejects rotation before mutation when durable notification binding is missing', async () => {
+    const user = authUserRecord()
+    const previousSecurityStamp = user.securityStamp
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-notification-misconfigured-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+        message: 'Notification hub is unavailable.',
+      },
+      requestId: 'security-stamp-notification-misconfigured-request',
+    })
+    expect(user.securityStamp).toBe(previousSecurityStamp)
+    expect(database.auditEventInserts).toEqual([])
   })
 
   it('persists mandatory stamp-rotation audit without emitting disabled console logs', async () => {
@@ -11714,6 +11825,44 @@ describe('HonoWarden app', () => {
       },
       requestId: 'notification-hub-missing-token',
     })
+  })
+
+  it('proxies authenticated notification sockets with the authoritative credential generation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const fetch = vi.fn().mockResolvedValue(new Response('connected'))
+    const notificationHub = {
+      idFromName: vi.fn((name: string) => `do:${name}`),
+      get: vi.fn(() => ({ fetch })),
+    }
+    const response = await app.request(
+      'https://vault.example.test/notifications/hub',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Upgrade: 'websocket',
+          [notificationSecurityStampHeader]: 'client-controlled-value',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        NOTIFICATION_HUB: notificationHub as unknown as DurableObjectNamespace,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(notificationHub.idFromName).toHaveBeenCalledWith(user.id)
+    expect(fetch).toHaveBeenCalledOnce()
+    const forwarded = fetch.mock.calls[0]?.[0] as Request
+    expect(forwarded.url).toBe('https://notification-hub/connect')
+    expect(forwarded.headers.get(notificationSecurityStampHeader)).toBe(
+      user.securityStamp,
+    )
+    expect(forwarded.headers.get(notificationCredentialRevisionHeader)).toBe(
+      user.revisionDate,
+    )
   })
 
   it('rejects anonymous notification requests that are not websocket upgrades', async () => {

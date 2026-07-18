@@ -4,12 +4,13 @@ Status: P1/P2 remediations passed locally; fresh publication checks pending.
 
 ## Host verification
 
-- Complete app tests: 243 tests passed.
+- Complete app and notification-hub tests: 254 tests passed.
 - Scheduled-retention tests after the review correction: 9 tests passed.
-- Full Vitest suite: 84 files, 947 tests passed.
+- Full Vitest suite: 84 files, 954 tests passed.
 - `pnpm check`, `pnpm lint`, `pnpm format`, and `pnpm brand:scan` passed.
 - Workflow Node tests: 17 tests passed, including deterministic
   managed-checkpoint coverage.
+- Strict release gate: 11 pass, 0 manual, 0 block.
 - `git diff --check` passed.
 
 ## Real local D1 evidence
@@ -51,8 +52,17 @@ an approval created before rotation could still mint a new session afterward.
 The remediation adds auth-request invalidation to the same guarded D1 batch.
 The next review found two P2 issues: invalid proofs bypassed the existing
 login-defense buckets, and successful rotation bypassed the console audit-log
-toggle. Both are now covered by route and real-D1 regressions. The current local
-head must receive fresh CI and a clean Codex review before merge.
+toggle. Both are now covered by route and real-D1 regressions.
+
+The following exact-head review found one additional P2: durable authenticated
+notification sockets survived the account-wide rotation and could receive
+future auth-request identifiers. Connections, pending notification delivery,
+and rotation invalidation now carry the authoritative security stamp and
+monotonic credential revision. Unit and route tests prove stale-socket closure,
+delivery-time revalidation, delayed older-connection rejection, close-frame
+failure containment, binding preflight, and explicit post-commit transport
+failure. The current local head must receive fresh CI and a clean Codex review
+before merge.
 
 ## Linear source-ready checkpoint
 
@@ -73,5 +83,5 @@ both verified HON-202 as In Progress with one exact managed comment:
 This evidence proves source readiness only. PR checks, reviewed merge,
 main-branch readback, deployment, production operation, and compatibility
 promotion remain unclaimed. The current published PR head and CI are superseded
-by the locally verified P2 remediation until that exact new head passes CI and
-review.
+by the locally verified durable notification remediation until that exact new
+head passes CI and review.

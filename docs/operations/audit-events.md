@@ -48,8 +48,12 @@ Fields:
 
 - `admin.bootstrap`: successful restricted account bootstrap
 - `account.security_stamp.rotate`: successful security-stamp generation
-  rotation with all active account sessions and outstanding login-with-device
-  authorizations revoked
+  commit that makes prior token/device and notification credentials
+  unauthorized and revokes outstanding login-with-device authorizations. The
+  Worker then synchronously unregisters prior notification sockets. A
+  subsequent Durable Object transport failure is emitted separately as
+  `account_notification_session_invalidation_failed` and returned to the client
+  as `session_revocation_incomplete`
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection

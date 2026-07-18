@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T22:57:13.422Z",
+  "generatedAt": "2026-07-18T23:21:45.505Z",
   "status": "passed",
   "scope": "fresh local D1 and local Worker with synthetic data only",
   "migrations": {

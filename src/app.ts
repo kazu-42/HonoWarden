@@ -81,6 +81,8 @@ import { resolveRuntimeEnvironment } from './infra/environment'
 import {
   authRequestNotificationTypes,
   isDurableNotificationEnabled,
+  notificationCredentialRevisionHeader,
+  notificationSecurityStampHeader,
 } from './notification-hub'
 import type { AuthRequestNotificationType } from './notification-hub'
 import { buildServerConfig } from './protocol/config'
@@ -659,9 +661,16 @@ app.get('/notifications/hub', async (c) => {
     const stub = c.env.NOTIFICATION_HUB.get(
       c.env.NOTIFICATION_HUB.idFromName(auth.user.id),
     )
-    return stub.fetch(
-      new Request('https://notification-hub/connect', c.req.raw),
+    const request = new Request('https://notification-hub/connect', c.req.raw)
+    request.headers.set(
+      notificationSecurityStampHeader,
+      auth.user.securityStamp,
     )
+    request.headers.set(
+      notificationCredentialRevisionHeader,
+      auth.user.revisionDate,
+    )
+    return stub.fetch(request)
   }
 
   if (typeof WebSocketPair === 'undefined') {
@@ -2343,6 +2352,22 @@ app.post('/api/accounts/security-stamp', async (c) => {
     )
   }
 
+  if (
+    isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) &&
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+
   try {
     const proofGate = await checkCredentialProofDefense(c, auth.user)
     if (!proofGate.allowed) {
@@ -2406,6 +2431,30 @@ app.post('/api/accounts/security-stamp', async (c) => {
           'The account credential generation changed concurrently.',
         ),
         409,
+      )
+    }
+
+    if (
+      !(await invalidateDurableNotificationSessions(c, auth.user.id, {
+        securityStamp: nextSecurityStamp,
+        revisionDate: nextRevisionDate,
+      }))
+    ) {
+      console.error(
+        JSON.stringify({
+          event: 'account_notification_session_invalidation_failed',
+          requestId: c.get('requestId'),
+          reason: 'notification_hub_unavailable',
+        }),
+      )
+      c.header('Cache-Control', 'no-store')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'session_revocation_incomplete',
+          'Account credentials rotated, but notification session cleanup is incomplete.',
+        ),
+        503,
       )
     }
 
@@ -5638,6 +5687,7 @@ function apiError(
     | 'rate_limited'
     | 'reauth_required'
     | 'revision_conflict'
+    | 'session_revocation_incomplete'
     | 'server_misconfigured'
     | 'storage_unavailable'
     | 'websocket_required',
@@ -6782,7 +6832,10 @@ async function createAuthRequestRoute(c: AppContext) {
       target: { type: 'auth_request', id },
     })
     if (owner) {
-      notifyAuthRequest(c, owner.id, id, authRequestNotificationTypes.pending)
+      notifyAuthRequest(c, owner.id, id, authRequestNotificationTypes.pending, {
+        securityStamp: owner.securityStamp,
+        revisionDate: owner.revisionDate,
+      })
     }
 
     return c.json(
@@ -6984,6 +7037,10 @@ function notifyAuthRequest(
   userId: string,
   requestId: string,
   type: AuthRequestNotificationType,
+  credentialGeneration?: {
+    securityStamp: string
+    revisionDate: string
+  },
 ): void {
   if (
     !isDurableNotificationEnabled(
@@ -7004,7 +7061,12 @@ function notifyAuthRequest(
     .fetch('https://notification-hub/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, userId, type }),
+      body: JSON.stringify({
+        requestId,
+        userId,
+        type,
+        ...credentialGeneration,
+      }),
     })
     .then((response) => {
       if (!response.ok)
@@ -7025,6 +7087,40 @@ function notifyAuthRequest(
     c.executionCtx.waitUntil(delivery)
   } catch {
     void delivery
+  }
+}
+
+async function invalidateDurableNotificationSessions(
+  c: AppContext,
+  userId: string,
+  generation: { securityStamp: string; revisionDate: string },
+): Promise<boolean> {
+  if (
+    !isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    )
+  ) {
+    return true
+  }
+
+  if (!c.env.NOTIFICATION_HUB) return false
+
+  try {
+    const stub = c.env.NOTIFICATION_HUB.get(
+      c.env.NOTIFICATION_HUB.idFromName(userId),
+    )
+    const response = await stub.fetch(
+      new Request('https://notification-hub/invalidate', {
+        method: 'POST',
+        headers: {
+          [notificationSecurityStampHeader]: generation.securityStamp,
+          [notificationCredentialRevisionHeader]: generation.revisionDate,
+        },
+      }),
+    )
+    return response.ok
+  } catch {
+    return false
   }
 }
 

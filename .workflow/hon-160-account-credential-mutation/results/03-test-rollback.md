@@ -12,6 +12,10 @@ Positive evidence:
 - A subsequent login can recreate/unrevoke its device session while old access
   and refresh tokens remain invalid. An approval issued before rotation cannot
   mint a new session afterward.
+- Authenticated notification sockets carry the current credential generation;
+  rotation invalidates stale user-scoped Durable Object registrations before a
+  success response, and pending notification delivery checks the generation
+  again before sending request metadata.
 
 Fail-closed evidence:
 
@@ -26,6 +30,10 @@ Fail-closed evidence:
   log is emitted.
 - Disabled user and database failure are distinct operational failures without
   leaking credential data.
+- Durable notifications enabled without their binding fail before the D1
+  mutation. A delayed connection from an older revision is rejected, and one
+  peer close failure cannot prevent the remaining stale registrations from
+  being removed.
 
 ## Later child matrix
 
@@ -50,6 +58,14 @@ state remains readable by the previous release. A successfully committed
 credential generation is never "rolled back" by restoring an old hash or old
 security stamp, because that would resurrect compromised sessions. Recovery is
 a new forward credential generation after reauthentication.
+
+D1 and a Durable Object cannot share one transaction. If D1 commits a rotation
+but the synchronous notification invalidation transport then fails, the API
+returns `session_revocation_incomplete` and keeps the new generation. It never
+restores the old stamp. Generation-aware notification delivery still removes
+stale registrations before sending future request metadata; recovery is an
+operator-observed retry path followed by fresh password authentication and, if
+needed, another forward rotation.
 
 No real account, production Worker, plaintext password, raw token, unwrapped
 key, or private vault data is used in any local or committed evidence.
