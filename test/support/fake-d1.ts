@@ -207,6 +207,20 @@ export class FakeD1Database {
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
         if (
+          query.includes('FROM organization_users membership') &&
+          query.includes('membership.id as organizationUserId') &&
+          query.includes('membership.organization_id = ?') &&
+          query.includes('membership.user_id = ?') &&
+          query.includes('membership.status = 2') &&
+          query.includes('membership.type = 0')
+        ) {
+          return findConfirmedOrganizationOwnerRow(
+            options,
+            boundValues,
+          ) as T | null
+        }
+
+        if (
           query.includes('FROM organizations organization') &&
           query.includes('INNER JOIN organization_users membership') &&
           query.includes('organization.id = ?') &&
@@ -214,6 +228,22 @@ export class FakeD1Database {
           query.includes('membership.status = 2')
         ) {
           return findConfirmedOrganizationRow(options, boundValues) as T | null
+        }
+
+        if (
+          query.includes('FROM collections collection') &&
+          query.includes('collection.id = ?') &&
+          query.includes('collection.organization_id = ?') &&
+          query.includes('membership.user_id = ?') &&
+          query.includes('membership.status = 2') &&
+          query.includes('INNER JOIN collection_users collection_user')
+        ) {
+          return findAccessibleOrganizationCollectionRow(
+            options,
+            boundValues,
+            query.includes('membership.type = 0') &&
+              query.includes('collection_user.manage = 1'),
+          ) as T | null
         }
 
         if (
@@ -425,6 +455,24 @@ export class FakeD1Database {
             results: listAccessibleOrganizationCollectionRows(
               options,
               boundValues,
+              query,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
+        if (
+          query.includes('FROM collections collection') &&
+          query.includes('INNER JOIN organization_users owner_membership') &&
+          query.includes('INNER JOIN organization_users assigned_membership') &&
+          query.includes('assigned_membership.id as organizationUserId') &&
+          query.includes('owner_membership.type = 0')
+        ) {
+          return {
+            success: true,
+            results: listOrganizationCollectionUserRowsForOwner(
+              options,
+              boundValues,
             ) as T[],
             meta: fakeMeta,
           }
@@ -504,6 +552,28 @@ export class FakeD1Database {
         }
       },
       async run(): Promise<D1Result> {
+        if (/UPDATE\s+collections/.test(query)) {
+          const changes = updateOrganizationCollectionRow(options, boundValues)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
+        if (/DELETE\s+FROM\s+collections/.test(query)) {
+          const changes = query.includes('SELECT COUNT(*)')
+            ? deleteManyOrganizationCollectionRows(options, boundValues, query)
+            : deleteOrganizationCollectionRow(options, boundValues)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
         if (query.includes('INSERT INTO auth_requests')) {
           const changes = insertAuthRequest(options, boundValues)
 
@@ -1178,6 +1248,27 @@ export class FakeD1Database {
       ) as D1Result<T>[]
     }
 
+    if (isOrganizationCollectionBatch(fakeStatements)) {
+      return applyOrganizationCollectionBatch(
+        this.options,
+        fakeStatements,
+      ) as D1Result<T>[]
+    }
+
+    if (isOrganizationCollectionUpdateBatch(fakeStatements)) {
+      return applyOrganizationCollectionUpdateBatch(
+        this.options,
+        fakeStatements,
+      ) as D1Result<T>[]
+    }
+
+    if (isOrganizationCollectionDeleteBatch(fakeStatements)) {
+      return applyOrganizationCollectionDeleteBatch(
+        this.options,
+        fakeStatements,
+      ) as D1Result<T>[]
+    }
+
     if (
       fakeStatements.every(
         (statement) =>
@@ -1382,6 +1473,283 @@ function isOrganizationFoundationBatch(
   )
 }
 
+function isOrganizationCollectionBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  return (
+    statements.length === 3 &&
+    statements.some((statement) =>
+      /UPDATE\s+organizations/.test(statement.__fakeQuery),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO collections'),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO collection_users'),
+    )
+  )
+}
+
+function isOrganizationCollectionUpdateBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  const revision = statements[0]?.__fakeQuery ?? ''
+  const mutation = statements[1]?.__fakeQuery ?? ''
+
+  return (
+    statements.length === 2 &&
+    /UPDATE\s+organizations/.test(revision) &&
+    revision.includes('FROM collections candidate') &&
+    /UPDATE\s+collections/.test(mutation) &&
+    mutation.includes(
+      'external_id = CASE WHEN ? = 1 THEN ? ELSE external_id END',
+    ) &&
+    mutation.includes('changes() = 1')
+  )
+}
+
+function applyOrganizationCollectionUpdateBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+): D1Result[] {
+  const revisionValues = statements[0]?.__fakeBoundValues ?? []
+  const mutationValues = statements[1]?.__fakeBoundValues ?? []
+  const now = String(revisionValues[0] ?? '')
+  const organizationId = String(revisionValues[2] ?? '')
+  const collectionId = String(revisionValues[3] ?? '')
+  const userId = String(revisionValues[4] ?? '')
+  const organization = options.organizations?.find(
+    (row) => row.id === organizationId,
+  )
+  const collection = options.collections?.find(
+    (row) => row.id === collectionId && row.organizationId === organizationId,
+  )
+  const managedCollectionIds = findManagedOrganizationCollectionIds(
+    options,
+    userId,
+    organizationId,
+    [collectionId],
+  )
+
+  if (!organization || !collection || managedCollectionIds.length !== 1) {
+    return [0, 0].map((changes) => ({
+      success: true,
+      results: [],
+      meta: { ...fakeMeta, changes },
+    }))
+  }
+
+  const restoreOrganizations = snapshotFakeRows(options.organizations)
+  const restoreCollections = snapshotFakeRows(options.collections)
+
+  try {
+    organization.revisionDate = now
+    organization.updatedAt = now
+    if (mutationValues[0] !== null) {
+      collection.encryptedName = String(mutationValues[0])
+    }
+    if (Number(mutationValues[1]) === 1) {
+      collection.externalId = mutationValues[2]
+    }
+    collection.revisionDate = String(mutationValues[3])
+
+    return [1, 1].map((changes) => ({
+      success: true,
+      results: [],
+      meta: { ...fakeMeta, changes },
+    }))
+  } catch (error) {
+    restoreOrganizations()
+    restoreCollections()
+    throw error
+  }
+}
+
+function isOrganizationCollectionDeleteBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  const revision = statements[0]?.__fakeQuery ?? ''
+  const deletion = statements[1]?.__fakeQuery ?? ''
+
+  return (
+    statements.length === 2 &&
+    /UPDATE\s+organizations/.test(revision) &&
+    revision.includes('COUNT(DISTINCT candidate.id)') &&
+    revision.includes('FROM collection_ciphers selected_mapping') &&
+    /DELETE\s+FROM\s+collections/.test(deletion) &&
+    deletion.includes('changes() = 1')
+  )
+}
+
+function applyOrganizationCollectionDeleteBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+): D1Result[] {
+  const revisionValues = statements[0]?.__fakeBoundValues ?? []
+  const deletionValues = statements[1]?.__fakeBoundValues ?? []
+  const now = String(revisionValues[0] ?? '')
+  const organizationId = String(deletionValues[0] ?? '')
+  const userId = String(revisionValues[3] ?? '')
+  const collectionIds = deletionValues.slice(1).map(String)
+  const organization = options.organizations?.find(
+    (row) => row.id === organizationId,
+  )
+  const managedCollectionIds = findManagedOrganizationCollectionIds(
+    options,
+    userId,
+    organizationId,
+    collectionIds,
+  )
+  const selectedIds = new Set(collectionIds)
+  const wouldOrphanCipher = (options.ciphers ?? []).some((cipher) => {
+    if (cipher.organizationId !== organizationId) {
+      return false
+    }
+
+    const mappings = (options.collectionCiphers ?? []).filter(
+      (mapping) => mapping.cipherId === cipher.id,
+    )
+    const hasSelectedMapping = mappings.some((mapping) =>
+      selectedIds.has(String(mapping.collectionId)),
+    )
+    const hasSurvivingMapping = mappings.some((mapping) => {
+      const collectionId = String(mapping.collectionId)
+      return (
+        !selectedIds.has(collectionId) &&
+        options.collections?.some(
+          (collection) =>
+            collection.id === collectionId &&
+            collection.organizationId === organizationId,
+        )
+      )
+    })
+
+    return hasSelectedMapping && !hasSurvivingMapping
+  })
+  const canDelete =
+    Boolean(organization) &&
+    collectionIds.length > 0 &&
+    selectedIds.size === collectionIds.length &&
+    managedCollectionIds.length === collectionIds.length &&
+    !wouldOrphanCipher
+
+  if (!canDelete || !organization) {
+    return [0, 0].map((changes) => ({
+      success: true,
+      results: [],
+      meta: { ...fakeMeta, changes },
+    }))
+  }
+
+  const restoreOrganizations = snapshotFakeRows(options.organizations)
+  const restoreCollections = snapshotFakeRows(options.collections)
+  const restoreCollectionUsers = snapshotFakeRows(options.collectionUsers)
+  const restoreCollectionCiphers = snapshotFakeRows(options.collectionCiphers)
+
+  try {
+    organization.revisionDate = now
+    organization.updatedAt = now
+    const deleted = deleteOrganizationCollectionRowsByIds(
+      options,
+      organizationId,
+      collectionIds,
+    )
+    if (deleted !== collectionIds.length) {
+      throw new Error('Organization collection deletion was incomplete')
+    }
+
+    return [1, deleted].map((changes) => ({
+      success: true,
+      results: [],
+      meta: { ...fakeMeta, changes },
+    }))
+  } catch (error) {
+    restoreOrganizations()
+    restoreCollections()
+    restoreCollectionUsers()
+    restoreCollectionCiphers()
+    throw error
+  }
+}
+
+function snapshotFakeRows(
+  rows: Record<string, unknown>[] | undefined,
+): () => void {
+  if (!rows) {
+    return () => undefined
+  }
+
+  const snapshots = rows.map((row) => ({ row, values: { ...row } }))
+  return () => {
+    for (const { row, values } of snapshots) {
+      for (const key of Object.keys(row)) {
+        delete row[key]
+      }
+      Object.assign(row, values)
+    }
+    rows.splice(0, rows.length, ...snapshots.map(({ row }) => row))
+  }
+}
+
+function applyOrganizationCollectionBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+): D1Result[] {
+  const revisionStatement = statements.find((statement) =>
+    /UPDATE\s+organizations/.test(statement.__fakeQuery),
+  )
+  const revisionValues = revisionStatement?.__fakeBoundValues ?? []
+  const now = String(revisionValues[0] ?? '')
+  const organizationId = String(revisionValues[2] ?? '')
+  const organizationUserId = String(revisionValues[3] ?? '')
+  const userId = String(revisionValues[4] ?? '')
+  const organization = options.organizations?.find(
+    (row) => row.id === organizationId,
+  )
+  const owner = options.organizationUsers?.find(
+    (row) =>
+      row.id === organizationUserId &&
+      row.organizationId === organizationId &&
+      row.userId === userId &&
+      Number(row.status) === 2 &&
+      Number(row.type) === 0,
+  )
+
+  if (!organization || !owner) {
+    return statements.map(() => ({
+      success: true,
+      results: [],
+      meta: { ...fakeMeta, changes: 0 },
+    }))
+  }
+
+  const restoreOrganizations = snapshotFakeRows(options.organizations)
+  const restoreCollections = snapshotFakeRows(options.collections)
+  const restoreCollectionUsers = snapshotFakeRows(options.collectionUsers)
+
+  try {
+    organization.revisionDate = now
+    organization.updatedAt = now
+    for (const statement of statements) {
+      if (statement === revisionStatement) {
+        continue
+      }
+      applyOrganizationFoundationStatement(options, statement)
+    }
+  } catch (error) {
+    restoreOrganizations()
+    restoreCollections()
+    restoreCollectionUsers()
+    throw error
+  }
+
+  return statements.map(() => ({
+    success: true,
+    results: [],
+    meta: { ...fakeMeta, changes: 1 },
+  }))
+}
+
 function applyOrganizationFoundationBatch(
   options: FakeD1DatabaseOptions,
   statements: FakePreparedStatement[],
@@ -1520,6 +1888,28 @@ function findConfirmedOrganizationRow(
   return options.organizations?.find((row) => row.id === organizationId) ?? null
 }
 
+function findConfirmedOrganizationOwnerRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  const [organizationId, userId] = boundValues
+  const membership = options.organizationUsers?.find(
+    (row) =>
+      row.organizationId === organizationId &&
+      row.userId === userId &&
+      Number(row.status) === 2 &&
+      Number(row.type) === 0,
+  )
+
+  return membership
+    ? {
+        organizationUserId: membership.id,
+        organizationId: membership.organizationId,
+        userId: membership.userId,
+      }
+    : null
+}
+
 function listConfirmedOrganizationRows(
   options: FakeD1DatabaseOptions,
   boundValues: unknown[],
@@ -1554,12 +1944,19 @@ function listConfirmedOrganizationRows(
 function listAccessibleOrganizationCollectionRows(
   options: FakeD1DatabaseOptions,
   boundValues: unknown[],
+  query: string,
 ): Record<string, unknown>[] {
-  const [userId] = boundValues
+  const organizationScoped = query.includes('collection.organization_id = ?')
+  const organizationId = organizationScoped ? boundValues[0] : null
+  const userId = organizationScoped ? boundValues[1] : boundValues[0]
   const rows: Record<string, unknown>[] = []
 
   for (const membership of options.organizationUsers ?? []) {
-    if (membership.userId !== userId || Number(membership.status) !== 2) {
+    if (
+      membership.userId !== userId ||
+      Number(membership.status) !== 2 ||
+      (organizationScoped && membership.organizationId !== organizationId)
+    ) {
       continue
     }
     for (const collectionUser of options.collectionUsers ?? []) {
@@ -1586,6 +1983,274 @@ function listAccessibleOrganizationCollectionRows(
   return rows.sort((left, right) =>
     String(left.id).localeCompare(String(right.id)),
   )
+}
+
+function findAccessibleOrganizationCollectionRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  ownerOnly: boolean,
+): Record<string, unknown> | null {
+  const [organizationId, collectionId, userId] = boundValues
+  const membership = options.organizationUsers?.find(
+    (row) =>
+      row.organizationId === organizationId &&
+      row.userId === userId &&
+      Number(row.status) === 2 &&
+      (!ownerOnly || Number(row.type) === 0),
+  )
+  if (!membership) {
+    return null
+  }
+
+  const access = options.collectionUsers?.find(
+    (row) =>
+      row.collectionId === collectionId &&
+      row.organizationUserId === membership.id &&
+      (!ownerOnly || Number(row.manage) === 1),
+  )
+  if (!access) {
+    return null
+  }
+
+  const collection = options.collections?.find(
+    (row) => row.id === collectionId && row.organizationId === organizationId,
+  )
+  return collection
+    ? {
+        ...collection,
+        readOnly: Number(access.readOnly ?? 0),
+        hidePasswords: Number(access.hidePasswords ?? 0),
+        manage: Number(access.manage ?? 0),
+      }
+    : null
+}
+
+function listOrganizationCollectionUserRowsForOwner(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  const [organizationId, collectionId, userId] = boundValues
+  const owner = options.organizationUsers?.find(
+    (row) =>
+      row.organizationId === organizationId &&
+      row.userId === userId &&
+      Number(row.status) === 2 &&
+      Number(row.type) === 0,
+  )
+  const collection = options.collections?.find(
+    (row) => row.id === collectionId && row.organizationId === organizationId,
+  )
+  if (!owner || !collection) {
+    return []
+  }
+
+  const rows: Record<string, unknown>[] = []
+  for (const access of options.collectionUsers ?? []) {
+    if (access.collectionId !== collectionId) {
+      continue
+    }
+    const membership = options.organizationUsers?.find(
+      (row) =>
+        row.id === access.organizationUserId &&
+        row.organizationId === organizationId,
+    )
+    if (!membership) {
+      continue
+    }
+    rows.push({
+      organizationUserId: membership.id,
+      readOnly: Number(access.readOnly ?? 0),
+      hidePasswords: Number(access.hidePasswords ?? 0),
+      manage: Number(access.manage ?? 0),
+    })
+  }
+
+  return rows.sort((left, right) =>
+    String(left.organizationUserId).localeCompare(
+      String(right.organizationUserId),
+    ),
+  )
+}
+
+function updateOrganizationCollectionRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  const [
+    encryptedName,
+    externalId,
+    revisionDate,
+    collectionId,
+    organizationId,
+    userId,
+  ] = boundValues
+  const owner = findConfirmedOrganizationOwnerRow(options, [
+    organizationId,
+    userId,
+  ])
+  const collection = options.collections?.find(
+    (row) => row.id === collectionId && row.organizationId === organizationId,
+  )
+  if (!owner || !collection) {
+    return 0
+  }
+
+  if (encryptedName !== null) {
+    collection.encryptedName = String(encryptedName)
+  }
+  collection.externalId = externalId === null ? null : String(externalId)
+  collection.revisionDate = String(revisionDate)
+  return 1
+}
+
+function deleteOrganizationCollectionRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  const [collectionId, organizationId, userId] = boundValues
+  const owner = findConfirmedOrganizationOwnerRow(options, [
+    organizationId,
+    userId,
+  ])
+  if (!owner) {
+    return 0
+  }
+
+  return deleteOrganizationCollectionRowsByIds(
+    options,
+    String(organizationId),
+    [String(collectionId)],
+  )
+}
+
+function deleteManyOrganizationCollectionRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  const firstInClause = query.match(/id IN \(([^)]+)\)/)
+  const idCount = firstInClause?.[1]?.match(/\?/g)?.length ?? 0
+  if (idCount < 1) {
+    return 0
+  }
+
+  const organizationId = String(boundValues[0])
+  const collectionIds = boundValues
+    .slice(1, idCount + 1)
+    .map((value) => String(value))
+  const userId = boundValues[idCount * 2 + 2]
+  const owner = findConfirmedOrganizationOwnerRow(options, [
+    organizationId,
+    userId,
+  ])
+  if (!owner) {
+    return 0
+  }
+
+  const existingCount = collectionIds.filter((collectionId) =>
+    options.collections?.some(
+      (row) => row.id === collectionId && row.organizationId === organizationId,
+    ),
+  ).length
+  if (existingCount !== collectionIds.length) {
+    return 0
+  }
+
+  return deleteOrganizationCollectionRowsByIds(
+    options,
+    organizationId,
+    collectionIds,
+  )
+}
+
+function deleteOrganizationCollectionRowsByIds(
+  options: FakeD1DatabaseOptions,
+  organizationId: string,
+  collectionIds: string[],
+): number {
+  if (!options.collections) {
+    return 0
+  }
+
+  const ids = new Set(collectionIds)
+  const before = options.collections.length
+  const retained = options.collections.filter(
+    (row) =>
+      !(row.organizationId === organizationId && ids.has(String(row.id))),
+  )
+  const deletedIds = new Set(
+    options.collections
+      .filter(
+        (row) =>
+          row.organizationId === organizationId && ids.has(String(row.id)),
+      )
+      .map((row) => String(row.id)),
+  )
+  options.collections.splice(0, options.collections.length, ...retained)
+
+  if (options.collectionUsers) {
+    const retainedUsers = options.collectionUsers.filter(
+      (row) => !deletedIds.has(String(row.collectionId)),
+    )
+    options.collectionUsers.splice(
+      0,
+      options.collectionUsers.length,
+      ...retainedUsers,
+    )
+  }
+  if (options.collectionCiphers) {
+    const retainedCiphers = options.collectionCiphers.filter(
+      (row) => !deletedIds.has(String(row.collectionId)),
+    )
+    options.collectionCiphers.splice(
+      0,
+      options.collectionCiphers.length,
+      ...retainedCiphers,
+    )
+  }
+
+  return before - options.collections.length
+}
+
+function findManagedOrganizationCollectionIds(
+  options: FakeD1DatabaseOptions,
+  userId: string,
+  organizationId: string,
+  requestedCollectionIds: readonly string[],
+): string[] {
+  const requested = new Set(requestedCollectionIds)
+  const managed = new Set<string>()
+
+  for (const membership of options.organizationUsers ?? []) {
+    if (
+      membership.userId !== userId ||
+      membership.organizationId !== organizationId ||
+      Number(membership.status) !== 2 ||
+      Number(membership.type) !== 0
+    ) {
+      continue
+    }
+
+    for (const collectionUser of options.collectionUsers ?? []) {
+      if (
+        collectionUser.organizationUserId !== membership.id ||
+        Number(collectionUser.manage) !== 1
+      ) {
+        continue
+      }
+      const collection = options.collections?.find(
+        (row) =>
+          requested.has(String(row.id)) &&
+          row.id === collectionUser.collectionId &&
+          row.organizationId === organizationId,
+      )
+      if (collection) {
+        managed.add(String(collection.id))
+      }
+    }
+  }
+
+  return [...managed].sort()
 }
 
 function findCipherAccessRow(
@@ -2044,6 +2709,18 @@ function findLatestRevisionDate(
   for (const row of [...(options.folders ?? []), ...(options.ciphers ?? [])]) {
     if (row.userId === userId && typeof row.revisionDate === 'string') {
       revisions.push(row.revisionDate)
+    }
+  }
+
+  for (const membership of options.organizationUsers ?? []) {
+    if (membership.userId !== userId || Number(membership.status) !== 2) {
+      continue
+    }
+    const organization = options.organizations?.find(
+      (row) => row.id === membership.organizationId,
+    )
+    if (organization && typeof organization.revisionDate === 'string') {
+      revisions.push(organization.revisionDate)
     }
   }
 

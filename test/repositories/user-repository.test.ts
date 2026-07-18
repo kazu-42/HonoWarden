@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { BootstrapUserRecord } from '../../src/domain/bootstrap'
 import {
   createBootstrapUser,
+  getAccountRevisionDate,
   updateAccountProfile,
 } from '../../src/repositories/user-repository'
 
@@ -95,6 +96,26 @@ describe('updateAccountProfile', () => {
     ).resolves.toEqual({
       status: 'not_found',
     })
+  })
+})
+
+describe('getAccountRevisionDate', () => {
+  it('includes confirmed organization revisions in account revision polling', async () => {
+    const database = new RecordingD1Database(1)
+
+    await expect(
+      getAccountRevisionDate(database, 'user-id'),
+    ).resolves.toBeNull()
+
+    expect(database.query).toContain('FROM organizations organization')
+    expect(database.query).toContain('INNER JOIN organization_users membership')
+    expect(database.query).toContain('membership.status = 2')
+    expect(database.values).toEqual([
+      'user-id',
+      'user-id',
+      'user-id',
+      'user-id',
+    ])
   })
 })
 

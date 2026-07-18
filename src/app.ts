@@ -119,14 +119,25 @@ import {
 } from './repositories/cipher-repository'
 import type { CipherRecord } from './repositories/cipher-repository'
 import {
+  createOrganizationCollection,
   createOrganizationFoundation,
+  deleteOrganizationCollection,
+  deleteOrganizationCollections,
+  findAccessibleOrganizationCollection,
+  findConfirmedOrganizationOwner,
   findOrganizationForConfirmedMember,
+  findOwnerOrganizationCollection,
   listAccessibleOrganizationCollections,
+  listAccessibleOrganizationCollectionsByOrganization,
   listConfirmedOrganizationMemberships,
+  listOrganizationCollectionUsersForOwner,
+  updateOrganizationCollection,
 } from './repositories/organization-repository'
 import type {
   OrganizationCollectionRecord,
+  OrganizationCollectionUserRecord,
   OrganizationMembershipRecord,
+  OrganizationOwnerMembershipRecord,
   OrganizationRecord,
 } from './repositories/organization-repository'
 import {
@@ -978,21 +989,67 @@ app.get('/api/organizations/:id', async (c) => {
   }
 })
 
+app.get(
+  '/api/organizations/:id/collections/details',
+  listOrganizationCollectionDetailsRoute,
+)
+app.get(
+  '/api/organizations/:id/collections/:collectionId/details',
+  readOrganizationCollectionDetailsRoute,
+)
+app.get(
+  '/api/organizations/:id/collections/:collectionId/users',
+  listOrganizationCollectionUsersRoute,
+)
+app.get(
+  '/api/organizations/:id/collections/:collectionId',
+  readOrganizationCollectionRoute,
+)
+app.put(
+  '/api/organizations/:id/collections/:collectionId',
+  updateOrganizationCollectionRoute,
+)
+app.delete(
+  '/api/organizations/:id/collections/:collectionId',
+  deleteOrganizationCollectionRoute,
+)
+app.get('/api/organizations/:id/collections', listOrganizationCollectionsRoute)
+app.post(
+  '/api/organizations/:id/collections',
+  createOrganizationCollectionRoute,
+)
+app.delete(
+  '/api/organizations/:id/collections',
+  deleteOrganizationCollectionsRoute,
+)
+
 app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
 app.all('/api/sends', unsupportedPremiumFeature)
 app.all('/api/sends/*', unsupportedPremiumFeature)
 app.get('/api/hibp/breach', unsupportedPremiumFeature)
-// Collection metadata reads remain a supported empty response (ADR 0007); the
-// official client expects a list/not-found here, not a 501. Slice 2 replaces the
-// empty projection with the caller's assigned collections. Mutations stay 501.
 app.get('/api/collections', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
   }
 
-  return c.json(buildEmptyListResponse())
+  try {
+    const collections = await listAccessibleOrganizationCollections(
+      c.env.DB,
+      auth.user.id,
+    )
+    return c.json(buildCollectionListResponse(collections))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Collection lookup failed.',
+      ),
+      503,
+    )
+  }
 })
 app.get('/api/collections/:id', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -4820,6 +4877,67 @@ function buildOrganizationFeatureResponse(organization: OrganizationRecord) {
   }
 }
 
+function buildCollectionListResponse(
+  collections: readonly OrganizationCollectionRecord[],
+) {
+  return {
+    object: 'list',
+    data: collections.map(buildCollectionResponse),
+    continuationToken: null,
+  }
+}
+
+function buildCollectionResponse(collection: OrganizationCollectionRecord) {
+  return {
+    Object: 'collection',
+    Id: collection.id,
+    OrganizationId: collection.organizationId,
+    Name: collection.encryptedName,
+    ExternalId: collection.externalId,
+    DefaultUserCollectionEmail: null,
+    Type: collection.type,
+  }
+}
+
+function buildCollectionAccessDetailsResponse(
+  collection: OrganizationCollectionRecord,
+  users: readonly OrganizationCollectionUserRecord[],
+) {
+  return {
+    ...buildCollectionResponse(collection),
+    Object: 'collectionAccessDetails',
+    Assigned: true,
+    ReadOnly: collection.readOnly,
+    HidePasswords: collection.hidePasswords,
+    Manage: collection.manage,
+    Unmanaged: false,
+    Groups: [],
+    Users: users.map(buildCollectionUserSelectionResponse),
+  }
+}
+
+function buildCollectionUserSelectionResponse(
+  user: OrganizationCollectionUserRecord,
+) {
+  return {
+    Id: user.organizationUserId,
+    ReadOnly: user.readOnly,
+    HidePasswords: user.hidePasswords,
+    Manage: user.manage,
+  }
+}
+
+function ownerCollectionAccess(
+  owner: OrganizationOwnerMembershipRecord,
+): OrganizationCollectionUserRecord {
+  return {
+    organizationUserId: owner.organizationUserId,
+    readOnly: false,
+    hidePasswords: false,
+    manage: true,
+  }
+}
+
 function buildCollectionDetailsResponse(
   collection: OrganizationCollectionRecord,
 ) {
@@ -5342,6 +5460,362 @@ function unsupportedFeatureResponse(
     },
     501,
   )
+}
+
+async function listOrganizationCollectionsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  try {
+    const organization = await findOrganizationForConfirmedMember(c.env.DB, {
+      organizationId,
+      userId: auth.user.id,
+    })
+    if (!organization) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    const collections =
+      await listAccessibleOrganizationCollectionsByOrganization(c.env.DB, {
+        organizationId,
+        userId: auth.user.id,
+      })
+    return c.json(buildCollectionListResponse(collections))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection list lookup failed.')
+  }
+}
+
+async function listOrganizationCollectionDetailsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  try {
+    const owner = await findConfirmedOrganizationOwner(c.env.DB, {
+      organizationId,
+      userId: auth.user.id,
+    })
+    if (!owner) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    const collections =
+      await listAccessibleOrganizationCollectionsByOrganization(c.env.DB, {
+        organizationId,
+        userId: auth.user.id,
+      })
+    const usersByCollection = await Promise.all(
+      collections.map((collection) =>
+        listOrganizationCollectionUsersForOwner(c.env.DB, {
+          organizationId,
+          collectionId: collection.id,
+          userId: auth.user.id,
+        }),
+      ),
+    )
+
+    return c.json({
+      object: 'list',
+      data: collections.map((collection, index) =>
+        buildCollectionAccessDetailsResponse(
+          collection,
+          usersByCollection[index] ?? [],
+        ),
+      ),
+      continuationToken: null,
+    })
+  } catch {
+    return collectionDatabaseUnavailable(
+      c,
+      'Collection access-details lookup failed.',
+    )
+  }
+}
+
+async function readOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const collection = await findAccessibleOrganizationCollection(c.env.DB, {
+      organizationId: routeParam(c, 'id'),
+      collectionId: routeParam(c, 'collectionId'),
+      userId: auth.user.id,
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json(buildCollectionResponse(collection))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection lookup failed.')
+  }
+}
+
+async function readOrganizationCollectionDetailsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  const collectionId = routeParam(c, 'collectionId')
+  try {
+    const collection = await findOwnerOrganizationCollection(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    return c.json(buildCollectionAccessDetailsResponse(collection, users))
+  } catch {
+    return collectionDatabaseUnavailable(
+      c,
+      'Collection access-details lookup failed.',
+    )
+  }
+}
+
+async function listOrganizationCollectionUsersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  const collectionId = routeParam(c, 'collectionId')
+  try {
+    const collection = await findOwnerOrganizationCollection(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    return c.json(users.map(buildCollectionUserSelectionResponse))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection user lookup failed.')
+  }
+}
+
+async function createOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  try {
+    const owner = await findConfirmedOrganizationOwner(c.env.DB, {
+      organizationId,
+      userId: auth.user.id,
+    })
+    if (!owner) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    const request = parseCollectionCreateRequestBody(
+      await readJsonBody(c.req.raw),
+    )
+    if (!request.ok || request.encryptedName === null) {
+      return invalidCollectionRequest(c)
+    }
+    const accessDecision = collectionAccessSelectionDecision(request, owner)
+    if (accessDecision === 'invalid') {
+      return invalidCollectionRequest(c)
+    }
+    if (accessDecision === 'unsupported') {
+      return unsupportedCollectionAccessResponse(c)
+    }
+
+    const collection = await createOrganizationCollection(c.env.DB, {
+      id: crypto.randomUUID(),
+      organizationId,
+      organizationUserId: owner.organizationUserId,
+      userId: auth.user.id,
+      encryptedName: request.encryptedName,
+      externalId: request.externalId ?? null,
+      now: new Date().toISOString(),
+    })
+    return c.json(
+      buildCollectionAccessDetailsResponse(collection, [
+        ownerCollectionAccess(owner),
+      ]),
+    )
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection creation failed.')
+  }
+}
+
+async function updateOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  const collectionId = routeParam(c, 'collectionId')
+  try {
+    const [owner, existing] = await Promise.all([
+      findConfirmedOrganizationOwner(c.env.DB, {
+        organizationId,
+        userId: auth.user.id,
+      }),
+      findOwnerOrganizationCollection(c.env.DB, {
+        organizationId,
+        collectionId,
+        userId: auth.user.id,
+      }),
+    ])
+    if (!owner || !existing) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const request = parseCollectionUpdateRequestBody(
+      await readJsonBody(c.req.raw),
+    )
+    if (!request.ok) {
+      return invalidCollectionRequest(c)
+    }
+    const accessDecision = collectionAccessSelectionDecision(
+      request,
+      owner,
+      true,
+    )
+    if (accessDecision === 'invalid') {
+      return invalidCollectionRequest(c)
+    }
+    if (accessDecision === 'unsupported') {
+      return unsupportedCollectionAccessResponse(c)
+    }
+
+    const collection = await updateOrganizationCollection(c.env.DB, {
+      id: collectionId,
+      organizationId,
+      userId: auth.user.id,
+      encryptedName: request.encryptedName,
+      externalId: request.externalId,
+      now: new Date().toISOString(),
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    return c.json(buildCollectionAccessDetailsResponse(collection, users))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection update failed.')
+  }
+}
+
+async function deleteOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const deleted = await deleteOrganizationCollection(c.env.DB, {
+      organizationId: routeParam(c, 'id'),
+      collectionId: routeParam(c, 'collectionId'),
+      userId: auth.user.id,
+      now: new Date().toISOString(),
+    })
+    if (!deleted) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection deletion failed.')
+  }
+}
+
+async function deleteOrganizationCollectionsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCollectionBulkDeleteRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!request.ok) {
+    return invalidCollectionRequest(c)
+  }
+
+  try {
+    const deleted = await deleteOrganizationCollections(c.env.DB, {
+      organizationId: routeParam(c, 'id'),
+      collectionIds: request.collectionIds,
+      userId: auth.user.id,
+      now: new Date().toISOString(),
+    })
+    if (!deleted) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection deletion failed.')
+  }
+}
+
+function invalidCollectionRequest(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'invalid_request',
+      'Collection payload is invalid.',
+    ),
+    400,
+  )
+}
+
+function unsupportedCollectionAccessResponse(c: AppContext) {
+  return unsupportedFeatureResponse(
+    c,
+    'Collection access assignment requires the organization membership slice.',
+    false,
+  )
+}
+
+function collectionDatabaseUnavailable(c: AppContext, message: string) {
+  return c.json(
+    apiError(c.get('requestId'), 'database_unavailable', message),
+    503,
+  )
+}
+
+function routeParam(c: AppContext, name: 'id' | 'collectionId'): string {
+  return c.req.param(name) ?? ''
 }
 
 async function updateDomainSettingsRoute(c: AppContext) {
@@ -5930,6 +6404,14 @@ function organizationNotFoundError(requestIdValue: string) {
     requestIdValue,
     'organization_not_found',
     'Organization was not found.',
+  )
+}
+
+function collectionNotFoundError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'collection_not_found',
+    'Collection was not found.',
   )
 }
 
@@ -7233,6 +7715,215 @@ function parseAccountProfileUpdateRequestBody(
   }
 }
 
+type CollectionAccessSelectionInput = {
+  id: string
+  readOnly: boolean
+  hidePasswords: boolean
+  manage: boolean
+}
+
+type CollectionWriteRequest = {
+  ok: true
+  encryptedName: string | null
+  externalId: string | null | undefined
+  groups: CollectionAccessSelectionInput[] | null
+  users: CollectionAccessSelectionInput[] | null
+}
+
+function parseCollectionCreateRequestBody(
+  body: unknown,
+): CollectionWriteRequest | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const encryptedName = parseBoundedOpaqueString(
+    readCollectionRequestField(body, 'name', 'Name'),
+    1_000,
+  )
+  const common = parseCollectionWriteRequestCommon(body)
+  if (!encryptedName || !common.ok) {
+    return { ok: false }
+  }
+
+  return {
+    ...common,
+    encryptedName,
+    externalId: common.externalId ?? null,
+  }
+}
+
+function parseCollectionUpdateRequestBody(
+  body: unknown,
+): CollectionWriteRequest | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const name = readCollectionRequestField(body, 'name', 'Name')
+  const encryptedName =
+    name === undefined || name === null
+      ? null
+      : parseBoundedOpaqueString(name, 1_000)
+  const common = parseCollectionWriteRequestCommon(body)
+  if (encryptedName === undefined || !common.ok) {
+    return { ok: false }
+  }
+
+  return {
+    ...common,
+    encryptedName,
+  }
+}
+
+function parseCollectionWriteRequestCommon(
+  body: Record<string, unknown>,
+): Omit<CollectionWriteRequest, 'encryptedName'> | { ok: false } {
+  const externalId = parseCollectionExternalId(
+    readCollectionRequestField(body, 'externalId', 'ExternalId'),
+  )
+  const groups = parseCollectionAccessSelections(
+    readCollectionRequestField(body, 'groups', 'Groups'),
+  )
+  const users = parseCollectionAccessSelections(
+    readCollectionRequestField(body, 'users', 'Users'),
+  )
+  if (!externalId.ok || !groups.ok || !users.ok) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    externalId: externalId.value,
+    groups: groups.value,
+    users: users.value,
+  }
+}
+
+function parseCollectionExternalId(
+  value: unknown,
+): { ok: true; value: string | null | undefined } | { ok: false } {
+  if (value === undefined) {
+    return { ok: true, value: undefined }
+  }
+  if (value === null) {
+    return { ok: true, value: null }
+  }
+
+  return typeof value === 'string' && value.length <= 300
+    ? { ok: true, value }
+    : { ok: false }
+}
+
+function parseCollectionAccessSelections(
+  value: unknown,
+):
+  { ok: true; value: CollectionAccessSelectionInput[] | null } | { ok: false } {
+  if (value === undefined || value === null) {
+    return { ok: true, value: null }
+  }
+  if (!Array.isArray(value) || value.length > 100) {
+    return { ok: false }
+  }
+
+  const selections: CollectionAccessSelectionInput[] = []
+  const seenIds = new Set<string>()
+  for (const candidate of value) {
+    if (!isPlainObject(candidate)) {
+      return { ok: false }
+    }
+    const id = parseRequiredString(
+      readCollectionRequestField(candidate, 'id', 'Id'),
+    )
+    const readOnly = readCollectionRequestField(
+      candidate,
+      'readOnly',
+      'ReadOnly',
+    )
+    const hidePasswords = readCollectionRequestField(
+      candidate,
+      'hidePasswords',
+      'HidePasswords',
+    )
+    const manage = readCollectionRequestField(candidate, 'manage', 'Manage')
+    if (
+      !id ||
+      id.length > 128 ||
+      seenIds.has(id) ||
+      typeof readOnly !== 'boolean' ||
+      typeof hidePasswords !== 'boolean' ||
+      typeof manage !== 'boolean' ||
+      (manage && (readOnly || hidePasswords))
+    ) {
+      return { ok: false }
+    }
+
+    seenIds.add(id)
+    selections.push({ id, readOnly, hidePasswords, manage })
+  }
+
+  return { ok: true, value: selections }
+}
+
+function readCollectionRequestField(
+  body: Record<string, unknown>,
+  camelCaseName: string,
+  pascalCaseName: string,
+): unknown {
+  return Object.hasOwn(body, camelCaseName)
+    ? body[camelCaseName]
+    : body[pascalCaseName]
+}
+
+function collectionAccessSelectionDecision(
+  request: CollectionWriteRequest,
+  owner: OrganizationOwnerMembershipRecord,
+  update = false,
+): 'supported' | 'invalid' | 'unsupported' {
+  if (request.groups && request.groups.length > 0) {
+    return 'unsupported'
+  }
+  if (request.users === null || (!update && request.users.length === 0)) {
+    return 'supported'
+  }
+  if (request.users.length !== 1) {
+    return request.users.length === 0 ? 'invalid' : 'unsupported'
+  }
+
+  const selection = request.users[0]
+  if (selection?.id !== owner.organizationUserId) {
+    return 'unsupported'
+  }
+
+  return !selection.readOnly && !selection.hidePasswords && selection.manage
+    ? 'supported'
+    : 'invalid'
+}
+
+function parseCollectionBulkDeleteRequestBody(
+  body: unknown,
+): { ok: true; collectionIds: string[] } | { ok: false } {
+  if (!isPlainObject(body) || !Array.isArray(body.ids)) {
+    return { ok: false }
+  }
+  if (body.ids.length < 1 || body.ids.length > 100) {
+    return { ok: false }
+  }
+
+  const collectionIds: string[] = []
+  const seen = new Set<string>()
+  for (const value of body.ids) {
+    const id = parseRequiredString(value)
+    if (!id || id.length > 128 || seen.has(id)) {
+      return { ok: false }
+    }
+    seen.add(id)
+    collectionIds.push(id)
+  }
+
+  return { ok: true, collectionIds }
+}
+
 function parseOrganizationCreateRequestBody(body: unknown):
   | {
       ok: true
@@ -7580,6 +8271,14 @@ function parseRequiredString(value: unknown): string | undefined {
 
 function parseRequiredOpaqueString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function parseBoundedOpaqueString(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  const parsed = parseRequiredOpaqueString(value)
+  return parsed && parsed.length <= maxLength ? parsed : undefined
 }
 
 function parseOptionalId(value: unknown): string | null | undefined {

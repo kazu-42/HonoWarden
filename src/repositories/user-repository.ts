@@ -106,10 +106,17 @@ export async function getAccountRevisionDate(
           SELECT revision_date
           FROM ciphers
           WHERE user_id = ?
+          UNION ALL
+          SELECT organization.revision_date
+          FROM organizations organization
+          INNER JOIN organization_users membership
+            ON membership.organization_id = organization.id
+          WHERE membership.user_id = ?
+            AND membership.status = 2
         )
       `,
     )
-    .bind(userId, userId, userId)
+    .bind(userId, userId, userId, userId)
     .first<AccountRevisionRow>()
 
   return row?.revisionDate ?? null
