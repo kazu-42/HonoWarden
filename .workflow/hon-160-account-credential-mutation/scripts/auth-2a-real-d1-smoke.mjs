@@ -24,6 +24,9 @@ const outputPath = path.join(
   'auth-2a-real-d1-evidence.json',
 )
 const tokenSecret = 'synthetic-auth-2a-token-secret'
+const authRequestSecret = 'synthetic-auth-2a-request-secret'
+const authRequestAccessCode = 'synthetic-auth-2a-access-code'
+const approvedAuthRequestId = 'synthetic-owner-approved-request'
 const masterPasswordHash = 'synthetic-auth-2a-master-password-hash'
 const userId = 'synthetic-auth-2a-user'
 const email = 'auth-2a@example.test'
@@ -86,15 +89,27 @@ try {
   assert.equal(successState.ownerRevokedDevices, 2)
   assert.equal(successState.ownerActiveRefreshTokens, 0)
   assert.equal(successState.ownerRevokedRefreshTokens, 2)
+  assert.equal(successState.ownerActiveAuthRequests, 0)
+  assert.equal(successState.ownerSupersededAuthRequests, 2)
+  assert.equal(successState.ownerRetainedAuthResponseKeys, 0)
   assert.equal(successState.credentialAuditEvents, 1)
   assert.equal(successState.externalActiveDevices, 1)
   assert.equal(successState.externalActiveRefreshTokens, 1)
+  assert.equal(successState.externalActiveAuthRequests, 1)
   assert.equal(
     successLogs.some((line) =>
       line.includes('"name":"account.security_stamp.rotate"'),
     ),
     true,
   )
+
+  activeServer = await startServer()
+  const staleApprovalResponse = await authRequestLogin(activeServer.origin)
+  assert.equal(staleApprovalResponse.status, 400)
+  const staleApprovalBody = await staleApprovalResponse.json()
+  assert.equal(staleApprovalBody.error, 'invalid_grant')
+  await activeServer.stop()
+  activeServer = null
 
   activeServer = await startServer()
   const loginResponse = await passwordLogin(activeServer.origin)
@@ -117,6 +132,9 @@ try {
   assert.equal(reloginState.ownerRevokedDevices, 1)
   assert.equal(reloginState.ownerActiveRefreshTokens, 1)
   assert.equal(reloginState.ownerRevokedRefreshTokens, 2)
+  assert.equal(reloginState.ownerActiveAuthRequests, 0)
+  assert.equal(reloginState.ownerSupersededAuthRequests, 2)
+  assert.equal(reloginState.ownerRetainedAuthResponseKeys, 0)
   assert.equal(reloginState.credentialAuditEvents, 1)
 
   await executeSql(`${resetOwnerGenerationSql()}
@@ -147,6 +165,9 @@ try {
   assert.equal(rollbackState.ownerRevokedDevices, 0)
   assert.equal(rollbackState.ownerActiveRefreshTokens, 2)
   assert.equal(rollbackState.ownerRevokedRefreshTokens, 0)
+  assert.equal(rollbackState.ownerActiveAuthRequests, 2)
+  assert.equal(rollbackState.ownerSupersededAuthRequests, 0)
+  assert.equal(rollbackState.ownerRetainedAuthResponseKeys, 1)
   assert.equal(rollbackState.credentialAuditEvents, 0)
   assert.equal(
     rollbackLogs.some((line) =>
@@ -191,6 +212,9 @@ try {
   assert.equal(concurrentState.ownerRevokedDevices, 2)
   assert.equal(concurrentState.ownerActiveRefreshTokens, 0)
   assert.equal(concurrentState.ownerRevokedRefreshTokens, 2)
+  assert.equal(concurrentState.ownerActiveAuthRequests, 0)
+  assert.equal(concurrentState.ownerSupersededAuthRequests, 2)
+  assert.equal(concurrentState.ownerRetainedAuthResponseKeys, 0)
   assert.equal(concurrentState.credentialAuditEvents, 1)
 
   const evidence = {
@@ -206,6 +230,7 @@ try {
     success: {
       responseStatus: successResponse.status,
       oldAccessTokenStatus: oldTokenResponse.status,
+      staleAuthRequestApprovalStatus: staleApprovalResponse.status,
       state: successState,
       requiredAuditLogged: true,
     },
@@ -286,6 +311,22 @@ async function passwordLogin(origin) {
   })
 }
 
+async function authRequestLogin(origin) {
+  return globalThis.fetch(`${origin}/identity/connect/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'password',
+      username: email,
+      password: authRequestAccessCode,
+      authRequest: approvedAuthRequestId,
+      deviceIdentifier: 'synthetic-requester-device',
+      deviceName: 'Synthetic requester',
+      deviceType: '8',
+    }),
+  })
+}
+
 function signAccessToken(securityStamp) {
   const issuedAt = Math.floor(Date.now() / 1000)
   const header = encodeJson({ alg: 'HS256', typ: 'JWT' })
@@ -328,6 +369,10 @@ async function startServer() {
       persistPath,
       '--var',
       `HONOWARDEN_TOKEN_SECRET:${tokenSecret}`,
+      '--var',
+      'HONOWARDEN_AUTH_REQUESTS_ENABLED:true',
+      '--var',
+      `HONOWARDEN_AUTH_REQUEST_SECRET:${authRequestSecret}`,
       '--log-level',
       'log',
     ],
@@ -457,9 +502,13 @@ function normalizeState(row) {
     ownerRevokedDevices: Number(row.ownerRevokedDevices),
     ownerActiveRefreshTokens: Number(row.ownerActiveRefreshTokens),
     ownerRevokedRefreshTokens: Number(row.ownerRevokedRefreshTokens),
+    ownerActiveAuthRequests: Number(row.ownerActiveAuthRequests),
+    ownerSupersededAuthRequests: Number(row.ownerSupersededAuthRequests),
+    ownerRetainedAuthResponseKeys: Number(row.ownerRetainedAuthResponseKeys),
     credentialAuditEvents: Number(row.credentialAuditEvents),
     externalActiveDevices: Number(row.externalActiveDevices),
     externalActiveRefreshTokens: Number(row.externalActiveRefreshTokens),
+    externalActiveAuthRequests: Number(row.externalActiveAuthRequests),
   }
 }
 
@@ -472,15 +521,20 @@ async function readState() {
       (SELECT COUNT(*) FROM devices WHERE user_id = '${userId}' AND revoked_at IS NOT NULL) AS ownerRevokedDevices,
       (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = '${userId}' AND revoked_at IS NULL) AS ownerActiveRefreshTokens,
       (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = '${userId}' AND revoked_at IS NOT NULL) AS ownerRevokedRefreshTokens,
+      (SELECT COUNT(*) FROM auth_requests WHERE user_id = '${userId}' AND status IN ('pending', 'approved')) AS ownerActiveAuthRequests,
+      (SELECT COUNT(*) FROM auth_requests WHERE user_id = '${userId}' AND status = 'superseded') AS ownerSupersededAuthRequests,
+      (SELECT COUNT(*) FROM auth_requests WHERE user_id = '${userId}' AND encrypted_response_key IS NOT NULL) AS ownerRetainedAuthResponseKeys,
       (SELECT COUNT(*) FROM audit_events WHERE name = 'account.security_stamp.rotate') AS credentialAuditEvents,
       (SELECT COUNT(*) FROM devices WHERE user_id = 'synthetic-external-user' AND revoked_at IS NULL) AS externalActiveDevices,
-      (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = 'synthetic-external-user' AND revoked_at IS NULL) AS externalActiveRefreshTokens
+      (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = 'synthetic-external-user' AND revoked_at IS NULL) AS externalActiveRefreshTokens,
+      (SELECT COUNT(*) FROM auth_requests WHERE user_id = 'synthetic-external-user' AND status IN ('pending', 'approved')) AS externalActiveAuthRequests
   `)
 }
 
 function resetOwnerGenerationSql() {
   return `
     DELETE FROM audit_events;
+    DELETE FROM auth_requests WHERE user_id = '${userId}';
     DELETE FROM refresh_tokens WHERE user_id = '${userId}';
     DELETE FROM devices WHERE user_id = '${userId}';
     UPDATE users
@@ -496,6 +550,23 @@ function resetOwnerGenerationSql() {
     VALUES
       ('synthetic-owner-token-one', '${userId}', '${userId}:fixture-device', 'synthetic-owner-token-hash-one', '2999-07-19T00:00:00.000Z'),
       ('synthetic-owner-token-two', '${userId}', '${userId}:other-device', 'synthetic-owner-token-hash-two', '2999-07-19T00:00:00.000Z');
+    INSERT INTO auth_requests (
+      id, user_id, email_hash, request_type, request_device_identifier,
+      request_device_type, request_public_key, access_code_hash, status,
+      request_approved, approving_device_identifier, encrypted_response_key,
+      created_at, response_at, expires_at, retention_delete_after, updated_at
+    ) VALUES
+      ('synthetic-owner-pending-request', '${userId}', 'hmac-sha256:synthetic-owner-email', 0,
+       'synthetic-pending-device', 8, 'synthetic-pending-public-key',
+       'hmac-sha256:synthetic-pending-access-code', 'pending', NULL, NULL, NULL,
+       '${oldRevisionDate}', NULL, '2999-07-19T00:15:00.000Z',
+       '2999-08-18T00:00:00.000Z', '${oldRevisionDate}'),
+      ('${approvedAuthRequestId}', '${userId}', 'hmac-sha256:synthetic-owner-email', 0,
+       'synthetic-requester-device', 8, 'synthetic-approved-public-key',
+       '${authRequestAccessCodeHash()}', 'approved', 1, 'fixture-device',
+       'synthetic-encrypted-response-key', '${oldRevisionDate}',
+       '2026-07-19T00:00:01.000Z', '2999-07-19T00:15:00.000Z',
+       '2999-08-18T00:00:00.000Z', '2026-07-19T00:00:01.000Z');
   `
 }
 
@@ -519,5 +590,24 @@ function seedSql() {
     INSERT INTO refresh_tokens (id, user_id, device_id, token_hash, expires_at)
     VALUES ('synthetic-external-token', 'synthetic-external-user', 'synthetic-external-device',
             'synthetic-external-token-hash', '2999-07-19T00:00:00.000Z');
+    INSERT INTO auth_requests (
+      id, user_id, email_hash, request_type, request_device_identifier,
+      request_device_type, request_public_key, access_code_hash, status,
+      created_at, expires_at, retention_delete_after, updated_at
+    ) VALUES (
+      'synthetic-external-request', 'synthetic-external-user',
+      'hmac-sha256:synthetic-external-email', 0, 'synthetic-external-requester',
+      8, 'synthetic-external-public-key', 'hmac-sha256:synthetic-external-code',
+      'pending', '${oldRevisionDate}', '2999-07-19T00:15:00.000Z',
+      '2999-08-18T00:00:00.000Z', '${oldRevisionDate}'
+    );
   `
+}
+
+function authRequestAccessCodeHash() {
+  return `hmac-sha256:${createHmac('sha256', authRequestSecret)
+    .update(
+      `honowarden:auth-request:access-code:v1\0${approvedAuthRequestId}\0${authRequestAccessCode}`,
+    )
+    .digest('base64url')}`
 }

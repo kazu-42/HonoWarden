@@ -20,6 +20,7 @@ export type RotateAccountSecurityStampResult =
       revisionDate: string
       revokedDeviceCount: number
       revokedRefreshTokenCount: number
+      invalidatedAuthRequestCount: number
       auditEventId: string
     }
   | { status: 'conflict' }
@@ -104,6 +105,33 @@ export async function rotateAccountSecurityStamp(
     database
       .prepare(
         `
+          UPDATE auth_requests
+          SET
+            status = 'superseded',
+            request_approved = 0,
+            encrypted_response_key = NULL,
+            updated_at = ?
+          WHERE user_id = ?
+            AND status IN ('pending', 'approved')
+            AND EXISTS (
+              SELECT 1
+              FROM users
+              WHERE id = ?
+                AND security_stamp = ?
+                AND revision_date = ?
+            )
+        `,
+      )
+      .bind(
+        input.nextRevisionDate,
+        input.userId,
+        input.userId,
+        input.nextSecurityStamp,
+        input.nextRevisionDate,
+      ),
+    database
+      .prepare(
+        `
           INSERT INTO audit_events (
             id,
             schema_version,
@@ -143,20 +171,32 @@ export async function rotateAccountSecurityStamp(
       ),
   ])
 
-  if (results.length !== 4) {
+  if (results.length !== 5) {
     throw new Error(
       'credential rotation batch returned an invalid result count',
     )
   }
 
-  const [userResult, deviceResult, refreshResult, auditResult] = results
+  const [
+    userResult,
+    deviceResult,
+    refreshResult,
+    authRequestResult,
+    auditResult,
+  ] = results
   const userChanges = userResult?.meta.changes ?? 0
   const deviceChanges = deviceResult?.meta.changes ?? 0
   const refreshChanges = refreshResult?.meta.changes ?? 0
+  const authRequestChanges = authRequestResult?.meta.changes ?? 0
   const auditChanges = auditResult?.meta.changes ?? 0
 
   if (userChanges === 0) {
-    if (deviceChanges !== 0 || refreshChanges !== 0 || auditChanges !== 0) {
+    if (
+      deviceChanges !== 0 ||
+      refreshChanges !== 0 ||
+      authRequestChanges !== 0 ||
+      auditChanges !== 0
+    ) {
       throw new Error('credential rotation guard invariant was violated')
     }
     return { status: 'conflict' }
@@ -171,6 +211,7 @@ export async function rotateAccountSecurityStamp(
     revisionDate: input.nextRevisionDate,
     revokedDeviceCount: deviceChanges,
     revokedRefreshTokenCount: refreshChanges,
+    invalidatedAuthRequestCount: authRequestChanges,
     auditEventId: input.auditEventId,
   }
 }

@@ -48,7 +48,8 @@ Fields:
 
 - `admin.bootstrap`: successful restricted account bootstrap
 - `account.security_stamp.rotate`: successful security-stamp generation
-  rotation with all active account sessions revoked
+  rotation with all active account sessions and outstanding login-with-device
+  authorizations revoked
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection

@@ -5,10 +5,13 @@
 Positive evidence:
 
 - Recent password-authenticated token plus exact current authentication hash
-  rotates the security stamp, user revision, all active refresh tokens/devices,
-  and one redacted success audit in one guarded D1 batch.
+  rotates the security stamp and user revision, revokes all active refresh
+  tokens/devices, supersedes all pending or approved login-with-device requests,
+  clears their encrypted response keys, and inserts one redacted success audit
+  in one guarded D1 batch.
 - A subsequent login can recreate/unrevoke its device session while old access
-  and refresh tokens remain invalid.
+  and refresh tokens remain invalid. An approval issued before rotation cannot
+  mint a new session afterward.
 
 Fail-closed evidence:
 
@@ -18,8 +21,9 @@ Fail-closed evidence:
   state; rate-limit and audit behavior do not reveal account existence.
 - Expected-stamp/revision mismatch from a concurrent mutation changes zero rows
   and cannot revoke the newer generation.
-- Forced user-update, session-revoke, or audit-insert failure rolls the complete
-  batch back. No false success response or success log is emitted.
+- Forced user-update, session-revoke, auth-request invalidation, or audit-insert
+  failure rolls the complete batch back. No false success response or success
+  log is emitted.
 - Disabled user and database failure are distinct operational failures without
   leaking credential data.
 

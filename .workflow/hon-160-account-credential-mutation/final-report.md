@@ -22,7 +22,8 @@ evidence are outside this checkpoint.
   priority, archive, description, and dependency readback.
 - HON-202 implements bounded current-proof parsing, recent-password
   authorization, monotonic generation rotation, owner-wide session revocation,
-  and a required redacted audit row in one guarded D1 batch.
+  outstanding login-with-device authorization invalidation, and a required
+  redacted audit row in one guarded D1 batch.
 - Focused, full, policy, real local D1, and independent-review gates passed.
 
 ## Rejected Results
@@ -44,18 +45,27 @@ always runs bounded audit-event cleanup, and a regression test plus operations
 and security documentation keep the 365-day invariant explicit. A fresh
 complete-diff review then reported no actionable findings.
 
+The Codex review of the first published PR head later found a P1 session
+resurrection path: an already approved login-with-device request could be
+consumed after stamp rotation and mint a session carrying the new stamp. The
+same guarded batch now supersedes pending/approved owner requests and clears
+their encrypted response keys. Focused HTTP/repository tests and fresh local D1
+success, rollback, cross-account, stale-approval, and concurrency evidence pass;
+fresh CI and a clean review of the remediated published head remain required.
+
 ## Verification Evidence
 
-- Focused domain/repository: 2 files, 11 tests passed.
-- Focused route: 5 tests passed.
+- P1 remediation focused repository and complete app run: 2 files, 249 tests
+  passed.
 - Scheduled retention: 9 tests passed.
-- Full Vitest: 80 files, 787 tests passed.
+- Current full Vitest: 84 files, 945 tests passed.
 - TypeScript, ESLint, Prettier, brand policy, and diff checks passed.
 - Workflow Node tests: 17 tests passed, including managed Linear checkpoint
   tests.
 - `results/auth-2a-real-d1-evidence.json` proves fresh migrations, success,
-  old-token rejection, owner-wide revocation, relogin/sync, audit rollback,
-  cross-account isolation, and one-winner concurrency.
+  old-token and stale-auth-request rejection, owner-wide revocation and
+  authorization invalidation, response-key clearing, relogin/sync, audit
+  rollback, cross-account isolation, and one-winner concurrency.
 - Canonical and independent Linear decomposition readbacks are exact.
 - HON-202 source-ready comment independently read back as one exact managed
   comment: 1667 bytes, SHA-256
@@ -73,7 +83,7 @@ complete-diff review then reported no actionable findings.
 - `git range-diff` reports the pre-rebase and rebased implementation patches as
   exact (`bdfdd5b = de4f328`).
 - Focused Vitest passed: 4 files, 261 tests.
-- Full Vitest passed: 84 files, 944 tests.
+- Full Vitest passed before the published-head review: 84 files, 944 tests.
 - Workflow Node tests passed: 17 tests.
 - Fresh local D1 smoke passed again using synthetic data only; generated
   evidence was refreshed without retaining temporary Wrangler state.
@@ -83,11 +93,16 @@ complete-diff review then reported no actionable findings.
   security, or maintainability findings. Its sandbox full-suite attempt passed
   83 files and 941 tests before three unchanged backup CLI tests timed out; the
   host full suite above passed all 84 files and 944 tests.
+- Codex review of the first published head then found the auth-request P1. The
+  remediated local head passes 84 files and 945 tests, fresh local D1 evidence,
+  17 workflow tests, TypeScript, ESLint, Prettier, brand policy, diff checks,
+  and the strict release gate at 11 pass, 0 manual, and 0 block.
 
 ## Remaining Risks
 
-- The branch is committed locally and unpublished; PR CI and review have not
-  run.
+- PR #101's first published head and CI are superseded by the locally verified
+  P1 remediation; the exact remediated head still needs push, CI, and a clean
+  review.
 - No merge or `main` readback exists, so HON-202 must not move to Done.
 - HON-203 through HON-207 remain blocked or pending and own password, KDF,
   keypair, user-key rotation, and official-client lifecycle work.

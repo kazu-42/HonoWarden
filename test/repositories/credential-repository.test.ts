@@ -44,6 +44,7 @@ describe('credential repository', () => {
       revisionDate: '2026-07-19T00:00:01.000Z',
       revokedDeviceCount: 2,
       revokedRefreshTokenCount: 2,
+      invalidatedAuthRequestCount: 2,
       auditEventId: 'audit-event-id',
     })
 
@@ -78,6 +79,30 @@ describe('credential repository', () => {
       ]),
     )
     expect(state.refreshTokens[2]).not.toHaveProperty('revokedAt')
+    expect(state.authRequests.slice(0, 2)).toEqual([
+      expect.objectContaining({
+        userId: 'user-id',
+        status: 'superseded',
+        requestApproved: 0,
+        encryptedResponseKey: null,
+        updatedAt: '2026-07-19T00:00:01.000Z',
+      }),
+      expect.objectContaining({
+        userId: 'user-id',
+        status: 'superseded',
+        requestApproved: 0,
+        encryptedResponseKey: null,
+        updatedAt: '2026-07-19T00:00:01.000Z',
+      }),
+    ])
+    expect(state.authRequests[2]).toMatchObject({
+      userId: 'user-id',
+      status: 'denied',
+    })
+    expect(state.authRequests[3]).toMatchObject({
+      userId: 'external-user-id',
+      status: 'pending',
+    })
     expect(database.auditEventInserts).toEqual([
       expect.objectContaining({
         id: 'audit-event-id',
@@ -111,7 +136,13 @@ describe('credential repository', () => {
     expect(database.auditEventInserts).toEqual([])
   })
 
-  it.each(['user', 'devices', 'refresh_tokens', 'audit'] as const)(
+  it.each([
+    'user',
+    'devices',
+    'refresh_tokens',
+    'auth_requests',
+    'audit',
+  ] as const)(
     'rolls the complete batch back when the %s statement fails',
     async (stage) => {
       const state = {
@@ -123,6 +154,7 @@ describe('credential repository', () => {
         authUser: state.authUser,
         devices: state.devices,
         refreshTokens: state.refreshTokens,
+        authRequests: state.authRequests,
       })
 
       await expect(
@@ -133,6 +165,7 @@ describe('credential repository', () => {
         authUser: state.authUser,
         devices: state.devices,
         refreshTokens: state.refreshTokens,
+        authRequests: state.authRequests,
       }).toEqual(before)
       expect(database.auditEventInserts).toEqual([])
     },
@@ -177,6 +210,40 @@ function credentialState() {
       { id: 'token-one', userId: 'user-id' },
       { id: 'token-two', userId: 'user-id' },
       { id: 'external-token', userId: 'external-user-id' },
+    ],
+    authRequests: [
+      {
+        id: 'pending-request',
+        userId: 'user-id',
+        status: 'pending',
+        requestApproved: null,
+        encryptedResponseKey: null,
+        updatedAt: '2026-07-19T00:00:00.000Z',
+      },
+      {
+        id: 'approved-request',
+        userId: 'user-id',
+        status: 'approved',
+        requestApproved: 1,
+        encryptedResponseKey: 'synthetic-encrypted-response-key',
+        updatedAt: '2026-07-19T00:00:00.000Z',
+      },
+      {
+        id: 'denied-request',
+        userId: 'user-id',
+        status: 'denied',
+        requestApproved: 0,
+        encryptedResponseKey: null,
+        updatedAt: '2026-07-19T00:00:00.000Z',
+      },
+      {
+        id: 'external-request',
+        userId: 'external-user-id',
+        status: 'pending',
+        requestApproved: null,
+        encryptedResponseKey: null,
+        updatedAt: '2026-07-19T00:00:00.000Z',
+      },
     ],
   }
 }

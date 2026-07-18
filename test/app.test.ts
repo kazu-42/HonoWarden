@@ -6737,6 +6737,21 @@ describe('HonoWarden app', () => {
     const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
     const user = authUserRecord()
     const accessToken = await recentPasswordAccessTokenFor(user)
+    const authRequestSecret = '0123456789abcdef0123456789abcdef'
+    const authRequestAccessCode = 'high-entropy-access-code'
+    const approvedAuthRequest = {
+      ...authRequestRecord(),
+      status: 'approved',
+      requestApproved: 1,
+      approvingDeviceIdentifier: 'fixture-device',
+      encryptedResponseKey: 'opaque-encrypted-key',
+      responseAt: '2026-07-11T00:05:00.000Z',
+      accessCodeHash: await buildAuthRequestAccessCodeHash(
+        authRequestSecret,
+        'auth-request-id',
+        authRequestAccessCode,
+      ),
+    }
     const devices = [
       {
         id: buildDevicePathId('fixture-device'),
@@ -6763,9 +6778,13 @@ describe('HonoWarden app', () => {
       authUser: user,
       devices,
       refreshTokens,
+      authRequests: [approvedAuthRequest],
+      requestQuotaBucket: unblockedRequestQuotaBucket(),
     })
     const bindings = {
       DB: database,
+      HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_AUTH_REQUEST_SECRET: authRequestSecret,
       HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
     }
     const response = await app.request(
@@ -6803,6 +6822,11 @@ describe('HonoWarden app', () => {
       ]),
     )
     expect(refreshTokens[2]).not.toHaveProperty('revokedAt')
+    expect(approvedAuthRequest).toMatchObject({
+      status: 'superseded',
+      requestApproved: 0,
+      encryptedResponseKey: null,
+    })
     expect(database.auditEventInserts).toEqual([
       expect.objectContaining({
         name: 'account.security_stamp.rotate',
@@ -6830,6 +6854,28 @@ describe('HonoWarden app', () => {
     expect(oldTokenResponse.status).toBe(401)
     await expect(oldTokenResponse.json()).resolves.toMatchObject({
       error: { code: 'invalid_token' },
+    })
+
+    const staleApprovalResponse = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: user.email,
+          password: authRequestAccessCode,
+          authRequest: 'auth-request-id',
+          deviceType: '8',
+          deviceIdentifier: 'requester-device',
+          deviceName: 'Requester',
+        }),
+      },
+      bindings,
+    )
+    expect(staleApprovalResponse.status).toBe(400)
+    await expect(staleApprovalResponse.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
     })
   })
 

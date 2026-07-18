@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T21:03:49.037Z",
+  "generatedAt": "2026-07-18T22:31:44.341Z",
   "status": "passed",
   "scope": "fresh local D1 and local Worker with synthetic data only",
   "migrations": {
@@ -27,6 +27,7 @@
   "success": {
     "responseStatus": 200,
     "oldAccessTokenStatus": 401,
+    "staleAuthRequestApprovalStatus": 400,
     "state": {
       "securityStampIsOld": false,
       "revisionIsOld": false,
@@ -34,9 +35,13 @@
       "ownerRevokedDevices": 2,
       "ownerActiveRefreshTokens": 0,
       "ownerRevokedRefreshTokens": 2,
+      "ownerActiveAuthRequests": 0,
+      "ownerSupersededAuthRequests": 2,
+      "ownerRetainedAuthResponseKeys": 0,
       "credentialAuditEvents": 1,
       "externalActiveDevices": 1,
-      "externalActiveRefreshTokens": 1
+      "externalActiveRefreshTokens": 1,
+      "externalActiveAuthRequests": 1
     },
     "requiredAuditLogged": true
   },
@@ -50,9 +55,13 @@
       "ownerRevokedDevices": 1,
       "ownerActiveRefreshTokens": 1,
       "ownerRevokedRefreshTokens": 2,
+      "ownerActiveAuthRequests": 0,
+      "ownerSupersededAuthRequests": 2,
+      "ownerRetainedAuthResponseKeys": 0,
       "credentialAuditEvents": 1,
       "externalActiveDevices": 1,
-      "externalActiveRefreshTokens": 1
+      "externalActiveRefreshTokens": 1,
+      "externalActiveAuthRequests": 1
     }
   },
   "rollback": {
@@ -65,9 +74,13 @@
       "ownerRevokedDevices": 0,
       "ownerActiveRefreshTokens": 2,
       "ownerRevokedRefreshTokens": 0,
+      "ownerActiveAuthRequests": 2,
+      "ownerSupersededAuthRequests": 0,
+      "ownerRetainedAuthResponseKeys": 1,
       "credentialAuditEvents": 0,
       "externalActiveDevices": 1,
-      "externalActiveRefreshTokens": 1
+      "externalActiveRefreshTokens": 1,
+      "externalActiveAuthRequests": 1
     },
     "structuredFailureLogged": true
   },
@@ -81,9 +94,13 @@
       "ownerRevokedDevices": 2,
       "ownerActiveRefreshTokens": 0,
       "ownerRevokedRefreshTokens": 2,
+      "ownerActiveAuthRequests": 0,
+      "ownerSupersededAuthRequests": 2,
+      "ownerRetainedAuthResponseKeys": 0,
       "credentialAuditEvents": 1,
       "externalActiveDevices": 1,
-      "externalActiveRefreshTokens": 1
+      "externalActiveRefreshTokens": 1,
+      "externalActiveAuthRequests": 1
     }
   },
   "safety": {

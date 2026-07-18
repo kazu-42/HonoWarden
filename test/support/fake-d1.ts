@@ -50,7 +50,8 @@ type FakeD1DatabaseOptions = {
   auditEventCleanupChanges?: number
   auditEventInsertThrows?: boolean
   credentialRotationConflict?: boolean
-  credentialRotationFailureAt?: 'user' | 'devices' | 'refresh_tokens' | 'audit'
+  credentialRotationFailureAt?:
+    'user' | 'devices' | 'refresh_tokens' | 'auth_requests' | 'audit'
   requestQuotaBucket?: Record<string, unknown> | null
   requestQuotaCleanupChanges?: number
   requestQuotaInsertThrows?: boolean
@@ -1462,7 +1463,7 @@ function isCredentialRotationBatch(
   statements: FakePreparedStatement[],
 ): boolean {
   return (
-    statements.length === 4 &&
+    statements.length === 5 &&
     statements.some(
       (statement) =>
         /UPDATE\s+users/.test(statement.__fakeQuery) &&
@@ -1473,6 +1474,9 @@ function isCredentialRotationBatch(
     ) &&
     statements.some((statement) =>
       /UPDATE\s+refresh_tokens/.test(statement.__fakeQuery),
+    ) &&
+    statements.some((statement) =>
+      /UPDATE\s+auth_requests/.test(statement.__fakeQuery),
     ) &&
     statements.some((statement) =>
       statement.__fakeQuery.includes('INSERT INTO audit_events'),
@@ -1496,6 +1500,10 @@ function applyCredentialRotationBatch(
       row,
       values: { ...row },
     })),
+    ...(options.authRequests ?? []).map((row) => ({
+      row,
+      values: { ...row },
+    })),
   ]
   const auditLength = auditEventInserts.length
 
@@ -1514,6 +1522,11 @@ function applyCredentialRotationBatch(
       statements,
       (query) => /UPDATE\s+refresh_tokens/.test(query),
       'refresh_tokens',
+    )
+    const authRequestStatement = requiredFakeStatement(
+      statements,
+      (query) => /UPDATE\s+auth_requests/.test(query),
+      'auth_requests',
     )
     const auditStatement = requiredFakeStatement(
       statements,
@@ -1563,6 +1576,17 @@ function applyCredentialRotationBatch(
       : 0
     failCredentialRotationAt(options, 'refresh_tokens')
     results.set(refreshStatement, fakeResult(refreshChanges))
+
+    const authRequestValues = authRequestStatement.__fakeBoundValues
+    const authRequestChanges = generationMatches
+      ? supersedeActiveAuthRequests(
+          options.authRequests ?? [],
+          String(authRequestValues[1]),
+          String(authRequestValues[0]),
+        )
+      : 0
+    failCredentialRotationAt(options, 'auth_requests')
+    results.set(authRequestStatement, fakeResult(authRequestChanges))
 
     if (generationMatches) {
       const values = auditStatement.__fakeBoundValues
@@ -1660,6 +1684,30 @@ function mutateActiveRows(
     if (updatedAt !== null) {
       setFakeColumn(row, 'updatedAt', 'updated_at', updatedAt)
     }
+    changes += 1
+  }
+  return changes
+}
+
+function supersedeActiveAuthRequests(
+  rows: Record<string, unknown>[],
+  userId: string,
+  updatedAt: string,
+): number {
+  let changes = 0
+  for (const row of rows) {
+    const status = fakeColumn(row, 'status', 'status')
+    if (
+      fakeColumn(row, 'userId', 'user_id') !== userId ||
+      (status !== 'pending' && status !== 'approved')
+    ) {
+      continue
+    }
+
+    setFakeColumn(row, 'status', 'status', 'superseded')
+    setFakeColumn(row, 'requestApproved', 'request_approved', 0)
+    setFakeColumn(row, 'encryptedResponseKey', 'encrypted_response_key', null)
+    setFakeColumn(row, 'updatedAt', 'updated_at', updatedAt)
     changes += 1
   }
   return changes

@@ -11,8 +11,10 @@ Status: source-ready locally.
 - Added a monotonic credential revision helper so a rotation always advances
   the account generation even when wall-clock time does not.
 - Added one guarded D1 batch that updates the user generation, revokes all
-  active owner devices and refresh tokens, and inserts exactly one required
-  redacted `account.security_stamp.rotate` audit event.
+  active owner devices and refresh tokens, supersedes pending or approved
+  login-with-device requests, clears retained encrypted response keys, and
+  inserts exactly one required redacted `account.security_stamp.rotate` audit
+  event.
 - Added `POST /api/accounts/security-stamp` behind recent password
   authentication and exact constant-time current-hash verification.
 - Kept password, KDF, account-key, and user-key mutation routes out of this
@@ -23,13 +25,15 @@ Status: source-ready locally.
 ## Security invariants
 
 - The server receives no plaintext master password or unwrapped key.
-- A stale user generation changes no credential, device, refresh-token, or
-  audit state.
+- A stale user generation changes no credential, device, refresh-token,
+  auth-request, or audit state.
 - A failed required audit insert aborts the same D1 batch as the credential
   mutation.
 - Successful rotation invalidates old access and refresh tokens; a new password
   login creates only a new forward session generation.
-- Another user's devices and refresh tokens are not changed.
+- Login-with-device approvals issued before rotation cannot mint a new session
+  afterward.
+- Another user's devices, refresh tokens, and auth requests are not changed.
 
 ## Operational correction
 
@@ -38,6 +42,14 @@ the documented 365-day boundary when optional audit emission was disabled.
 Scheduled maintenance now always runs bounded D1 audit-event cleanup, with a
 regression test for `HONOWARDEN_AUDIT_LOGS=false` and matching operations and
 security documentation.
+
+A later Codex review of the published PR head found that an approved
+login-with-device request could survive rotation and mint a new session using
+the new security stamp. The guarded batch now supersedes every pending or
+approved owner request and clears its encrypted response key before committing
+the required audit row. Focused route/repository tests and fresh local D1
+success, rollback, cross-account, stale-approval, and concurrency readbacks
+cover the corrected boundary.
 
 ## Excluded
 

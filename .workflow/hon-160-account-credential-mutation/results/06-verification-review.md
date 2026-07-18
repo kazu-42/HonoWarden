@@ -1,13 +1,12 @@
 # AUTH-2A verification and review result
 
-Status: passed locally; publication pending.
+Status: P1 remediation passed locally; fresh publication checks pending.
 
 ## Host verification
 
-- Focused domain/repository tests: 2 files, 11 tests passed.
-- Focused route tests: 5 tests passed.
+- Focused repository and complete app tests: 2 files, 249 tests passed.
 - Scheduled-retention tests after the review correction: 9 tests passed.
-- Full Vitest suite: 80 files, 787 tests passed.
+- Full Vitest suite: 84 files, 945 tests passed.
 - `pnpm check`, `pnpm lint`, `pnpm format`, and `pnpm brand:scan` passed.
 - Workflow Node tests: 17 tests passed, including deterministic
   managed-checkpoint coverage.
@@ -20,6 +19,9 @@ A fresh ignored local D1 applied every migration and passed:
 - successful rotation with `200` and `Cache-Control: no-store`;
 - old access-token rejection;
 - all owner device and refresh-token revocation;
+- all owner pending/approved auth-request invalidation and encrypted response-key
+  clearing;
+- stale approved login-with-device rejection at the token endpoint;
 - unchanged external-user state;
 - exactly one required audit row;
 - clean password relogin and sync;
@@ -39,6 +41,12 @@ fresh complete-diff review reported no actionable findings and independently
 confirmed the credential guard, account-wide revocation, same-batch required
 audit, conflict behavior, and rollback invariants.
 
+A Codex review against the first published PR head subsequently found one P1:
+an approval created before rotation could still mint a new session afterward.
+The remediation adds auth-request invalidation to the same guarded D1 batch.
+Focused tests and fresh real-D1 readback now pass; the remediated published head
+must receive fresh CI and a clean Codex review before merge.
+
 ## Linear source-ready checkpoint
 
 The deterministic writer and an independently implemented GraphQL readback
@@ -57,4 +65,5 @@ both verified HON-202 as In Progress with one exact managed comment:
 
 This evidence proves source readiness only. PR checks, reviewed merge,
 main-branch readback, deployment, production operation, and compatibility
-promotion remain unclaimed.
+promotion remain unclaimed. The first PR head and CI are superseded by the
+locally verified P1 remediation until that exact new head passes CI and review.
