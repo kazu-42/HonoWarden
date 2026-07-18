@@ -9,6 +9,12 @@ The current release has recorded CLI, browser-extension, and Android
 repeatable run that covers the broader client lifecycle and stores only
 redacted, synthetic evidence.
 
+HON-110 combines the per-client runs with inquiry, operations, website, and
+cleanup evidence through the
+[usable-state acceptance manifest](usable-state-acceptance.md). A ready
+per-client packet is one input to that gate, not the aggregate acceptance
+result.
+
 ## Harness
 
 Use the packet generator before running a live regression:
