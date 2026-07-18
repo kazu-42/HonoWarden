@@ -575,7 +575,6 @@ describe('HonoWarden app', () => {
   it('returns explicit errors for unsupported alpha surfaces', async () => {
     for (const request of [
       { method: 'GET', path: '/api/organizations' },
-      { method: 'POST', path: '/api/organizations/org-id/collections' },
       { method: 'POST', path: '/api/collections' },
       { method: 'POST', path: '/api/collections/collection-id' },
       { method: 'POST', path: '/api/ciphers/create' },
@@ -890,6 +889,909 @@ describe('HonoWarden app', () => {
           message: 'Organization was not found.',
         },
         requestId: 'hidden-organization-request',
+      })
+    }
+  })
+
+  it('supports owner collection CRUD, assigned projections, and cascade cleanup', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T00:00:00.000Z'))
+    const owner = authUserRecord()
+    const accessToken = await accessTokenFor(owner)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const collectionCiphers: Record<string, unknown>[] = []
+    const ciphers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+      collectionCiphers,
+      ciphers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    expect(organizationResponse.status).toBe(200)
+    const organization = (await organizationResponse.json()) as { Id: string }
+    const organizationUserId = String(organizationUsers[0]?.id)
+    const defaultCollectionId = String(collections[0]?.id)
+    const foundationRevision = String(organizations[0]?.revisionDate)
+    vi.setSystemTime(new Date('2026-07-16T00:00:10.000Z'))
+
+    const createResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: ' 2.opaque-created-collection\n',
+          externalId: 'external-collection-reference',
+          users: [],
+          groups: [],
+        }),
+      },
+      env,
+    )
+
+    expect(createResponse.status).toBe(200)
+    const created = (await createResponse.json()) as Record<string, unknown>
+    expect(created).toEqual(
+      collectionAccessDetailsShape({
+        id: expect.any(String),
+        organizationId: organization.Id,
+        name: ' 2.opaque-created-collection\n',
+        externalId: 'external-collection-reference',
+        organizationUserId,
+      }),
+    )
+    const collectionId = String(created.Id)
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        organizationId: organization.Id,
+        encryptedName: ' 2.opaque-created-collection\n',
+        externalId: 'external-collection-reference',
+        type: 0,
+      }),
+    )
+    expect(collectionUsers).toContainEqual({
+      collectionId,
+      organizationUserId,
+      readOnly: 0,
+      hidePasswords: 0,
+      manage: 1,
+    })
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:10.000Z',
+      updatedAt: '2026-07-16T00:00:10.000Z',
+    })
+    expect(organizations[0]?.revisionDate).not.toBe(foundationRevision)
+    const revisionAfterCreateResponse = await app.request(
+      '/api/accounts/revision-date',
+      { headers: authorization },
+      env,
+    )
+    expect(revisionAfterCreateResponse.status).toBe(200)
+    await expect(revisionAfterCreateResponse.json()).resolves.toBe(
+      '2026-07-16T00:00:10.000Z',
+    )
+
+    const organizationListResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      { headers: authorization },
+      env,
+    )
+    expect(organizationListResponse.status).toBe(200)
+    const organizationList = (await organizationListResponse.json()) as {
+      object: string
+      data: unknown[]
+      continuationToken: null
+    }
+    expect(organizationList.object).toBe('list')
+    expect(organizationList.continuationToken).toBeNull()
+    expect(organizationList.data).toHaveLength(2)
+    expect(organizationList.data).toEqual(
+      expect.arrayContaining([
+        collectionResponseShape({
+          id: defaultCollectionId,
+          organizationId: organization.Id,
+          name: organizationCreateBody().collectionName,
+          externalId: null,
+        }),
+        collectionResponseShape({
+          id: collectionId,
+          organizationId: organization.Id,
+          name: ' 2.opaque-created-collection\n',
+          externalId: 'external-collection-reference',
+        }),
+      ]),
+    )
+
+    const assignedListResponse = await app.request(
+      '/api/collections',
+      { headers: authorization },
+      env,
+    )
+    expect(assignedListResponse.status).toBe(200)
+    const assignedList = (await assignedListResponse.json()) as {
+      object: string
+      data: unknown[]
+      continuationToken: null
+    }
+    expect(assignedList.object).toBe('list')
+    expect(assignedList.continuationToken).toBeNull()
+    expect(assignedList.data).toHaveLength(2)
+    expect(assignedList.data).toEqual(
+      expect.arrayContaining([
+        collectionResponseShape({
+          id: defaultCollectionId,
+          organizationId: organization.Id,
+          name: organizationCreateBody().collectionName,
+          externalId: null,
+        }),
+        collectionResponseShape({
+          id: collectionId,
+          organizationId: organization.Id,
+          name: ' 2.opaque-created-collection\n',
+          externalId: 'external-collection-reference',
+        }),
+      ]),
+    )
+
+    const singleResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { headers: authorization },
+      env,
+    )
+    expect(singleResponse.status).toBe(200)
+    await expect(singleResponse.json()).resolves.toEqual(
+      collectionResponseShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: ' 2.opaque-created-collection\n',
+        externalId: 'external-collection-reference',
+      }),
+    )
+
+    const detailsResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}/details`,
+      { headers: authorization },
+      env,
+    )
+    expect(detailsResponse.status).toBe(200)
+    await expect(detailsResponse.json()).resolves.toEqual(created)
+
+    const usersResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}/users`,
+      { headers: authorization },
+      env,
+    )
+    expect(usersResponse.status).toBe(200)
+    await expect(usersResponse.json()).resolves.toEqual([
+      collectionUserSelectionShape(organizationUserId),
+    ])
+
+    vi.setSystemTime(new Date('2026-07-16T00:00:20.000Z'))
+    const renameResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '2.opaque-renamed-collection' }),
+      },
+      env,
+    )
+    expect(renameResponse.status).toBe(200)
+    const renamed = (await renameResponse.json()) as Record<string, unknown>
+    expect(renamed).toEqual(
+      collectionAccessDetailsShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: '2.opaque-renamed-collection',
+        externalId: 'external-collection-reference',
+        organizationUserId,
+      }),
+    )
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        encryptedName: '2.opaque-renamed-collection',
+        externalId: 'external-collection-reference',
+      }),
+    )
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:20.000Z',
+      updatedAt: '2026-07-16T00:00:20.000Z',
+    })
+
+    vi.setSystemTime(new Date('2026-07-16T00:00:25.000Z'))
+    const pascalCaseUpdateResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...renamed,
+          Name: '2.pascal-case-round-trip',
+          ExternalId: 'pascal-case-external-reference',
+        }),
+      },
+      env,
+    )
+    expect(pascalCaseUpdateResponse.status).toBe(200)
+    await expect(pascalCaseUpdateResponse.json()).resolves.toEqual(
+      collectionAccessDetailsShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: '2.pascal-case-round-trip',
+        externalId: 'pascal-case-external-reference',
+        organizationUserId,
+      }),
+    )
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        encryptedName: '2.pascal-case-round-trip',
+        externalId: 'pascal-case-external-reference',
+      }),
+    )
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:25.000Z',
+      updatedAt: '2026-07-16T00:00:25.000Z',
+    })
+
+    vi.setSystemTime(new Date('2026-07-16T00:00:30.000Z'))
+    const updateResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: '2.opaque-updated-collection',
+          externalId: null,
+          users: [
+            {
+              id: organizationUserId,
+              readOnly: false,
+              hidePasswords: false,
+              manage: true,
+            },
+          ],
+          groups: [],
+        }),
+      },
+      env,
+    )
+    expect(updateResponse.status).toBe(200)
+    await expect(updateResponse.json()).resolves.toEqual(
+      collectionAccessDetailsShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: '2.opaque-updated-collection',
+        externalId: null,
+        organizationUserId,
+      }),
+    )
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        encryptedName: '2.opaque-updated-collection',
+        externalId: null,
+      }),
+    )
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:30.000Z',
+      updatedAt: '2026-07-16T00:00:30.000Z',
+    })
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      collections: expect.arrayContaining([
+        expect.objectContaining({
+          Id: collectionId,
+          OrganizationId: organization.Id,
+          Name: '2.opaque-updated-collection',
+          Manage: true,
+        }),
+      ]),
+    })
+
+    const organizationCipher = {
+      ...cipherRecord(),
+      id: 'organization-cipher-id',
+      organizationId: organization.Id,
+      cipherKey: '2.organization-cipher-key',
+    }
+    ciphers.push(organizationCipher)
+    collectionCiphers.push({
+      collectionId,
+      cipherId: organizationCipher.id,
+    })
+    const revisionBeforeDelete = String(organizations[0]?.revisionDate)
+    vi.setSystemTime(new Date('2026-07-16T00:01:00.000Z'))
+    const rejectedDeleteResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { method: 'DELETE', headers: authorization },
+      env,
+    )
+    expect(rejectedDeleteResponse.status).toBe(404)
+    expect(collections.some((row) => row.id === collectionId)).toBe(true)
+    expect(collectionCiphers).toEqual([
+      { collectionId, cipherId: organizationCipher.id },
+    ])
+    expect(organizations[0]?.revisionDate).toBe(revisionBeforeDelete)
+
+    collectionCiphers.push({
+      collectionId: defaultCollectionId,
+      cipherId: organizationCipher.id,
+    })
+    vi.setSystemTime(new Date('2026-07-16T00:02:00.000Z'))
+    const deleteResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { method: 'DELETE', headers: authorization },
+      env,
+    )
+    expect(deleteResponse.status).toBe(200)
+    expect(await deleteResponse.text()).toBe('')
+    expect(collections.some((row) => row.id === collectionId)).toBe(false)
+    expect(
+      collectionUsers.some((row) => row.collectionId === collectionId),
+    ).toBe(false)
+    expect(collectionCiphers).toEqual([
+      {
+        collectionId: defaultCollectionId,
+        cipherId: organizationCipher.id,
+      },
+    ])
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:02:00.000Z',
+      updatedAt: '2026-07-16T00:02:00.000Z',
+    })
+    expect(organizations[0]?.revisionDate).not.toBe(revisionBeforeDelete)
+    const revisionAfterDeleteResponse = await app.request(
+      '/api/accounts/revision-date',
+      { headers: authorization },
+      env,
+    )
+    expect(revisionAfterDeleteResponse.status).toBe(200)
+    await expect(revisionAfterDeleteResponse.json()).resolves.toBe(
+      '2026-07-16T00:02:00.000Z',
+    )
+
+    const deletedReadResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { headers: authorization },
+      env,
+    )
+    expect(deletedReadResponse.status).toBe(404)
+    await expect(deletedReadResponse.json()).resolves.toMatchObject({
+      error: { code: 'collection_not_found' },
+    })
+  })
+
+  it('bulk deletes collections atomically and validates the complete id set', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T00:03:00.000Z'))
+    const owner = authUserRecord()
+    const accessToken = await accessTokenFor(owner)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const collectionCiphers: Record<string, unknown>[] = []
+    const ciphers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+      collectionCiphers,
+      ciphers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    const organization = (await organizationResponse.json()) as { Id: string }
+
+    const createdIds: string[] = []
+    for (const name of ['2.first-created', '2.second-created']) {
+      const response = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'POST',
+          headers: { ...authorization, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        },
+        env,
+      )
+      expect(response.status).toBe(200)
+      createdIds.push(String(((await response.json()) as { Id: string }).Id))
+    }
+    ciphers.push(
+      {
+        ...cipherRecord(),
+        id: 'cipher-one',
+        organizationId: organization.Id,
+        cipherKey: '2.cipher-one-key',
+      },
+      {
+        ...cipherRecord(),
+        id: 'cipher-two',
+        organizationId: organization.Id,
+        cipherKey: '2.cipher-two-key',
+      },
+    )
+    collectionCiphers.push(
+      { collectionId: createdIds[0], cipherId: 'cipher-one' },
+      { collectionId: createdIds[1], cipherId: 'cipher-two' },
+    )
+
+    const partialAttempt = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'DELETE',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [createdIds[0], 'missing-collection-id'] }),
+      },
+      env,
+    )
+    expect(partialAttempt.status).toBe(404)
+    expect(
+      createdIds.every((id) => collections.some((row) => row.id === id)),
+    ).toBe(true)
+
+    for (const ids of [[], [createdIds[0], createdIds[0]]]) {
+      const invalidResponse = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'DELETE',
+          headers: { ...authorization, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        },
+        env,
+      )
+      expect(invalidResponse.status).toBe(400)
+      await expect(invalidResponse.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+    }
+
+    const orphaningAttempt = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'DELETE',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: createdIds }),
+      },
+      env,
+    )
+    expect(orphaningAttempt.status).toBe(404)
+    expect(
+      createdIds.every((id) => collections.some((row) => row.id === id)),
+    ).toBe(true)
+
+    const defaultCollectionId = String(
+      collections.find((row) => !createdIds.includes(String(row.id)))?.id,
+    )
+    collectionCiphers.push(
+      { collectionId: defaultCollectionId, cipherId: 'cipher-one' },
+      { collectionId: defaultCollectionId, cipherId: 'cipher-two' },
+    )
+    vi.setSystemTime(new Date('2026-07-16T00:04:00.000Z'))
+    const deleteResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'DELETE',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: createdIds }),
+      },
+      env,
+    )
+    expect(deleteResponse.status).toBe(200)
+    expect(await deleteResponse.text()).toBe('')
+    expect(
+      createdIds.some((id) => collections.some((row) => row.id === id)),
+    ).toBe(false)
+    expect(
+      collectionUsers.some((row) =>
+        createdIds.includes(String(row.collectionId)),
+      ),
+    ).toBe(false)
+    expect(collectionCiphers).toEqual([
+      { collectionId: defaultCollectionId, cipherId: 'cipher-one' },
+      { collectionId: defaultCollectionId, cipherId: 'cipher-two' },
+    ])
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:04:00.000Z',
+      updatedAt: '2026-07-16T00:04:00.000Z',
+    })
+  })
+
+  it('enforces confirmed assignment reads and owner-only collection mutations', async () => {
+    const owner = authUserRecord()
+    const member = {
+      ...authUserRecord(),
+      id: 'member-user-id',
+      email: 'Member@Example.Test',
+      emailNormalized: 'member@example.test',
+      securityStamp: 'member-security-stamp',
+    }
+    const unconfirmed = {
+      ...authUserRecord(),
+      id: 'unconfirmed-user-id',
+      email: 'Unconfirmed@Example.Test',
+      emailNormalized: 'unconfirmed@example.test',
+      securityStamp: 'unconfirmed-security-stamp',
+    }
+    const ownerToken = await accessTokenFor(owner)
+    const memberToken = await accessTokenFor(member)
+    const unconfirmedToken = await accessTokenFor(unconfirmed)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner, member, unconfirmed],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const ownerAuthorization = { Authorization: `Bearer ${ownerToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          ...ownerAuthorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    const organization = (await organizationResponse.json()) as { Id: string }
+    const createResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'POST',
+        headers: {
+          ...ownerAuthorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: '2.member-readable' }),
+      },
+      env,
+    )
+    const collection = (await createResponse.json()) as { Id: string }
+    organizationUsers.push(
+      {
+        id: 'member-organization-user-id',
+        organizationId: organization.Id,
+        userId: member.id,
+        email: member.email,
+        orgKey: '2.member-org-key',
+        status: 2,
+        type: 2,
+        permissions: null,
+      },
+      {
+        id: 'unconfirmed-organization-user-id',
+        organizationId: organization.Id,
+        userId: unconfirmed.id,
+        email: unconfirmed.email,
+        orgKey: '2.unconfirmed-org-key',
+        status: 1,
+        type: 2,
+        permissions: null,
+      },
+    )
+    collectionUsers.push(
+      {
+        collectionId: collection.Id,
+        organizationUserId: 'member-organization-user-id',
+        readOnly: 1,
+        hidePasswords: 1,
+        manage: 0,
+      },
+      {
+        collectionId: collection.Id,
+        organizationUserId: 'unconfirmed-organization-user-id',
+        readOnly: 0,
+        hidePasswords: 0,
+        manage: 1,
+      },
+    )
+
+    const memberAuthorization = { Authorization: `Bearer ${memberToken}` }
+    const assignedResponse = await app.request(
+      '/api/collections',
+      { headers: memberAuthorization },
+      env,
+    )
+    expect(assignedResponse.status).toBe(200)
+    await expect(assignedResponse.json()).resolves.toEqual({
+      object: 'list',
+      data: [
+        collectionResponseShape({
+          id: collection.Id,
+          organizationId: organization.Id,
+          name: '2.member-readable',
+          externalId: null,
+        }),
+      ],
+      continuationToken: null,
+    })
+
+    const memberListResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      { headers: memberAuthorization },
+      env,
+    )
+    expect(memberListResponse.status).toBe(200)
+    await expect(memberListResponse.json()).resolves.toEqual({
+      object: 'list',
+      data: [
+        collectionResponseShape({
+          id: collection.Id,
+          organizationId: organization.Id,
+          name: '2.member-readable',
+          externalId: null,
+        }),
+      ],
+      continuationToken: null,
+    })
+
+    const memberReadResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+      { headers: memberAuthorization },
+      env,
+    )
+    expect(memberReadResponse.status).toBe(200)
+
+    for (const request of [
+      {
+        method: 'POST',
+        path: `/api/organizations/${organization.Id}/collections`,
+        body: { name: '2.denied-create' },
+        errorCode: 'organization_not_found',
+      },
+      {
+        method: 'PUT',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+        body: { name: '2.denied-update' },
+        errorCode: 'collection_not_found',
+      },
+      {
+        method: 'DELETE',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+        errorCode: 'collection_not_found',
+      },
+      {
+        method: 'GET',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}/details`,
+        errorCode: 'collection_not_found',
+      },
+      {
+        method: 'GET',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}/users`,
+        errorCode: 'collection_not_found',
+      },
+    ]) {
+      const response = await app.request(
+        request.path,
+        {
+          method: request.method,
+          headers: {
+            ...memberAuthorization,
+            'Content-Type': 'application/json',
+            'X-Request-Id': 'hidden-collection-request',
+          },
+          ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+        },
+        env,
+      )
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: request.errorCode,
+          message:
+            request.errorCode === 'organization_not_found'
+              ? 'Organization was not found.'
+              : 'Collection was not found.',
+        },
+        requestId: 'hidden-collection-request',
+      })
+    }
+
+    const unconfirmedAuthorization = {
+      Authorization: `Bearer ${unconfirmedToken}`,
+    }
+    const unconfirmedListResponse = await app.request(
+      '/api/collections',
+      { headers: unconfirmedAuthorization },
+      env,
+    )
+    expect(unconfirmedListResponse.status).toBe(200)
+    await expect(unconfirmedListResponse.json()).resolves.toEqual({
+      object: 'list',
+      data: [],
+      continuationToken: null,
+    })
+    const hiddenResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+      {
+        headers: {
+          ...unconfirmedAuthorization,
+          'X-Request-Id': 'unconfirmed-hidden-collection-request',
+        },
+      },
+      env,
+    )
+    expect(hiddenResponse.status).toBe(404)
+    await expect(hiddenResponse.json()).resolves.toMatchObject({
+      error: { code: 'collection_not_found' },
+      requestId: 'unconfirmed-hidden-collection-request',
+    })
+  })
+
+  it('validates collection payloads and rejects unsupported access assignments', async () => {
+    const owner = authUserRecord()
+    const accessToken = await accessTokenFor(owner)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    const organization = (await organizationResponse.json()) as { Id: string }
+    const organizationUserId = String(organizationUsers[0]?.id)
+
+    for (const payload of [
+      {},
+      { name: '' },
+      { name: 42 },
+      { name: '2.valid', externalId: 'x'.repeat(301) },
+      {
+        name: '2.valid',
+        users: [
+          {
+            id: organizationUserId,
+            readOnly: true,
+            hidePasswords: false,
+            manage: true,
+          },
+        ],
+      },
+    ]) {
+      const response = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'POST',
+          headers: {
+            ...authorization,
+            'Content-Type': 'application/json',
+            'X-Request-Id': 'invalid-collection-request',
+          },
+          body: JSON.stringify(payload),
+        },
+        env,
+      )
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+        requestId: 'invalid-collection-request',
+      })
+    }
+
+    for (const payload of [
+      {
+        name: '2.valid',
+        groups: [
+          {
+            id: 'unsupported-group-id',
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+          },
+        ],
+      },
+      {
+        name: '2.valid',
+        users: [
+          {
+            id: 'other-organization-user-id',
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+          },
+        ],
+      },
+      {
+        Name: '2.valid',
+        Users: [
+          {
+            Id: 'other-organization-user-id',
+            ReadOnly: false,
+            HidePasswords: false,
+            Manage: true,
+          },
+        ],
+      },
+    ]) {
+      const response = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'POST',
+          headers: {
+            ...authorization,
+            'Content-Type': 'application/json',
+            'X-Request-Id': 'unsupported-collection-access-request',
+          },
+          body: JSON.stringify(payload),
+        },
+        env,
+      )
+      expect(response.status).toBe(501)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'unsupported_feature' },
+        requestId: 'unsupported-collection-access-request',
       })
     }
   })
@@ -10788,6 +11690,52 @@ function profileOrganizationShape(input: {
     Status: 2,
     Type: 0,
     Permissions: {},
+  }
+}
+
+function collectionResponseShape(input: {
+  id: unknown
+  organizationId: string
+  name: string
+  externalId: string | null
+}) {
+  return {
+    Object: 'collection',
+    Id: input.id,
+    OrganizationId: input.organizationId,
+    Name: input.name,
+    ExternalId: input.externalId,
+    DefaultUserCollectionEmail: null,
+    Type: 0,
+  }
+}
+
+function collectionAccessDetailsShape(input: {
+  id: unknown
+  organizationId: string
+  name: string
+  externalId: string | null
+  organizationUserId: string
+}) {
+  return {
+    ...collectionResponseShape(input),
+    Object: 'collectionAccessDetails',
+    Assigned: true,
+    ReadOnly: false,
+    HidePasswords: false,
+    Manage: true,
+    Unmanaged: false,
+    Groups: [],
+    Users: [collectionUserSelectionShape(input.organizationUserId)],
+  }
+}
+
+function collectionUserSelectionShape(id: string) {
+  return {
+    Id: id,
+    ReadOnly: false,
+    HidePasswords: false,
+    Manage: true,
   }
 }
 
