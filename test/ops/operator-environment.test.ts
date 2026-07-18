@@ -114,6 +114,26 @@ describe('operator environment policy', () => {
     expect(operatorDocs).toContain('Current Linear Access')
   })
 
+  it('keeps WebAuthn trust roots explicit, local, and default-off', () => {
+    const envExample = readRepoFile('.env.example')
+    const operatorDocs = readRepoFile('docs/operations/operator-environment.md')
+
+    expect(envExample).toMatch(/^HONOWARDEN_WEBAUTHN_ENABLED=false$/m)
+    expect(envExample).toMatch(/^HONOWARDEN_WEBAUTHN_RP_ID=$/m)
+    expect(envExample).toMatch(/^HONOWARDEN_WEBAUTHN_ORIGINS=$/m)
+    expect(envExample).toMatch(
+      /^HONOWARDEN_WEBAUTHN_ALLOW_INSECURE_LOCALHOST=false$/m,
+    )
+    expect(operatorDocs).toContain('WebAuthn Runtime Policy')
+    expect(operatorDocs).toContain('HONOWARDEN_WEBAUTHN_RP_ID')
+    expect(operatorDocs).toContain('HONOWARDEN_WEBAUTHN_ORIGINS')
+    expect(operatorDocs).toContain(
+      'HONOWARDEN_WEBAUTHN_ALLOW_INSECURE_LOCALHOST',
+    )
+    expect(operatorDocs).toMatch(/must not be\s+derived from request headers/)
+    expect(operatorDocs).toContain('status: `misconfigured`')
+  })
+
   it('documents Cloudflare account access review without secret values', () => {
     const accessReview = readRepoFile(
       'docs/operations/cloudflare-access-control.md',

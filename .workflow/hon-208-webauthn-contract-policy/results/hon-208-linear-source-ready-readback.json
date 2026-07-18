@@ -1,0 +1,45 @@
+{
+  "status": "exact",
+  "phase": "source-ready",
+  "checkedAt": "2026-07-18T19:12:17.426Z",
+  "operation": "readback",
+  "issue": {
+    "id": "07d123f2-4d24-4ef1-b7fe-f6e6d132e054",
+    "identifier": "HON-208",
+    "title": "WebAuthn A4.1: protocol, RP/origin, and recovery contract",
+    "archivedAt": null,
+    "priority": 0,
+    "state": {
+      "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+      "name": "In Progress",
+      "type": "started"
+    },
+    "parent": {
+      "id": "4268b7f2-4c6f-43fc-9266-356661b748f8",
+      "identifier": "HON-162"
+    },
+    "project": {
+      "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+      "name": "HonoWarden Post-Alpha Roadmap"
+    }
+  },
+  "comment": {
+    "id": "d1f31907-8075-47e2-b15e-9cdae518c033",
+    "marker": "<!-- honowarden-linear-checkpoint:v1 issue=HON-208 phase=source-ready -->",
+    "bodyBytes": 2001,
+    "bodySha256": "e9475b47726f4e860b0810579ba06365520d1f36d85fc489ff391d92590d86aa",
+    "bodyExact": true,
+    "createdAt": "2026-07-18T19:12:12.274Z",
+    "updatedAt": "2026-07-18T19:12:12.245Z"
+  },
+  "checks": {
+    "issueIdentity": true,
+    "inProgress": true,
+    "nonArchived": true,
+    "parent": true,
+    "project": true,
+    "priority": true,
+    "oneManagedComment": true,
+    "commentBodyExact": true
+  }
+}

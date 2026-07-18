@@ -6,6 +6,6 @@ export default defineConfig({
     globals: false,
     maxWorkers: 2,
     testTimeout: 30_000,
-    exclude: [...configDefaults.exclude, 'test/.tmp/**'],
+    exclude: [...configDefaults.exclude, '.workflow/**', 'test/.tmp/**'],
   },
 })

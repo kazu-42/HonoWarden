@@ -1,0 +1,45 @@
+{
+  "title": "HON-208 WebAuthn contract and RP origin policy",
+  "slug": "hon-208-webauthn-contract-policy",
+  "created_at": "2026-07-18T18:49:09+00:00",
+  "status": "completed",
+  "approval": {
+    "required": "GitHub publication, runtime/external mutations, credentials, and destructive operations only",
+    "granted": "local implementation, tests, docs, workflow artifacts, worktrees, and normal Linear writes",
+    "notes": "No dependency, migration, route, deploy, runtime activation, real authenticator, user/credential mutation, secret, binding, DNS, paid service, or external contact."
+  },
+  "packets": [
+    {
+      "id": "01-contract",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-policy-tdd",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-config-docs",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "04-independent-review",
+      "status": "completed",
+      "owner": "reviewer"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "focused contract/config/docs suite 62/62",
+      "full Vitest suite 80 files and 817 tests",
+      "TypeScript, ESLint, Prettier, brand scan, and git diff check",
+      "Wrangler dry-run top-level, staging, and production with WebAuthn false",
+      "HON-162 node plan tests 4/4 and workflow verification",
+      "independent review findings reproduced, fixed, and final no-findings readback",
+      "Linear source-ready comment exact at 2001 bytes and SHA-256 e9475b47726f4e860b0810579ba06365520d1f36d85fc489ff391d92590d86aa"
+    ]
+  }
+}

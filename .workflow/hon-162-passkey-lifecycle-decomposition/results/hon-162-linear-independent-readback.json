@@ -1,0 +1,197 @@
+{
+  "generatedAt": "2026-07-18T18:47:12.588Z",
+  "status": "exact",
+  "inventory": {
+    "total": 214,
+    "archived": 109,
+    "activeUnarchived": 100,
+    "completedUnarchived": 5
+  },
+  "parent": {
+    "id": "4268b7f2-4c6f-43fc-9266-356661b748f8",
+    "identifier": "HON-162",
+    "checks": {
+      "identity": true,
+      "title": true,
+      "descriptionBytes": true,
+      "descriptionSha256": true,
+      "project": true,
+      "state": true,
+      "priority": true,
+      "nonArchived": true
+    }
+  },
+  "expectedChildren": 7,
+  "verifiedChildren": 7,
+  "expectedBlockRelations": 7,
+  "verifiedBlockRelations": 7,
+  "unexpectedBlockRelations": 0,
+  "unexpectedChildren": [],
+  "children": [
+    {
+      "key": "AUTH-4A",
+      "id": "07d123f2-4d24-4ef1-b7fe-f6e6d132e054",
+      "identifier": "HON-208",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "descriptionBytes": true,
+        "descriptionSha256": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4B",
+      "id": "8ba34ca6-5a6b-4fe1-98e2-d1945e78d6f9",
+      "identifier": "HON-209",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "descriptionBytes": true,
+        "descriptionSha256": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4C",
+      "id": "c8caac36-587d-49df-8d9d-f1443dded6ed",
+      "identifier": "HON-210",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "descriptionBytes": true,
+        "descriptionSha256": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4D",
+      "id": "43889f31-d885-4c94-b327-c0aacfb7ecf8",
+      "identifier": "HON-211",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "descriptionBytes": true,
+        "descriptionSha256": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4E",
+      "id": "b98cf269-f1d5-440a-951a-3d3a404f0eeb",
+      "identifier": "HON-212",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "descriptionBytes": true,
+        "descriptionSha256": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4F",
+      "id": "dae1be46-83a9-4e62-a9e9-ada698839e01",
+      "identifier": "HON-213",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "descriptionBytes": true,
+        "descriptionSha256": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4G",
+      "id": "36a59f6d-fdb8-404a-82ce-2f68fa97ec62",
+      "identifier": "HON-214",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "descriptionBytes": true,
+        "descriptionSha256": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    }
+  ],
+  "relations": [
+    {
+      "blocker": "HON-208",
+      "blocked": "HON-209",
+      "count": 1,
+      "relationIds": ["931406c5-c312-47b2-b75f-ebcf2c55217c"]
+    },
+    {
+      "blocker": "HON-209",
+      "blocked": "HON-210",
+      "count": 1,
+      "relationIds": ["4815a093-e02e-4e19-ab3d-fd1520e3e6e2"]
+    },
+    {
+      "blocker": "HON-209",
+      "blocked": "HON-211",
+      "count": 1,
+      "relationIds": ["fba0c3dc-0477-4d50-8ebd-30829e3ee13e"]
+    },
+    {
+      "blocker": "HON-210",
+      "blocked": "HON-212",
+      "count": 1,
+      "relationIds": ["5bfcdaaf-6b6f-4410-a482-c3833874698e"]
+    },
+    {
+      "blocker": "HON-211",
+      "blocked": "HON-212",
+      "count": 1,
+      "relationIds": ["d8519522-93e1-4089-94c7-66ea046698da"]
+    },
+    {
+      "blocker": "HON-212",
+      "blocked": "HON-213",
+      "count": 1,
+      "relationIds": ["fd46cf76-c6e2-4704-85a8-d4e50524af0b"]
+    },
+    {
+      "blocker": "HON-213",
+      "blocked": "HON-214",
+      "count": 1,
+      "relationIds": ["b1cee546-4dce-4969-80e7-e8b66d71dd4b"]
+    }
+  ],
+  "unexpectedRelations": [],
+  "errors": []
+}

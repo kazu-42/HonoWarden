@@ -1,0 +1,236 @@
+{
+  "generatedAt": "2026-07-18T18:47:05.922Z",
+  "status": "exact",
+  "sourcePins": {
+    "clients": {
+      "ref": "web-v2026.6.1",
+      "commit": "39f07436ca60e3f25eac47777671754f288a98f1"
+    },
+    "server": {
+      "ref": "v2026.6.1",
+      "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+    },
+    "verifier": {
+      "package": "@simplewebauthn/server",
+      "reviewedVersion": "13.3.2",
+      "reviewedAt": "2026-07-19"
+    }
+  },
+  "inventory": {
+    "total": 214,
+    "archived": 109,
+    "activeUnarchived": 100,
+    "completedUnarchived": 5
+  },
+  "parent": {
+    "id": "4268b7f2-4c6f-43fc-9266-356661b748f8",
+    "identifier": "HON-162",
+    "title": "Account slice A4: WebAuthn and passkey credential lifecycle",
+    "state": "In Progress",
+    "descriptionBytes": 1895,
+    "descriptionSha256": "ef92ba9e36031122d3fc3db93beb69b12a18604678348f63bf2824db6ea0f01e",
+    "checks": {
+      "id": true,
+      "title": true,
+      "project": true,
+      "state": true,
+      "priority": true,
+      "nonArchived": true
+    }
+  },
+  "expectedChildren": 7,
+  "verifiedChildren": 7,
+  "expectedBlockRelations": 7,
+  "verifiedBlockRelations": 7,
+  "unexpectedBlockRelations": 0,
+  "unexpectedChildren": [],
+  "children": [
+    {
+      "key": "AUTH-4A",
+      "id": "07d123f2-4d24-4ef1-b7fe-f6e6d132e054",
+      "identifier": "HON-208",
+      "title": "WebAuthn A4.1: protocol, RP/origin, and recovery contract",
+      "blockers": [],
+      "descriptionBytes": 2394,
+      "descriptionSha256": "3aea68e4dc4cb4a9025169ac94d07d2589b7c885d7f545e479df3a6181971093",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4B",
+      "id": "8ba34ca6-5a6b-4fe1-98e2-d1945e78d6f9",
+      "identifier": "HON-209",
+      "title": "WebAuthn A4.2: D1 credential/challenge state and verifier core",
+      "blockers": ["HON-208"],
+      "descriptionBytes": 2351,
+      "descriptionSha256": "c5700158f4146f1bd9d13b8b0ff76fd161dfacdb2bc3b42c86bec732179324f3",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4C",
+      "id": "c8caac36-587d-49df-8d9d-f1443dded6ed",
+      "identifier": "HON-210",
+      "title": "WebAuthn A4.3: authenticated enrollment and credential inventory",
+      "blockers": ["HON-209"],
+      "descriptionBytes": 2240,
+      "descriptionSha256": "30c47018b4aaecac2f8446a5efb1584fb6e5136180396d36b0c435f5b17cbc2a",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4D",
+      "id": "43889f31-d885-4c94-b327-c0aacfb7ecf8",
+      "identifier": "HON-211",
+      "title": "WebAuthn A4.4: assertion grant, device session, and PRF Vault unlock",
+      "blockers": ["HON-209"],
+      "descriptionBytes": 2514,
+      "descriptionSha256": "1ae3d78ec3997d10bc33f39a7402320511c7a2cf3835e9c5f0cb13190df372b0",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4E",
+      "id": "b98cf269-f1d5-440a-951a-3d3a404f0eeb",
+      "identifier": "HON-212",
+      "title": "WebAuthn A4.5: PRF enablement, rename, delete, and session revocation",
+      "blockers": ["HON-210", "HON-211"],
+      "descriptionBytes": 2125,
+      "descriptionSha256": "381c532d8b9dd4d37951b51165f56cb7b1707bd09be1d7d79aab8f07606de8f9",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4F",
+      "id": "dae1be46-83a9-4e62-a9e9-ada698839e01",
+      "identifier": "HON-213",
+      "title": "WebAuthn A4.6: default-off compatibility and rollback gate",
+      "blockers": ["HON-212"],
+      "descriptionBytes": 2165,
+      "descriptionSha256": "7c99b3c5dd41518fe1f7d6e519699918b217b4d3b3de8a4f6938eb64aca025c4",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-4G",
+      "id": "36a59f6d-fdb8-404a-82ce-2f68fa97ec62",
+      "identifier": "HON-214",
+      "title": "WebAuthn A4.7: staged authenticator evidence and capability promotion",
+      "blockers": ["HON-213"],
+      "descriptionBytes": 2388,
+      "descriptionSha256": "1a16e479fdbfa2f22ab3595d5b122ed8435c56098dee0acf1969ef28dabf5620",
+      "checks": {
+        "markerIdentity": true,
+        "titleIdentity": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    }
+  ],
+  "relations": [
+    {
+      "blocker": "HON-208",
+      "blocked": "HON-209",
+      "count": 1,
+      "relationIds": ["931406c5-c312-47b2-b75f-ebcf2c55217c"]
+    },
+    {
+      "blocker": "HON-209",
+      "blocked": "HON-210",
+      "count": 1,
+      "relationIds": ["4815a093-e02e-4e19-ab3d-fd1520e3e6e2"]
+    },
+    {
+      "blocker": "HON-209",
+      "blocked": "HON-211",
+      "count": 1,
+      "relationIds": ["fba0c3dc-0477-4d50-8ebd-30829e3ee13e"]
+    },
+    {
+      "blocker": "HON-210",
+      "blocked": "HON-212",
+      "count": 1,
+      "relationIds": ["5bfcdaaf-6b6f-4410-a482-c3833874698e"]
+    },
+    {
+      "blocker": "HON-211",
+      "blocked": "HON-212",
+      "count": 1,
+      "relationIds": ["d8519522-93e1-4089-94c7-66ea046698da"]
+    },
+    {
+      "blocker": "HON-212",
+      "blocked": "HON-213",
+      "count": 1,
+      "relationIds": ["fd46cf76-c6e2-4704-85a8-d4e50524af0b"]
+    },
+    {
+      "blocker": "HON-213",
+      "blocked": "HON-214",
+      "count": 1,
+      "relationIds": ["b1cee546-4dce-4969-80e7-e8b66d71dd4b"]
+    }
+  ],
+  "unexpectedRelations": [],
+  "errors": [],
+  "phase": "apply"
+}
