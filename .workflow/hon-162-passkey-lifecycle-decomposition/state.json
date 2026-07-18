@@ -1,0 +1,43 @@
+{
+  "title": "HON-162 passkey lifecycle decomposition",
+  "slug": "hon-162-passkey-lifecycle-decomposition",
+  "created_at": "2026-07-18T18:27:19+00:00",
+  "status": "completed",
+  "approval": {
+    "required": "GitHub publication, runtime/external mutations, credentials, and production operations only",
+    "granted": "local research/planning/tests/worktrees and normal Linear writes",
+    "notes": "No real authenticator enrollment, user/credential mutation, deploy, secret, binding, routing, paid service, destructive action, or external contact."
+  },
+  "packets": [
+    {
+      "id": "01-current-auth-boundary",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-pinned-client-contract",
+      "status": "completed",
+      "owner": "review-agent"
+    },
+    {
+      "id": "03-pinned-server-security-contract",
+      "status": "completed",
+      "owner": "review-agent"
+    },
+    {
+      "id": "04-linear-decomposition",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "local plan tests 4/4",
+      "canonical Linear apply exact 7/7 children and 7/7 blocks relations",
+      "independent Linear readback exact with 0 unexpected relations",
+      "workflow artifact verification passed",
+      "Prettier and git diff --check passed"
+    ]
+  }
+}

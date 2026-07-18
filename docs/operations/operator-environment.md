@@ -220,6 +220,59 @@ operator inputs for [TOTP Secret Rotation](totp-secret-rotation.md). They are
 not Worker runtime variable names and must not be committed, logged, or copied
 into Linear/GitHub evidence.
 
+## WebAuthn Runtime Policy
+
+HON-208 defines the configuration contract only. It does not add a WebAuthn
+route, migration, verifier dependency, advertised feature, deployed capability,
+or live authenticator support. The four policy inputs are non-secret but
+environment-owned:
+
+| Variable                                       | Meaning                                                                |
+| ---------------------------------------------- | ---------------------------------------------------------------------- |
+| `HONOWARDEN_WEBAUTHN_ENABLED`                  | Exact `true` requests use of a completely valid policy; default false. |
+| `HONOWARDEN_WEBAUTHN_RP_ID`                    | Canonical lowercase RP ID controlled by the operator.                  |
+| `HONOWARDEN_WEBAUTHN_ORIGINS`                  | Comma-separated exact Web origins accepted for that RP ID.             |
+| `HONOWARDEN_WEBAUTHN_ALLOW_INSECURE_LOCALHOST` | Exact `true` permits only `http://localhost[:port]` for local testing. |
+
+`HONOWARDEN_WEBAUTHN_RP_ID` and `HONOWARDEN_WEBAUTHN_ORIGINS` must not be
+derived from request headers, including `Host`, `Origin`, `Forwarded`,
+`X-Forwarded-*`, or Cloudflare visitor headers. Existing public-URL and CORS
+logic is not a WebAuthn trust source. Configure every accepted origin exactly;
+the RP ID may equal the origin hostname or be its DNS-label parent. A string
+suffix such as `evil-example.com` never matches RP ID `example.com`.
+
+The resolver has three states:
+
+- `disabled`: the enabled value is absent, blank, or false. Other policy input
+  is ignored because no ceremony may start.
+- `ready`: the enabled value is true and every RP/origin/local-development rule
+  validates. This is configuration readiness only, not source or live support.
+- `misconfigured`: enablement is ambiguous or enabled policy is incomplete or
+  invalid. The resolver returns status: `misconfigured`, stable non-secret error
+  codes, no partial allowlist, and no raw configuration value.
+
+Production-like origins require HTTPS. Credentials in URLs, wildcards, paths,
+queries, fragments, custom schemes, IP-address RP IDs, cross-RP hosts, and
+malformed values fail closed. HTTP is rejected even when the local opt-in is
+true unless the hostname is exactly `localhost`; loopback IPs and localhost
+subdomains are not aliases. The origin list is bounded at 16 entries before
+deduplication. Only scheme/host case, an optional root slash, and an explicit
+default port may normalize; backslashes, dot segments, encoded/Unicode hosts,
+embedded controls, and non-canonical ports fail closed.
+
+The tracked `wrangler.jsonc` pins `HONOWARDEN_WEBAUTHN_ENABLED=false` for the
+top-level, staging, and production environments. It intentionally contains no
+real RP ID or origin value. `.env.example` provides blank local placeholders.
+HON-213 owns the reviewed environment-specific activation and rollback
+mechanism after schema, routes, lifecycle transitions, and fixtures exist.
+Until then, do not set the flag true in any deployed environment.
+
+Never put RP IDs, origins, policy parser inputs, raw challenges, credential IDs,
+public keys, user handles, attestation/assertion payloads, or PRF extension
+results into issue comments or verification logs. See
+[WebAuthn Threat Model](../security/webauthn-threat-model.md) and
+[WebAuthn Contract](../specs/webauthn-contract.md).
+
 ## External Write Gates
 
 These actions require explicit operator approval in the active thread before the
