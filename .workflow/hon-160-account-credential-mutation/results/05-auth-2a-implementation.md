@@ -17,6 +17,12 @@ Status: source-ready locally.
   event.
 - Added `POST /api/accounts/security-stamp` behind recent password
   authentication and exact constant-time current-hash verification.
+- Routed invalid current-hash proofs through the existing account/IP failure
+  buckets, failed-login state, account lockout, and IP `Retry-After` policy
+  before any credential mutation.
+- Kept the mandatory transactional D1 audit row independent from optional
+  Worker JSON-line emission; `HONOWARDEN_AUDIT_LOGS=false` suppresses only the
+  console event.
 - Kept password, KDF, account-key, and user-key mutation routes out of this
   slice.
 - Extended fake D1 with transactional credential-rotation behavior and rollback
@@ -33,6 +39,8 @@ Status: source-ready locally.
   login creates only a new forward session generation.
 - Login-with-device approvals issued before rotation cannot mint a new session
   afterward.
+- Repeated invalid proofs cannot remain an unthrottled online verifier, and a
+  correct proof cannot bypass an active account or IP lock.
 - Another user's devices, refresh tokens, and auth requests are not changed.
 
 ## Operational correction
@@ -50,6 +58,14 @@ approved owner request and clears its encrypted response key before committing
 the required audit row. Focused route/repository tests and fresh local D1
 success, rollback, cross-account, stale-approval, and concurrency readbacks
 cover the corrected boundary.
+
+The next Codex review found that invalid stamp proofs bypassed the password
+grant's login-defense state and that successful rotation always emitted an
+audit JSON line. The route now fails closed through the shared defense policy,
+and console audit emission honors the configured toggle without weakening the
+mandatory D1 audit insert. Focused tests and real-D1 readback cover account/IP
+thresholds, blocked valid proofs, credential non-mutation, and disabled console
+emission.
 
 ## Excluded
 

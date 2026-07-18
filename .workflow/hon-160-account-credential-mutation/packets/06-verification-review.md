@@ -14,7 +14,8 @@ checkpoint.
   whitespace checks.
 - Workflow manifest and synchronizer Node tests.
 - Fresh local D1 migrations plus success, rollback, concurrency, old-token,
-  relogin, and cross-account readback.
+  relogin, cross-account, credential-proof lockout/rate-limit, and audit-toggle
+  readback.
 - Independent review of the complete uncommitted diff after all fixes.
 
 ## Review rule

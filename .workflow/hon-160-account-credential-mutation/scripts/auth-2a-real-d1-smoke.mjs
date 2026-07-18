@@ -34,6 +34,10 @@ const oldSecurityStamp = 'synthetic-auth-2a-old-security-stamp'
 const oldRevisionDate = '2026-07-19T00:00:00.000Z'
 const successRequestId = 'auth-2a-real-d1-success'
 const rollbackRequestId = 'auth-2a-real-d1-rollback'
+const accountFailureLimit = 5
+const ipFailureLimit = 20
+const ipRetryAfterSeconds = 60
+const blockedAccountProofAttempts = 1
 
 let completed = false
 let activeServer = null
@@ -58,6 +62,96 @@ try {
   assert.equal(Number(migrations.count), migrationManifest.count)
   assert.equal(migrations.latest, migrationManifest.latest)
 
+  activeServer = await startServer()
+  const defenseToken = signAccessToken(oldSecurityStamp)
+  const wrongProofAttempts = []
+  for (let attempt = 0; attempt < accountFailureLimit; attempt += 1) {
+    wrongProofAttempts.push(
+      await summarizeResponse(
+        await postRotation(
+          activeServer.origin,
+          defenseToken,
+          `auth-2a-wrong-proof-${attempt}`,
+          {
+            clientAddress: '203.0.113.40',
+            masterPasswordHashValue: `wrong-proof-${attempt}`,
+          },
+        ),
+      ),
+    )
+  }
+  assert.deepEqual(
+    wrongProofAttempts.map((attempt) => attempt.status),
+    [400, 400, 400, 400, 400],
+  )
+
+  const blockedValidProof = await summarizeResponse(
+    await postRotation(
+      activeServer.origin,
+      defenseToken,
+      'auth-2a-account-locked-valid-proof',
+      { clientAddress: '203.0.113.40' },
+    ),
+  )
+  assert.equal(blockedValidProof.status, 400)
+  assert.equal(blockedValidProof.errorCode, 'invalid_request')
+
+  const remainingIpAttemptCount =
+    ipFailureLimit - accountFailureLimit - blockedAccountProofAttempts
+  const remainingIpAttempts = []
+  for (let attempt = 0; attempt < remainingIpAttemptCount; attempt += 1) {
+    remainingIpAttempts.push(
+      await summarizeResponse(
+        await postRotation(
+          activeServer.origin,
+          defenseToken,
+          `auth-2a-ip-limit-${attempt}`,
+          { clientAddress: '203.0.113.40' },
+        ),
+      ),
+    )
+  }
+  assert.deepEqual(
+    remainingIpAttempts.map((attempt) => attempt.status),
+    [...Array(remainingIpAttemptCount - 1).fill(400), 429],
+  )
+  assert.equal(
+    remainingIpAttempts.at(-1)?.retryAfter,
+    String(ipRetryAfterSeconds),
+  )
+
+  const blockedIpProof = await summarizeResponse(
+    await postRotation(
+      activeServer.origin,
+      defenseToken,
+      'auth-2a-ip-locked-valid-proof',
+      { clientAddress: '203.0.113.40' },
+    ),
+  )
+  assert.equal(blockedIpProof.status, 429)
+  assert.equal(blockedIpProof.retryAfter, String(ipRetryAfterSeconds))
+  const defenseLogs = activeServer.logs
+  await activeServer.stop()
+  activeServer = null
+
+  const defenseState = normalizeDefenseState(await readDefenseState())
+  assert.equal(defenseState.securityStampIsOld, true)
+  assert.equal(defenseState.revisionIsOld, true)
+  assert.equal(defenseState.loginFailedCount, accountFailureLimit)
+  assert.equal(defenseState.loginLocked, true)
+  assert.equal(defenseState.authAttempts, ipFailureLimit)
+  assert.equal(defenseState.failureBuckets, 2)
+  assert.equal(defenseState.accountBucketFailures, accountFailureLimit)
+  assert.equal(defenseState.ipBucketFailures, ipFailureLimit)
+  assert.equal(defenseState.credentialAuditEvents, 0)
+  assert.equal(
+    defenseLogs.some((line) =>
+      line.includes('"name":"account.security_stamp.rotate"'),
+    ),
+    false,
+  )
+
+  await executeSql(resetLoginDefenseSql())
   activeServer = await startServer()
   const initialToken = signAccessToken(oldSecurityStamp)
   const successResponse = await postRotation(
@@ -100,7 +194,7 @@ try {
     successLogs.some((line) =>
       line.includes('"name":"account.security_stamp.rotate"'),
     ),
-    true,
+    false,
   )
 
   activeServer = await startServer()
@@ -232,7 +326,20 @@ try {
       oldAccessTokenStatus: oldTokenResponse.status,
       staleAuthRequestApprovalStatus: staleApprovalResponse.status,
       state: successState,
-      requiredAuditLogged: true,
+      requiredAuditPersisted: true,
+      consoleAuditLoggingEnabled: false,
+      consoleAuditEmitted: false,
+    },
+    credentialProofDefense: {
+      wrongProofStatuses: wrongProofAttempts.map((attempt) => attempt.status),
+      blockedValidProofStatus: blockedValidProof.status,
+      ipEscalationStatuses: remainingIpAttempts.map(
+        (attempt) => attempt.status,
+      ),
+      blockedIpProofStatus: blockedIpProof.status,
+      retryAfter: blockedIpProof.retryAfter,
+      state: defenseState,
+      credentialMutationPrevented: true,
     },
     relogin: {
       passwordGrantStatus: loginResponse.status,
@@ -273,16 +380,35 @@ try {
   }
 }
 
-async function postRotation(origin, token, requestId) {
+async function postRotation(
+  origin,
+  token,
+  requestId,
+  { clientAddress, masterPasswordHashValue = masterPasswordHash } = {},
+) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    'X-Request-Id': requestId,
+  }
+  if (clientAddress) {
+    headers['CF-Connecting-IP'] = clientAddress
+  }
+
   return globalThis.fetch(`${origin}/api/accounts/security-stamp`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'X-Request-Id': requestId,
-    },
-    body: JSON.stringify({ masterPasswordHash }),
+    headers,
+    body: JSON.stringify({ masterPasswordHash: masterPasswordHashValue }),
   })
+}
+
+async function summarizeResponse(response) {
+  const body = await response.json()
+  return {
+    status: response.status,
+    retryAfter: response.headers.get('Retry-After'),
+    errorCode: body.error?.code ?? null,
+  }
 }
 
 async function readMigrationManifest() {
@@ -373,6 +499,8 @@ async function startServer() {
       'HONOWARDEN_AUTH_REQUESTS_ENABLED:true',
       '--var',
       `HONOWARDEN_AUTH_REQUEST_SECRET:${authRequestSecret}`,
+      '--var',
+      'HONOWARDEN_AUDIT_LOGS:false',
       '--log-level',
       'log',
     ],
@@ -512,6 +640,20 @@ function normalizeState(row) {
   }
 }
 
+function normalizeDefenseState(row) {
+  return {
+    securityStampIsOld: row.securityStamp === oldSecurityStamp,
+    revisionIsOld: row.revisionDate === oldRevisionDate,
+    loginFailedCount: Number(row.loginFailedCount),
+    loginLocked: Number(row.loginLocked) === 1,
+    authAttempts: Number(row.authAttempts),
+    failureBuckets: Number(row.failureBuckets),
+    accountBucketFailures: Number(row.accountBucketFailures),
+    ipBucketFailures: Number(row.ipBucketFailures),
+    credentialAuditEvents: Number(row.credentialAuditEvents),
+  }
+}
+
 async function readState() {
   return queryOne(`
     SELECT
@@ -529,6 +671,34 @@ async function readState() {
       (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = 'synthetic-external-user' AND revoked_at IS NULL) AS externalActiveRefreshTokens,
       (SELECT COUNT(*) FROM auth_requests WHERE user_id = 'synthetic-external-user' AND status IN ('pending', 'approved')) AS externalActiveAuthRequests
   `)
+}
+
+async function readDefenseState() {
+  return queryOne(`
+    SELECT
+      (SELECT security_stamp FROM users WHERE id = '${userId}') AS securityStamp,
+      (SELECT revision_date FROM users WHERE id = '${userId}') AS revisionDate,
+      (SELECT login_failed_count FROM users WHERE id = '${userId}') AS loginFailedCount,
+      (SELECT login_locked_until IS NOT NULL FROM users WHERE id = '${userId}') AS loginLocked,
+      (SELECT COUNT(*) FROM auth_attempts) AS authAttempts,
+      (SELECT COUNT(*) FROM auth_failure_buckets) AS failureBuckets,
+      (SELECT failed_count FROM auth_failure_buckets WHERE bucket_key LIKE 'account:%') AS accountBucketFailures,
+      (SELECT failed_count FROM auth_failure_buckets WHERE bucket_key LIKE 'ip:%') AS ipBucketFailures,
+      (SELECT COUNT(*) FROM audit_events WHERE name = 'account.security_stamp.rotate') AS credentialAuditEvents
+  `)
+}
+
+function resetLoginDefenseSql() {
+  return `
+    DELETE FROM auth_attempts;
+    DELETE FROM auth_failure_buckets;
+    UPDATE users
+    SET login_failed_count = 0,
+        login_failed_at = NULL,
+        login_locked_until = NULL,
+        updated_at = '${oldRevisionDate}'
+    WHERE id = '${userId}';
+  `
 }
 
 function resetOwnerGenerationSql() {

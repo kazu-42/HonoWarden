@@ -75,7 +75,8 @@ Fields:
 When optional audit logging is enabled, each built audit event is written to
 `audit_events` after the console JSON line is emitted. Required credential
 events instead write the same explicit columns inside the credential mutation
-batch so an audit failure rolls back the mutation. Neither path stores a full
+batch so an audit failure rolls back the mutation. Their console JSON line is
+still emitted only when `HONOWARDEN_AUDIT_LOGS=true`. Neither path stores a full
 request, response, token, password hash, TOTP secret, plaintext IP address, raw
 vault payload, or encrypted vault value.
 

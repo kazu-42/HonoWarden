@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T22:31:44.341Z",
+  "generatedAt": "2026-07-18T22:57:13.422Z",
   "status": "passed",
   "scope": "fresh local D1 and local Worker with synthetic data only",
   "migrations": {
@@ -43,7 +43,30 @@
       "externalActiveRefreshTokens": 1,
       "externalActiveAuthRequests": 1
     },
-    "requiredAuditLogged": true
+    "requiredAuditPersisted": true,
+    "consoleAuditLoggingEnabled": false,
+    "consoleAuditEmitted": false
+  },
+  "credentialProofDefense": {
+    "wrongProofStatuses": [400, 400, 400, 400, 400],
+    "blockedValidProofStatus": 400,
+    "ipEscalationStatuses": [
+      400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 429
+    ],
+    "blockedIpProofStatus": 429,
+    "retryAfter": "60",
+    "state": {
+      "securityStampIsOld": true,
+      "revisionIsOld": true,
+      "loginFailedCount": 5,
+      "loginLocked": true,
+      "authAttempts": 20,
+      "failureBuckets": 2,
+      "accountBucketFailures": 5,
+      "ipBucketFailures": 20,
+      "credentialAuditEvents": 0
+    },
+    "credentialMutationPrevented": true
   },
   "relogin": {
     "passwordGrantStatus": 200,

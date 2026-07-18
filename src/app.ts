@@ -2342,48 +2342,52 @@ app.post('/api/accounts/security-stamp', async (c) => {
       400,
     )
   }
-  if (
-    !verifyPresentedPasswordHash(
-      auth.user.masterPasswordHash,
-      request.masterPasswordHash,
-    )
-  ) {
-    return c.json(
-      apiError(
-        c.get('requestId'),
-        'invalid_request',
-        'The supplied credentials are invalid.',
-      ),
-      400,
-    )
-  }
-
-  const candidateRevisionDate = new Date().toISOString()
-  const nextRevisionDate = nextCredentialRevisionDate(
-    auth.user.revisionDate,
-    candidateRevisionDate,
-  )
-  const nextSecurityStamp = crypto.randomUUID()
-  const auditEventId = crypto.randomUUID()
-  const auditEvent = buildAuditEvent({
-    name: 'account.security_stamp.rotate',
-    outcome: 'success',
-    requestId: c.get('requestId'),
-    occurredAt: nextRevisionDate,
-    actor: {
-      userId: auth.user.id,
-      deviceIdentifier: auth.deviceIdentifier,
-    },
-    target: {
-      type: 'account',
-      id: auth.user.id,
-    },
-    context: {
-      allSessionsRevoked: true,
-    },
-  })
 
   try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidSecurityStampProofResponse(c, proofGate.rateLimited)
+    }
+
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.masterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidSecurityStampProofResponse(c, rateLimited)
+    }
+
+    const candidateRevisionDate = new Date().toISOString()
+    const nextRevisionDate = nextCredentialRevisionDate(
+      auth.user.revisionDate,
+      candidateRevisionDate,
+    )
+    const nextSecurityStamp = crypto.randomUUID()
+    const auditEventId = crypto.randomUUID()
+    const auditEvent = buildAuditEvent({
+      name: 'account.security_stamp.rotate',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: nextRevisionDate,
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        allSessionsRevoked: true,
+      },
+    })
     const result = await rotateAccountSecurityStamp(c.env.DB, {
       userId: auth.user.id,
       expectedMasterPasswordHash: auth.user.masterPasswordHash,
@@ -2405,7 +2409,9 @@ app.post('/api/accounts/security-stamp', async (c) => {
       )
     }
 
-    console.info(serializeAuditEvent(auditEvent))
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
     c.header('Cache-Control', 'no-store')
     return c.body(null, 200)
   } catch {
@@ -2426,6 +2432,117 @@ app.post('/api/accounts/security-stamp', async (c) => {
     )
   }
 })
+
+type CredentialProofDefenseState = {
+  accountBucketKey: string
+  ipBucketKey: string
+  now: string
+}
+
+type CredentialProofGate =
+  | {
+      allowed: true
+      state: CredentialProofDefenseState
+    }
+  | {
+      allowed: false
+      rateLimited: boolean
+    }
+
+async function checkCredentialProofDefense(
+  c: AppContext,
+  user: AuthUserRecord,
+): Promise<CredentialProofGate> {
+  const now = new Date().toISOString()
+  const [ipBucketKey, accountBucketKey] = await Promise.all([
+    buildAuthAttemptBucketKey('ip', extractClientAddress(c.req.raw.headers)),
+    buildAuthAttemptBucketKey('account', user.emailNormalized),
+  ])
+  const state = { accountBucketKey, ipBucketKey, now }
+  const [ipBucket, accountBucket] = await Promise.all([
+    findAuthFailureBucket(c.env.DB, ipBucketKey),
+    findAuthFailureBucket(c.env.DB, accountBucketKey),
+  ])
+
+  if (isAccountLocked({ lockedUntil: ipBucket?.lockedUntil ?? null, now })) {
+    return { allowed: false, rateLimited: true }
+  }
+
+  if (
+    isAccountLocked({
+      lockedUntil: accountBucket?.lockedUntil ?? null,
+      now,
+    }) ||
+    isAccountLocked({ lockedUntil: user.loginLockedUntil, now })
+  ) {
+    return {
+      allowed: false,
+      rateLimited: await recordCredentialProofFailure(c, user, state, false),
+    }
+  }
+
+  return { allowed: true, state }
+}
+
+async function recordCredentialProofFailure(
+  c: AppContext,
+  user: AuthUserRecord,
+  state: CredentialProofDefenseState,
+  recordAccountBucket: boolean,
+): Promise<boolean> {
+  await recordAuthAttempt(c.env.DB, {
+    id: crypto.randomUUID(),
+    bucketKey: state.ipBucketKey,
+    subjectKey: state.accountBucketKey,
+    successful: false,
+    occurredAt: state.now,
+  })
+  const ipFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+    bucketKey: state.ipBucketKey,
+    failureLimit: loginDefensePolicy.ipFailureLimit,
+    failureWindowSeconds: loginDefensePolicy.ipFailureWindowSeconds,
+    lockoutSeconds: loginDefensePolicy.ipRetryAfterSeconds,
+    now: state.now,
+  })
+
+  if (recordAccountBucket) {
+    const accountFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+      bucketKey: state.accountBucketKey,
+      failureLimit: loginDefensePolicy.accountFailureLimit,
+      failureWindowSeconds: loginDefensePolicy.accountFailureWindowSeconds,
+      lockoutSeconds: loginDefensePolicy.accountLockoutSeconds,
+      now: state.now,
+    })
+    await recordFailedLogin(c.env.DB, {
+      userId: user.id,
+      failedCount: accountFailureBucket.failedCount,
+      failedAt: accountFailureBucket.updatedAt,
+      lockedUntil: accountFailureBucket.lockedUntil,
+    })
+  }
+
+  return isAccountLocked({
+    lockedUntil: ipFailureBucket.lockedUntil,
+    now: state.now,
+  })
+}
+
+function invalidSecurityStampProofResponse(
+  c: AppContext,
+  rateLimited: boolean,
+): Response {
+  const error = apiError(
+    c.get('requestId'),
+    'invalid_request',
+    'The supplied credentials are invalid.',
+  )
+  if (rateLimited) {
+    c.header('Retry-After', String(loginDefensePolicy.ipRetryAfterSeconds))
+    return c.json(error, 429)
+  }
+
+  return c.json(error, 400)
+}
 
 app.get('/api/policies', async (c) => {
   const auth = await authenticateVaultRequest(c)

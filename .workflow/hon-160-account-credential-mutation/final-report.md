@@ -1,6 +1,6 @@
 # Final Report: HON-160 Account Credential Mutation
 
-Status: AUTH-2A source-ready on the latest local `main`; HON-160 remains In
+Status: AUTH-2A remediation-ready on draft PR #101; HON-160 remains In
 Progress.
 
 ## Outcome
@@ -8,9 +8,9 @@ Progress.
 HON-160 was decomposed into six one-PR Linear children with nine exact blocking
 relations. The first child, HON-202 / AUTH-2A, now has a locally verified
 credential-generation primitive and explicit security-stamp rotation route.
-The parent and child remain open because GitHub publication, reviewed merge,
-main-branch readback, later credential children, deployment, and production
-evidence are outside this checkpoint.
+The parent and child remain open because fresh publication checks, reviewed
+merge, main-branch readback, later credential children, deployment, and
+production evidence are outside this checkpoint.
 
 ## Accepted Results
 
@@ -53,24 +53,34 @@ their encrypted response keys. Focused HTTP/repository tests and fresh local D1
 success, rollback, cross-account, stale-approval, and concurrency evidence pass;
 fresh CI and a clean review of the remediated published head remain required.
 
+The next Codex review found two P2 issues. Invalid current-hash proofs exposed an
+unthrottled verifier to a stolen recent-password token, and successful rotation
+emitted a Worker audit JSON line even when `HONOWARDEN_AUDIT_LOGS=false`.
+Security-stamp proof checks now use the existing account/IP failure buckets,
+lockout policy, failed-login state, and `Retry-After` response before mutation.
+The mandatory D1 audit row remains unconditional while console emission obeys
+the operator toggle. Focused app tests and fresh real-D1 lockout, rate-limit,
+credential non-mutation, and disabled-console readbacks pass.
+
 ## Verification Evidence
 
-- P1 remediation focused repository and complete app run: 2 files, 249 tests
-  passed.
+- Complete app tests after the P1/P2 remediations: 243 tests passed.
 - Scheduled retention: 9 tests passed.
-- Current full Vitest: 84 files, 945 tests passed.
+- Current full Vitest: 84 files, 947 tests passed.
 - TypeScript, ESLint, Prettier, brand policy, and diff checks passed.
 - Workflow Node tests: 17 tests passed, including managed Linear checkpoint
   tests.
 - `results/auth-2a-real-d1-evidence.json` proves fresh migrations, success,
   old-token and stale-auth-request rejection, owner-wide revocation and
   authorization invalidation, response-key clearing, relogin/sync, audit
-  rollback, cross-account isolation, and one-winner concurrency.
+  rollback, cross-account isolation, one-winner concurrency, proof lockout and
+  IP rate limiting, and disabled console audit emission with mandatory D1
+  persistence.
 - Canonical and independent Linear decomposition readbacks are exact.
 - HON-202 source-ready comment independently read back as one exact managed
   comment: 1667 bytes, SHA-256
   `d6e492c056bee7afbaa0accbf12ba98b666887e254254ef4c810cf8cae8380af`.
-- Final independent code review: no actionable findings.
+- Pre-publication independent code review: no actionable findings at that head.
 - Focused managed-checkpoint safety and evidence review: no actionable
   findings.
 
@@ -94,15 +104,17 @@ fresh CI and a clean review of the remediated published head remain required.
   83 files and 941 tests before three unchanged backup CLI tests timed out; the
   host full suite above passed all 84 files and 944 tests.
 - Codex review of the first published head then found the auth-request P1. The
-  remediated local head passes 84 files and 945 tests, fresh local D1 evidence,
-  17 workflow tests, TypeScript, ESLint, Prettier, brand policy, diff checks,
-  and the strict release gate at 11 pass, 0 manual, and 0 block.
+  next review found the two proof-defense and audit-console P2 issues described
+  above. The current local remediation passes 84 files and 947 tests, fresh
+  local D1 evidence, 17 workflow tests, TypeScript, ESLint, Prettier, brand
+  policy, diff checks, and the strict release gate at 11 pass, 0 manual, and 0
+  block.
 
 ## Remaining Risks
 
-- PR #101's first published head and CI are superseded by the locally verified
-  P1 remediation; the exact remediated head still needs push, CI, and a clean
-  review.
+- PR #101's current published head and CI are superseded by the locally verified
+  P2 remediation; the exact remediated head still needs commit, push, CI, and a
+  clean review.
 - No merge or `main` readback exists, so HON-202 must not move to Done.
 - HON-203 through HON-207 remain blocked or pending and own password, KDF,
   keypair, user-key rotation, and official-client lifecycle work.

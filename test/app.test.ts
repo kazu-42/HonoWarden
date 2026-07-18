@@ -6783,6 +6783,7 @@ describe('HonoWarden app', () => {
     })
     const bindings = {
       DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
       HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
       HONOWARDEN_AUTH_REQUEST_SECRET: authRequestSecret,
       HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -6879,17 +6880,58 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('rejects invalid security-stamp proofs without mutating account state', async () => {
+  it('persists mandatory stamp-rotation audit without emitting disabled console logs', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
     const user = authUserRecord()
     const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-disabled-audit-log-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_AUDIT_LOGS: 'false',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'account.security_stamp.rotate',
+        outcome: 'success',
+        requestId: 'security-stamp-disabled-audit-log-request',
+      }),
+    ])
+    expect(auditLog).not.toHaveBeenCalled()
+  })
+
+  it('records invalid security-stamp proofs without mutating credentials', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const prepare = vi.spyOn(database, 'prepare')
     const accessToken = await recentPasswordAccessTokenFor(user)
-    const before = structuredClone(user)
+    const before = {
+      masterPasswordHash: user.masterPasswordHash,
+      revisionDate: user.revisionDate,
+      securityStamp: user.securityStamp,
+    }
     const response = await app.request(
       '/api/accounts/security-stamp',
       {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          'CF-Connecting-IP': '203.0.113.27',
           'Content-Type': 'application/json',
           'X-Request-Id': 'invalid-security-stamp-proof-request',
         },
@@ -6909,7 +6951,82 @@ describe('HonoWarden app', () => {
       },
       requestId: 'invalid-security-stamp-proof-request',
     })
-    expect(user).toEqual(before)
+    expect({
+      masterPasswordHash: user.masterPasswordHash,
+      revisionDate: user.revisionDate,
+      securityStamp: user.securityStamp,
+    }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+    const queries = prepare.mock.calls.map(([query]) => query)
+    expect(
+      queries.filter((query) => query.includes('INSERT INTO auth_attempts')),
+    ).toHaveLength(1)
+    expect(
+      queries.filter((query) =>
+        query.includes('INSERT INTO auth_failure_buckets'),
+      ),
+    ).toHaveLength(2)
+    expect(
+      queries.some((query) => query.includes('login_failed_count = ?')),
+    ).toBe(true)
+  })
+
+  it('locks repeated stamp proofs before mutation and rate limits their IP bucket', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const request = async (masterPasswordHash: string) =>
+      app.request(
+        '/api/accounts/security-stamp',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'CF-Connecting-IP': '203.0.113.28',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ masterPasswordHash }),
+        },
+        {
+          DB: database,
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+    for (
+      let attempt = 0;
+      attempt < loginDefensePolicy.accountFailureLimit;
+      attempt += 1
+    ) {
+      const response = await request(`wrong-hash-${attempt}`)
+      expect(response.status).toBe(400)
+    }
+
+    const blockedValidProof = await request(user.masterPasswordHash)
+    expect(blockedValidProof.status).toBe(400)
+    expect(user.securityStamp).toBe('security-stamp')
+
+    const remainingIpAttempts =
+      loginDefensePolicy.ipFailureLimit -
+      loginDefensePolicy.accountFailureLimit -
+      1
+    for (let attempt = 0; attempt < remainingIpAttempts; attempt += 1) {
+      const response = await request(user.masterPasswordHash)
+      const reachesIpLimit = attempt === remainingIpAttempts - 1
+      expect(response.status).toBe(reachesIpLimit ? 429 : 400)
+      if (reachesIpLimit) {
+        expect(response.headers.get('Retry-After')).toBe(
+          String(loginDefensePolicy.ipRetryAfterSeconds),
+        )
+      }
+    }
+
+    const blockedIpProof = await request(user.masterPasswordHash)
+    expect(blockedIpProof.status).toBe(429)
+    expect(blockedIpProof.headers.get('Retry-After')).toBe(
+      String(loginDefensePolicy.ipRetryAfterSeconds),
+    )
+    expect(user.securityStamp).toBe('security-stamp')
     expect(database.auditEventInserts).toEqual([])
   })
 
