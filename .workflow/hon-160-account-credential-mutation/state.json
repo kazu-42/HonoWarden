@@ -2,7 +2,7 @@
   "title": "HON-160 Account Credential Mutation",
   "slug": "hon-160-account-credential-mutation",
   "created_at": "2026-07-18T16:14:20+00:00",
-  "updated_at": "2026-07-19T02:22:28+09:00",
+  "updated_at": "2026-07-18T21:05:40Z",
   "status": "source_ready",
   "approval": {
     "required": true,
@@ -23,6 +23,18 @@
     "comment_sha256": "d6e492c056bee7afbaa0accbf12ba98b666887e254254ef4c810cf8cae8380af",
     "sync_readback": "results/hon-202-source-ready-readback.json",
     "independent_readback": "results/hon-202-source-ready-independent-readback.json"
+  },
+  "wave2_rebase_verification": {
+    "verified_at": "2026-07-18T21:05:40Z",
+    "base": "d395d02e5ef4b0cea6a4833646af8a4f5810e3ce",
+    "implementation_commit": "de4f328",
+    "backup_commit": "bdfdd5b884afb0b3bfc263ca28d1cf380f0898f3",
+    "range_diff": "exact",
+    "focused_vitest": "4 files, 261 tests",
+    "full_vitest": "84 files, 944 tests",
+    "workflow_node_tests": "17 tests",
+    "real_d1": "passed with synthetic data only",
+    "release_gate": "11 pass, 0 manual, 0 block"
   },
   "packets": [
     { "id": "01-official-contract", "status": "done" },
@@ -49,6 +61,6 @@
       "independent complete-diff review: no actionable findings",
       "focused managed-checkpoint review: no actionable findings"
     ],
-    "boundary": "Local source-ready only. GitHub publication, reviewed merge, main readback, deployment, production operation, compatibility promotion, and Linear Done remain pending."
+    "boundary": "Rebased and reverified on the latest local main. GitHub publication, reviewed merge, main readback, deployment, production operation, compatibility promotion, and Linear Done remain pending."
   }
 }

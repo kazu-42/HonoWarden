@@ -1,6 +1,7 @@
 # Final Report: HON-160 Account Credential Mutation
 
-Status: AUTH-2A source-ready locally; HON-160 remains In Progress.
+Status: AUTH-2A source-ready on the latest local `main`; HON-160 remains In
+Progress.
 
 ## Outcome
 
@@ -63,9 +64,26 @@ complete-diff review then reported no actionable findings.
 - Focused managed-checkpoint safety and evidence review: no actionable
   findings.
 
+## Wave 2 Rebase Verification
+
+- The implementation was fixed in commit `bdfdd5b` before integration and is
+  recoverable through `backup/hon-202-pre-wave2-bdfdd5b`.
+- The feature branch was rebased onto `main` at
+  `d395d02e5ef4b0cea6a4833646af8a4f5810e3ce` without textual conflicts.
+- `git range-diff` reports the pre-rebase and rebased implementation patches as
+  exact (`bdfdd5b = de4f328`).
+- Focused Vitest passed: 4 files, 261 tests.
+- Full Vitest passed: 84 files, 944 tests.
+- Workflow Node tests passed: 17 tests.
+- Fresh local D1 smoke passed again using synthetic data only; generated
+  evidence was refreshed without retaining temporary Wrangler state.
+- TypeScript, ESLint, Prettier, brand policy, diff checks, and the strict release
+  gate passed; the gate reported 11 pass, 0 manual, and 0 block.
+
 ## Remaining Risks
 
-- The diff is uncommitted and unpublished; PR CI and review have not run.
+- The branch is committed locally and unpublished; PR CI and review have not
+  run.
 - No merge or `main` readback exists, so HON-202 must not move to Done.
 - HON-203 through HON-207 remain blocked or pending and own password, KDF,
   keypair, user-key rotation, and official-client lifecycle work.
