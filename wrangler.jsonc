@@ -12,6 +12,7 @@
     "head_sampling_rate": 1,
   },
   "vars": {
+    "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
     "HONOWARDEN_ALLOWED_EMAILS": "",
     "HONOWARDEN_AUDIT_LOGS": "false",
     "HONOWARDEN_AUTH_REQUESTS_ENABLED": "false",
@@ -63,6 +64,7 @@
         "head_sampling_rate": 1,
       },
       "vars": {
+        "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
         "HONOWARDEN_AUTH_REQUESTS_ENABLED": "true",
@@ -113,6 +115,7 @@
         "head_sampling_rate": 1,
       },
       "vars": {
+        "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
         "HONOWARDEN_ALLOWED_EMAILS": "",
         "HONOWARDEN_AUDIT_LOGS": "false",
         "HONOWARDEN_AUTH_REQUESTS_ENABLED": "false",

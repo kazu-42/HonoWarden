@@ -3818,6 +3818,17 @@ describe('HonoWarden app', () => {
       token_type: 'Bearer',
       expires_in: 3600,
       Key: '2.synthetic-user-key',
+      PrivateKey: '2.synthetic-private-key',
+      AccountKeys: {
+        object: 'privateKeys',
+        publicKeyEncryptionKeyPair: {
+          object: 'publicKeyEncryptionKeyPair',
+          publicKey: 'synthetic-public-key',
+          wrappedPrivateKey: '2.synthetic-private-key',
+          signedPublicKey: null,
+        },
+        securityState: null,
+      },
       Kdf: 0,
       KdfIterations: 600000,
     })
@@ -3830,6 +3841,52 @@ describe('HonoWarden app', () => {
         premium: true,
       },
     })
+  })
+
+  it('rejects partial account keys before rotating a refresh token', async () => {
+    const database = new FakeD1Database(null, [], {
+      refreshSession: {
+        ...refreshTokenSessionRecord(),
+        publicKey: 'synthetic-surviving-public-key',
+        privateKey: null,
+      },
+      refreshRotationChanges: 1,
+    })
+    const prepare = vi.spyOn(database, 'prepare')
+
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    const body = await response.json()
+    expect(body).toEqual({
+      error: {
+        code: 'database_unavailable',
+        message: 'Token exchange failed.',
+      },
+      requestId: expect.any(String),
+    })
+    expect(JSON.stringify(body)).not.toContain('synthetic-surviving-public-key')
+    expect(
+      prepare.mock.calls.some(([query]) =>
+        /UPDATE\s+refresh_tokens/.test(String(query)),
+      ),
+    ).toBe(false)
   })
 
   it('projects stored Argon2id settings through refresh-token responses', async () => {
@@ -7094,6 +7151,545 @@ describe('HonoWarden app', () => {
         query.includes('INSERT INTO auth_attempts'),
       ),
     ).toBe(true)
+  })
+
+  it('keeps account-key reads and initialization state-free and default-off', async () => {
+    for (const method of ['GET', 'POST'] as const) {
+      const user = {
+        ...authUserRecord(),
+        publicKey: null,
+        privateKey: null,
+      }
+      const database = new FakeD1Database(null, [], { authUser: user })
+      const prepare = vi.spyOn(database, 'prepare')
+      const before = structuredClone(user)
+      const response = await app.request(
+        '/api/accounts/keys',
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${await accessTokenFor(user)}`,
+            ...(method === 'POST'
+              ? { 'Content-Type': 'application/json' }
+              : {}),
+          },
+          ...(method === 'POST'
+            ? { body: JSON.stringify(accountKeyInitializationBody()) }
+            : {}),
+        },
+        {
+          DB: database,
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(501)
+      expect(response.headers.get('Cache-Control')).toBe('no-store')
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'unsupported_feature',
+          message: 'Account keys are not activated on this server.',
+        },
+      })
+      expect(user).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+      expect(prepare).not.toHaveBeenCalled()
+    }
+  })
+
+  it('initializes once, preserves the current session, and projects the pair everywhere', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = {
+      ...authUserRecord(),
+      publicKey: null,
+      privateKey: null,
+    }
+    const devices = [
+      { id: 'current-device', userId: user.id },
+      { id: 'other-device', userId: user.id },
+    ]
+    const refreshTokens = [
+      { id: 'current-refresh', userId: user.id },
+      { id: 'other-refresh', userId: user.id },
+    ]
+    const authRequests = [
+      {
+        id: 'pending-request',
+        userId: user.id,
+        status: 'pending',
+        requestApproved: null,
+        encryptedResponseKey: null,
+      },
+    ]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      authRequests,
+    })
+    const sessionState = structuredClone({
+      devices,
+      refreshTokens,
+      authRequests,
+    })
+    const previousRevision = user.revisionDate
+    const previousStamp = user.securityStamp
+    const accessToken = await accessTokenFor(user)
+    const env = {
+      DB: database,
+      HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const response = await app.request(
+      '/api/accounts/keys',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'account-key-initialization-request',
+        },
+        body: JSON.stringify(accountKeyInitializationBody()),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.json()).resolves.toEqual(
+      accountKeysEndpointResponse(),
+    )
+    expect(user).toMatchObject({
+      publicKey: 'synthetic-initialized-public-key',
+      privateKey: '2.synthetic-initialized-wrapped-private-key',
+      securityStamp: previousStamp,
+      revisionDate: expect.not.stringMatching(
+        new RegExp(`^${previousRevision.replaceAll('.', '\\.')}$`),
+      ),
+    })
+    expect({ devices, refreshTokens, authRequests }).toEqual(sessionState)
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'account.keys.initialize',
+        requestId: 'account-key-initialization-request',
+        contextJson: JSON.stringify({
+          accountEncryptionVersion: 1,
+          securityStampChanged: false,
+          sessionsRevoked: false,
+        }),
+      }),
+    ])
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const auditJson = JSON.stringify({
+      persisted: database.auditEventInserts,
+      emitted: auditLog.mock.calls,
+    })
+    expect(auditJson).not.toContain('synthetic-initialized-public-key')
+    expect(auditJson).not.toContain('synthetic-initialized-wrapped-private-key')
+
+    const initializedRevision = user.revisionDate
+    const replay = await app.request(
+      '/api/accounts/keys',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(accountKeyInitializationBody()),
+      },
+      env,
+    )
+    expect(replay.status).toBe(200)
+    await expect(replay.json()).resolves.toEqual(accountKeysEndpointResponse())
+    expect(user.revisionDate).toBe(initializedRevision)
+    expect(database.auditEventInserts).toHaveLength(1)
+
+    const read = await app.request(
+      '/api/accounts/keys',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      env,
+    )
+    expect(read.status).toBe(200)
+    await expect(read.json()).resolves.toEqual(accountKeysEndpointResponse())
+
+    const profile = await app.request(
+      '/api/accounts/profile',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      env,
+    )
+    expect(profile.status).toBe(200)
+    await expect(profile.json()).resolves.toMatchObject({
+      privateKey: '2.synthetic-initialized-wrapped-private-key',
+      accountKeys: accountKeysEndpointResponse().accountKeys,
+    })
+
+    const sync = await app.request(
+      '/api/sync',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      env,
+    )
+    expect(sync.status).toBe(200)
+    await expect(sync.json()).resolves.toMatchObject({
+      profile: {
+        privateKey: '2.synthetic-initialized-wrapped-private-key',
+        accountKeys: accountKeysEndpointResponse().accountKeys,
+      },
+    })
+
+    const login = await passwordGrantRequest(
+      database,
+      user.masterPasswordHash,
+      'post-initialization-device',
+    )
+    expect(login.status).toBe(200)
+    await expect(login.json()).resolves.toMatchObject({
+      PrivateKey: '2.synthetic-initialized-wrapped-private-key',
+      AccountKeys: accountKeysEndpointResponse().accountKeys,
+    })
+  })
+
+  it('resolves a concurrent exact account-key retry without a second audit', async () => {
+    const user = {
+      ...authUserRecord(),
+      publicKey: null,
+      privateKey: null,
+    }
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const accessToken = await accessTokenFor(user)
+    const request = () =>
+      app.request(
+        '/api/accounts/keys',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(accountKeyInitializationBody()),
+        },
+        {
+          DB: database,
+          HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+    const responses = await Promise.all([request(), request()])
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200])
+    await expect(responses[0]?.json()).resolves.toEqual(
+      accountKeysEndpointResponse(),
+    )
+    await expect(responses[1]?.json()).resolves.toEqual(
+      accountKeysEndpointResponse(),
+    )
+    expect(database.auditEventInserts).toHaveLength(1)
+  })
+
+  it('rejects a concurrent exact keypair when the authenticated stamp changed', async () => {
+    const user = {
+      ...authUserRecord(),
+      publicKey: null,
+      privateKey: null,
+    }
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const originalBatch = database.batch.bind(database)
+    vi.spyOn(database, 'batch').mockImplementationOnce(async (statements) => {
+      Object.assign(user, {
+        publicKey: 'synthetic-initialized-public-key',
+        privateKey: '2.synthetic-initialized-wrapped-private-key',
+        securityStamp: 'concurrently-rotated-security-stamp',
+        revisionDate: '2026-07-19T00:00:02.000Z',
+      })
+      return originalBatch(statements)
+    })
+
+    const response = await app.request(
+      '/api/accounts/keys',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(accountKeyInitializationBody()),
+      },
+      {
+        DB: database,
+        HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    const body = JSON.stringify(await response.json())
+    expect(body).toContain('account_key_conflict')
+    expect(body).not.toContain('synthetic-initialized-public-key')
+    expect(body).not.toContain('synthetic-initialized-wrapped-private-key')
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('rejects partial account keys before creating a TOTP challenge or session', async () => {
+    const encryptedSecret = await encryptTotpSecret(
+      'test-totp-secret',
+      'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+    )
+    const user = {
+      ...authUserRecord(),
+      publicKey: 'synthetic-surviving-public-key',
+      privateKey: null,
+      totpEnabled: true,
+      totpEncryptedSecret: encryptedSecret,
+    }
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const prepare = vi.spyOn(database, 'prepare')
+
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: user.emailNormalized,
+          password: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    const body = await response.json()
+    expect(body).toEqual({
+      error: {
+        code: 'database_unavailable',
+        message: 'Token exchange failed.',
+      },
+      requestId: expect.any(String),
+    })
+    expect(JSON.stringify(body)).not.toContain('synthetic-surviving-public-key')
+    const queries = prepare.mock.calls.map(([query]) => String(query))
+    expect(
+      queries.some((query) => query.includes('INSERT INTO totp_challenges')),
+    ).toBe(false)
+    expect(
+      queries.some((query) => query.includes('INSERT INTO refresh_tokens')),
+    ).toBe(false)
+  })
+
+  it('rejects partial, unknown, and V2 request variants before key mutation', async () => {
+    for (const body of [
+      { publicKey: 'synthetic-initialized-public-key' },
+      {
+        ...accountKeyInitializationBody(),
+        unexpected: 'unsupported',
+      },
+      {
+        ...accountKeyInitializationBody(),
+        accountKeys: null,
+      },
+    ]) {
+      const user = {
+        ...authUserRecord(),
+        publicKey: null,
+        privateKey: null,
+      }
+      const before = structuredClone(user)
+      const database = new FakeD1Database(null, [], { authUser: user })
+      const response = await app.request(
+        '/api/accounts/keys',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${await accessTokenFor(user)}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        {
+          DB: database,
+          HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+      expect(user).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+    }
+  })
+
+  it('does not disclose or replace missing, partial, or different account-key state', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const missingUser = {
+      ...authUserRecord(),
+      publicKey: null,
+      privateKey: null,
+    }
+    const missingRead = await app.request(
+      '/api/accounts/keys',
+      {
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(missingUser)}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: missingUser }),
+        HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    expect(missingRead.status).toBe(409)
+    await expect(missingRead.json()).resolves.toMatchObject({
+      error: { code: 'account_keys_uninitialized' },
+    })
+
+    const existingUser = authUserRecord()
+    const existingBefore = structuredClone(existingUser)
+    const existingDatabase = new FakeD1Database(null, [], {
+      authUser: existingUser,
+    })
+    const differentWrite = await app.request(
+      '/api/accounts/keys',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(existingUser)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(accountKeyInitializationBody()),
+      },
+      {
+        DB: existingDatabase,
+        HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    expect(differentWrite.status).toBe(409)
+    const differentBody = JSON.stringify(await differentWrite.json())
+    expect(differentBody).toContain('account_key_conflict')
+    expect(differentBody).not.toContain(existingUser.publicKey ?? '')
+    expect(differentBody).not.toContain(existingUser.privateKey ?? '')
+    expect(existingUser).toEqual(existingBefore)
+    expect(existingDatabase.auditEventInserts).toEqual([])
+
+    for (const partial of [
+      {
+        publicKey: 'surviving-public-key',
+        privateKey: null,
+      },
+      {
+        publicKey: null,
+        privateKey: '2.surviving-wrapped-private-key',
+      },
+    ]) {
+      const user = { ...authUserRecord(), ...partial }
+      const database = new FakeD1Database(null, [], { authUser: user })
+      const accessToken = await accessTokenFor(user)
+      const read = await app.request(
+        '/api/accounts/keys',
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+        {
+          DB: database,
+          HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+      expect(read.status).toBe(409)
+      const readBody = JSON.stringify(await read.json())
+      expect(readBody).toContain('account_key_state_invalid')
+      for (const storedValue of [partial.publicKey, partial.privateKey]) {
+        if (storedValue) {
+          expect(readBody).not.toContain(storedValue)
+        }
+      }
+
+      for (const path of ['/api/accounts/profile', '/api/sync']) {
+        const projection = await app.request(
+          path,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+          {
+            DB: database,
+            HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          },
+        )
+        expect(projection.status).toBe(503)
+        const projectionBody = JSON.stringify(await projection.json())
+        for (const storedValue of [partial.publicKey, partial.privateKey]) {
+          if (storedValue) {
+            expect(projectionBody).not.toContain(storedValue)
+          }
+        }
+      }
+    }
+    expect(JSON.stringify(error.mock.calls)).not.toContain(
+      'surviving-wrapped-private-key',
+    )
+    expect(JSON.stringify(error.mock.calls)).not.toContain(
+      'surviving-public-key',
+    )
+  })
+
+  it('rolls the account-key row back when required audit persistence fails', async () => {
+    const user = {
+      ...authUserRecord(),
+      publicKey: null,
+      privateKey: null,
+    }
+    const before = structuredClone(user)
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      accountKeyInitializationFailureAt: 'audit',
+    })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const response = await app.request(
+      '/api/accounts/keys',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'account-key-audit-failure-request',
+        },
+        body: JSON.stringify(accountKeyInitializationBody()),
+      },
+      {
+        DB: database,
+        HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'database_unavailable' },
+      requestId: 'account-key-audit-failure-request',
+    })
+    expect(user).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+    expect(error).toHaveBeenCalledWith(
+      JSON.stringify({
+        event: 'account_key_initialization_failed',
+        requestId: 'account-key-audit-failure-request',
+        reason: 'database_error',
+      }),
+    )
+    expect(JSON.stringify(error.mock.calls)).not.toContain(
+      'synthetic-initialized-wrapped-private-key',
+    )
   })
 
   it('changes PBKDF2 to Argon2id and projects the new generation everywhere', async () => {
@@ -13514,6 +14110,33 @@ function kdfChangeBody(
       kdf,
       masterKeyWrappedUserKey: nextUserKey,
       salt: user.emailNormalized,
+    },
+  }
+}
+
+function accountKeyInitializationBody() {
+  return {
+    publicKey: 'synthetic-initialized-public-key',
+    encryptedPrivateKey: '2.synthetic-initialized-wrapped-private-key',
+  }
+}
+
+function accountKeysEndpointResponse() {
+  return {
+    object: 'keys',
+    key: '2.synthetic-user-key',
+    publicKey: 'synthetic-initialized-public-key',
+    privateKey: '2.synthetic-initialized-wrapped-private-key',
+    accountKeys: {
+      object: 'privateKeys',
+      signatureKeyPair: null,
+      publicKeyEncryptionKeyPair: {
+        object: 'publicKeyEncryptionKeyPair',
+        publicKey: 'synthetic-initialized-public-key',
+        wrappedPrivateKey: '2.synthetic-initialized-wrapped-private-key',
+        signedPublicKey: null,
+      },
+      securityState: null,
     },
   }
 }

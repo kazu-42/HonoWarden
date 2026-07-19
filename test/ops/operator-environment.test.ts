@@ -146,6 +146,17 @@ describe('operator environment policy', () => {
     expect(rollbackGuide).toMatch(/pre-reader\s+release/)
   })
 
+  it('documents the default-off one-time account-key initialization boundary', () => {
+    const envExample = readRepoFile('.env.example')
+    const operatorDocs = readRepoFile('docs/operations/operator-environment.md')
+
+    expect(envExample).toMatch(/^HONOWARDEN_ACCOUNT_KEYS_ENABLED=false$/m)
+    expect(operatorDocs).toContain('Account Key Initialization Rollout')
+    expect(operatorDocs).toContain('HONOWARDEN_ACCOUNT_KEYS_ENABLED')
+    expect(operatorDocs).toMatch(/security stamp and existing sessions remain/)
+    expect(operatorDocs).toContain('HON-206')
+  })
+
   it('documents Cloudflare account access review without secret values', () => {
     const accessReview = readRepoFile(
       'docs/operations/cloudflare-access-control.md',

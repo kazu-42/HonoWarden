@@ -8,8 +8,10 @@
 - The statement writes the opaque public/wrapped-private pair, advances
   revision/updated time, and uses `RETURNING id` as the single-row success
   signal.
-- One `account.keys.initialize` audit event is inserted through a guarded
-  `INSERT ... SELECT` in the same two-statement D1 batch.
+- One `account.keys.initialize` audit event is reserved from the exact missing
+  source generation before the guarded user update in the same two-statement
+  D1 batch. This ordering prevents a same-revision exact-key race from writing
+  an audit event when its update changed no user row.
 - The mutation deliberately has no device, refresh-token, auth-request, master
   password, KDF, wrapped user-key, or security-stamp write.
 

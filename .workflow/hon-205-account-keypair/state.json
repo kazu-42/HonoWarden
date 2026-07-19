@@ -21,17 +21,17 @@
     },
     {
       "id": "03-routes-projections",
-      "status": "in_progress",
-      "result": null
+      "status": "completed",
+      "result": "results/03-routes-projections.md"
     },
     {
       "id": "04-evidence-review",
-      "status": "pending",
+      "status": "in_progress",
       "result": null
     }
   ],
   "verification": {
-    "status": "not_started",
+    "status": "in_progress",
     "checks": [
       "focused",
       "full",

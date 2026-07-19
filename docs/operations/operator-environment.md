@@ -254,6 +254,30 @@ synthetic lifecycle passes an explicit Wrangler `--var` override and is not
 deployment activation evidence. Production activation requires separate
 operator approval and official-client credential closeout evidence.
 
+## Account Key Initialization Rollout
+
+`HONOWARDEN_ACCOUNT_KEYS_ENABLED` is a non-secret, default-off gate for
+`GET /api/accounts/keys` and the one-time `POST /api/accounts/keys` V1
+initializer. Only exact `true` after trimming and case normalization enables
+either route. Missing, blank, false, or any other value returns
+`501 unsupported_feature` before authentication or D1 access.
+
+The initializer accepts only a complete bounded opaque public key and wrapped
+private key for an active authenticated account whose two stored key columns are
+both null. The first commit advances account revision and writes one required
+redacted audit event atomically; the security stamp and existing sessions remain
+unchanged so the initiating client can finish its bootstrap. An exact replay is
+a successful no-op. Partial stored state, V2 fields, and any different existing
+value fail without overwrite or disclosure. Full replacement and data rewrap
+belong to HON-206 and must never be routed through this initializer.
+
+The top-level, staging, and production `wrangler.jsonc` values remain false.
+Source merge does not activate the routes. Activation requires separate
+official-client lifecycle evidence and operator approval; disabling the flag is
+the immediate route rollback. Already initialized keypairs remain available
+through the established token, profile, sync, and backup projections; the
+dedicated account-key routes stay unavailable until the flag is re-enabled.
+
 ## WebAuthn Runtime Policy
 
 HON-208 defines the configuration contract only. It does not add a WebAuthn
