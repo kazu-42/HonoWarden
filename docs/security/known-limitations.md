@@ -87,6 +87,15 @@ inputs, not minor documentation notes.
   configurations and requires cardinality and latency monitoring before broader
   exposure. Migration triggers abort a user insert/delete/KDF update if the old
   tuple count is missing instead of allowing silent population drift.
+- authenticated account-key read and one-time V1 initialization are covered by
+  pinned route fixtures, focused tests, and a synthetic local Wrangler/D1
+  lifecycle. No official client UI, staging, production, or real-account run is
+  recorded, and every tracked environment keeps the route flag false. The
+  initializer accepts only both-null state, preserves the security stamp and
+  existing sessions, and cannot repair or replace a partial/different pair.
+  True replacement, client data rewrap, V2 signature keys, signed public keys,
+  security state, TDE, and Key Connector remain unsupported pending HON-206 or
+  later reviewed work.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation

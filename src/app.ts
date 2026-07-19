@@ -29,6 +29,13 @@ import {
 } from './domain/audit'
 import type { AuditEventName, AuditEventOutcome } from './domain/audit'
 import {
+  accountKeyPairsEqual,
+  classifyAccountKeyState,
+  isAccountKeyInitializationEnabled,
+  parseAccountKeyInitializationBody,
+} from './domain/account-keys'
+import type { AccountKeyPair } from './domain/account-keys'
+import {
   accountCredentialKdfAlgorithmForType,
   accountCredentialKdfFromStoredGeneration,
   isKdfMutationEnabled,
@@ -112,6 +119,7 @@ import { persistAuditEvent } from './repositories/audit-event-repository'
 import {
   changeAccountKdf,
   changeAccountMasterPassword,
+  initializeAccountKeyPair,
   rotateAccountSecurityStamp,
 } from './repositories/credential-repository'
 import {
@@ -480,6 +488,16 @@ function isRequestQuotaBypass(c: AppContext): boolean {
   }
 
   const pathname = new URL(c.req.url).pathname
+
+  if (
+    pathname === '/api/accounts/keys' &&
+    (c.req.method === 'GET' ||
+      c.req.method === 'HEAD' ||
+      c.req.method === 'POST') &&
+    !isAccountKeyInitializationEnabled(c.env?.HONOWARDEN_ACCOUNT_KEYS_ENABLED)
+  ) {
+    return true
+  }
 
   return pathname === '/health' || pathname === '/healthz'
 }
@@ -943,7 +961,8 @@ app.get('/api/accounts/profile', async (c) => {
         organizations,
       ),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),
@@ -1694,6 +1713,8 @@ app.post('/identity/connect/token', async (c) => {
         return c.json(tokenErrorResponse(invalidGrantError()), 400)
       }
 
+      const accountKeyProjection = buildAccountKeyProjection(session.user)
+
       const nextRefreshToken = generateRefreshToken()
       const nextRefreshTokenHash = await hashRefreshToken(
         tokenSecret,
@@ -1750,9 +1771,15 @@ app.post('/identity/connect/token', async (c) => {
       )
 
       return c.json(
-        buildTokenResponse(session.user, accessToken, nextRefreshToken),
+        buildTokenResponse(
+          session.user,
+          accessToken,
+          nextRefreshToken,
+          accountKeyProjection,
+        ),
       )
-    } catch {
+    } catch (error) {
+      reportAccountKeyProjectionError(c, error)
       return c.json(
         {
           error: {
@@ -1944,6 +1971,8 @@ app.post('/identity/connect/token', async (c) => {
       return await recordAccountFailure()
     }
 
+    const accountKeyProjection = buildAccountKeyProjection(user)
+
     if (user.totpEnabled) {
       const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
       if (!totpSecret || !user.totpEncryptedSecret) {
@@ -2102,8 +2131,11 @@ app.post('/identity/connect/token', async (c) => {
       }),
     )
 
-    return c.json(buildTokenResponse(user, accessToken, refreshToken))
-  } catch {
+    return c.json(
+      buildTokenResponse(user, accessToken, refreshToken, accountKeyProjection),
+    )
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       {
         error: {
@@ -2230,6 +2262,8 @@ async function handleAuthRequestTokenGrant(
       return c.json(tokenErrorResponse(invalidGrantError()), 400)
     }
 
+    const accountKeyProjection = buildAccountKeyProjection(user)
+
     const refreshToken = generateRefreshToken()
     const refreshTokenHash = await hashRefreshToken(
       accessTokenConfig.refreshTokenSecret,
@@ -2281,8 +2315,11 @@ async function handleAuthRequestTokenGrant(
       target: { type: 'auth_request', id: request.id },
     })
 
-    return c.json(buildTokenResponse(user, accessToken, refreshToken))
-  } catch {
+    return c.json(
+      buildTokenResponse(user, accessToken, refreshToken, accountKeyProjection),
+    )
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),
@@ -2341,7 +2378,8 @@ app.get('/api/sync', async (c) => {
         collections,
       ),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),
@@ -2366,6 +2404,14 @@ app.post('/api/accounts/export', async (c) => {
       listCipherAttachmentsByUser(c.env.DB, auth.user.id),
     ])
     const generatedAt = new Date().toISOString()
+    const exportResponse = buildBackupExportResponse({
+      user: auth.user,
+      folders,
+      ciphers,
+      attachments,
+      generatedAt,
+      requestId: c.get('requestId'),
+    })
 
     await emitBackupExportAuditEvent(c, auth, 'success', {
       folderCount: folders.length,
@@ -2382,19 +2428,14 @@ app.post('/api/accounts/export', async (c) => {
       )}.json"`,
     )
 
-    return c.json(
-      buildBackupExportResponse({
-        user: auth.user,
-        folders,
-        ciphers,
-        attachments,
-        generatedAt,
-        requestId: c.get('requestId'),
-      }),
-    )
-  } catch {
+    return c.json(exportResponse)
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     await emitBackupExportAuditEvent(c, auth, 'failure', {
-      reason: 'database_unavailable',
+      reason:
+        error instanceof AccountKeyProjectionError
+          ? error.reason
+          : 'database_unavailable',
     })
 
     return c.json(
@@ -2455,6 +2496,193 @@ app.post('/api/accounts/verify-password', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Password verification failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/accounts/keys', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (
+    !isAccountKeyInitializationEnabled(c.env?.HONOWARDEN_ACCOUNT_KEYS_ENABLED)
+  ) {
+    return unsupportedFeatureResponse(
+      c,
+      'Account keys are not activated on this server.',
+      true,
+    )
+  }
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+  if (!hasWrappedUserKey(auth.user)) {
+    logInvalidAccountKeyState(c, 'wrapped_user_key_missing')
+    return invalidAccountKeyStateResponse(c)
+  }
+
+  const state = classifyAccountKeyState(auth.user)
+  if (state.status === 'missing') {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'account_keys_uninitialized',
+        'Account keys are not initialized.',
+      ),
+      409,
+    )
+  }
+  if (state.status === 'invalid') {
+    logInvalidAccountKeyState(c)
+    return invalidAccountKeyStateResponse(c)
+  }
+
+  return c.json(buildAccountKeysEndpointResponse(auth.user, state.keyPair))
+})
+
+app.post('/api/accounts/keys', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (
+    !isAccountKeyInitializationEnabled(c.env?.HONOWARDEN_ACCOUNT_KEYS_ENABLED)
+  ) {
+    return unsupportedFeatureResponse(
+      c,
+      'Account keys are not activated on this server.',
+      true,
+    )
+  }
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+  if (!hasWrappedUserKey(auth.user)) {
+    logInvalidAccountKeyState(c, 'wrapped_user_key_missing')
+    return invalidAccountKeyStateResponse(c)
+  }
+
+  const request = parseAccountKeyInitializationBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'The account key request is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const currentState = classifyAccountKeyState(auth.user)
+  if (currentState.status === 'invalid') {
+    logInvalidAccountKeyState(c)
+    return invalidAccountKeyStateResponse(c)
+  }
+  if (currentState.status === 'complete') {
+    if (accountKeyPairsEqual(currentState.keyPair, request.keyPair)) {
+      return c.json(
+        buildAccountKeysEndpointResponse(auth.user, currentState.keyPair),
+      )
+    }
+    return accountKeyConflictResponse(c)
+  }
+
+  try {
+    const nextRevisionDate = nextCredentialRevisionDate(
+      auth.user.revisionDate,
+      new Date().toISOString(),
+    )
+    const auditEventId = crypto.randomUUID()
+    const auditEvent = buildAuditEvent({
+      name: 'account.keys.initialize',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: nextRevisionDate,
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        accountEncryptionVersion: 1,
+        securityStampChanged: false,
+        sessionsRevoked: false,
+      },
+    })
+    const result = await initializeAccountKeyPair(c.env.DB, {
+      userId: auth.user.id,
+      expectedSecurityStamp: auth.user.securityStamp,
+      expectedRevisionDate: auth.user.revisionDate,
+      publicKey: request.keyPair.publicKey,
+      wrappedPrivateKey: request.keyPair.wrappedPrivateKey,
+      nextRevisionDate,
+      auditEventId,
+      auditEvent,
+    })
+
+    if (result.status === 'conflict') {
+      const currentUser = await findAuthUserById(c.env.DB, auth.user.id)
+      if (!currentUser || currentUser.disabledAt) {
+        return accountKeyConflictResponse(c)
+      }
+      if (!hasWrappedUserKey(currentUser)) {
+        logInvalidAccountKeyState(c, 'wrapped_user_key_missing')
+        return invalidAccountKeyStateResponse(c)
+      }
+      const concurrentState = classifyAccountKeyState(currentUser)
+      if (concurrentState.status === 'invalid') {
+        logInvalidAccountKeyState(c)
+        return invalidAccountKeyStateResponse(c)
+      }
+      if (
+        concurrentState.status === 'complete' &&
+        currentUser.securityStamp === auth.user.securityStamp &&
+        accountKeyPairsEqual(concurrentState.keyPair, request.keyPair)
+      ) {
+        return c.json(
+          buildAccountKeysEndpointResponse(
+            currentUser,
+            concurrentState.keyPair,
+          ),
+        )
+      }
+      return accountKeyConflictResponse(c)
+    }
+
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
+    return c.json(
+      buildAccountKeysEndpointResponse(
+        {
+          ...auth.user,
+          publicKey: request.keyPair.publicKey,
+          privateKey: request.keyPair.wrappedPrivateKey,
+          revisionDate: result.revisionDate,
+        },
+        request.keyPair,
+      ),
+    )
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_key_initialization_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account key initialization failed.',
       ),
       503,
     )
@@ -5086,9 +5314,9 @@ function buildTokenResponse(
   user: AuthUserRecord,
   accessToken: string,
   refreshToken: string,
+  accountKeyProjection = buildAccountKeyProjection(user),
 ) {
   const kdf = requireAccountCredentialKdf(user)
-  const accountKeys = buildAccountKeysResponse(user)
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const userDecryptionOptions = masterPasswordUnlock
     ? {
@@ -5109,12 +5337,12 @@ function buildTokenResponse(
     token_type: 'Bearer',
     expires_in: accessTokenTtlSeconds,
     Key: user.userKey,
-    PrivateKey: user.privateKey,
+    PrivateKey: accountKeyProjection.privateKey,
     Kdf: kdf.kdfType,
     KdfIterations: kdf.iterations,
     KdfMemory: kdf.memory,
     KdfParallelism: kdf.parallelism,
-    AccountKeys: accountKeys,
+    AccountKeys: accountKeyProjection.accountKeys,
     ForcePasswordReset: false,
     TwoFactorToken: null,
     MasterPasswordPolicy: null,
@@ -5147,20 +5375,117 @@ function buildAccessTokenClaims(input: {
   }
 }
 
-function buildAccountKeysResponse(user: AuthUserRecord) {
-  if (!user.publicKey || !user.privateKey) {
-    return null
+function buildAccountKeyProjection(user: AuthUserRecord) {
+  const state = classifyAccountKeyState(user)
+  if (state.status === 'invalid') {
+    throw new AccountKeyProjectionError('stored_state_invalid')
+  }
+  if (state.status === 'missing') {
+    return {
+      publicKey: null,
+      privateKey: null,
+      accountKeys: null,
+    }
+  }
+  if (!hasWrappedUserKey(user)) {
+    throw new AccountKeyProjectionError('wrapped_user_key_missing')
   }
 
-  return {
+  const accountKeys = {
+    object: 'privateKeys',
     signatureKeyPair: null,
     publicKeyEncryptionKeyPair: {
-      publicKey: user.publicKey,
-      wrappedPrivateKey: user.privateKey,
+      object: 'publicKeyEncryptionKeyPair',
+      publicKey: state.keyPair.publicKey,
+      wrappedPrivateKey: state.keyPair.wrappedPrivateKey,
       signedPublicKey: null,
     },
     securityState: null,
   }
+
+  return {
+    publicKey: state.keyPair.publicKey,
+    privateKey: state.keyPair.wrappedPrivateKey,
+    accountKeys,
+  }
+}
+
+function buildAccountKeysEndpointResponse(
+  user: AuthUserRecord,
+  keyPair: AccountKeyPair,
+) {
+  if (!hasWrappedUserKey(user)) {
+    throw new Error('stored account keypair has no wrapped user key')
+  }
+
+  return {
+    object: 'keys',
+    key: user.userKey,
+    publicKey: keyPair.publicKey,
+    privateKey: keyPair.wrappedPrivateKey,
+    accountKeys: buildAccountKeyProjection({
+      ...user,
+      publicKey: keyPair.publicKey,
+      privateKey: keyPair.wrappedPrivateKey,
+    }).accountKeys,
+  }
+}
+
+function accountKeyConflictResponse(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'account_key_conflict',
+      'Account keys could not be initialized.',
+    ),
+    409,
+  )
+}
+
+function invalidAccountKeyStateResponse(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'account_key_state_invalid',
+      'Account key state is invalid.',
+    ),
+    409,
+  )
+}
+
+function logInvalidAccountKeyState(
+  c: AppContext,
+  reason: AccountKeyStateInvalidReason = 'stored_state_invalid',
+) {
+  console.error(
+    JSON.stringify({
+      event: 'account_key_state_invalid',
+      requestId: c.get('requestId'),
+      reason,
+    }),
+  )
+}
+
+type AccountKeyStateInvalidReason =
+  'stored_state_invalid' | 'wrapped_user_key_missing'
+
+class AccountKeyProjectionError extends Error {
+  constructor(readonly reason: AccountKeyStateInvalidReason) {
+    super('stored account key projection is invalid')
+    this.name = 'AccountKeyProjectionError'
+  }
+}
+
+function reportAccountKeyProjectionError(c: AppContext, error: unknown): void {
+  if (error instanceof AccountKeyProjectionError) {
+    logInvalidAccountKeyState(c, error.reason)
+  }
+}
+
+function hasWrappedUserKey(
+  user: AuthUserRecord,
+): user is AuthUserRecord & { userKey: string } {
+  return typeof user.userKey === 'string' && user.userKey.trim().length > 0
 }
 
 function buildMasterPasswordUnlockResponse(user: AuthUserRecord) {
@@ -5347,6 +5672,8 @@ function buildBackupExportResponse(input: {
 }
 
 function buildBackupAccountResponse(user: AuthUserRecord) {
+  const accountKeyProjection = buildAccountKeyProjection(user)
+
   return {
     id: user.id,
     email: user.emailNormalized,
@@ -5355,8 +5682,8 @@ function buildBackupAccountResponse(user: AuthUserRecord) {
     creationDate: normalizeApiTimestamp(user.createdAt),
     twoFactorEnabled: user.totpEnabled,
     key: user.userKey,
-    publicKey: user.publicKey,
-    privateKey: user.privateKey,
+    publicKey: accountKeyProjection.publicKey,
+    privateKey: accountKeyProjection.privateKey,
     kdf: {
       algorithm: user.kdfAlgorithm,
       iterations: user.kdfIterations,
@@ -5760,7 +6087,7 @@ function buildSyncProfileResponse(
   organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const name = user.displayName ?? user.emailNormalized
-  const accountKeys = buildAccountKeysResponse(user)
+  const accountKeyProjection = buildAccountKeyProjection(user)
   const organizationResponses = organizations.map(
     buildProfileOrganizationResponse,
   )
@@ -5772,8 +6099,8 @@ function buildSyncProfileResponse(
     avatarColor: '#3366cc',
     emailVerified: true,
     twoFactorEnabled: user.totpEnabled,
-    privateKey: user.privateKey,
-    accountKeys,
+    privateKey: accountKeyProjection.privateKey,
+    accountKeys: accountKeyProjection.accountKeys,
     premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
@@ -5799,7 +6126,7 @@ function buildProfileResponse(
   organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const name = user.displayName ?? user.emailNormalized
-  const accountKeys = buildAccountKeysResponse(user)
+  const accountKeyProjection = buildAccountKeyProjection(user)
   const organizationResponses = organizations.map(
     buildProfileOrganizationResponse,
   )
@@ -5811,8 +6138,8 @@ function buildProfileResponse(
     avatarColor: '#3366cc',
     emailVerified: true,
     twoFactorEnabled: user.totpEnabled,
-    privateKey: user.privateKey,
-    accountKeys,
+    privateKey: accountKeyProjection.privateKey,
+    accountKeys: accountKeyProjection.accountKeys,
     premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
@@ -5837,10 +6164,10 @@ function buildProfileResponse(
     Culture: 'en-US',
     TwoFactorEnabled: user.totpEnabled,
     Key: user.userKey,
-    AccountKeys: accountKeys,
+    AccountKeys: accountKeyProjection.accountKeys,
     AvatarColor: '#3366cc',
     CreationDate: normalizeApiTimestamp(user.createdAt),
-    PrivateKey: user.privateKey,
+    PrivateKey: accountKeyProjection.privateKey,
     SecurityStamp: user.securityStamp,
     ForcePasswordReset: false,
     UsesKeyConnector: false,
@@ -6134,6 +6461,9 @@ function apiError(
     | 'cipher_not_found'
     | 'collection_not_found'
     | 'account_not_found'
+    | 'account_key_conflict'
+    | 'account_key_state_invalid'
+    | 'account_keys_uninitialized'
     | 'attachment_not_found'
     | 'attachment_size_mismatch'
     | 'attachment_storage_limit_exceeded'
@@ -7087,6 +7417,7 @@ async function handleAccountProfileUpdate(c: AppContext) {
   }
 
   try {
+    buildAccountKeyProjection(auth.user)
     const now = new Date().toISOString()
     const result = await updateAccountProfile(c.env.DB, {
       userId: auth.user.id,
@@ -7122,7 +7453,8 @@ async function handleAccountProfileUpdate(c: AppContext) {
         isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
       ),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),

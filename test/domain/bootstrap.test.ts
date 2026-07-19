@@ -84,6 +84,59 @@ describe('bootstrap domain', () => {
     })
   })
 
+  it.each([
+    {
+      publicKey: 'synthetic-public-key',
+    },
+    {
+      privateKey: '2.synthetic-wrapped-private-key',
+    },
+    {
+      publicKey: 'synthetic-public-key',
+      privateKey: '2.synthetic-wrapped-private-key',
+    },
+  ])('rejects an incomplete bootstrap key envelope', (keys) => {
+    expect(
+      resolveBootstrapAccount(
+        {
+          email: 'person@example.test',
+          masterPasswordHash: 'synthetic-master-password-hash',
+          ...keys,
+        },
+        'person@example.test',
+      ),
+    ).toEqual({
+      ok: false,
+      status: 400,
+      error: {
+        code: 'invalid_request',
+        message: 'A valid bootstrap account payload is required.',
+      },
+    })
+  })
+
+  it('accepts a complete bootstrap key envelope with its wrapped user key', () => {
+    expect(
+      resolveBootstrapAccount(
+        {
+          email: 'person@example.test',
+          masterPasswordHash: 'synthetic-master-password-hash',
+          userKey: '2.synthetic-user-key',
+          publicKey: 'synthetic-public-key',
+          privateKey: '2.synthetic-wrapped-private-key',
+        },
+        'person@example.test',
+      ),
+    ).toMatchObject({
+      ok: true,
+      payload: {
+        userKey: '2.synthetic-user-key',
+        publicKey: 'synthetic-public-key',
+        privateKey: '2.synthetic-wrapped-private-key',
+      },
+    })
+  })
+
   it('builds a D1 user record without plaintext password fields', () => {
     const decision = resolveBootstrapAccount(
       {

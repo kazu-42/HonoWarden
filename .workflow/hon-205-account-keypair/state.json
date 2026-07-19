@@ -1,0 +1,57 @@
+{
+  "title": "HON-205 account keypair lifecycle",
+  "slug": "hon-205-account-keypair",
+  "created_at": "2026-07-19T15:14:40+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local source, reviewed PR/admin merge, Linear closeout, and isolated cleanup were pre-authorized. Production activation remains excluded."
+  },
+  "packets": [
+    {
+      "id": "01-contract-domain",
+      "status": "completed",
+      "result": "results/01-contract-domain.md"
+    },
+    {
+      "id": "02-repository",
+      "status": "completed",
+      "result": "results/02-repository.md"
+    },
+    {
+      "id": "03-routes-projections",
+      "status": "completed",
+      "result": "results/03-routes-projections.md"
+    },
+    {
+      "id": "04-evidence-review",
+      "status": "in_progress",
+      "result": "results/04-evidence-review.md"
+    }
+  ],
+  "verification": {
+    "status": "local_passed_reviews_pending",
+    "results": {
+      "focused": "passed_4_files_347_tests",
+      "full": "passed_89_files_1100_tests",
+      "compatibility": "passed_3_files_105_tests",
+      "realLocalD1": "passed",
+      "releaseGate": "ready_11_pass_0_manual_0_block",
+      "standardReview": "four_rounds_remediated_final_exact_head_pending",
+      "fiveAxisReview": "pending"
+    },
+    "checks": [
+      "focused",
+      "full",
+      "compatibility",
+      "real_local_d1",
+      "pinned_client",
+      "standard_review",
+      "five_axis_review",
+      "head_ci",
+      "main_ci",
+      "linear_readback"
+    ]
+  }
+}

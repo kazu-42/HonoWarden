@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { buildAuditEvent } from '../../src/domain/audit'
 import {
   changeAccountKdf,
   changeAccountMasterPassword,
+  initializeAccountKeyPair,
   rotateAccountSecurityStamp,
 } from '../../src/repositories/credential-repository'
 import { FakeD1Database } from '../support/fake-d1'
@@ -93,7 +94,190 @@ const kdfChangeInput = {
   }),
 } as const
 
+const accountKeyInitializationInput = {
+  userId: 'user-id',
+  expectedSecurityStamp: 'old-security-stamp',
+  expectedRevisionDate: '2026-07-19T00:00:00.000Z',
+  publicKey: 'synthetic-public-key',
+  wrappedPrivateKey: '2.synthetic-wrapped-private-key',
+  nextRevisionDate: '2026-07-19T00:00:01.000Z',
+  auditEventId: 'account-key-initialization-audit-id',
+  auditEvent: buildAuditEvent({
+    name: 'account.keys.initialize',
+    outcome: 'success',
+    requestId: 'account-key-initialization-request',
+    occurredAt: '2026-07-19T00:00:01.000Z',
+    actor: {
+      userId: 'user-id',
+      deviceIdentifier: 'fixture-device',
+    },
+    target: {
+      type: 'account',
+      id: 'user-id',
+    },
+    context: {
+      accountEncryptionVersion: 1,
+      securityStampChanged: false,
+      sessionsRevoked: false,
+    },
+  }),
+} as const
+
 describe('credential repository', () => {
+  it('initializes one account keypair and required audit atomically without rotating sessions', async () => {
+    const state = credentialState()
+    const database = new FakeD1Database(null, [], state)
+    const prepare = vi.spyOn(database, 'prepare')
+    const sessionsBefore = structuredClone({
+      devices: state.devices,
+      refreshTokens: state.refreshTokens,
+      authRequests: state.authRequests,
+    })
+
+    await expect(
+      initializeAccountKeyPair(database, accountKeyInitializationInput),
+    ).resolves.toEqual({
+      status: 'initialized',
+      securityStamp: 'old-security-stamp',
+      revisionDate: '2026-07-19T00:00:01.000Z',
+      auditEventId: 'account-key-initialization-audit-id',
+    })
+
+    expect(state.authUser).toMatchObject({
+      publicKey: 'synthetic-public-key',
+      privateKey: '2.synthetic-wrapped-private-key',
+      securityStamp: 'old-security-stamp',
+      revisionDate: '2026-07-19T00:00:01.000Z',
+      updatedAt: '2026-07-19T00:00:01.000Z',
+    })
+    expect({
+      devices: state.devices,
+      refreshTokens: state.refreshTokens,
+      authRequests: state.authRequests,
+    }).toEqual(sessionsBefore)
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        id: 'account-key-initialization-audit-id',
+        name: 'account.keys.initialize',
+        actorUserId: 'user-id',
+        actorDeviceIdentifier: 'fixture-device',
+        contextJson: JSON.stringify({
+          accountEncryptionVersion: 1,
+          securityStampChanged: false,
+          sessionsRevoked: false,
+        }),
+      }),
+    ])
+    const auditJson = JSON.stringify(database.auditEventInserts)
+    expect(auditJson).not.toContain('synthetic-public-key')
+    expect(auditJson).not.toContain('synthetic-wrapped-private-key')
+
+    const queries = prepare.mock.calls.map(([query]) => String(query))
+    expect(queries).toHaveLength(2)
+    expect(queries[0]).toContain('INSERT INTO audit_events')
+    expect(queries[0]).toContain('public_key IS NULL')
+    expect(queries[0]).toContain('private_key IS NULL')
+    expect(queries[0]).toContain('user_key IS NOT NULL')
+    expect(queries[0]).toContain('length(trim(user_key)) > 0')
+    expect(queries[1]).toContain('UPDATE users')
+    expect(queries[1]).toContain('user_key IS NOT NULL')
+    expect(queries[1]).toContain('length(trim(user_key)) > 0')
+  })
+
+  it.each([
+    ['cross-user', { userId: 'other-user-id' }, {}],
+    ['disabled user', {}, { disabledAt: '2026-07-19T00:00:00.000Z' }],
+    ['missing wrapped user key', {}, { userKey: null }],
+    ['blank wrapped user key', {}, { userKey: '  ' }],
+    ['stale stamp', { expectedSecurityStamp: 'stale-security-stamp' }, {}],
+    [
+      'stale revision',
+      { expectedRevisionDate: '2026-07-18T00:00:00.000Z' },
+      {},
+    ],
+    ['existing public key', {}, { publicKey: 'existing-public-key' }],
+    [
+      'existing private key',
+      {},
+      { privateKey: '2.existing-wrapped-private-key' },
+    ],
+    [
+      'existing keypair',
+      {},
+      {
+        publicKey: 'existing-public-key',
+        privateKey: '2.existing-wrapped-private-key',
+      },
+    ],
+  ] as const)(
+    'leaves every row unchanged for %s',
+    async (_name, inputChange, userChange) => {
+      const state = credentialState()
+      Object.assign(state.authUser, userChange)
+      const database = new FakeD1Database(null, [], state)
+      const before = structuredClone(state)
+
+      await expect(
+        initializeAccountKeyPair(database, {
+          ...accountKeyInitializationInput,
+          ...inputChange,
+        }),
+      ).resolves.toEqual({ status: 'conflict' })
+
+      expect(state).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+    },
+  )
+
+  it.each(['user', 'audit'] as const)(
+    'rolls account-key initialization back when the %s statement fails',
+    async (stage) => {
+      const state = {
+        ...credentialState(),
+        accountKeyInitializationFailureAt: stage,
+      }
+      const database = new FakeD1Database(null, [], state)
+      const before = structuredClone({
+        authUser: state.authUser,
+        devices: state.devices,
+        refreshTokens: state.refreshTokens,
+        authRequests: state.authRequests,
+      })
+
+      await expect(
+        initializeAccountKeyPair(database, accountKeyInitializationInput),
+      ).rejects.toThrow(`account key initialization ${stage} failed`)
+      expect({
+        authUser: state.authUser,
+        devices: state.devices,
+        refreshTokens: state.refreshTokens,
+        authRequests: state.authRequests,
+      }).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+    },
+  )
+
+  it('commits only one concurrent initialization from the same missing generation', async () => {
+    const state = credentialState()
+    const database = new FakeD1Database(null, [], state)
+
+    const results = await Promise.all([
+      initializeAccountKeyPair(database, accountKeyInitializationInput),
+      initializeAccountKeyPair(database, {
+        ...accountKeyInitializationInput,
+        publicKey: 'competing-public-key',
+        wrappedPrivateKey: '2.competing-wrapped-private-key',
+        auditEventId: 'competing-account-key-audit-id',
+      }),
+    ])
+
+    expect(results.map((result) => result.status).sort()).toEqual([
+      'conflict',
+      'initialized',
+    ])
+    expect(database.auditEventInserts).toHaveLength(1)
+  })
+
   it('changes the complete KDF generation and revokes every session atomically', async () => {
     const state = credentialState()
     const database = new FakeD1Database(null, [], state)
@@ -504,8 +688,11 @@ function credentialState() {
       kdfParallelism: null,
       masterPasswordHash: 'synthetic-authentication-hash',
       userKey: '2.synthetic-wrapped-user-key',
+      publicKey: null,
+      privateKey: null,
       securityStamp: 'old-security-stamp',
       revisionDate: '2026-07-19T00:00:00.000Z',
+      updatedAt: '2026-07-19T00:00:00.000Z',
       disabledAt: null,
     },
     devices: [

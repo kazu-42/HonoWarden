@@ -2,6 +2,26 @@ import type { AuditEvent } from '../domain/audit'
 
 type CredentialRepositoryDatabase = Pick<D1Database, 'batch' | 'prepare'>
 
+export type InitializeAccountKeyPairInput = {
+  userId: string
+  expectedSecurityStamp: string
+  expectedRevisionDate: string
+  publicKey: string
+  wrappedPrivateKey: string
+  nextRevisionDate: string
+  auditEventId: string
+  auditEvent: AuditEvent
+}
+
+export type InitializeAccountKeyPairResult =
+  | {
+      status: 'initialized'
+      securityStamp: string
+      revisionDate: string
+      auditEventId: string
+    }
+  | { status: 'conflict' }
+
 export type RotateAccountSecurityStampInput = {
   userId: string
   expectedMasterPasswordHash: string
@@ -62,6 +82,121 @@ type CredentialGenerationMutationResult = {
 
 type UpdatedUserRow = {
   id: string
+}
+
+export async function initializeAccountKeyPair(
+  database: CredentialRepositoryDatabase,
+  input: InitializeAccountKeyPairInput,
+): Promise<InitializeAccountKeyPairResult> {
+  const event = input.auditEvent
+  const results = await database.batch([
+    database
+      .prepare(
+        `
+          INSERT INTO audit_events (
+            id,
+            schema_version,
+            name,
+            outcome,
+            request_id,
+            occurred_at,
+            actor_user_id,
+            actor_device_identifier,
+            target_type,
+            target_id,
+            context_json
+          )
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          FROM users
+          WHERE id = ?
+            AND disabled_at IS NULL
+            AND user_key IS NOT NULL
+            AND length(trim(user_key)) > 0
+            AND public_key IS NULL
+            AND private_key IS NULL
+            AND security_stamp = ?
+            AND revision_date = ?
+        `,
+      )
+      .bind(
+        input.auditEventId,
+        event.schemaVersion,
+        event.name,
+        event.outcome,
+        event.requestId,
+        event.occurredAt,
+        event.actor?.userId ?? null,
+        event.actor?.deviceIdentifier ?? null,
+        event.target?.type ?? null,
+        event.target?.id ?? null,
+        event.context ? JSON.stringify(event.context) : null,
+        input.userId,
+        input.expectedSecurityStamp,
+        input.expectedRevisionDate,
+      ),
+    database
+      .prepare(
+        `
+          UPDATE users
+          SET
+            public_key = ?,
+            private_key = ?,
+            revision_date = ?,
+            updated_at = ?
+          WHERE id = ?
+            AND disabled_at IS NULL
+            AND user_key IS NOT NULL
+            AND length(trim(user_key)) > 0
+            AND public_key IS NULL
+            AND private_key IS NULL
+            AND security_stamp = ?
+            AND revision_date = ?
+          RETURNING id
+        `,
+      )
+      .bind(
+        input.publicKey,
+        input.wrappedPrivateKey,
+        input.nextRevisionDate,
+        input.nextRevisionDate,
+        input.userId,
+        input.expectedSecurityStamp,
+        input.expectedRevisionDate,
+      ),
+  ])
+
+  if (results.length !== 2) {
+    throw new Error(
+      'account key initialization batch returned an invalid result count',
+    )
+  }
+
+  const [auditResult, userResult] = results
+  const updatedUsers = (userResult?.results ?? []) as UpdatedUserRow[]
+  const userChanges = updatedUsers.length
+  const auditChanges = auditResult?.meta.changes ?? 0
+  if (userChanges === 0) {
+    if (auditChanges !== 0) {
+      throw new Error('account key initialization guard invariant was violated')
+    }
+    return { status: 'conflict' }
+  }
+  if (
+    !userResult?.success ||
+    userChanges !== 1 ||
+    updatedUsers[0]?.id !== input.userId ||
+    !auditResult?.success ||
+    auditChanges !== 1
+  ) {
+    throw new Error('account key initialization did not commit one generation')
+  }
+
+  return {
+    status: 'initialized',
+    securityStamp: input.expectedSecurityStamp,
+    revisionDate: input.nextRevisionDate,
+    auditEventId: input.auditEventId,
+  }
 }
 
 export async function changeAccountKdf(

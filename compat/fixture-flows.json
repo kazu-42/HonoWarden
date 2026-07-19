@@ -42,6 +42,13 @@
       "fixtures": ["accounts/password-change-success.json"]
     },
     {
+      "id": "account_keys",
+      "fixtures": [
+        "accounts/keys-read-success.json",
+        "accounts/keys-initialize-success.json"
+      ]
+    },
+    {
       "id": "direct_read",
       "fixtures": [
         "folders/list-success.json",

@@ -254,6 +254,45 @@ synthetic lifecycle passes an explicit Wrangler `--var` override and is not
 deployment activation evidence. Production activation requires separate
 operator approval and official-client credential closeout evidence.
 
+## Account Key Initialization Rollout
+
+`HONOWARDEN_ACCOUNT_KEYS_ENABLED` is a non-secret, default-off gate for
+`GET /api/accounts/keys` and the one-time `POST /api/accounts/keys` V1
+initializer. Only exact `true` after trimming and case normalization enables
+either route. Missing, blank, false, or any other value returns
+`501 unsupported_feature` before authentication or D1 access.
+This path explicitly bypasses the optional global request quota, so enabling
+`HONOWARDEN_GLOBAL_REQUEST_QUOTA` cannot create a quota row or replace the
+disabled GET, Hono-derived HEAD, or POST response's 501 with 429/503.
+
+The initializer accepts only a complete bounded opaque public key and wrapped
+private key for an active authenticated account whose wrapped user key is
+non-empty and whose two stored account-key columns are both null. The first
+commit advances account revision and writes one required redacted audit event
+atomically; the security stamp and existing sessions remain unchanged so the
+initiating client can finish its bootstrap. An exact replay is a successful
+no-op. A missing wrapped user key, partial stored state, V2 fields, and any
+different existing value fail without overwrite or disclosure. Full
+replacement and data rewrap belong to HON-206 and must never be routed through
+this initializer.
+
+The existing operator-only bootstrap route enforces the same stored-state
+boundary: account-key columns are both absent or both present, and a present
+pair requires a non-empty wrapped user key. Profile mutation and backup export
+also validate this envelope before updating the account or recording a
+successful export. A 503 caused by invalid stored key state therefore does not
+mean either side effect committed. Token, profile, sync, and backup catches emit
+a redacted `account_key_state_invalid` signal with request ID and bounded reason
+before returning generic 503; backup failure audit stores the same bounded
+reason rather than `database_unavailable`, and key values are never included.
+
+The top-level, staging, and production `wrangler.jsonc` values remain false.
+Source merge does not activate the routes. Activation requires separate
+official-client lifecycle evidence and operator approval; disabling the flag is
+the immediate route rollback. Already initialized keypairs remain available
+through the established token, profile, sync, and backup projections; the
+dedicated account-key routes stay unavailable until the flag is re-enabled.
+
 ## WebAuthn Runtime Policy
 
 HON-208 defines the configuration contract only. It does not add a WebAuthn

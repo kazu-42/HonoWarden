@@ -40,6 +40,17 @@ its latency cannot delay the successful response. Failure remains logged while
 the API stays successful because the pinned client saves its matching local KDF
 only after the request resolves successfully.
 
+`GET /api/accounts/keys` and the one-time V1 `POST /api/accounts/keys` are
+pinned to the same server and web-client revisions. The `account_keys` fixture
+flow route-replays the client's `publicKey` plus `encryptedPrivateKey` request
+and the server's legacy plus nested account-key response. The default-off
+`pnpm account:keys:lifecycle` runner additionally proves exact replay,
+different-value conflict, concurrent exact initialization, required-audit
+rollback, unchanged security stamp and sessions, restart persistence, and flag
+rollback through local Wrangler and real local D1. This is synthetic server
+evidence only: it does not add `liveEvidence`, promote a compatibility row, or
+activate the false flag in any tracked environment.
+
 ## 2026-07-13 Premium Surface Boundary
 
 A source-map audit of the pinned browser extension `2026.6.1` found no
@@ -177,6 +188,7 @@ opaque continuation tokens.
 - `account_revision`
 - `password_verify`
 - `password_change`
+- `account_keys`
 - `direct_read`
 - `metadata_read`
 - `device_read`

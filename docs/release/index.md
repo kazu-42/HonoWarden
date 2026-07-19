@@ -18,6 +18,8 @@ Use this index as the feature-freeze entry point:
 - [Android Mobile Live Client Evidence](android-mobile-live-client-evidence.md)
 - [TOTP And Recent-Auth Live Evidence](totp-recent-auth-live-evidence.md)
 - [Account Password Change Local Evidence](account-password-change-local-evidence.md)
+- [Account KDF Change Local Evidence](account-kdf-change-local-evidence.md)
+- [Account Key Initialization Local Evidence](account-key-initialization-local-evidence.md)
 - [Auth Request Staging Evidence](auth-request-staging-evidence.md)
 - [Two-User Dogfood And Disabled-User Evidence](two-user-dogfood-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)

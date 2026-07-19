@@ -3,6 +3,7 @@ export type AuditEventName =
   | 'account.security_stamp.rotate'
   | 'account.password.change'
   | 'account.kdf.change'
+  | 'account.keys.initialize'
   | 'auth.password_grant'
   | 'auth.refresh_grant'
   | 'auth.refresh_reuse'

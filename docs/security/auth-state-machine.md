@@ -119,6 +119,51 @@ Failure invariants:
   latency cannot delay success, while failure is logged, remains forward-only,
   and never changes the response or restores an old KDF
 
+## Account Key Initialization
+
+```text
+explicit account-key route flag enabled
+  -> authenticated active user at current security stamp
+  -> non-empty wrapped user key exists?
+  -> strict complete bounded V1 public/wrapped-private payload?
+  -> stored state?
+       both null -> reserve mandatory audit from exact source generation,
+                    then guarded D1 update pair + account revision
+       exact pair -> return success without mutation
+       different or partial -> reject without disclosure or replacement
+```
+
+Success invariants:
+
+- first initialization writes one pair and one required redacted audit row
+- account revision advances while security stamp and every session remain valid
+- an exact concurrent retry returns the committed pair without a second audit
+- password, refresh-token, profile, sync, backup, and dedicated read paths
+  expose the same complete legacy and nested projection
+
+Failure invariants:
+
+- a disabled flag returns unsupported before authentication or D1 access,
+  including Hono-derived HEAD when the optional global request quota is enabled
+- malformed, unknown, oversized, partial, or V2 input is state-free
+- a missing or blank wrapped user key fails before initialization and no
+  complete account-key projection is returned
+- bootstrap rejects a partial pair or a complete pair without a wrapped user
+  key before account insertion
+- stale stamp/revision, disabled user, cross-user id, partial stored state, or a
+  different existing pair cannot overwrite account keys
+- audit reservation or user-update failure rolls the whole D1 batch back
+- a partial stored pair cannot be returned or consume a TOTP challenge, create
+  an auth session, or rotate a refresh token
+- route catches report partial or otherwise invalid projection state through a
+  redacted request-correlated signal before returning generic 503
+- backup failure audit preserves the bounded projection-corruption reason rather
+  than classifying healthy-D1 corruption as infrastructure failure
+- profile updates and backup success audits occur only after the same projection
+  validates, so a projection failure leaves neither side effect
+- this initializer never rotates a security stamp; true replacement belongs to
+  a separate state machine with data-rewrap and session-revocation rules
+
 ## TOTP Setup
 
 ```text

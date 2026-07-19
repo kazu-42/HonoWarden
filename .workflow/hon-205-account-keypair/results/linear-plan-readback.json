@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-07-19T22:52:56.665Z",
+  "checkedAt": "2026-07-20 07:55 JST",
+  "mode": "apply",
+  "status": "exact",
+  "issue": {
+    "id": "4eeebb24-7112-4e05-9d91-9b1fabbea57c",
+    "identifier": "HON-205",
+    "title": "Account A2d: account keypair read and one-time initialization",
+    "state": {
+      "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+      "name": "In Progress",
+      "type": "started"
+    },
+    "archivedAt": null,
+    "parent": "HON-160",
+    "managedCommentCount": 1
+  },
+  "plan": {
+    "bytes": 2815,
+    "sha256": "e09bc82829775f9c9585776b8da138c809a2dc40e49ac6d34258f59947fd9eba",
+    "commentId": "d8d7d012-b8b7-448d-be2d-61b3db8afe77"
+  },
+  "operations": ["updated_execution_plan"],
+  "checks": {
+    "issueIdentity": true,
+    "active": true,
+    "parent": true,
+    "singleManagedComment": true,
+    "exactBody": true,
+    "exactBytes": true,
+    "exactSha256": true
+  },
+  "errors": []
+}

@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-06.
+Last updated: 2026-07-19.
 
 Rollback separates Worker code rollback from data rollback. Do not assume schema
 changes can be safely reversed in place.
@@ -56,6 +56,32 @@ client to derive the wrong authentication hash. Roll back to the recorded
 reader-capable version or roll forward with a compatible fix. Never restore an
 old password hash, wrapped user key, security stamp, or KDF generation because
 that can resurrect revoked sessions.
+
+## Account Key Initialization Rollback
+
+Deploy complete account-key readers with
+`HONOWARDEN_ACCOUNT_KEYS_ENABLED=false` before exposing the dedicated routes.
+Enabling the flag activates both authenticated GET and one-time V1 POST;
+disabling it is the immediate route rollback and must not delete or null an
+already initialized pair.
+
+The initializer is migration-free and cannot replace data. After any account
+initializes, roll back only to a version whose token, profile, sync, and backup
+projections understand a complete pair and reject partial state. A pre-reader
+version may silently omit or partially expose account-key fields and is not an
+acceptable rollback target.
+
+If initialization returns 503, read back the account row and required audit
+event before deciding whether to retry. A failed D1 batch leaves both columns
+null and no `account.keys.initialize` row; retry is safe after infrastructure
+recovery. The local lifecycle proves both audit-insert failure before update and
+user-update failure after audit reservation roll the complete batch back. A
+complete exact pair plus one audit means the generation committed and must be
+treated as success. A missing or blank wrapped user key is rejected before the
+batch and must be repaired through a separately reviewed account-recovery path.
+A partial or different pair is an incident boundary: disable the route,
+preserve the row and logs, and use a separately reviewed recovery plan. Never
+use HON-205 POST as replacement or data-rewrap.
 
 ## Data Rollback
 

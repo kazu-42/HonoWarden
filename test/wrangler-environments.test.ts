@@ -185,6 +185,16 @@ describe('wrangler deployment environments', () => {
     )
   })
 
+  it('keeps account-key initialization disabled in every tracked environment', () => {
+    expect(config.vars.HONOWARDEN_ACCOUNT_KEYS_ENABLED).toBe('false')
+    expect(config.env.staging.vars.HONOWARDEN_ACCOUNT_KEYS_ENABLED).toBe(
+      'false',
+    )
+    expect(config.env.production.vars.HONOWARDEN_ACCOUNT_KEYS_ENABLED).toBe(
+      'false',
+    )
+  })
+
   it('enables premium features only in staging by default', () => {
     expect(config.vars.HONOWARDEN_PREMIUM_FEATURES_ENABLED).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_PREMIUM_FEATURES_ENABLED).toBe(

@@ -1,0 +1,69 @@
+{
+  "name": "account-keys-initialize-success",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/accounts/keys"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    },
+    "body": {
+      "publicKey": "synthetic-initialized-public-key",
+      "encryptedPrivateKey": "2.synthetic-initialized-wrapped-private-key"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "keys",
+      "key": "2.c3ludGhldGljLXVzZXIta2V5",
+      "publicKey": "synthetic-initialized-public-key",
+      "privateKey": "2.synthetic-initialized-wrapped-private-key",
+      "accountKeys": {
+        "object": "privateKeys",
+        "signatureKeyPair": null,
+        "publicKeyEncryptionKeyPair": {
+          "object": "publicKeyEncryptionKeyPair",
+          "publicKey": "synthetic-initialized-public-key",
+          "wrappedPrivateKey": "2.synthetic-initialized-wrapped-private-key",
+          "signedPublicKey": null
+        },
+        "securityState": null
+      }
+    }
+  },
+  "assertions": [
+    { "path": "$.object", "type": "string", "value": "keys" },
+    {
+      "path": "$.publicKey",
+      "type": "string",
+      "value": "synthetic-initialized-public-key"
+    },
+    {
+      "path": "$.privateKey",
+      "type": "string",
+      "value": "2.synthetic-initialized-wrapped-private-key"
+    },
+    {
+      "path": "$.accountKeys.publicKeyEncryptionKeyPair.publicKey",
+      "type": "string",
+      "value": "synthetic-initialized-public-key"
+    },
+    {
+      "path": "$.accountKeys.publicKeyEncryptionKeyPair.wrappedPrivateKey",
+      "type": "string",
+      "value": "2.synthetic-initialized-wrapped-private-key"
+    },
+    {
+      "path": "$.accountKeys.signatureKeyPair",
+      "type": "null",
+      "value": null
+    },
+    {
+      "path": "$.accountKeys.securityState",
+      "type": "null",
+      "value": null
+    }
+  ]
+}

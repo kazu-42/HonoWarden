@@ -48,8 +48,8 @@ type CompatAuthUserRecord = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string
-  publicKey: string
-  privateKey: string
+  publicKey: string | null
+  privateKey: string | null
   securityStamp: string
   revisionDate: string
   createdAt: string
@@ -100,6 +100,7 @@ type FixtureReplayOptions = {
   tokenExpiresAt?: number
   tokenDeviceIdentifier?: string
   allowedEmails?: string
+  accountKeysEnabled?: string
   totpSecret?: string
 }
 
@@ -221,6 +222,7 @@ export async function runCompatFixture(
     HONOWARDEN_TOKEN_SECRET: tokenSecret,
     HONOWARDEN_TOTP_SECRET: options.totpSecret ?? tokenSecret,
     HONOWARDEN_ALLOWED_EMAILS: options.allowedEmails ?? 'person@example.test',
+    HONOWARDEN_ACCOUNT_KEYS_ENABLED: options.accountKeysEnabled ?? 'false',
   })
 
   const responseBody = await parseResponseBody(response)
