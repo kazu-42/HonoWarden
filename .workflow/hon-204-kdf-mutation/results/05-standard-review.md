@@ -12,8 +12,10 @@ Fifth reviewed commit: `74b44cc50b1ba5f8b0bdfd9fbcc59e88b8a68e72`
 
 Sixth reviewed commit: `b4c23ffca35a2d7b7d936654fc69ad41a4539750`
 
-Status: sixth remediation complete in the working tree; exact-head re-review
-pending
+Seventh reviewed commit: `23a383863dc0baf2c39475690cecf523a4e84561`
+
+Status: five-axis P3 remediation complete in the working tree; both exact-head
+reviews must rerun after commit
 
 ## Finding
 
@@ -180,3 +182,30 @@ real local D1 lifecycle passes all 18 checks. Compatibility passes 101 tests;
 typecheck, lint, format, type generation, release gate, brand scan, diff check,
 and workflow verification also pass. Both exact-head reviews must rerun on the
 committed remediation.
+
+## Seventh Review Result
+
+The standard exact-head review of `23a3838` reported no actionable correctness
+defect. A separate five-axis review found one P3 operational defect: if the
+Durable Object fetch never settled, the `waitUntil` promise also never settled.
+The platform could cancel it at its lifetime boundary before the application
+emitted `account_notification_session_invalidation_failed`, leaving no
+request-correlated failure evidence.
+
+## Seventh Remediation
+
+- bound Durable Object session invalidation to an application-owned 10-second
+  deadline below the execution-context lifetime boundary
+- abort the same outbound `Request` when the deadline expires and settle the
+  cleanup result deterministically
+- preserve the existing redacted failure event and request ID without logging
+  account, credential, token, or KDF material
+- add a never-settling transport regression proving immediate KDF HTTP 200,
+  deadline settlement, request abort, and exact structured logging
+- apply the bound in the shared helper so password and security-stamp cleanup
+  cannot hang indefinitely while retaining their existing 503-on-incomplete
+  contracts
+
+The focused regression failed before the implementation and passed afterward;
+the full app suite passes all 271 tests. Broad verification and both exact-head
+reviews remain required on the committed remediation.

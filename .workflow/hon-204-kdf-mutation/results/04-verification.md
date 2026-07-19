@@ -13,12 +13,6 @@ Passed fourth-remediation checks:
 - `pnpm lint`
 - `pnpm format`
 - `pnpm cf:typegen` with no generated diff
-- `pnpm compat:test`: 3 files and 101 tests passed
-- `pnpm release:gate`: overall ready, 11 pass, 0 manual, 0 block
-- `pnpm brand:scan`
-- `git diff --check`
-- workflow verifier
-- `pnpm cf:typegen` with no generated diff
 - `pnpm test`: 86 files, 1,045 tests in 62.00 seconds
 - `pnpm compat:test`: 3 files, 101 tests
 - `pnpm account:kdf-change:lifecycle`: 18 lifecycle checks
@@ -79,8 +73,27 @@ allowed-prelogin outage.
 - `pnpm check`
 - `pnpm lint`
 - `pnpm format`
+- `pnpm cf:typegen` with no generated diff
+- `pnpm compat:test`: 3 files and 101 tests passed
+- `pnpm release:gate`: overall ready, 11 pass, 0 manual, 0 block
+- `pnpm brand:scan`
+- `git diff --check`
+- workflow verifier
 
 The new regression uses a deferred notification cleanup promise and proves the
 HTTP 200 response settles before that promise is released. The explicit
 transport-rejection regression still proves the redacted operational error is
 emitted without changing the committed response.
+
+## Seventh Remediation Rerun
+
+- focused TDD: one regression failed because a never-settling Durable Object
+  kept the `waitUntil` promise unresolved, then passed after the deadline fix
+- full app suite: 271 tests passed
+- broad repository verification: pending on the committed remediation head
+
+The new regression proves that notification cleanup reaches a deterministic
+failure within the application-owned 10-second deadline, aborts the same
+outbound request, and emits the existing redacted operational event. KDF still
+acknowledges the committed generation immediately; password and security-stamp
+cleanup retain their fail-loudly response contract with a bounded wait.

@@ -304,6 +304,7 @@ const maxListPageSize = 500
 const maxBulkCipherIds = 1_000
 const maxR2DeleteKeysPerRequest = 1_000
 const signalRHeartbeatIntervalMs = 15_000
+const notificationSessionInvalidationDeadlineMs = 10_000
 const signalRRecordSeparator = '\u001e'
 
 const defaultCorsHeaders = [
@@ -7606,22 +7607,35 @@ async function invalidateDurableNotificationSessions(
 
   if (!c.env.NOTIFICATION_HUB) return false
 
+  const abortController = new AbortController()
+  let deadline: ReturnType<typeof setTimeout> | undefined
   try {
     const stub = c.env.NOTIFICATION_HUB.get(
       c.env.NOTIFICATION_HUB.idFromName(userId),
     )
-    const response = await stub.fetch(
-      new Request('https://notification-hub/invalidate', {
-        method: 'POST',
-        headers: {
-          [notificationSecurityStampHeader]: generation.securityStamp,
-          [notificationCredentialRevisionHeader]: generation.revisionDate,
-        },
+    const response = await Promise.race([
+      stub.fetch(
+        new Request('https://notification-hub/invalidate', {
+          method: 'POST',
+          headers: {
+            [notificationSecurityStampHeader]: generation.securityStamp,
+            [notificationCredentialRevisionHeader]: generation.revisionDate,
+          },
+          signal: abortController.signal,
+        }),
+      ),
+      new Promise<undefined>((resolve) => {
+        deadline = setTimeout(() => {
+          abortController.abort()
+          resolve(undefined)
+        }, notificationSessionInvalidationDeadlineMs)
       }),
-    )
-    return response.ok
+    ])
+    return response?.ok === true
   } catch {
     return false
+  } finally {
+    if (deadline !== undefined) clearTimeout(deadline)
   }
 }
 

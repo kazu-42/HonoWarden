@@ -24,8 +24,8 @@
   "verification": {
     "focused": "passed",
     "localD1": "passed",
-    "full": "passed",
-    "standardReview": "sixth_remediation_complete_rerun_pending",
-    "fiveAxisReview": "pending"
+    "full": "seventh_remediation_rerun_pending",
+    "standardReview": "clean_at_23a3838_remediation_changed_head",
+    "fiveAxisReview": "p3_deadline_remediation_complete_rerun_pending"
   }
 }

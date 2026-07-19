@@ -2,7 +2,8 @@
 
 Status: in progress
 
-Implementation, focused tests, the real local D1 lifecycle, and full repository
-verification are complete for the sixth remediation. Exact-head reviews, PR/CI,
-merge, Linear closeout, and worktree cleanup remain. This report will be
-finalized only after those gates pass.
+Implementation and focused tests are complete for the seventh remediation. The
+latest five-axis P3 is addressed with a bounded, abortable notification cleanup
+and a never-settling transport regression. Full repository verification,
+exact-head reviews, PR/CI, merge, Linear closeout, and worktree cleanup remain.
+This report will be finalized only after those gates pass.

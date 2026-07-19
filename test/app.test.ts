@@ -7526,6 +7526,66 @@ describe('HonoWarden app', () => {
     expect(waitUntil).toHaveBeenCalledOnce()
   })
 
+  it('aborts and logs stalled notification cleanup before the platform deadline', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    vi.useFakeTimers()
+    let outboundRequest: Request | undefined
+    const fetch = vi.fn((request: Request) => {
+      outboundRequest = request
+      return new Promise<Response>(() => undefined)
+    })
+    const waitUntil = vi.fn()
+    const database = new FakeD1Database(null, [], { authUser: user })
+
+    const response = await app.request(
+      '/api/accounts/kdf',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'stalled-notification-cleanup',
+        },
+        body: JSON.stringify(kdfChangeBody(user)),
+      },
+      {
+        DB: database,
+        NOTIFICATION_HUB: {
+          idFromName: () => 'user-object',
+          get: () => ({ fetch }),
+        } as unknown as DurableObjectNamespace,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+      { waitUntil } as unknown as ExecutionContext,
+    )
+
+    expect(response.status).toBe(200)
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(waitUntil).toHaveBeenCalledOnce()
+    expect(outboundRequest?.signal.aborted).toBe(false)
+    let cleanupSettled = false
+    const cleanup = waitUntil.mock.calls[0]?.[0] as Promise<void>
+    void cleanup.then(() => {
+      cleanupSettled = true
+    })
+
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(cleanupSettled).toBe(true)
+    expect(outboundRequest?.signal.aborted).toBe(true)
+    expect(errorLog).toHaveBeenCalledWith(
+      JSON.stringify({
+        event: 'account_notification_session_invalidation_failed',
+        requestId: 'stalled-notification-cleanup',
+        reason: 'notification_hub_unavailable',
+      }),
+    )
+  })
+
   it('changes the master-password generation and preserves encrypted vault data', async () => {
     const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
     const user = authUserRecord()
