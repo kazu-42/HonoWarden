@@ -1182,6 +1182,42 @@ Not implemented:
 - deployed writer activation; tracked development, staging, and production
   configurations remain false until a reader-capable rollback version exists
 
+## Week 26 Account Key Initialization
+
+Implemented:
+
+- default-off authenticated `GET /api/accounts/keys` and one-time V1
+  `POST /api/accounts/keys` behind `HONOWARDEN_ACCOUNT_KEYS_ENABLED`
+- strict bounded camel/Pascal V1 request aliases with unknown, partial,
+  conflicting, padded, controlled, oversized, and V2 payload rejection before
+  D1
+- both-null initialization guarded by active user id, expected security stamp,
+  and expected revision, with no replacement path for a complete or partial
+  stored pair
+- required redacted `account.keys.initialize` audit reservation and guarded
+  user update in one transactional D1 batch; exact replay is a no-op and
+  concurrent exact initialization commits one generation and one audit row
+- account revision advancement with unchanged security stamp, devices, refresh
+  tokens, auth requests, master-password hash, KDF, and wrapped user key
+- one complete-state projection shared by password and refresh token responses,
+  profile, sync, backup, and the dedicated account-key response; partial stored
+  state fails without exposing the surviving half or mutating a session
+- tracked false defaults in development, staging, production, `.env.example`,
+  generated Worker bindings, and operator rollout documentation
+- pinned `account_keys` read/write compatibility fixtures
+- `pnpm account:keys:lifecycle` real local-D1 evidence for initialize, read,
+  replay, conflict, concurrency, required-audit rollback, Worker restart,
+  preserved sessions, and disabled-route state equivalence
+
+Not implemented:
+
+- true key replacement, re-encryption/rewrap orchestration, V2 signature keys,
+  signed public keys, security state, TDE, or Key Connector integration; these
+  remain HON-206 or later work
+- official client UI, staging, production, or real-account initialization
+  evidence; fixture and local evidence do not promote compatibility rows
+- deployed route activation; every tracked Wrangler environment remains false
+
 ## Week 26 Account Lifecycle Operator CLI
 
 Implemented:

@@ -119,6 +119,39 @@ Failure invariants:
   latency cannot delay success, while failure is logged, remains forward-only,
   and never changes the response or restores an old KDF
 
+## Account Key Initialization
+
+```text
+explicit account-key route flag enabled
+  -> authenticated active user at current security stamp
+  -> strict complete bounded V1 public/wrapped-private payload?
+  -> stored state?
+       both null -> reserve mandatory audit from exact source generation,
+                    then guarded D1 update pair + account revision
+       exact pair -> return success without mutation
+       different or partial -> reject without disclosure or replacement
+```
+
+Success invariants:
+
+- first initialization writes one pair and one required redacted audit row
+- account revision advances while security stamp and every session remain valid
+- an exact concurrent retry returns the committed pair without a second audit
+- password, refresh-token, profile, sync, backup, and dedicated read paths
+  expose the same complete legacy and nested projection
+
+Failure invariants:
+
+- a disabled flag returns unsupported before authentication or D1 access
+- malformed, unknown, oversized, partial, or V2 input is state-free
+- stale stamp/revision, disabled user, cross-user id, partial stored state, or a
+  different existing pair cannot overwrite account keys
+- audit reservation or user-update failure rolls the whole D1 batch back
+- a partial stored pair cannot be returned or consume a TOTP challenge, create
+  an auth session, or rotate a refresh token
+- this initializer never rotates a security stamp; true replacement belongs to
+  a separate state machine with data-rewrap and session-revocation rules
+
 ## TOTP Setup
 
 ```text

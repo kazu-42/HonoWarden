@@ -85,6 +85,7 @@ const requiredFlows = [
   'account_revision',
   'password_verify',
   'password_change',
+  'account_keys',
   'direct_read',
   'metadata_read',
   'device_read',

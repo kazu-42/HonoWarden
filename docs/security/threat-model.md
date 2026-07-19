@@ -1,6 +1,6 @@
 # Security Threat Model
 
-Last reviewed: 2026-07-09.
+Last reviewed: 2026-07-19.
 
 HonoWarden is pre-alpha. This model documents the current implementation and
 the controls that must be true before `v0.1.0-alpha` is tagged. It is not an
@@ -13,8 +13,9 @@ In scope:
 - Cloudflare Worker API implemented in `src/app.ts`
 - D1 schema and repository access patterns
 - R2 binding for encrypted object storage, including cipher attachment bodies
-- account bootstrap, profile mutation, login, refresh, sync, folder, cipher,
-  device listing, identifier lookup, metadata update, encrypted-key update,
+- account bootstrap, profile mutation, account-key initialization, login,
+  refresh, sync, folder, cipher, device listing, identifier lookup, metadata
+  update, encrypted-key update,
   device revoke, TOTP, cipher attachments, user backup export, backup/restore,
   audit logging, and compatibility fixtures
 - Wrangler environment separation and local CI gates
@@ -37,7 +38,8 @@ Out of scope for the initial product:
 | ------------------------------------- | -------------------------------------- | ------------------------------------------------------------- |
 | account identity and allowlist state  | D1 and Wrangler vars                   | prevent public signup and cross-user access                   |
 | master password hash and KDF settings | D1                                     | never log; compare without timing leaks where practical       |
-| user key and private key payloads     | D1                                     | store opaque encrypted payloads only                          |
+| wrapped user key                      | D1                                     | store opaque encrypted payload only                           |
+| account public/wrapped-private pair   | D1                                     | owner scope; initialize once; never log either value          |
 | refresh tokens                        | client plaintext, D1 secret-bound hash | rotate on use; invalidate reuse and revoked devices           |
 | login-with-device access codes        | client plaintext, D1 keyed hash        | never recover or log; bind to one request and one consumption |
 | auth-request encrypted handoff        | D1 opaque ciphertext                   | owner/device scope; never decrypt or place in notifications   |
@@ -79,6 +81,7 @@ Out of scope for the initial product:
   `/api/config`, `/config`
 - account bootstrap route: `/api/accounts/bootstrap`
 - account profile routes: `/api/accounts/profile`
+- default-off account-key routes: `GET` and `POST /api/accounts/keys`
 - disabled public registration routes
 - prelogin route: `/identity/accounts/prelogin`
 - token route: `/identity/connect/token`
@@ -128,9 +131,9 @@ Explicitly excluded public sharing surface:
 | Threat                 | Current Controls                                                                                                                                                                                                                               | Residual Risk                                                                                                                                |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                                                                                                                                      | no asymmetric token keys; bulk trusted-device approval is not implemented                                                                    |
-| Tampering              | D1 owner predicates, attachment metadata predicates, revision conflict checks, backup checksum validation; organization policy mutation remains unsupported                                                                                    | no live restore drill evidence yet                                                                                                           |
+| Tampering              | D1 owner predicates, account-key both-null/stamp/revision guard plus required audit, attachment metadata predicates, revision conflict checks, backup checksum validation; organization policy mutation remains unsupported                    | account-key replacement and partial-state repair are intentionally unavailable                                                               |
 | Repudiation            | opt-in D1-persisted audit events for bootstrap, auth failures, refresh reuse, backup export, folder/cipher/attachment mutations, device revoke, revoke-all-other-sessions, TOTP change, and TOTP disable; Worker runtime Logpush to R2         | audit coverage does not yet include unsupported organization/public-sharing surfaces; automated log-retention deletion is still operator-run |
-| Information disclosure | generic auth failures, owner-scoped queries, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering; organization and public sharing routes remain unsupported                                                  | platform logs/backups/user exports remain sensitive operational data                                                                         |
+| Information disclosure | generic auth failures, owner-scoped queries, complete-only account-key projection, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering; organization and public sharing routes remain unsupported            | platform logs/backups/user exports remain sensitive operational data                                                                         |
 | Denial of service      | password-grant IP and account lockouts, bounded fixture tests; organization and public sharing routes remain unsupported                                                                                                                       | no global request quota, queue, export-specific throttle, public-link abuse dashboard, or Send-specific rate limit                           |
 | Elevation of privilege | public registration disabled, bootstrap default-off, owner-scoped repositories, recent password auth for sensitive actions, dry-run-first account lifecycle CLI; Organizations, organization policies, and Emergency Access remain unsupported | no admin console, shared-vault role model, delegated recovery security model, or live production lifecycle evidence yet                      |
 
@@ -199,6 +202,13 @@ Explicitly excluded public sharing surface:
     transitions, keyed access-code hashes, fixed expiry, atomic one-time token
     consumption, metadata-only audit, quotas, and polling as the authoritative
     read path before the guard can be removed.
+
+13. Account-key overwrite or partial-key disclosure.
+    Current mitigation: dedicated routes are default-off and owner-authenticated;
+    initialization requires the exact active both-null stamp/revision generation,
+    persists a required redacted audit in the same D1 batch, treats exact replay
+    as a no-op, rejects replacement/V2 input, and uses complete-only projections
+    before any touched token-session mutation.
 
 ## Required Follow-Up Before Real Secrets
 

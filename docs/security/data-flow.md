@@ -135,6 +135,38 @@ Secret-handling invariants:
    so the official client persists the matching local KDF. Recovery never
    restores the old KDF generation.
 
+## Account Key Initialization
+
+1. The dedicated routes return unsupported before authentication or D1 unless
+   `HONOWARDEN_ACCOUNT_KEYS_ENABLED=true`.
+2. An authenticated active user posts one bounded V1 public key and opaque
+   wrapped-private key to `POST /api/accounts/keys`. Unknown, partial,
+   conflicting-alias, or V2 fields fail before mutation.
+3. Worker classifies stored account-key state as both-null, complete, or
+   invalid. Only both-null can initialize. An exact complete replay returns the
+   existing response without a write; any different complete pair or partial
+   stored state fails without returning either value.
+4. One D1 batch reserves a redacted `account.keys.initialize` audit row from the
+   exact active both-null security-stamp/revision generation and then updates
+   that same generation with the opaque pair and next account revision.
+5. Security stamp, authentication hash, KDF, wrapped user key, devices, refresh
+   tokens, auth requests, ciphers, and attachments are outside the batch and
+   remain unchanged.
+6. Token, refresh-token, profile, sync, backup, and account-key responses use
+   one complete-state projection. Password/TOTP, auth-request, and refresh-token
+   flows validate that projection before challenge consumption, session
+   creation, or token rotation.
+
+Secret-handling invariants:
+
+- Worker does not parse, unwrap, or derive account cryptography
+- neither public nor wrapped-private value appears in audit context or
+  application logs
+- partial stored state is an explicit corruption boundary, not a nullable
+  response or an implicit replacement opportunity
+- true replacement and client data rewrap require a separate generation and
+  session-invalidation contract
+
 ## Refresh Grant
 
 1. Client posts `grant_type=refresh_token`.

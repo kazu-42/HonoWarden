@@ -1,0 +1,65 @@
+{
+  "name": "account-keys-read-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/accounts/keys"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "keys",
+      "key": "2.c3ludGhldGljLXVzZXIta2V5",
+      "publicKey": "synthetic-public-key",
+      "privateKey": "2.synthetic-private-key",
+      "accountKeys": {
+        "object": "privateKeys",
+        "signatureKeyPair": null,
+        "publicKeyEncryptionKeyPair": {
+          "object": "publicKeyEncryptionKeyPair",
+          "publicKey": "synthetic-public-key",
+          "wrappedPrivateKey": "2.synthetic-private-key",
+          "signedPublicKey": null
+        },
+        "securityState": null
+      }
+    }
+  },
+  "assertions": [
+    { "path": "$.object", "type": "string", "value": "keys" },
+    {
+      "path": "$.publicKey",
+      "type": "string",
+      "value": "synthetic-public-key"
+    },
+    {
+      "path": "$.privateKey",
+      "type": "string",
+      "value": "2.synthetic-private-key"
+    },
+    {
+      "path": "$.accountKeys.publicKeyEncryptionKeyPair.publicKey",
+      "type": "string",
+      "value": "synthetic-public-key"
+    },
+    {
+      "path": "$.accountKeys.publicKeyEncryptionKeyPair.wrappedPrivateKey",
+      "type": "string",
+      "value": "2.synthetic-private-key"
+    },
+    {
+      "path": "$.accountKeys.publicKeyEncryptionKeyPair.signedPublicKey",
+      "type": "null",
+      "value": null
+    },
+    {
+      "path": "$.accountKeys.securityState",
+      "type": "null",
+      "value": null
+    }
+  ]
+}

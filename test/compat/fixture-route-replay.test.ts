@@ -266,6 +266,22 @@ const replayFixtures = [
     },
   },
   {
+    path: 'accounts/keys-read-success.json',
+    accountKeysEnabled: 'true',
+  },
+  {
+    path: 'accounts/keys-initialize-success.json',
+    accountKeysEnabled: 'true',
+    allowMutatingFixtures: true,
+    database: {
+      authUser: {
+        ...replayUser,
+        publicKey: null,
+        privateKey: null,
+      },
+    },
+  },
+  {
     path: 'metadata/policies-list-success.json',
   },
   {
@@ -475,6 +491,9 @@ describe('compatibility fixture route replay', () => {
           : {}),
         ...('tokenExpiresAt' in fixture
           ? { tokenExpiresAt: fixture.tokenExpiresAt }
+          : {}),
+        ...('accountKeysEnabled' in fixture
+          ? { accountKeysEnabled: fixture.accountKeysEnabled }
           : {}),
       }
       const runFixture = () =>
