@@ -25,11 +25,13 @@ verification level.
 the complete PBKDF2-SHA256 bounds and the client-safe Argon2id intersection.
 The pinned server permits 15 MiB, while pinned clients require at least 16 MiB,
 so HonoWarden accepts only `16..1024` MiB. The
-`pnpm account:kdf-change:lifecycle` proves a PBKDF2-to-Argon2id generation
-change through local Wrangler and real local D1. It verifies prelogin, password
-and refresh token responses, profile, sync, old-generation rejection, and D1
-readback. This remains local synthetic server evidence and likewise does not add
-official-client `liveEvidence` or promote a verification level.
+`pnpm account:kdf-change:lifecycle` proves a
+PBKDF2-to-Argon2id-to-PBKDF2 generation round trip through local Wrangler and
+real local D1. It verifies prelogin, password and refresh token responses,
+profile, sync, rejection of both prior credential/session generations, direct
+revision advancement after both mutations, two audit rows, and unchanged
+encrypted vault data. This remains local synthetic server evidence and likewise
+does not add official-client `liveEvidence` or promote a verification level.
 The writer is default-off in every tracked Wrangler environment; its local
 lifecycle enables it explicitly only after the same Worker has proven the
 Argon2id reader paths. This source evidence is not deployment activation.

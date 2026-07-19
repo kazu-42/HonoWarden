@@ -107,3 +107,29 @@ failure within the application-owned 10-second deadline, aborts the same
 outbound request, and emits the existing redacted operational event. KDF still
 acknowledges the committed generation immediately; password and security-stamp
 cleanup retain their fail-loudly response contract with a bounded wait.
+
+## Eighth Remediation Rerun
+
+- focused TDD: the lifecycle contract failed on the missing reverse routes,
+  second audit row, and revision readback, then passed after the runner covered
+  the complete round trip
+- combined focused suite: 6 files and 380 tests passed in 12.29 seconds
+- standalone real local D1 lifecycle: all 36 checks passed
+- `pnpm test`: 86 files and 1,050 tests passed in 42.67 seconds
+- `pnpm check`
+- `pnpm lint`
+- `pnpm format`
+- `pnpm cf:typegen` with an unchanged generated-file SHA-256
+- `pnpm compat:test`: 3 files and 101 tests passed
+- `pnpm release:gate`: overall ready, 11 pass, 0 manual, 0 block
+- `pnpm brand:scan`
+- `git diff --check`
+- workflow verifier
+
+The lifecycle now runs PBKDF2-to-Argon2id, stops the Worker for direct D1
+readback, restarts from the same local persistence, and runs
+Argon2id-to-PBKDF2. It proves both revision advances, both security-stamp
+rotations, both prior device/refresh generation revocations, both audit rows,
+final PBKDF2 projections, and byte-identical encrypted vault data. Broad
+repository verification is green. Both exact-head reviews remain pending on
+this candidate and are not represented as passed here.

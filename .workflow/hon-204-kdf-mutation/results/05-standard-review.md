@@ -212,3 +212,37 @@ and 1,050 tests, compatibility passes 101 tests, and the real local D1
 lifecycle passes all 18 checks. Typecheck, lint, format, type generation,
 release gate, brand scan, diff check, and workflow verification also pass. Both
 exact-head reviews remain required on the committed remediation.
+
+## Eighth Review Findings
+
+The standard exact-head review of `0663be4` reported no actionable finding. The
+independent five-axis review requested two evidence corrections:
+
+- P2: the real local D1 lifecycle covered PBKDF2-to-Argon2id only, while the
+  workflow contract requires both supported mutation directions and rejection
+  of the prior Argon2id credential/session generation
+- P3: the workflow evidence claimed atomic revision rotation without selecting
+  or comparing `revision_date` in the real D1 readback
+
+## Eighth Remediation
+
+- extend the same isolated persisted D1 lifecycle through
+  Argon2id-to-PBKDF2 after stopping, reading, and restarting the Worker
+- verify prelogin, login, verify, refresh, profile, and sync project the final
+  PBKDF2 generation while the prior Argon2id access token, refresh token, and
+  authentication hash are rejected
+- read account state directly from D1 after both mutations and prove
+  `initialRevision < firstRevision < finalRevision`
+- verify both security-stamp rotations, both device and refresh-session
+  revocations, two mandatory audit rows, and byte-identical encrypted vault
+  data
+- redact both synthetic credential generations from runner output and pin the
+  36-check report contract in the ops test
+
+Focused TDD failed on the absent reverse routes, second audit row, and revision
+readback before the implementation, then passed. The combined focused suite
+passes 6 files and 380 tests, the repository suite passes 86 files and 1,050
+tests, compatibility passes 101 tests, and the standalone local D1 lifecycle
+passes all 36 checks. Typecheck, lint, format, type generation, release gate,
+brand scan, diff check, and workflow verification also pass. Both exact-head
+reviews must rerun after this remediation is committed.

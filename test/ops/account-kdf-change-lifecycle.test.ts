@@ -23,13 +23,15 @@ type LifecycleReport = {
   routes: Record<string, number>
   readback: {
     kdfChangeAuditCount: number
+    firstRevisionDate: string
+    finalRevisionDate: string
   }
   checks: Array<{ id: string; status: 'pass' | 'fail' }>
   limitations: string[]
 }
 
 describe('account KDF-change local D1 lifecycle', () => {
-  it('proves PBKDF2 to Argon2id mutation and old-generation rejection', async () => {
+  it('proves a PBKDF2 and Argon2id round trip with revision readback', async () => {
     const result = await execFileAsync('node', [lifecycleScript], {
       cwd: repoRoot,
       timeout: 90_000,
@@ -61,11 +63,30 @@ describe('account KDF-change local D1 lifecycle', () => {
         profileAfterChange: 200,
         refreshAfterChange: 200,
         verifyAfterChange: 200,
+        kdfChangeBackToPbkdf2: 200,
+        preloginAfterRoundTrip: 200,
+        unknownPreloginAfterRoundTrip: 200,
+        argonAccessAfterRoundTrip: 401,
+        argonRefreshAfterRoundTrip: 400,
+        argonLoginAfterRoundTrip: 400,
+        pbkdf2LoginAfterRoundTrip: 200,
+        syncAfterRoundTrip: 200,
+        profileAfterRoundTrip: 200,
+        refreshAfterRoundTrip: 200,
+        verifyAfterRoundTrip: 200,
       },
       readback: {
-        kdfChangeAuditCount: 1,
+        kdfChangeAuditCount: 2,
+        firstRevisionDate: expect.any(String),
+        finalRevisionDate: expect.any(String),
       },
     })
+    expect(Date.parse(report.readback.firstRevisionDate)).toBeGreaterThan(
+      Date.parse('2026-07-19T00:00:00.000Z'),
+    )
+    expect(Date.parse(report.readback.finalRevisionDate)).toBeGreaterThan(
+      Date.parse(report.readback.firstRevisionDate),
+    )
     expect(report.checks).not.toContainEqual(
       expect.objectContaining({ status: 'fail' }),
     )
@@ -75,6 +96,18 @@ describe('account KDF-change local D1 lifecycle', () => {
     })
     expect(report.checks).toContainEqual({
       id: 'unknown_prelogin_tracks_stored_distribution',
+      status: 'pass',
+    })
+    expect(report.checks).toContainEqual({
+      id: 'kdf_changed_back_to_pbkdf2',
+      status: 'pass',
+    })
+    expect(report.checks).toContainEqual({
+      id: 'account_revision_advanced_each_generation',
+      status: 'pass',
+    })
+    expect(report.checks).toContainEqual({
+      id: 'old_argon_refresh_token_rejected',
       status: 'pass',
     })
     expect(report.limitations).toContain(
@@ -87,5 +120,11 @@ describe('account KDF-change local D1 lifecycle', () => {
       'synthetic-hon204-new-authentication-hash',
     )
     expect(result.stdout).not.toContain('2.synthetic-hon204-new-user-key')
+    expect(result.stdout).not.toContain(
+      'synthetic-hon204-final-pbkdf2-authentication-hash',
+    )
+    expect(result.stdout).not.toContain(
+      '2.synthetic-hon204-final-pbkdf2-user-key',
+    )
   }, 90_000)
 })

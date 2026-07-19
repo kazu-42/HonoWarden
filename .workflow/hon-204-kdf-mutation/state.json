@@ -23,9 +23,9 @@
   },
   "verification": {
     "focused": "passed",
-    "localD1": "passed",
-    "full": "passed",
-    "standardReview": "clean_at_23a3838_remediation_changed_head",
-    "fiveAxisReview": "p3_deadline_remediation_complete_rerun_pending"
+    "localD1": "passed_36_checks_round_trip_with_revision_readback",
+    "full": "passed_86_files_1050_tests",
+    "standardReview": "clean_at_0663be4_remediation_changed_head",
+    "fiveAxisReview": "p2_p3_round_trip_revision_remediation_complete_rerun_pending"
   }
 }

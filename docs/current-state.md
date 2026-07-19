@@ -1164,8 +1164,9 @@ Implemented:
 - fail-closed stored-KDF validation at the auth repository boundary so unknown
   algorithms cannot be silently projected as PBKDF2 after session mutation
 - `pnpm account:kdf-change:lifecycle` real local-D1 synthetic evidence for
-  PBKDF2-to-Argon2id change, old-generation rejection, new login/profile/sync,
-  session and audit state, and encrypted-vault preservation
+  a PBKDF2-to-Argon2id-to-PBKDF2 round trip, rejection of both prior credential
+  and session generations, exact login/profile/sync projections, two direct
+  revision advances, two audit rows, and encrypted-vault preservation
 
 Not implemented:
 

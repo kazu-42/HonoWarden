@@ -17,11 +17,14 @@ const userId = 'hon204-lifecycle-user'
 const cipherId = 'hon204-lifecycle-cipher'
 const oldHash = 'synthetic-hon204-old-authentication-hash'
 const newHash = 'synthetic-hon204-new-authentication-hash'
+const finalHash = 'synthetic-hon204-final-pbkdf2-authentication-hash'
 const oldUserKey = '2.synthetic-hon204-old-user-key'
 const newUserKey = '2.synthetic-hon204-new-user-key'
+const finalUserKey = '2.synthetic-hon204-final-pbkdf2-user-key'
 const tokenSecret = 'synthetic-hon204-token-secret-with-32-bytes'
 const oldDevice = 'hon204-old-device'
 const newDevice = 'hon204-new-device'
+const finalDevice = 'hon204-final-device'
 const initialRevision = '2026-07-19T00:00:00.000Z'
 const initialSecurityStamp = 'hon204-initial-security-stamp'
 const encryptedCipher = {
@@ -67,7 +70,7 @@ async function main(args = process.argv.slice(2)) {
 
     const [port, inspectorPort] = await findDistinctFreePorts()
     worker = startWorker({ persistTo, port, inspectorPort })
-    const baseUrl = `http://127.0.0.1:${port}`
+    let baseUrl = `http://127.0.0.1:${port}`
     await waitForHealth(baseUrl, worker)
 
     const prelogin = await requestJson(baseUrl, '/identity/accounts/prelogin', {
@@ -258,10 +261,195 @@ async function main(args = process.argv.slice(2)) {
         newRefresh.body.KdfParallelism === 4,
       'refresh response did not project the Argon2id generation',
     )
+    const argonRefreshToken = requiredString(
+      newRefresh.body.refresh_token,
+      'rotated Argon2id refresh token',
+    )
 
     await stopWorker(worker)
     worker = null
-    const readback = await readDatabaseState(persistTo)
+    const firstReadback = await readDatabaseState(persistTo, {
+      masterPasswordHash: newHash,
+      userKey: newUserKey,
+      kdfAlgorithm: 'argon2id',
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      revokedDeviceIdentifier: oldDevice,
+      activeDeviceIdentifier: newDevice,
+      revokedRefreshDeviceId: `${userId}:${oldDevice}`,
+    })
+
+    const [roundTripPort, roundTripInspectorPort] =
+      await findDistinctFreePorts()
+    worker = startWorker({
+      persistTo,
+      port: roundTripPort,
+      inspectorPort: roundTripInspectorPort,
+    })
+    baseUrl = `http://127.0.0.1:${roundTripPort}`
+    await waitForHealth(baseUrl, worker)
+
+    const kdfChangeBackToPbkdf2 = await postCredentialJson(
+      baseUrl,
+      '/api/accounts/kdf',
+      newAccessToken,
+      pbkdf2KdfChangeBody(),
+    )
+    assertStatus(kdfChangeBackToPbkdf2, 200, 'Argon2id-to-PBKDF2 KDF change')
+
+    const preloginAfterRoundTrip = await preloginRequest(baseUrl, email)
+    assertStatus(preloginAfterRoundTrip, 200, 'prelogin after KDF round trip')
+    assert(
+      preloginAfterRoundTrip.body.kdf === 0 &&
+        preloginAfterRoundTrip.body.kdfIterations === 600000 &&
+        preloginAfterRoundTrip.body.kdfMemory === null &&
+        preloginAfterRoundTrip.body.kdfParallelism === null &&
+        preloginAfterRoundTrip.body.kdfSettings?.kdfType === 0,
+      'prelogin did not project the final PBKDF2 generation',
+    )
+    const unknownPreloginAfterRoundTrip = await preloginRequest(
+      baseUrl,
+      pendingEmail,
+    )
+    assertStatus(
+      unknownPreloginAfterRoundTrip,
+      200,
+      'unknown-account prelogin after KDF round trip',
+    )
+    assert(
+      unknownPreloginAfterRoundTrip.body.kdf === 0 &&
+        unknownPreloginAfterRoundTrip.body.kdfIterations === 600000 &&
+        unknownPreloginAfterRoundTrip.body.kdfMemory === null &&
+        unknownPreloginAfterRoundTrip.body.kdfParallelism === null,
+      'unknown-account prelogin did not track the final PBKDF2 population',
+    )
+
+    const argonAccessAfterRoundTrip = await authorizedJson(
+      baseUrl,
+      '/api/sync',
+      newAccessToken,
+    )
+    assertStatus(
+      argonAccessAfterRoundTrip,
+      401,
+      'Argon2id access token after KDF round trip',
+    )
+    const argonRefreshAfterRoundTrip = await refreshGrant(
+      baseUrl,
+      argonRefreshToken,
+    )
+    assertStatus(
+      argonRefreshAfterRoundTrip,
+      400,
+      'Argon2id refresh token after KDF round trip',
+    )
+    const argonLoginAfterRoundTrip = await passwordGrant(
+      baseUrl,
+      newHash,
+      'hon204-rejected-argon-device',
+    )
+    assertStatus(
+      argonLoginAfterRoundTrip,
+      400,
+      'Argon2id authentication hash after KDF round trip',
+    )
+
+    const pbkdf2LoginAfterRoundTrip = await passwordGrant(
+      baseUrl,
+      finalHash,
+      finalDevice,
+    )
+    assertStatus(
+      pbkdf2LoginAfterRoundTrip,
+      200,
+      'PBKDF2 login after KDF round trip',
+    )
+    const finalAccessToken = requiredString(
+      pbkdf2LoginAfterRoundTrip.body.access_token,
+      'final PBKDF2 access token',
+    )
+    assert(
+      pbkdf2LoginAfterRoundTrip.body.Key === finalUserKey &&
+        pbkdf2LoginAfterRoundTrip.body.Kdf === 0 &&
+        pbkdf2LoginAfterRoundTrip.body.KdfIterations === 600000 &&
+        pbkdf2LoginAfterRoundTrip.body.KdfMemory === null &&
+        pbkdf2LoginAfterRoundTrip.body.KdfParallelism === null &&
+        pbkdf2LoginAfterRoundTrip.body.UserDecryptionOptions
+          ?.MasterPasswordUnlock?.Kdf?.KdfType === 0,
+      'login did not project the final PBKDF2 generation',
+    )
+
+    const profileAfterRoundTrip = await authorizedJson(
+      baseUrl,
+      '/api/accounts/profile',
+      finalAccessToken,
+    )
+    assertStatus(profileAfterRoundTrip, 200, 'profile after KDF round trip')
+    assert(
+      profileAfterRoundTrip.body.userDecryptionOptions?.masterPasswordUnlock
+        ?.kdf?.kdfType === 0,
+      'profile did not project the final PBKDF2 generation',
+    )
+    const syncAfterRoundTrip = await authorizedJson(
+      baseUrl,
+      '/api/sync',
+      finalAccessToken,
+    )
+    assertStatus(syncAfterRoundTrip, 200, 'sync after KDF round trip')
+    assert(
+      syncAfterRoundTrip.body.profile?.key === finalUserKey &&
+        syncAfterRoundTrip.body.userDecryption?.masterPasswordUnlock?.kdf
+          ?.kdfType === 0,
+      'sync did not project the final PBKDF2 generation',
+    )
+    assert(
+      JSON.stringify(findCipher(syncAfterRoundTrip.body)) ===
+        JSON.stringify(beforeCipher),
+      'encrypted vault data changed during the KDF round trip',
+    )
+    const verifyAfterRoundTrip = await postCredentialJson(
+      baseUrl,
+      '/api/accounts/verify-password',
+      finalAccessToken,
+      { masterPasswordHash: finalHash },
+    )
+    assertStatus(
+      verifyAfterRoundTrip,
+      200,
+      'verify-password after KDF round trip',
+    )
+    const finalRefreshToken = requiredString(
+      pbkdf2LoginAfterRoundTrip.body.refresh_token,
+      'final PBKDF2 refresh token',
+    )
+    const refreshAfterRoundTrip = await refreshGrant(baseUrl, finalRefreshToken)
+    assertStatus(
+      refreshAfterRoundTrip,
+      200,
+      'PBKDF2 refresh after KDF round trip',
+    )
+    assert(
+      refreshAfterRoundTrip.body.Kdf === 0 &&
+        refreshAfterRoundTrip.body.KdfIterations === 600000 &&
+        refreshAfterRoundTrip.body.KdfMemory === null &&
+        refreshAfterRoundTrip.body.KdfParallelism === null,
+      'refresh response did not project the final PBKDF2 generation',
+    )
+
+    await stopWorker(worker)
+    worker = null
+    const finalReadback = await readDatabaseState(persistTo, {
+      masterPasswordHash: finalHash,
+      userKey: finalUserKey,
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+      revokedDeviceIdentifier: newDevice,
+      activeDeviceIdentifier: finalDevice,
+      revokedRefreshDeviceId: `${userId}:${newDevice}`,
+    })
     const checks = [
       check('prelogin_projects_argon2id', preloginAfter.body.kdf === 1),
       check(
@@ -275,16 +463,81 @@ async function main(args = process.argv.slice(2)) {
       check('new_kdf_login_succeeds', newLogin.status === 200),
       check('new_kdf_verifies', verifyAfter.status === 200),
       check('new_kdf_refresh_succeeds', newRefresh.status === 200),
-      check('authentication_hash_replaced', readback.newHashCommitted),
-      check('wrapped_user_key_replaced', readback.newUserKeyCommitted),
-      check('kdf_changed_to_argon2id', readback.kdfChangedToArgon2id),
-      check('account_salt_unchanged', readback.accountSaltUnchanged),
-      check('security_stamp_rotated', readback.securityStampRotated),
-      check('old_device_revoked', readback.oldDeviceRevoked),
-      check('old_refresh_token_revoked', readback.oldRefreshTokenRevoked),
-      check('new_device_active', readback.newDeviceActive),
-      check('mandatory_audit_persisted', readback.kdfChangeAuditCount === 1),
-      check('encrypted_vault_unchanged', readback.encryptedVaultUnchanged),
+      check(
+        'authentication_hash_replaced',
+        firstReadback.authenticationHashCommitted,
+      ),
+      check('wrapped_user_key_replaced', firstReadback.userKeyCommitted),
+      check('kdf_changed_to_argon2id', firstReadback.kdfCommitted),
+      check('account_salt_unchanged', firstReadback.accountSaltUnchanged),
+      check(
+        'security_stamp_rotated',
+        firstReadback.securityStamp !== initialSecurityStamp,
+      ),
+      check('old_device_revoked', firstReadback.revokedDevice),
+      check('old_refresh_token_revoked', firstReadback.revokedRefreshToken),
+      check('new_device_active', firstReadback.activeDevice),
+      check(
+        'first_mandatory_audit_persisted',
+        firstReadback.kdfChangeAuditCount === 1,
+      ),
+      check(
+        'first_encrypted_vault_unchanged',
+        firstReadback.encryptedVaultUnchanged,
+      ),
+      check(
+        'kdf_changed_back_to_pbkdf2',
+        kdfChangeBackToPbkdf2.status === 200 && finalReadback.kdfCommitted,
+      ),
+      check(
+        'old_argon_access_token_rejected',
+        argonAccessAfterRoundTrip.status === 401,
+      ),
+      check(
+        'old_argon_refresh_token_rejected',
+        argonRefreshAfterRoundTrip.status === 400,
+      ),
+      check(
+        'old_argon_login_rejected',
+        argonLoginAfterRoundTrip.status === 400,
+      ),
+      check('pbkdf2_prelogin_projected', preloginAfterRoundTrip.body.kdf === 0),
+      check(
+        'unknown_prelogin_tracks_round_trip_distribution',
+        unknownPreloginAfterRoundTrip.body.kdf === 0,
+      ),
+      check('pbkdf2_login_succeeds', pbkdf2LoginAfterRoundTrip.status === 200),
+      check('pbkdf2_verifies', verifyAfterRoundTrip.status === 200),
+      check('pbkdf2_refresh_succeeds', refreshAfterRoundTrip.status === 200),
+      check(
+        'final_authentication_hash_committed',
+        finalReadback.authenticationHashCommitted,
+      ),
+      check('final_wrapped_user_key_committed', finalReadback.userKeyCommitted),
+      check(
+        'account_revision_advanced_each_generation',
+        revisionAdvanced(firstReadback.revisionDate, initialRevision) &&
+          revisionAdvanced(
+            finalReadback.revisionDate,
+            firstReadback.revisionDate,
+          ),
+      ),
+      check(
+        'security_stamp_rotated_each_generation',
+        firstReadback.securityStamp !== initialSecurityStamp &&
+          finalReadback.securityStamp !== firstReadback.securityStamp,
+      ),
+      check('argon_device_revoked', finalReadback.revokedDevice),
+      check('argon_refresh_token_revoked', finalReadback.revokedRefreshToken),
+      check('final_device_active', finalReadback.activeDevice),
+      check(
+        'two_mandatory_audits_persisted',
+        finalReadback.kdfChangeAuditCount === 2,
+      ),
+      check(
+        'encrypted_vault_unchanged_after_round_trip',
+        finalReadback.encryptedVaultUnchanged,
+      ),
     ]
     const status = checks.every((entry) => entry.status === 'pass')
       ? 'passed'
@@ -313,9 +566,22 @@ async function main(args = process.argv.slice(2)) {
         profileAfterChange: profile.status,
         refreshAfterChange: newRefresh.status,
         verifyAfterChange: verifyAfter.status,
+        kdfChangeBackToPbkdf2: kdfChangeBackToPbkdf2.status,
+        preloginAfterRoundTrip: preloginAfterRoundTrip.status,
+        unknownPreloginAfterRoundTrip: unknownPreloginAfterRoundTrip.status,
+        argonAccessAfterRoundTrip: argonAccessAfterRoundTrip.status,
+        argonRefreshAfterRoundTrip: argonRefreshAfterRoundTrip.status,
+        argonLoginAfterRoundTrip: argonLoginAfterRoundTrip.status,
+        pbkdf2LoginAfterRoundTrip: pbkdf2LoginAfterRoundTrip.status,
+        syncAfterRoundTrip: syncAfterRoundTrip.status,
+        profileAfterRoundTrip: profileAfterRoundTrip.status,
+        refreshAfterRoundTrip: refreshAfterRoundTrip.status,
+        verifyAfterRoundTrip: verifyAfterRoundTrip.status,
       },
       readback: {
-        kdfChangeAuditCount: readback.kdfChangeAuditCount,
+        kdfChangeAuditCount: finalReadback.kdfChangeAuditCount,
+        firstRevisionDate: firstReadback.revisionDate,
+        finalRevisionDate: finalReadback.revisionDate,
       },
       checks,
       limitations: [
@@ -406,6 +672,28 @@ function kdfChangeBody() {
     unlockData: {
       kdf,
       masterKeyWrappedUserKey: newUserKey,
+      salt: email,
+    },
+  }
+}
+
+function pbkdf2KdfChangeBody() {
+  const kdf = {
+    kdfType: 0,
+    iterations: 600000,
+    memory: null,
+    parallelism: null,
+  }
+  return {
+    masterPasswordHash: newHash,
+    authenticationData: {
+      kdf,
+      masterPasswordAuthenticationHash: finalHash,
+      salt: email,
+    },
+    unlockData: {
+      kdf,
+      masterKeyWrappedUserKey: finalUserKey,
       salt: email,
     },
   }
@@ -562,29 +850,27 @@ async function stopWorker(worker) {
   }
 }
 
-async function readDatabaseState(persistTo) {
+async function readDatabaseState(persistTo, expected) {
   const query = `
     SELECT
-      master_password_hash = ${sql(newHash)} AS new_hash_committed,
-      user_key = ${sql(newUserKey)} AS new_user_key_committed,
-      kdf_algorithm = 'argon2id'
-        AND kdf_iterations = 6
-        AND kdf_memory = 32
-        AND kdf_parallelism = 4 AS kdf_changed_to_argon2id,
-      email_normalized = ${sql(email)} AS account_salt_unchanged,
-      security_stamp <> ${sql(initialSecurityStamp)} AS security_stamp_rotated
+      master_password_hash,
+      user_key,
+      kdf_algorithm,
+      kdf_iterations,
+      kdf_memory,
+      kdf_parallelism,
+      email_normalized,
+      security_stamp,
+      revision_date
     FROM users WHERE id = ${sql(userId)};
-    SELECT
-      SUM(CASE WHEN identifier = ${sql(oldDevice)} AND revoked_at IS NOT NULL THEN 1 ELSE 0 END) AS old_device_revoked,
-      SUM(CASE WHEN identifier = ${sql(newDevice)} AND revoked_at IS NULL THEN 1 ELSE 0 END) AS new_device_active
+    SELECT identifier, revoked_at
     FROM devices WHERE user_id = ${sql(userId)};
-    SELECT
-      SUM(CASE WHEN device_id = ${sql(`${userId}:${oldDevice}`)} AND revoked_at IS NOT NULL THEN 1 ELSE 0 END) AS old_refresh_token_revoked
+    SELECT device_id, revoked_at
     FROM refresh_tokens WHERE user_id = ${sql(userId)};
     SELECT COUNT(*) AS kdf_change_audit_count
     FROM audit_events
     WHERE actor_user_id = ${sql(userId)} AND name = 'account.kdf.change';
-    SELECT encrypted_json = ${sql(JSON.stringify(encryptedCipher))} AS encrypted_vault_unchanged
+    SELECT encrypted_json
     FROM ciphers WHERE id = ${sql(cipherId)} AND user_id = ${sql(userId)};
   `
   const result = await runWrangler([
@@ -600,18 +886,45 @@ async function readDatabaseState(persistTo) {
     '--json',
   ])
   const executions = JSON.parse(result.stdout)
-  const rows = executions.map((execution) => execution.results?.[0] ?? {})
+  const account = executions[0]?.results?.[0] ?? {}
+  const devices = executions[1]?.results ?? []
+  const refreshTokens = executions[2]?.results ?? []
+  const audit = executions[3]?.results?.[0] ?? {}
+  const cipher = executions[4]?.results?.[0] ?? {}
+  const expectedRefreshTokens = refreshTokens.filter(
+    (token) => token.device_id === expected.revokedRefreshDeviceId,
+  )
+
   return {
-    newHashCommitted: rows[0]?.new_hash_committed === 1,
-    newUserKeyCommitted: rows[0]?.new_user_key_committed === 1,
-    kdfChangedToArgon2id: rows[0]?.kdf_changed_to_argon2id === 1,
-    accountSaltUnchanged: rows[0]?.account_salt_unchanged === 1,
-    securityStampRotated: rows[0]?.security_stamp_rotated === 1,
-    oldDeviceRevoked: rows[1]?.old_device_revoked === 1,
-    newDeviceActive: rows[1]?.new_device_active === 1,
-    oldRefreshTokenRevoked: rows[2]?.old_refresh_token_revoked === 1,
-    kdfChangeAuditCount: Number(rows[3]?.kdf_change_audit_count ?? 0),
-    encryptedVaultUnchanged: rows[4]?.encrypted_vault_unchanged === 1,
+    authenticationHashCommitted:
+      account.master_password_hash === expected.masterPasswordHash,
+    userKeyCommitted: account.user_key === expected.userKey,
+    kdfCommitted:
+      account.kdf_algorithm === expected.kdfAlgorithm &&
+      Number(account.kdf_iterations) === expected.kdfIterations &&
+      account.kdf_memory === expected.kdfMemory &&
+      account.kdf_parallelism === expected.kdfParallelism,
+    accountSaltUnchanged: account.email_normalized === email,
+    securityStamp:
+      typeof account.security_stamp === 'string' ? account.security_stamp : '',
+    revisionDate:
+      typeof account.revision_date === 'string' ? account.revision_date : '',
+    revokedDevice: devices.some(
+      (device) =>
+        device.identifier === expected.revokedDeviceIdentifier &&
+        device.revoked_at !== null,
+    ),
+    activeDevice: devices.some(
+      (device) =>
+        device.identifier === expected.activeDeviceIdentifier &&
+        device.revoked_at === null,
+    ),
+    revokedRefreshToken:
+      expectedRefreshTokens.length > 0 &&
+      expectedRefreshTokens.every((token) => token.revoked_at !== null),
+    kdfChangeAuditCount: Number(audit.kdf_change_audit_count ?? 0),
+    encryptedVaultUnchanged:
+      cipher.encrypted_json === JSON.stringify(encryptedCipher),
   }
 }
 
@@ -712,6 +1025,16 @@ function assert(condition, message) {
 
 function check(id, passed) {
   return { id, status: passed ? 'pass' : 'fail' }
+}
+
+function revisionAdvanced(candidate, previous) {
+  const candidateTime = Date.parse(candidate)
+  const previousTime = Date.parse(previous)
+  return (
+    Number.isFinite(candidateTime) &&
+    Number.isFinite(previousTime) &&
+    candidateTime > previousTime
+  )
 }
 
 function sql(value) {

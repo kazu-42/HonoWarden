@@ -13,11 +13,12 @@ Issue: `HON-204`
 ## Purpose
 
 This evidence covers an existing account changing from PBKDF2-SHA256 to
-Argon2id through HonoWarden HTTP routes and a fully migrated local D1 database.
-It verifies exact KDF projection, atomic credential/session mutation,
-old-generation rejection, new-generation login metadata, required audit
-persistence, encrypted-vault preservation, and unknown allowlisted prelogin
-tracking the stored KDF population before and after mutation.
+Argon2id and back to PBKDF2 through HonoWarden HTTP routes and a fully migrated
+local D1 database. It verifies exact KDF projection, atomic credential/session
+mutation, old-generation rejection after both changes, new-generation login
+metadata, revision and audit persistence, encrypted-vault preservation, and
+unknown allowlisted prelogin tracking the stored KDF population at every
+generation.
 
 The runner uses synthetic client-derived authentication hashes, opaque wrapped
 user keys, and encrypted vault payloads. It never supplies a plaintext master
@@ -32,10 +33,11 @@ Real secrets: none
 - official upstream web client `web-v2026.6.1` at
   `39f07436ca60e3f25eac47777671754f288a98f1`
 
-The request proves the old client-derived authentication hash and provides one
-new authentication/unlock generation. Both data sets use the unchanged
-normalized-email salt and identical Argon2id settings. HonoWarden validates the
-pinned inclusive bounds before any mutation.
+Each request proves the current client-derived authentication hash and provides
+one new authentication/unlock generation. Authentication and unlock data in
+each request use the unchanged normalized-email salt and identical KDF
+settings. HonoWarden validates the pinned inclusive bounds before either
+mutation.
 
 ## Reproduction
 
@@ -46,10 +48,12 @@ pnpm vitest run test/ops/account-kdf-change-lifecycle.test.ts
 
 The runner creates an isolated temporary Wrangler persistence directory,
 applies all D1 migrations, seeds one synthetic account and encrypted cipher,
-starts `wrangler dev --local` on free loopback ports, exercises the complete
-lifecycle, reads D1 state back through Wrangler, stops the Worker, and removes
-the temporary directory. `--persist-to <path>` retains an explicitly selected
-local database for investigation. The runner explicitly passes
+starts `wrangler dev --local` on free loopback ports, exercises the first
+mutation, stops the Worker, reads D1 state back through Wrangler, restarts from
+the same persistence directory for the reverse mutation, and performs final D1
+readback with the Worker stopped. It then removes the temporary directory.
+`--persist-to <path>` retains an explicitly selected local database for
+investigation. The runner explicitly passes
 `HONOWARDEN_KDF_MUTATION_ENABLED=true`; every tracked deployment configuration
 keeps the irreversible writer false.
 
@@ -58,21 +62,25 @@ keeps the irreversible writer false.
 The passing report must establish:
 
 - known-account prelogin changes from PBKDF2 `0/600000/null/null` to Argon2id
-  `1/6/32/4`, including the current `kdfSettings` shape
-- with the one seeded account, unknown allowlisted prelogin changes from the
-  same PBKDF2 profile to the same Argon2id profile, proving the decoy is selected
-  from the current stored distribution rather than synthesized at a validation
+  `1/6/32/4` and back to PBKDF2, including the current `kdfSettings` shape
+- with the one seeded account, unknown allowlisted prelogin follows the same
+  PBKDF2, Argon2id, and final PBKDF2 profiles, proving the decoy is selected from
+  the current stored distribution rather than synthesized at a validation
   boundary
-- the old access token, refresh token, and old-KDF authentication hash fail
-- the new authentication hash logs in and verifies
-- password and refresh token responses, profile, and sync all project Argon2id
+- the prior access token, refresh token, and authentication hash fail after
+  each mutation
+- each new authentication hash logs in and verifies
+- password and refresh token responses, profile, and sync project Argon2id for
+  the first generation and PBKDF2 for the final generation
 - the authentication hash, wrapped user key, KDF columns, security stamp, and
-  account revision commit as one generation
-- old device and refresh-token rows are revoked while the new device is active
-- exactly one `account.kdf.change` audit row exists
+  account revision commit as one generation twice
+- direct D1 readback proves the account revision advances after each mutation
+- each prior device and refresh-token generation is revoked while the new
+  device is active
+- exactly two `account.kdf.change` audit rows exist
 - encrypted cipher JSON is byte-for-byte unchanged
 
-The report contains 18 named checks. The unknown-address fixture remains
+The report contains 36 named checks. The unknown-address fixture remains
 synthetic and pending throughout the run; it is never inserted into D1.
 
 Focused route and repository tests separately cover every bound and
