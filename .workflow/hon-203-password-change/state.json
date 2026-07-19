@@ -1,0 +1,61 @@
+{
+  "title": "HON-203 password verification and change",
+  "slug": "hon-203-password-change",
+  "created_at": "2026-07-19T00:54:48+00:00",
+  "status": "candidate_approved",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation and exact-head admin merge are authorized; production mutation remains separately gated."
+  },
+  "packets": [
+    { "id": "01", "name": "official-contract", "status": "completed" },
+    { "id": "02", "name": "security-boundary", "status": "completed" },
+    { "id": "03", "name": "tdd-implementation", "status": "completed" },
+    { "id": "04", "name": "real-d1-lifecycle", "status": "completed" },
+    { "id": "05", "name": "docs-evidence", "status": "completed" },
+    { "id": "06", "name": "independent-review", "status": "completed" }
+  ],
+  "verification": {
+    "status": "candidate_approved",
+    "checks": [
+      { "command": "pnpm check", "status": "passed" },
+      { "command": "pnpm lint", "status": "passed" },
+      { "command": "pnpm format", "status": "passed" },
+      { "command": "pnpm test", "status": "passed", "tests": 989 },
+      {
+        "command": "pnpm compat:test",
+        "status": "passed",
+        "tests": 101
+      },
+      { "command": "pnpm brand:scan", "status": "passed" },
+      {
+        "command": "pnpm release:gate",
+        "status": "passed",
+        "checks": 11
+      },
+      {
+        "command": "pnpm account:password-change:lifecycle",
+        "status": "passed",
+        "checks": 15
+      },
+      {
+        "command": "codex review --commit 01b27137b48c1225668d582256c6f24e7b188c43",
+        "status": "remediated",
+        "findings": 2
+      },
+      {
+        "command": "codex review --base main",
+        "status": "approved",
+        "head": "e31d248607ec17e9bc2fd0be661d7d30ba2b214d",
+        "findings": 0
+      },
+      {
+        "command": "codex exec five-axis read-only review",
+        "status": "approved",
+        "head": "e31d248607ec17e9bc2fd0be661d7d30ba2b214d",
+        "findings": 0
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-14.
+Last reviewed: 2026-07-19.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -66,6 +66,10 @@ inputs, not minor documentation notes.
 - read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented. Login-with-device request, approval, owner notification, anonymous requester notification, and one-time token exchange are live-tested with synthetic data in staging. Production remains disabled, the current official extension relies on response notification rather than automatic timed polling, and repeated resend attempts can leave older pending requests visible until fixed expiry.
 - account disable/enable operator CLI is dry-run-first, but no admin UI or live
   production lifecycle evidence is recorded yet.
+- current-password verification and existing master-password change are covered
+  by compatibility fixtures and a synthetic local Wrangler/D1 lifecycle. No
+  official client UI or production password-change run is recorded. Non-empty
+  password hints are rejected because hint persistence is not implemented.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation
@@ -73,8 +77,9 @@ inputs, not minor documentation notes.
 
 ## Security Control Gaps
 
-- Audit events are platform log lines only; they are not persisted with retention
-  controls in D1.
+- Required credential-generation events are persisted atomically in D1, and
+  optional route events can be persisted when audit logging is enabled. Event
+  coverage and retention operations are still incomplete across the full API.
 - Audit event coverage does not include every vault CRUD route.
 - Operator backup/restore evidence now includes a scheduled GitHub Actions
   workflow, remote D1/R2 backup evidence, and a local fresh-target restore

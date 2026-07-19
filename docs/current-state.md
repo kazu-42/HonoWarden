@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-15
+Last updated: 2026-07-19
 
 ## Week 1 Status
 
@@ -1105,8 +1105,36 @@ Implemented:
 
 Not implemented:
 
-- email change, password change, or account deletion flows
+- email change or account deletion flows
 - live client evidence for the account profile endpoint
+
+## Week 26 Account Password Verification And Change
+
+Implemented:
+
+- authenticated `POST /api/accounts/verify-password` using the current
+  client-derived authentication hash and the existing credential-proof defenses
+- authenticated `POST /api/accounts/password` with pinned structured,
+  transitional legacy, and dual request variants
+- fail-closed dual-payload consistency checks plus unchanged account salt and
+  KDF generation checks
+- explicit rejection of non-empty password hints because HonoWarden does not
+  persist hint data
+- one generation-guarded D1 batch that replaces the authentication hash and
+  opaque wrapped user key, rotates security stamp/revision, revokes devices and
+  refresh tokens, supersedes active auth requests, and persists the required
+  `account.password.change` audit event
+- old access-token invalidation through security-stamp rotation and old refresh
+  invalidation through D1 session revocation
+- compatibility fixture flows `password_verify` and `password_change`
+- `pnpm account:password-change:lifecycle` real local-D1 synthetic evidence for
+  old/new login, verify, refresh, sync, audit, KDF, session, and encrypted-vault
+  invariants
+
+Not implemented:
+
+- password-hint persistence or migration; non-empty hints fail before mutation
+- official client UI or production password-change evidence
 
 ## Week 26 Account Lifecycle Operator CLI
 

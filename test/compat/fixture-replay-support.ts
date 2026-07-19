@@ -444,12 +444,12 @@ function readJsonPath(
     throw new Error(`Invalid JSON fixture path: ${path}`)
   }
 
-  if (value === null) {
-    return { exists: false }
-  }
-
   if (path === '$') {
     return { exists: true, value }
+  }
+
+  if (value === null) {
+    return { exists: false }
   }
 
   const parts = path

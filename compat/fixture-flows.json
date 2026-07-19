@@ -34,6 +34,14 @@
       "fixtures": ["accounts/revision-date-success.json"]
     },
     {
+      "id": "password_verify",
+      "fixtures": ["accounts/verify-password-success.json"]
+    },
+    {
+      "id": "password_change",
+      "fixtures": ["accounts/password-change-success.json"]
+    },
+    {
       "id": "direct_read",
       "fixtures": [
         "folders/list-success.json",

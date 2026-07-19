@@ -6,6 +6,21 @@ This matrix records the exact client versions currently tracked by HonoWarden. I
 
 Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compat/fixture-flows.json). CI verifies that every `coveredFlows` value in the matrix maps to at least one fixture file. CI also route-replays every JSON fixture under `compat/fixtures` against the Hono app and compares that replay set with the fixture-flow manifest, so fixture assertions exercise real route behavior instead of only static JSON shape.
 
+## 2026-07-19 Password Change Source And Local Evidence
+
+The `password_verify` and `password_change` fixture flows are pinned to the
+official upstream server `v2026.6.1` commit
+`a09c7edb03ae6d4fdece784f1250c67be73d5fe0` and web client
+`web-v2026.6.1` commit `39f07436ca60e3f25eac47777671754f288a98f1`.
+CI route-replays the current-proof policy response and the structured plus
+legacy dual password-change payload against the app.
+
+`pnpm account:password-change:lifecycle` additionally runs a synthetic old/new
+credential lifecycle through local Wrangler and real local D1 migrations. That
+evidence proves server behavior but is not an official client binary or UI run,
+so it does not add a flow to any row's `liveEvidence` and does not promote a
+verification level.
+
 ## 2026-07-13 Premium Surface Boundary
 
 A source-map audit of the pinned browser extension `2026.6.1` found no
@@ -141,6 +156,8 @@ opaque continuation tokens.
 - `account_profile`
 - `account_profile_update`
 - `account_revision`
+- `password_verify`
+- `password_change`
 - `direct_read`
 - `metadata_read`
 - `device_read`
