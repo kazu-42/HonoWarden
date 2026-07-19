@@ -211,7 +211,8 @@ Explicitly excluded public sharing surface:
     input, constrains bootstrap to missing-or-complete key envelopes, bypasses
     quota D1 work while disabled, and uses complete-only projections before
     touched token-session, profile, or backup success side effects. Invalid
-    projections emit a redacted request-correlated incident signal.
+    projections emit a redacted request-correlated incident signal, and backup
+    failure audit preserves its bounded corruption reason.
 
 ## Required Follow-Up Before Real Secrets
 

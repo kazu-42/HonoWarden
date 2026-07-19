@@ -30,6 +30,8 @@ for final exact-head standard and five-axis reviews, then PR publication.
 - review P2: backup success audit could precede projection failure
 - review P2: global quota could override the disabled D1-free 501 path
 - review P2: generic route catches hid corrupt projection incidents
+- review P2: Hono-derived HEAD bypassed the disabled-route quota exemption
+- review P2: backup audit misclassified projection corruption as a D1 outage
 
 ## Verification Evidence
 

@@ -144,7 +144,7 @@ Success invariants:
 Failure invariants:
 
 - a disabled flag returns unsupported before authentication or D1 access,
-  including when the optional global request quota is enabled
+  including Hono-derived HEAD when the optional global request quota is enabled
 - malformed, unknown, oversized, partial, or V2 input is state-free
 - a missing or blank wrapped user key fails before initialization and no
   complete account-key projection is returned
@@ -157,6 +157,8 @@ Failure invariants:
   an auth session, or rotate a refresh token
 - route catches report partial or otherwise invalid projection state through a
   redacted request-correlated signal before returning generic 503
+- backup failure audit preserves the bounded projection-corruption reason rather
+  than classifying healthy-D1 corruption as infrastructure failure
 - profile updates and backup success audits occur only after the same projection
   validates, so a projection failure leaves neither side effect
 - this initializer never rotates a security stamp; true replacement belongs to

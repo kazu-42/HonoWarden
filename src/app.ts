@@ -491,7 +491,9 @@ function isRequestQuotaBypass(c: AppContext): boolean {
 
   if (
     pathname === '/api/accounts/keys' &&
-    (c.req.method === 'GET' || c.req.method === 'POST') &&
+    (c.req.method === 'GET' ||
+      c.req.method === 'HEAD' ||
+      c.req.method === 'POST') &&
     !isAccountKeyInitializationEnabled(c.env?.HONOWARDEN_ACCOUNT_KEYS_ENABLED)
   ) {
     return true
@@ -2430,7 +2432,10 @@ app.post('/api/accounts/export', async (c) => {
   } catch (error) {
     reportAccountKeyProjectionError(c, error)
     await emitBackupExportAuditEvent(c, auth, 'failure', {
-      reason: 'database_unavailable',
+      reason:
+        error instanceof AccountKeyProjectionError
+          ? error.reason
+          : 'database_unavailable',
     })
 
     return c.json(

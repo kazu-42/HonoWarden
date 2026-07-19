@@ -38,7 +38,7 @@
       "compatibility": "passed_3_files_105_tests",
       "realLocalD1": "passed",
       "releaseGate": "ready_11_pass_0_manual_0_block",
-      "standardReview": "three_rounds_remediated_final_exact_head_pending",
+      "standardReview": "four_rounds_remediated_final_exact_head_pending",
       "fiveAxisReview": "pending"
     },
     "checks": [

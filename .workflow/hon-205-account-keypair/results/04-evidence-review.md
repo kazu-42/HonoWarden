@@ -44,6 +44,17 @@ Remediation adds a disabled account-key quota bypass and a typed projection
 error reported with request ID plus a bounded reason at every affected catch.
 TDD reproduced both failures, then the focused suite passed 347 tests.
 
+The fourth full-branch review found two P2 boundary gaps:
+
+- Hono dispatches HEAD through GET while quota middleware still sees HEAD, so
+  disabled HEAD could touch D1 and return 429/503 instead of 501
+- backup durable audit recorded typed projection corruption as
+  `database_unavailable`
+
+Remediation includes Hono-derived HEAD in the disabled-route bypass and stores
+the typed bounded corruption reason in backup failure audit while preserving the
+generic client-facing 503. TDD reproduced both failures, then passed.
+
 ## Pending publication gates
 
 - standard review on the resulting exact commit

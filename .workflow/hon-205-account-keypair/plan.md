@@ -47,8 +47,9 @@ any replacement path or exposing unwrapped key material.
   and true key replacement remain unsupported and state-free.
 - Both routes remain behind a new exact-true, non-secret, tracked default-off
   flag in every environment.
-- Disabled GET/POST bypass the optional global request-quota middleware so the
-  default-off and rollback path remains an unconditional D1-free 501.
+- Disabled GET/POST and Hono's derived HEAD read bypass the optional global
+  request-quota middleware so the default-off and rollback path remains an
+  unconditional D1-free 501.
 - No production deployment, remote D1 mutation, real-account change, secret
   rotation, compatibility promotion, paid action, or third-party contact.
 - HON-161 owns migration number `0015`; this slice must remain migration-free.
@@ -67,6 +68,8 @@ any replacement path or exposing unwrapped key material.
 - Existing corrupt partial rows must fail explicitly and must not leak the
   surviving half through legacy projections; broad route catches must emit one
   redacted incident signal before returning their generic 503.
+- Backup failure audit must preserve the typed bounded projection-corruption
+  reason instead of classifying a healthy-D1 data-integrity failure as an outage.
 - Global middleware ordering must not let an opt-in quota mutate D1 or override
   the disabled account-key route response.
 - Projection validation must precede profile mutations and backup success audit

@@ -4628,12 +4628,14 @@ describe('HonoWarden app', () => {
       name: 'backup.export',
       outcome: 'failure',
       requestId: 'invalid-key-backup-export-request',
+      contextJson: JSON.stringify({ reason: 'stored_state_invalid' }),
     })
     expect(auditLog).toHaveBeenCalledTimes(1)
     const emitted = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
     expect(emitted).toMatchObject({
       name: 'backup.export',
       outcome: 'failure',
+      context: { reason: 'stored_state_invalid' },
     })
     expect(JSON.stringify(emitted)).not.toContain(
       'synthetic-surviving-public-key',
@@ -7273,7 +7275,7 @@ describe('HonoWarden app', () => {
   })
 
   it('keeps account-key reads and initialization state-free and default-off', async () => {
-    for (const method of ['GET', 'POST'] as const) {
+    for (const method of ['GET', 'HEAD', 'POST'] as const) {
       const user = {
         ...authUserRecord(),
         publicKey: null,
@@ -7305,12 +7307,16 @@ describe('HonoWarden app', () => {
 
       expect(response.status).toBe(501)
       expect(response.headers.get('Cache-Control')).toBe('no-store')
-      await expect(response.json()).resolves.toMatchObject({
-        error: {
-          code: 'unsupported_feature',
-          message: 'Account keys are not activated on this server.',
-        },
-      })
+      if (method === 'HEAD') {
+        await expect(response.text()).resolves.toBe('')
+      } else {
+        await expect(response.json()).resolves.toMatchObject({
+          error: {
+            code: 'unsupported_feature',
+            message: 'Account keys are not activated on this server.',
+          },
+        })
+      }
       expect(user).toEqual(before)
       expect(database.auditEventInserts).toEqual([])
       expect(prepare).not.toHaveBeenCalled()

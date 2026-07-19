@@ -263,7 +263,7 @@ either route. Missing, blank, false, or any other value returns
 `501 unsupported_feature` before authentication or D1 access.
 This path explicitly bypasses the optional global request quota, so enabling
 `HONOWARDEN_GLOBAL_REQUEST_QUOTA` cannot create a quota row or replace the
-disabled route's 501 with 429/503.
+disabled GET, Hono-derived HEAD, or POST response's 501 with 429/503.
 
 The initializer accepts only a complete bounded opaque public key and wrapped
 private key for an active authenticated account whose wrapped user key is
@@ -283,7 +283,8 @@ also validate this envelope before updating the account or recording a
 successful export. A 503 caused by invalid stored key state therefore does not
 mean either side effect committed. Token, profile, sync, and backup catches emit
 a redacted `account_key_state_invalid` signal with request ID and bounded reason
-before returning generic 503; key values are never included.
+before returning generic 503; backup failure audit stores the same bounded
+reason rather than `database_unavailable`, and key values are never included.
 
 The top-level, staging, and production `wrangler.jsonc` values remain false.
 Source merge does not activate the routes. Activation requires separate

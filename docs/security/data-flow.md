@@ -138,8 +138,9 @@ Secret-handling invariants:
 ## Account Key Initialization
 
 1. The dedicated routes return unsupported before authentication or D1 unless
-   `HONOWARDEN_ACCOUNT_KEYS_ENABLED=true`. Disabled GET/POST bypass the optional
-   global request quota, preserving a D1-free 501 rollback path.
+   `HONOWARDEN_ACCOUNT_KEYS_ENABLED=true`. Disabled GET/POST and Hono's derived
+   HEAD read bypass the optional global request quota, preserving a D1-free 501
+   rollback path.
 2. An authenticated active user with a non-empty wrapped user key posts one
    bounded V1 public key and opaque wrapped-private key to
    `POST /api/accounts/keys`. Unknown, partial, conflicting-alias, or V2 fields
@@ -164,7 +165,8 @@ Secret-handling invariants:
    creation, or token rotation. Profile updates validate it before updating the
    user row, and backup export builds it before persisting a success audit.
    Route catches report typed projection corruption with request ID and a
-   bounded reason before returning generic 503; no key value is logged.
+   bounded reason before returning generic 503; backup failure audit preserves
+   that bounded reason, and no key value is logged.
 
 Secret-handling invariants:
 
