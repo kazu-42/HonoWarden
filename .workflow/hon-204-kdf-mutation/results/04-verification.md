@@ -90,7 +90,17 @@ emitted without changing the committed response.
 - focused TDD: one regression failed because a never-settling Durable Object
   kept the `waitUntil` promise unresolved, then passed after the deadline fix
 - full app suite: 271 tests passed
-- broad repository verification: pending on the committed remediation head
+- `pnpm test`: 86 files and 1,050 tests passed in 41.05 seconds
+- standalone real local D1 lifecycle: all 18 checks passed
+- `pnpm check`
+- `pnpm lint`
+- `pnpm format`
+- `pnpm cf:typegen` with no generated diff
+- `pnpm compat:test`: 3 files and 101 tests passed
+- `pnpm release:gate`: overall ready, 11 pass, 0 manual, 0 block
+- `pnpm brand:scan`
+- `git diff --check`
+- workflow verifier
 
 The new regression proves that notification cleanup reaches a deterministic
 failure within the application-owned 10-second deadline, aborts the same

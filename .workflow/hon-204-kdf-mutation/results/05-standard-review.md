@@ -207,5 +207,8 @@ request-correlated failure evidence.
   contracts
 
 The focused regression failed before the implementation and passed afterward;
-the full app suite passes all 271 tests. Broad verification and both exact-head
-reviews remain required on the committed remediation.
+the full app suite passes all 271 tests. The repository suite passes 86 files
+and 1,050 tests, compatibility passes 101 tests, and the real local D1
+lifecycle passes all 18 checks. Typecheck, lint, format, type generation,
+release gate, brand scan, diff check, and workflow verification also pass. Both
+exact-head reviews remain required on the committed remediation.
