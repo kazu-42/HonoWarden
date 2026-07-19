@@ -33,12 +33,12 @@
   "verification": {
     "status": "local_passed_reviews_pending",
     "results": {
-      "focused": "passed_4_files_346_tests",
-      "full": "passed_89_files_1099_tests",
+      "focused": "passed_4_files_347_tests",
+      "full": "passed_89_files_1100_tests",
       "compatibility": "passed_3_files_105_tests",
       "realLocalD1": "passed",
       "releaseGate": "ready_11_pass_0_manual_0_block",
-      "standardReview": "two_rounds_remediated_final_exact_head_pending",
+      "standardReview": "three_rounds_remediated_final_exact_head_pending",
       "fiveAxisReview": "pending"
     },
     "checks": [

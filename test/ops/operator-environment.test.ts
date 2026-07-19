@@ -153,6 +153,8 @@ describe('operator environment policy', () => {
     expect(envExample).toMatch(/^HONOWARDEN_ACCOUNT_KEYS_ENABLED=false$/m)
     expect(operatorDocs).toContain('Account Key Initialization Rollout')
     expect(operatorDocs).toContain('HONOWARDEN_ACCOUNT_KEYS_ENABLED')
+    expect(operatorDocs).toContain('HONOWARDEN_GLOBAL_REQUEST_QUOTA')
+    expect(operatorDocs).toContain('account_key_state_invalid')
     expect(operatorDocs).toMatch(/security stamp and existing sessions remain/)
     expect(operatorDocs).toContain('HON-206')
   })

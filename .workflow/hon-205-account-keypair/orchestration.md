@@ -28,6 +28,10 @@
 - If audit insert or any batch member fails, surface 503 and require D1 to roll
   back the keypair and revision.
 - If a projection sees partial stored state, fail without returning either key.
+- Report projection corruption with request ID and a bounded reason before a
+  route-level generic 503 catch; never log either key value.
+- When the account-key flag is disabled, bypass global quota persistence for
+  GET/POST so the rollback response remains D1-free 501 in every configuration.
 - Bootstrap may persist only a missing pair or a complete pair with a wrapped
   user key; reject every other key envelope before D1.
 - Validate projections before profile mutation or backup success audit so a 503

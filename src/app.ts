@@ -489,6 +489,14 @@ function isRequestQuotaBypass(c: AppContext): boolean {
 
   const pathname = new URL(c.req.url).pathname
 
+  if (
+    pathname === '/api/accounts/keys' &&
+    (c.req.method === 'GET' || c.req.method === 'POST') &&
+    !isAccountKeyInitializationEnabled(c.env?.HONOWARDEN_ACCOUNT_KEYS_ENABLED)
+  ) {
+    return true
+  }
+
   return pathname === '/health' || pathname === '/healthz'
 }
 
@@ -951,7 +959,8 @@ app.get('/api/accounts/profile', async (c) => {
         organizations,
       ),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),
@@ -1767,7 +1776,8 @@ app.post('/identity/connect/token', async (c) => {
           accountKeyProjection,
         ),
       )
-    } catch {
+    } catch (error) {
+      reportAccountKeyProjectionError(c, error)
       return c.json(
         {
           error: {
@@ -2122,7 +2132,8 @@ app.post('/identity/connect/token', async (c) => {
     return c.json(
       buildTokenResponse(user, accessToken, refreshToken, accountKeyProjection),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       {
         error: {
@@ -2305,7 +2316,8 @@ async function handleAuthRequestTokenGrant(
     return c.json(
       buildTokenResponse(user, accessToken, refreshToken, accountKeyProjection),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),
@@ -2364,7 +2376,8 @@ app.get('/api/sync', async (c) => {
         collections,
       ),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),
@@ -2414,7 +2427,8 @@ app.post('/api/accounts/export', async (c) => {
     )
 
     return c.json(exportResponse)
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     await emitBackupExportAuditEvent(c, auth, 'failure', {
       reason: 'database_unavailable',
     })
@@ -5359,7 +5373,7 @@ function buildAccessTokenClaims(input: {
 function buildAccountKeyProjection(user: AuthUserRecord) {
   const state = classifyAccountKeyState(user)
   if (state.status === 'invalid') {
-    throw new Error('stored account keypair state is invalid')
+    throw new AccountKeyProjectionError('stored_state_invalid')
   }
   if (state.status === 'missing') {
     return {
@@ -5369,7 +5383,7 @@ function buildAccountKeyProjection(user: AuthUserRecord) {
     }
   }
   if (!hasWrappedUserKey(user)) {
-    throw new Error('stored account keypair has no wrapped user key')
+    throw new AccountKeyProjectionError('wrapped_user_key_missing')
   }
 
   const accountKeys = {
@@ -5436,9 +5450,7 @@ function invalidAccountKeyStateResponse(c: AppContext) {
 
 function logInvalidAccountKeyState(
   c: AppContext,
-  reason:
-    | 'stored_state_invalid'
-    | 'wrapped_user_key_missing' = 'stored_state_invalid',
+  reason: AccountKeyStateInvalidReason = 'stored_state_invalid',
 ) {
   console.error(
     JSON.stringify({
@@ -5447,6 +5459,22 @@ function logInvalidAccountKeyState(
       reason,
     }),
   )
+}
+
+type AccountKeyStateInvalidReason =
+  'stored_state_invalid' | 'wrapped_user_key_missing'
+
+class AccountKeyProjectionError extends Error {
+  constructor(readonly reason: AccountKeyStateInvalidReason) {
+    super('stored account key projection is invalid')
+    this.name = 'AccountKeyProjectionError'
+  }
+}
+
+function reportAccountKeyProjectionError(c: AppContext, error: unknown): void {
+  if (error instanceof AccountKeyProjectionError) {
+    logInvalidAccountKeyState(c, error.reason)
+  }
 }
 
 function hasWrappedUserKey(
@@ -7420,7 +7448,8 @@ async function handleAccountProfileUpdate(c: AppContext) {
         isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
       ),
     )
-  } catch {
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
     return c.json(
       apiError(
         c.get('requestId'),

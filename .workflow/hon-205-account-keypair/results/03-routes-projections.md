@@ -24,6 +24,8 @@
 ## Invariants proved
 
 - Disabled GET and POST return before authentication or D1 access.
+- Disabled GET and POST also bypass the optional global request quota, so an
+  enabled quota cannot mutate its bucket or replace 501 with 429/503.
 - Unsupported V2, unknown, partial, padded, controlled, or oversized input
   cannot reach the account-key mutation.
 - First initialization advances account revision, emits one redacted required
@@ -37,6 +39,8 @@
   session, rotate a refresh token, or disclose either surviving value.
 - Projection failure cannot leave a committed profile update or a successful
   audit for a backup that was not returned.
+- A projection failure swallowed by a route-level 503 catch emits one redacted
+  request-correlated incident signal without either stored key value.
 
 ## Verification
 

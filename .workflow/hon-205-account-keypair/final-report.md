@@ -28,11 +28,13 @@ for final exact-head standard and five-axis reviews, then PR publication.
 - review P2: bootstrap could persist a partial pair
 - review P2: profile UPDATE could commit before projection failure
 - review P2: backup success audit could precede projection failure
+- review P2: global quota could override the disabled D1-free 501 path
+- review P2: generic route catches hid corrupt projection incidents
 
 ## Verification Evidence
 
-- focused: 4 files / 346 tests
-- full: 89 files / 1,099 tests
+- focused: 4 files / 347 tests
+- full: 89 files / 1,100 tests
 - compatibility: 3 files / 105 tests
 - real local D1 lifecycle: passed
 - check, lint, format, typegen, brand scan, dependency audit, release gate 11/11,

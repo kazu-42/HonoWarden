@@ -2,8 +2,8 @@
 
 ## Integrated evidence
 
-- Focused account-key/bootstrap/repository/app suite: 4 files, 346 tests.
-- Full repository suite: 89 files, 1,099 tests.
+- Focused account-key/bootstrap/repository/app suite: 4 files, 347 tests.
+- Full repository suite: 89 files, 1,100 tests.
 - Compatibility suite: 3 files, 105 tests.
 - Real local D1 lifecycle: passed initialize, read, replay, conflict,
   concurrent exact retry, both batch rollback orders, restart, preserved
@@ -32,6 +32,17 @@ Remediation constrains bootstrap to a missing pair or a complete pair with its
 wrapped user key, preflights profile projection before UPDATE, and builds backup
 output before success audit persistence. TDD reproduced all three failures and
 then passed.
+
+The third full-branch review found two P2 operational gaps:
+
+- the optional global quota could touch D1 and replace the disabled route's 501
+  before route-level flag handling
+- broad route catches returned generic 503 for corrupt projections without a
+  redacted incident signal
+
+Remediation adds a disabled account-key quota bypass and a typed projection
+error reported with request ID plus a bounded reason at every affected catch.
+TDD reproduced both failures, then the focused suite passed 347 tests.
 
 ## Pending publication gates
 

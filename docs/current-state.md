@@ -1188,6 +1188,8 @@ Implemented:
 
 - default-off authenticated `GET /api/accounts/keys` and one-time V1
   `POST /api/accounts/keys` behind `HONOWARDEN_ACCOUNT_KEYS_ENABLED`
+- disabled GET/POST bypass the optional global request quota and return a
+  D1-free 501 even when that separate middleware is enabled
 - strict bounded camel/Pascal V1 request aliases with unknown, partial,
   conflicting, padded, controlled, oversized, and V2 payload rejection before
   D1
@@ -1202,7 +1204,8 @@ Implemented:
 - one complete-state projection shared by password and refresh token responses,
   profile, sync, backup, and the dedicated account-key response; a missing
   wrapped user key or partial stored pair fails without exposing key material or
-  mutating a session
+  mutating a session, and broad 503 catches emit a redacted request-correlated
+  incident signal
 - bootstrap rejects partial pairs and complete pairs without a wrapped user key
   before D1; profile updates and successful backup audits validate the same
   projection before committing their side effects

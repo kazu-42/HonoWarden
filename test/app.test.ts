@@ -6064,6 +6064,7 @@ describe('HonoWarden app', () => {
   })
 
   it('validates account-key projection before updating the profile', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const user = {
       ...authUserRecord(),
       publicKey: 'synthetic-surviving-public-key',
@@ -6081,6 +6082,7 @@ describe('HonoWarden app', () => {
         headers: {
           Authorization: `Bearer ${await accessTokenFor(user)}`,
           'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-profile-account-key-request',
         },
         body: JSON.stringify({ name: 'Must Not Commit' }),
       },
@@ -6096,6 +6098,14 @@ describe('HonoWarden app', () => {
         String(query).includes('display_name = ?'),
       ),
     ).toBe(false)
+    expect(error).toHaveBeenCalledWith(
+      JSON.stringify({
+        event: 'account_key_state_invalid',
+        requestId: 'invalid-profile-account-key-request',
+        reason: 'stored_state_invalid',
+      }),
+    )
+    expect(JSON.stringify(error.mock.calls)).not.toContain(user.publicKey)
   })
 
   it('rejects invalid account profile update payloads', async () => {
@@ -7288,6 +7298,7 @@ describe('HonoWarden app', () => {
         },
         {
           DB: database,
+          HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
           HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
         },
       )
@@ -7304,6 +7315,38 @@ describe('HonoWarden app', () => {
       expect(database.auditEventInserts).toEqual([])
       expect(prepare).not.toHaveBeenCalled()
     }
+  })
+
+  it('reports a redacted incident signal for invalid account-key projections', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = {
+      ...authUserRecord(),
+      publicKey: 'synthetic-surviving-public-key',
+      privateKey: null,
+    }
+    const response = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'X-Request-Id': 'invalid-account-key-projection-request',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    expect(error).toHaveBeenCalledWith(
+      JSON.stringify({
+        event: 'account_key_state_invalid',
+        requestId: 'invalid-account-key-projection-request',
+        reason: 'stored_state_invalid',
+      }),
+    )
+    expect(JSON.stringify(error.mock.calls)).not.toContain(user.publicKey)
   })
 
   it('rejects account-key initialization and reads without a wrapped user key', async () => {
@@ -7624,6 +7667,7 @@ describe('HonoWarden app', () => {
   })
 
   it('rejects partial account keys before creating a TOTP challenge or session', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const encryptedSecret = await encryptTotpSecret(
       'test-totp-secret',
       'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
@@ -7645,6 +7689,7 @@ describe('HonoWarden app', () => {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Device-Identifier': 'fixture-device',
+          'X-Request-Id': 'invalid-token-account-key-request',
         },
         body: new URLSearchParams({
           grant_type: 'password',
@@ -7666,7 +7711,7 @@ describe('HonoWarden app', () => {
         code: 'database_unavailable',
         message: 'Token exchange failed.',
       },
-      requestId: expect.any(String),
+      requestId: 'invalid-token-account-key-request',
     })
     expect(JSON.stringify(body)).not.toContain('synthetic-surviving-public-key')
     const queries = prepare.mock.calls.map(([query]) => String(query))
@@ -7676,6 +7721,14 @@ describe('HonoWarden app', () => {
     expect(
       queries.some((query) => query.includes('INSERT INTO refresh_tokens')),
     ).toBe(false)
+    expect(error).toHaveBeenCalledWith(
+      JSON.stringify({
+        event: 'account_key_state_invalid',
+        requestId: 'invalid-token-account-key-request',
+        reason: 'stored_state_invalid',
+      }),
+    )
+    expect(JSON.stringify(error.mock.calls)).not.toContain(user.publicKey)
   })
 
   it('rejects partial, unknown, and V2 request variants before key mutation', async () => {
