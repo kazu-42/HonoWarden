@@ -27,8 +27,9 @@ Key invariants:
 - unrelated malformed or client-unreadable population rows are excluded, an
   invalid exact target fails closed, and an empty valid population uses the
   bootstrap PBKDF2 default
-- after D1 commit, notification cleanup failure is logged while HTTP 200 is
-  preserved so the client persists the matching local KDF
+- after D1 commit, notification cleanup runs through `waitUntil`; neither
+  transport latency nor failure delays or changes HTTP 200, and failure remains
+  redacted and observable
 - allowed prelogin requires `HONOWARDEN_TOKEN_SECRET` before D1 access and logs
   only a non-secret configuration reason when the secret is absent
 - no plaintext password, unwrapped key, hash, wrapped key, token, or request body

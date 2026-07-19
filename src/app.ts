@@ -2730,22 +2730,12 @@ app.post('/api/accounts/kdf', async (c) => {
       )
     }
 
-    if (
-      !(await invalidateDurableNotificationSessions(c, auth.user.id, {
-        securityStamp: nextSecurityStamp,
-        revisionDate: nextRevisionDate,
-      }))
-    ) {
-      console.error(
-        JSON.stringify({
-          event: 'account_notification_session_invalidation_failed',
-          requestId: c.get('requestId'),
-          reason: 'notification_hub_unavailable',
-        }),
-      )
-      // The D1 generation is already authoritative. A failure response would
-      // prevent supported clients from persisting the matching local KDF.
-    }
+    // D1 is already authoritative, so notification latency must not delay the
+    // acknowledgement clients need to persist the matching local KDF.
+    scheduleDurableNotificationSessionInvalidation(c, auth.user.id, {
+      securityStamp: nextSecurityStamp,
+      revisionDate: nextRevisionDate,
+    })
 
     if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
       console.info(serializeAuditEvent(auditEvent))
@@ -7561,6 +7551,43 @@ function notifyAuthRequest(
     c.executionCtx.waitUntil(delivery)
   } catch {
     void delivery
+  }
+}
+
+function scheduleDurableNotificationSessionInvalidation(
+  c: AppContext,
+  userId: string,
+  generation: { securityStamp: string; revisionDate: string },
+): void {
+  if (
+    !isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    )
+  ) {
+    return
+  }
+
+  const requestId = c.get('requestId')
+  const cleanup = invalidateDurableNotificationSessions(
+    c,
+    userId,
+    generation,
+  ).then((success) => {
+    if (success) return
+
+    console.error(
+      JSON.stringify({
+        event: 'account_notification_session_invalidation_failed',
+        requestId,
+        reason: 'notification_hub_unavailable',
+      }),
+    )
+  })
+
+  try {
+    c.executionCtx.waitUntil(cleanup)
+  } catch {
+    void cleanup
   }
 }
 

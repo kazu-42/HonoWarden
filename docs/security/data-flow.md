@@ -121,10 +121,11 @@ Secret-handling invariants:
    population falls back to bootstrap PBKDF2 `600000`. The HMAC is keyed by
    `HONOWARDEN_TOKEN_SECRET`, and a missing secret fails before D1.
 7. A missing Durable Object binding fails before mutation. Once D1 commits,
-   Durable Object cleanup is forward-only: transport failure is logged as
-   `account_notification_session_invalidation_failed`, but the route still
-   acknowledges success so the official client persists the matching local KDF.
-   Recovery never restores the old KDF generation.
+   Durable Object cleanup is forward-only and scheduled through `waitUntil`:
+   transport latency cannot delay acknowledgement, and failure is logged as
+   `account_notification_session_invalidation_failed` without changing success,
+   so the official client persists the matching local KDF. Recovery never
+   restores the old KDF generation.
 
 ## Refresh Grant
 

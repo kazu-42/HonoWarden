@@ -13,6 +13,12 @@ Passed fourth-remediation checks:
 - `pnpm lint`
 - `pnpm format`
 - `pnpm cf:typegen` with no generated diff
+- `pnpm compat:test`: 3 files and 101 tests passed
+- `pnpm release:gate`: overall ready, 11 pass, 0 manual, 0 block
+- `pnpm brand:scan`
+- `git diff --check`
+- workflow verifier
+- `pnpm cf:typegen` with no generated diff
 - `pnpm test`: 86 files, 1,045 tests in 62.00 seconds
 - `pnpm compat:test`: 3 files, 101 tests
 - `pnpm account:kdf-change:lifecycle`: 18 lifecycle checks
@@ -62,3 +68,19 @@ The new regressions prove that notification transport failure cannot turn a
 committed KDF change into a client-visible failure, an invalid exact target still
 fails closed, and unrelated invalid population rows cannot cause a fleet-wide
 allowed-prelogin outage.
+
+## Sixth Remediation Rerun
+
+- focused TDD: a stalled Durable Object kept the response pending before the
+  fix, then the regression passed after cleanup moved to `waitUntil`
+- combined focused suite: 5 files and 378 tests passed
+- `pnpm test`: 86 files and 1,049 tests passed in 47.31 seconds
+- standalone real local D1 lifecycle: all 18 checks passed
+- `pnpm check`
+- `pnpm lint`
+- `pnpm format`
+
+The new regression uses a deferred notification cleanup promise and proves the
+HTTP 200 response settles before that promise is released. The explicit
+transport-rejection regression still proves the redacted operational error is
+emitted without changing the committed response.

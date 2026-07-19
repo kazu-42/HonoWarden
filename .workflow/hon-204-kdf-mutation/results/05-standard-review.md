@@ -10,7 +10,9 @@ Fourth reviewed commit: `7ce78bc6d7b6539a6793873e996d92b9666ec983`
 
 Fifth reviewed commit: `74b44cc50b1ba5f8b0bdfd9fbcc59e88b8a68e72`
 
-Status: fifth remediation complete in the working tree; exact-head re-review
+Sixth reviewed commit: `b4c23ffca35a2d7b7d936654fc69ad41a4539750`
+
+Status: sixth remediation complete in the working tree; exact-head re-review
 pending
 
 ## Finding
@@ -151,3 +153,30 @@ suite passes 86 files and 1,048 tests, compatibility passes 101 tests, and the
 standalone real local D1 lifecycle passes all 18 checks. Typecheck, lint, format,
 type generation, release gate, brand scan, diff check, and workflow verification
 also pass. Both exact-head reviews must rerun on the committed remediation.
+
+## Sixth Review Finding
+
+- P1: after D1 committed the irreversible KDF generation, the route still
+  synchronously awaited Durable Object invalidation. A slow or permanently
+  pending object therefore prevented the 200 acknowledgement the pinned client
+  needs before storing its matching local KDF, recreating the same split-
+  generation failure as an explicit transport error.
+
+## Sixth Remediation
+
+- schedule KDF notification cleanup through the Worker execution context's
+  `waitUntil` instead of awaiting it on the response path
+- preserve the pre-mutation binding check and the existing synchronous
+  password/security-stamp cleanup contracts
+- keep redacted background failure logging without exposing user, KDF, hash,
+  token, or wrapped-key data
+- add a deferred Durable Object regression proving HTTP 200 settles before the
+  cleanup promise, plus retain the explicit rejection regression
+
+Focused TDD reproduced the stall before the cleanup promise was released and
+then passed. The combined credential/repository/app suite passes 5 files and
+378 tests, the full suite passes 86 files and 1,049 tests, and the standalone
+real local D1 lifecycle passes all 18 checks. Compatibility passes 101 tests;
+typecheck, lint, format, type generation, release gate, brand scan, diff check,
+and workflow verification also pass. Both exact-head reviews must rerun on the
+committed remediation.

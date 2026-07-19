@@ -11,7 +11,8 @@ weighted by account count and including readable legacy tuples. Use the
 bootstrap PBKDF2 default only when no client-readable population remains. Keep
 an exact invalid target fail-closed without letting unrelated invalid rows take
 down every allowed prelogin. Acknowledge an already committed KDF even if
-post-commit notification transport fails.
+post-commit notification transport stalls or fails; schedule that cleanup with
+the Worker execution context rather than awaiting it on the response path.
 
 Do not: silently map unknown stored algorithms to PBKDF2 or mutate before all
 preconditions pass.

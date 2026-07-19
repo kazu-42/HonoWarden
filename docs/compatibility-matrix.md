@@ -33,8 +33,9 @@ official-client `liveEvidence` or promote a verification level.
 The writer is default-off in every tracked Wrangler environment; its local
 lifecycle enables it explicitly only after the same Worker has proven the
 Argon2id reader paths. This source evidence is not deployment activation.
-Once a KDF generation commits, notification cleanup failure is logged while the
-API remains successful because the pinned client saves its matching local KDF
+Once a KDF generation commits, notification cleanup runs through `waitUntil` so
+its latency cannot delay the successful response. Failure remains logged while
+the API stays successful because the pinned client saves its matching local KDF
 only after the request resolves successfully.
 
 ## 2026-07-13 Premium Surface Boundary

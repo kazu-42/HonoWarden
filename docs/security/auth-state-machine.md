@@ -87,7 +87,7 @@ explicit KDF writer rollout flag enabled
   -> credential-proof defense allows attempt and old hash matches?
   -> guarded D1 batch changes hash + wrapped key + KDF + stamp + revision,
      revokes all sessions/auth requests, and persists mandatory audit
-  -> invalidate Durable Object notification sessions
+  -> schedule Durable Object notification-session invalidation with waitUntil
 ```
 
 Success invariants:
@@ -96,8 +96,9 @@ Success invariants:
 - every outward KDF projection reads the same committed generation
 - old access/refresh sessions and old-KDF authentication hashes fail
 - the new client-derived hash logs in with the new wrapped user key and KDF
-- after D1 commit, the client receives success even if notification socket
-  cleanup fails, so its local KDF cannot remain on the revoked generation
+- after D1 commit, the client receives success without waiting for notification
+  socket cleanup, even if cleanup stalls or fails, so its local KDF cannot
+  remain on the revoked generation
 
 Failure invariants:
 
@@ -107,8 +108,8 @@ Failure invariants:
 - every failed D1 batch statement rolls back user, session, auth-request, and
   audit changes together
 - a missing notification binding fails before mutation; post-commit transport
-  failure is logged, remains forward-only, and never changes the success response
-  or restores an old KDF
+  latency cannot delay success, while failure is logged, remains forward-only,
+  and never changes the response or restores an old KDF
 
 ## TOTP Setup
 

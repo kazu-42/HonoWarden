@@ -71,10 +71,11 @@ a new forward credential generation after reauthentication.
 D1 and a Durable Object cannot share one transaction. A post-commit notification
 transport failure never restores the old stamp. Security-stamp and password
 operations expose `session_revocation_incomplete`; KDF mutation logs the same
-transport failure but acknowledges the committed generation so the official
-client persists its matching local KDF. Generation-aware notification delivery
-still removes stale registrations before sending future request metadata;
-recovery is an operator-observed forward path.
+transport failure and schedules cleanup through `waitUntil`, so transport
+latency cannot delay acknowledgement of the committed generation and the
+official client persists its matching local KDF. Generation-aware notification
+delivery still removes stale registrations before sending future request
+metadata; recovery is an operator-observed forward path.
 
 No real account, production Worker, plaintext password, raw token, unwrapped
 key, or private vault data is used in any local or committed evidence.

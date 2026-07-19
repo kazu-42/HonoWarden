@@ -7477,6 +7477,55 @@ describe('HonoWarden app', () => {
     )
   })
 
+  it('does not wait for stalled notification cleanup after committing a KDF generation', async () => {
+    let releaseCleanup!: (response: Response) => void
+    const cleanup = new Promise<Response>((resolve) => {
+      releaseCleanup = resolve
+    })
+    const fetch = vi.fn(() => cleanup)
+    const waitUntil = vi.fn()
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    let responseSettled = false
+    const responsePromise = Promise.resolve(
+      app.request(
+        '/api/accounts/kdf',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${await accessTokenFor(user)}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(kdfChangeBody(user)),
+        },
+        {
+          DB: database,
+          NOTIFICATION_HUB: {
+            idFromName: () => 'user-object',
+            get: () => ({ fetch }),
+          } as unknown as DurableObjectNamespace,
+          HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+          HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+        { waitUntil } as unknown as ExecutionContext,
+      ),
+    ).then((response) => {
+      responseSettled = true
+      return response
+    })
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const settledBeforeCleanup = responseSettled
+    releaseCleanup(new Response(null, { status: 200 }))
+    const response = await responsePromise
+
+    expect(settledBeforeCleanup).toBe(true)
+    expect(response.status).toBe(200)
+    expect(waitUntil).toHaveBeenCalledOnce()
+  })
+
   it('changes the master-password generation and preserves encrypted vault data', async () => {
     const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
     const user = authUserRecord()
