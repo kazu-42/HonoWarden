@@ -1,0 +1,328 @@
+{
+  "generatedAt": "2026-07-18T16:44:13.807Z",
+  "status": "exact",
+  "phase": "apply",
+  "sourcePins": {
+    "clients": "web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1",
+    "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+  },
+  "inventory": {
+    "total": 207,
+    "archived": 109,
+    "activeUnarchived": 93,
+    "completedUnarchived": 5
+  },
+  "parent": {
+    "identifier": "HON-160",
+    "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+    "state": {
+      "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+      "name": "In Progress",
+      "type": "started"
+    },
+    "descriptionBytes": 2566,
+    "descriptionSha256": "33cc0bee218e2f6a2837985346836cf7c968b0be3f08d406ed695e7109071890",
+    "checks": {
+      "title": true,
+      "description": true,
+      "project": true,
+      "state": true,
+      "priority": true,
+      "nonArchived": true,
+      "capabilityMarker": true
+    }
+  },
+  "expectedChildren": 6,
+  "verifiedChildren": 6,
+  "expectedBlockRelations": 9,
+  "verifiedBlockRelations": 9,
+  "unexpectedBlockRelations": 0,
+  "issues": [
+    {
+      "key": "AUTH-2A",
+      "identifier": "HON-202",
+      "id": "970db431-0888-47b6-a299-bf6b81573462",
+      "title": "Account A2a: credential mutation foundation and security-stamp rotation",
+      "state": {
+        "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+        "name": "In Progress",
+        "type": "started"
+      },
+      "parent": {
+        "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+        "identifier": "HON-160"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 2372,
+      "descriptionSha256": "4736b0e96142c493c84773bfa7e19889613c57e9b5f62e8ca519ca4cd59657bc",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-2B",
+      "identifier": "HON-203",
+      "id": "e3378a23-0180-4f92-a074-7aaf63654d96",
+      "title": "Account A2b: verify-password and existing master-password change",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+        "identifier": "HON-160"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 2300,
+      "descriptionSha256": "10dae7e1211522c9c113d3a39ba64488f65f8f1fb7ce40a3223108e4391a3e33",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-2C",
+      "identifier": "HON-204",
+      "id": "9b14915b-b377-48af-8fdd-74686ff19edb",
+      "title": "Account A2c: PBKDF2 and Argon2id KDF mutation",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+        "identifier": "HON-160"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 2185,
+      "descriptionSha256": "eb293dda272fb4df127704e69ce3840984e6bb92708d184984f9301c0cf07417",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-2D",
+      "identifier": "HON-205",
+      "id": "4eeebb24-7112-4e05-9d91-9b1fabbea57c",
+      "title": "Account A2d: account keypair read and one-time initialization",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+        "identifier": "HON-160"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 2203,
+      "descriptionSha256": "f71c4b668f355a4962625aadd6815b17c85648512f29556d960d7dfab255ed15",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-2E",
+      "identifier": "HON-206",
+      "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+      "title": "Account A2e: atomic user-key rotation across personal vault data",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+        "identifier": "HON-160"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 2288,
+      "descriptionSha256": "99c7e94967a2002af99edccb8a34565c0215e08808ce3abbd020b28409fba965",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "AUTH-2F",
+      "identifier": "HON-207",
+      "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+      "title": "Account A2f: official-client credential-mutation and rollback closeout",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+        "identifier": "HON-160"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 2341,
+      "descriptionSha256": "3e69393a2dd1db60125bb669d762d443b7da92c0d38fb66d3db6d5ee65ce5e0c",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    }
+  ],
+  "relations": [
+    {
+      "blocker": "HON-202",
+      "blocked": "HON-203",
+      "sourceId": "970db431-0888-47b6-a299-bf6b81573462",
+      "targetId": "e3378a23-0180-4f92-a074-7aaf63654d96",
+      "exact": true,
+      "relationIds": ["dc96396f-4c9a-4ace-8fde-3c795fc264b5"]
+    },
+    {
+      "blocker": "HON-202",
+      "blocked": "HON-204",
+      "sourceId": "970db431-0888-47b6-a299-bf6b81573462",
+      "targetId": "9b14915b-b377-48af-8fdd-74686ff19edb",
+      "exact": true,
+      "relationIds": ["fcb55efa-cbc9-4117-ad05-6abb80da7b6a"]
+    },
+    {
+      "blocker": "HON-202",
+      "blocked": "HON-205",
+      "sourceId": "970db431-0888-47b6-a299-bf6b81573462",
+      "targetId": "4eeebb24-7112-4e05-9d91-9b1fabbea57c",
+      "exact": true,
+      "relationIds": ["c997d532-3944-4707-a8b8-a321017c6e66"]
+    },
+    {
+      "blocker": "HON-203",
+      "blocked": "HON-206",
+      "sourceId": "e3378a23-0180-4f92-a074-7aaf63654d96",
+      "targetId": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+      "exact": true,
+      "relationIds": ["5f6dd472-dc5f-451b-81ea-eb971100a79c"]
+    },
+    {
+      "blocker": "HON-205",
+      "blocked": "HON-206",
+      "sourceId": "4eeebb24-7112-4e05-9d91-9b1fabbea57c",
+      "targetId": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+      "exact": true,
+      "relationIds": ["7808f5b7-d88c-45d1-b086-89e15a520816"]
+    },
+    {
+      "blocker": "HON-203",
+      "blocked": "HON-207",
+      "sourceId": "e3378a23-0180-4f92-a074-7aaf63654d96",
+      "targetId": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+      "exact": true,
+      "relationIds": ["18f357e4-3565-45fe-b769-7f286e27753b"]
+    },
+    {
+      "blocker": "HON-204",
+      "blocked": "HON-207",
+      "sourceId": "9b14915b-b377-48af-8fdd-74686ff19edb",
+      "targetId": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+      "exact": true,
+      "relationIds": ["0267b4f7-e060-40e9-97d3-cc2b6c7a35be"]
+    },
+    {
+      "blocker": "HON-205",
+      "blocked": "HON-207",
+      "sourceId": "4eeebb24-7112-4e05-9d91-9b1fabbea57c",
+      "targetId": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+      "exact": true,
+      "relationIds": ["2544fb6c-99c1-4c89-9c5a-bb7b82e36104"]
+    },
+    {
+      "blocker": "HON-206",
+      "blocked": "HON-207",
+      "sourceId": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+      "targetId": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+      "exact": true,
+      "relationIds": ["0f52a237-2b0e-46a2-b6c8-4388fe7481f4"]
+    }
+  ],
+  "unexpectedRelations": [],
+  "managedComment": {
+    "id": "d75e90f9-1541-4acc-abe8-bb2d97f93777",
+    "updatedAt": "2026-07-18T16:44:07.951Z",
+    "bytes": 1283,
+    "sha256": "2f68794fb1fc17be5516430e0cd91cfa0c64bd6b2b73ecbf74186e9103bd3fc8",
+    "checks": {
+      "singleManagedComment": true,
+      "body": true,
+      "bytes": true,
+      "sha256": true
+    }
+  },
+  "errors": []
+}

@@ -27,6 +27,8 @@ export type AuthUserRecord = {
 
 export type DeviceSessionInput = {
   userId: string
+  expectedMasterPasswordHash: string
+  expectedSecurityStamp: string
   deviceIdentifier: string
   deviceName: string | null
   deviceType: number | null
@@ -35,6 +37,9 @@ export type DeviceSessionInput = {
   refreshTokenExpiresAt: string
   now: string
 }
+
+export type CreatePasswordGrantSessionResult =
+  { status: 'created' } | { status: 'stale_generation' }
 
 export type RefreshTokenSession = {
   tokenId: string
@@ -51,6 +56,7 @@ export type RotateRefreshTokenInput = {
   currentTokenId: string
   userId: string
   deviceId: string
+  expectedSecurityStamp: string
   deviceIdentifier: string
   deviceName: string | null
   deviceType: number | null
@@ -420,10 +426,10 @@ export async function findAuthUserById(
 export async function createPasswordGrantSession(
   database: AuthSessionDatabase,
   input: DeviceSessionInput,
-): Promise<void> {
+): Promise<CreatePasswordGrantSessionResult> {
   const deviceId = buildDeviceId(input.userId, input.deviceIdentifier)
 
-  await database.batch([
+  const results = await database.batch([
     database
       .prepare(
         `
@@ -435,7 +441,12 @@ export async function createPasswordGrantSession(
             type,
             last_seen_at
           )
-          VALUES (?, ?, ?, ?, ?, ?)
+          SELECT ?, ?, ?, ?, ?, ?
+          FROM users
+          WHERE id = ?
+            AND disabled_at IS NULL
+            AND master_password_hash = ?
+            AND security_stamp = ?
         `,
       )
       .bind(
@@ -445,6 +456,9 @@ export async function createPasswordGrantSession(
         input.deviceName,
         input.deviceType,
         input.now,
+        input.userId,
+        input.expectedMasterPasswordHash,
+        input.expectedSecurityStamp,
       ),
     database
       .prepare(
@@ -457,6 +471,14 @@ export async function createPasswordGrantSession(
             revoked_at = NULL,
             updated_at = ?
           WHERE id = ? AND user_id = ?
+            AND EXISTS (
+              SELECT 1
+              FROM users
+              WHERE id = ?
+                AND disabled_at IS NULL
+                AND master_password_hash = ?
+                AND security_stamp = ?
+            )
         `,
       )
       .bind(
@@ -466,6 +488,9 @@ export async function createPasswordGrantSession(
         input.now,
         deviceId,
         input.userId,
+        input.userId,
+        input.expectedMasterPasswordHash,
+        input.expectedSecurityStamp,
       ),
     database
       .prepare(
@@ -477,7 +502,19 @@ export async function createPasswordGrantSession(
             token_hash,
             expires_at
           )
-          VALUES (?, ?, ?, ?, ?)
+          SELECT ?, ?, ?, ?, ?
+          FROM users
+          WHERE id = ?
+            AND disabled_at IS NULL
+            AND master_password_hash = ?
+            AND security_stamp = ?
+            AND EXISTS (
+              SELECT 1
+              FROM devices
+              WHERE id = ?
+                AND user_id = ?
+                AND revoked_at IS NULL
+            )
         `,
       )
       .bind(
@@ -486,8 +523,26 @@ export async function createPasswordGrantSession(
         deviceId,
         input.refreshTokenHash,
         input.refreshTokenExpiresAt,
+        input.userId,
+        input.expectedMasterPasswordHash,
+        input.expectedSecurityStamp,
+        deviceId,
+        input.userId,
       ),
   ])
+
+  if (results.length !== 3) {
+    throw new Error('password session batch returned an invalid result count')
+  }
+  const refreshTokenChanges = results[2]?.meta.changes ?? 0
+  if (refreshTokenChanges === 0) {
+    return { status: 'stale_generation' }
+  }
+  if (refreshTokenChanges !== 1) {
+    throw new Error('password session batch created an invalid token count')
+  }
+
+  return { status: 'created' }
 }
 
 export async function listDevicesByUser(
@@ -1201,31 +1256,7 @@ export async function rotateRefreshToken(
   database: AuthSessionDatabase,
   input: RotateRefreshTokenInput,
 ): Promise<RotateRefreshTokenResult> {
-  const revokeResult = await database
-    .prepare(
-      `
-        UPDATE refresh_tokens
-        SET revoked_at = ?
-        WHERE id = ? AND user_id = ? AND device_id = ? AND revoked_at IS NULL
-      `,
-    )
-    .bind(input.now, input.currentTokenId, input.userId, input.deviceId)
-    .run()
-
-  if (revokeResult.meta.changes !== 1) {
-    await invalidateRefreshTokenSession(
-      database,
-      input.userId,
-      input.deviceId,
-      input.now,
-    )
-
-    return {
-      status: 'reuse_detected',
-    }
-  }
-
-  await database.batch([
+  const results = await database.batch([
     database
       .prepare(
         `
@@ -1237,16 +1268,59 @@ export async function rotateRefreshToken(
             rotated_from_token_id,
             expires_at
           )
-          VALUES (?, ?, ?, ?, ?, ?)
+          SELECT ?, current.user_id, current.device_id, ?, current.id, ?
+          FROM refresh_tokens AS current
+          INNER JOIN devices AS device
+            ON device.id = current.device_id
+            AND device.user_id = current.user_id
+          INNER JOIN users AS owner
+            ON owner.id = current.user_id
+          WHERE current.id = ?
+            AND current.user_id = ?
+            AND current.device_id = ?
+            AND current.revoked_at IS NULL
+            AND device.revoked_at IS NULL
+            AND owner.disabled_at IS NULL
+            AND owner.security_stamp = ?
         `,
       )
       .bind(
         input.nextRefreshTokenId,
+        input.nextRefreshTokenHash,
+        input.nextRefreshTokenExpiresAt,
+        input.currentTokenId,
         input.userId,
         input.deviceId,
-        input.nextRefreshTokenHash,
+        input.expectedSecurityStamp,
+      ),
+    database
+      .prepare(
+        `
+          UPDATE refresh_tokens
+          SET revoked_at = ?
+          WHERE id = ?
+            AND user_id = ?
+            AND device_id = ?
+            AND revoked_at IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM refresh_tokens AS replacement
+              WHERE replacement.id = ?
+                AND replacement.user_id = refresh_tokens.user_id
+                AND replacement.device_id = refresh_tokens.device_id
+                AND replacement.rotated_from_token_id = refresh_tokens.id
+                AND replacement.token_hash = ?
+                AND replacement.revoked_at IS NULL
+            )
+        `,
+      )
+      .bind(
+        input.now,
         input.currentTokenId,
-        input.nextRefreshTokenExpiresAt,
+        input.userId,
+        input.deviceId,
+        input.nextRefreshTokenId,
+        input.nextRefreshTokenHash,
       ),
     database
       .prepare(
@@ -1258,7 +1332,17 @@ export async function rotateRefreshToken(
             type = ?,
             last_seen_at = ?,
             updated_at = ?
-          WHERE id = ? AND user_id = ?
+          WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM refresh_tokens AS replacement
+              WHERE replacement.id = ?
+                AND replacement.user_id = devices.user_id
+                AND replacement.device_id = devices.id
+                AND replacement.rotated_from_token_id = ?
+                AND replacement.token_hash = ?
+                AND replacement.revoked_at IS NULL
+            )
         `,
       )
       .bind(
@@ -1269,8 +1353,32 @@ export async function rotateRefreshToken(
         input.now,
         input.deviceId,
         input.userId,
+        input.nextRefreshTokenId,
+        input.currentTokenId,
+        input.nextRefreshTokenHash,
       ),
   ])
+
+  if (results.length !== 3) {
+    throw new Error('refresh rotation batch returned an invalid result count')
+  }
+  const [replacementResult, revokeResult, deviceResult] = results
+  if (
+    replacementResult?.meta.changes !== 1 ||
+    revokeResult?.meta.changes !== 1 ||
+    deviceResult?.meta.changes !== 1
+  ) {
+    await invalidateRefreshTokenSession(
+      database,
+      input.userId,
+      input.deviceId,
+      input.now,
+    )
+
+    return {
+      status: 'reuse_detected',
+    }
+  }
 
   return {
     status: 'rotated',
