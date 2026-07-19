@@ -411,6 +411,7 @@ const replayFixtures = [
     path: 'ciphers/delete-success.json',
     allowMutatingFixtures: true,
     database: {
+      ciphers: cipherRows,
       cipherPermanentDeleteChanges: 1,
     },
   },

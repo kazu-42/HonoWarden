@@ -46,6 +46,7 @@
     "linear:resolution-plan": "node scripts/honowarden-linear-resolution-plan.mjs",
     "linear:seed": "node scripts/honowarden-linear-seed.mjs",
     "live:regression:packet": "node scripts/honowarden-live-regression-packet.mjs",
+    "usable:acceptance:verify": "node scripts/honowarden-usable-state-acceptance.mjs",
     "lint": "eslint .",
     "ops:readiness:packet": "node scripts/honowarden-ops-readiness-packet.mjs",
     "release:approval:packet": "node scripts/honowarden-release-approval-packet.mjs",
@@ -68,17 +69,17 @@
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "@microsoft/signalr-protocol-msgpack": "^10.0.0",
-    "hono": "^4.12.27"
+    "hono": "^4.12.30"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.1.0",
-    "eslint": "^10.6.0",
+    "@types/node": "^26.1.1",
+    "eslint": "^10.7.0",
     "jsonc-parser": "^3.3.1",
-    "prettier": "^3.9.4",
+    "prettier": "^3.9.5",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.1",
+    "typescript-eslint": "^8.64.0",
     "vitest": "^4.1.10",
-    "wrangler": "^4.107.0"
+    "wrangler": "^4.112.0"
   }
 }

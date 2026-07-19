@@ -52,7 +52,7 @@ The dry-run packet covers:
 - access-token staged keyring
 - TOTP wrapping secret and TOTP rotation operator inputs
 - scoped Cloudflare account tokens
-- Cloudflare global-key break-glass fallback
+- Cloudflare global-key break-glass credential
 - GitHub token or keychain-backed GitHub automation
 - Linear API key
 - private Email Routing forwarding destinations
@@ -78,6 +78,12 @@ Required invariants:
    re-enrollment before changing the runtime secret.
 8. For Cloudflare global-key rotation, verify scoped tokens first and keep the
    global key as break-glass only.
+
+`scripts/honowarden-secret-rotation-drill.mjs` may inspect whether the global
+key is configured only because this runbook inventories its explicit rotation
+plan. Along with scoped-token minting in
+`scripts/honowarden-cloudflare-token-remediation.mjs`, this is the only
+repo-owned global-key carve-out; neither path makes it a routine fallback.
 
 ## Verification Matrix
 

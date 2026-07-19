@@ -43,6 +43,16 @@ type OpsReadinessPacket = {
     configuredRoutes: number
     requiredRoutes: number
     failedChecks: string[]
+    failedCheckDetails: Array<{
+      id: string
+      detail: string
+    }>
+    warnings: Array<{
+      id: string
+      status: 'warning'
+      detail: string
+      present?: boolean | null
+    }>
   }
   evidence: {
     cloudflareResourcesRecorded: boolean
@@ -102,7 +112,7 @@ describe('ops readiness packet', () => {
     )
     const report = JSON.parse(result.stdout) as OpsReadinessPacket
 
-    expect(report.schemaVersion).toBe(1)
+    expect(report.schemaVersion).toBe(2)
     expect(report.status).toBe('not_ready')
     expect(report.blockingReason).toBe('release_publication_approval_required')
     expect(report.release).toMatchObject({
@@ -222,7 +232,7 @@ describe('ops readiness packet', () => {
     })
     const env = {
       ...fakeEnv(fakeBin),
-      CLOUDFLARE_API_TOKEN: 'cf-secret-token',
+      CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN: 'cf-email-token',
       CLOUDFLARE_ACCOUNT_ID: 'account-id',
       CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: 'zone-id',
       HONOWARDEN_SECURITY_FORWARD_TO: 'security-destination@example.test',
@@ -253,12 +263,99 @@ describe('ops readiness packet', () => {
       requiredRoutes: 6,
       failedChecks: [],
     })
-    expect(result.stdout).not.toContain('cf-secret-token')
+    expect(result.stdout).not.toContain('cf-email-token')
     expect(result.stdout).not.toContain('security-destination@example.test')
     expect(result.stdout).not.toContain('support-destination@example.test')
   })
 
-  it('accepts Cloudflare global key email inputs without printing secret values', async () => {
+  it.each([
+    { caseName: 'global-key-only auth', scopedToken: '' },
+    {
+      caseName: 'global-key auth even when a scoped token is configured',
+      scopedToken: 'cf-email-token',
+    },
+  ])(
+    'rejects $caseName with a structural break-glass reason',
+    async ({ scopedToken }) => {
+      const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+      const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
+      const fakeBin = await createFakeReleaseBin({
+        isDraft: true,
+        isPrerelease: true,
+        targetCommit,
+        tagWorkflowUrl,
+      })
+      const env = {
+        ...fakeEnv(fakeBin),
+        CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN: scopedToken,
+        CLOUDFLARE_GLOBAL_API_KEY: 'cf-global-secret-key',
+        CLOUDFLARE_EMAIL: 'operator@example.test',
+        CLOUDFLARE_ACCOUNT_ID: 'account-id',
+        CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: 'zone-id',
+        HONOWARDEN_SECURITY_FORWARD_TO: 'shared-destination@example.test',
+        HONOWARDEN_SUPPORT_FORWARD_TO: 'shared-destination@example.test',
+        HONOWARDEN_GENERAL_FORWARD_TO: 'shared-destination@example.test',
+        HONOWARDEN_ADMIN_FORWARD_TO: 'shared-destination@example.test',
+        HONOWARDEN_POSTMASTER_FORWARD_TO: 'shared-destination@example.test',
+        HONOWARDEN_ABUSE_FORWARD_TO: 'shared-destination@example.test',
+      }
+
+      const result = await execFileAsync(
+        'node',
+        [
+          readinessPacketScript,
+          '--tag-workflow-run-id',
+          '54321',
+          '--tag-workflow-url',
+          tagWorkflowUrl,
+        ],
+        { env },
+      )
+      const report = JSON.parse(result.stdout) as OpsReadinessPacket
+
+      expect(statusById(report, 'email_local_inputs_ready')).toBe('fail')
+      expect(report.email).toMatchObject({
+        localPreflightStatus: 'not_ready',
+        configuredRoutes: 6,
+        requiredRoutes: 6,
+        failedChecks: ['cloudflare_api_token'],
+        failedCheckDetails: [
+          {
+            id: 'cloudflare_api_token',
+            detail: expect.stringContaining(
+              'global API key auth is break-glass only and is not accepted for routine Email Routing workflows',
+            ),
+          },
+        ],
+      })
+      const emailRequirement = requirementById(
+        report,
+        'email_local_inputs_ready',
+      )
+      expect(emailRequirement).toMatchObject({
+        status: 'fail',
+        blocker: 'cloudflare_global_key_not_allowed',
+      })
+      expect(emailRequirement.nextAction).toContain(
+        'Remove global-key break-glass auth from the routine shell',
+      )
+      expect(emailRequirement.nextAction).toContain(
+        'CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN',
+      )
+      expect(emailRequirement.nextAction).not.toContain('CLOUDFLARE_API_KEY')
+      expect(emailRequirement.nextAction).not.toContain(
+        'CLOUDFLARE_GLOBAL_API_KEY',
+      )
+      expect(result.stdout).not.toContain('cf-global-secret-key')
+      expect(result.stdout).not.toContain('operator@example.test')
+      expect(result.stdout).not.toContain('shared-destination@example.test')
+      if (scopedToken) {
+        expect(result.stdout).not.toContain(scopedToken)
+      }
+    },
+  )
+
+  it('surfaces Wrangler OAuth presence as a non-blocking, secret-safe warning', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
     const fakeBin = await createFakeReleaseBin({
@@ -267,10 +364,20 @@ describe('ops readiness packet', () => {
       targetCommit,
       tagWorkflowUrl,
     })
+    const configHome = join(fakeBin.path, 'wrangler-config')
+    const configDirectory = join(configHome, '.wrangler', 'config')
+    const oauthToken = 'oauth-access-value-must-not-print'
+    const refreshToken = 'oauth-refresh-value-must-not-print'
+    const expirationTime = 'oauth-expiry-value-must-not-print'
+    await mkdir(configDirectory, { recursive: true })
+    await writeFile(
+      join(configDirectory, 'default.toml'),
+      `oauth_token = "${oauthToken}"\nrefresh_token = "${refreshToken}"\nexpiration_time = "${expirationTime}"\nscopes = ["workers:write"]\n`,
+    )
     const env = {
       ...fakeEnv(fakeBin),
-      CLOUDFLARE_GLOBAL_API_KEY: 'cf-global-secret-key',
-      CLOUDFLARE_EMAIL: 'operator@example.test',
+      XDG_CONFIG_HOME: configHome,
+      CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN: 'cf-email-token',
       CLOUDFLARE_ACCOUNT_ID: 'account-id',
       CLOUDFLARE_ZONE_ID_HONOWARDEN_COM: 'zone-id',
       HONOWARDEN_SECURITY_FORWARD_TO: 'shared-destination@example.test',
@@ -295,15 +402,20 @@ describe('ops readiness packet', () => {
     const report = JSON.parse(result.stdout) as OpsReadinessPacket
 
     expect(statusById(report, 'email_local_inputs_ready')).toBe('pass')
-    expect(report.email).toMatchObject({
-      localPreflightStatus: 'ready',
-      configuredRoutes: 6,
-      requiredRoutes: 6,
-      failedChecks: [],
+    expect(report.email.warnings).toContainEqual({
+      id: 'wrangler_oauth_session',
+      status: 'warning',
+      present: true,
+      detail: expect.stringContaining(
+        'a successful Wrangler command does not prove scoped-only operation',
+      ),
     })
-    expect(result.stdout).not.toContain('cf-global-secret-key')
-    expect(result.stdout).not.toContain('operator@example.test')
-    expect(result.stdout).not.toContain('shared-destination@example.test')
+    expect(result.stdout).not.toContain(oauthToken)
+    expect(result.stdout).not.toContain(refreshToken)
+    expect(result.stdout).not.toContain(expirationTime)
+    expect(result.stdout).not.toContain('workers:write')
+    expect(result.stdout).not.toContain('default.toml')
+    expect(result.stdout).not.toContain('cf-email-token')
   })
 
   it('keeps the Cloudflare API token as the precise blocker when route inputs are present', async () => {
@@ -355,7 +467,10 @@ describe('ops readiness packet', () => {
     expect(emailRequirement.evidence).toContain(
       'failed checks: cloudflare_api_token',
     )
-    expect(emailRequirement.nextAction).toContain('CLOUDFLARE_API_TOKEN')
+    expect(emailRequirement.nextAction).toContain(
+      'CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN',
+    )
+    expect(emailRequirement.nextAction).not.toContain('CLOUDFLARE_API_KEY')
     expect(result.stdout).not.toContain('security-destination@example.test')
   })
 
@@ -407,7 +522,9 @@ describe('ops readiness packet', () => {
       status: 'fail',
       blocker: 'email_local_inputs_missing',
     })
-    expect(emailRequirement.nextAction).toContain('CLOUDFLARE_API_TOKEN')
+    expect(emailRequirement.nextAction).toContain(
+      'CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN',
+    )
     expect(emailRequirement.nextAction).toContain('HONOWARDEN_*_FORWARD_TO')
     expect(result.stdout).not.toContain('security-destination@example.test')
   })
@@ -452,7 +569,9 @@ describe('ops readiness packet', () => {
       status: 'fail',
       blocker: 'cloudflare_local_inputs_missing',
     })
-    expect(emailRequirement.nextAction).toContain('CLOUDFLARE_API_TOKEN')
+    expect(emailRequirement.nextAction).toContain(
+      'CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN',
+    )
     expect(emailRequirement.nextAction).toContain('CLOUDFLARE_ACCOUNT_ID')
     expect(emailRequirement.nextAction).toContain(
       'CLOUDFLARE_ZONE_ID_HONOWARDEN_COM',
@@ -743,6 +862,11 @@ function fakeEnv(fakeBin: {
     CLOUDFLARE_API_KEY: '',
     CLOUDFLARE_API_TOKEN: '',
     CLOUDFLARE_GLOBAL_API_KEY: '',
+    CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN: '',
+    CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN: '',
+    CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN: '',
+    CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN: '',
+    CLOUDFLARE_HONOWARDEN_READONLY_TOKEN: '',
     CLOUDFLARE_EMAIL: '',
     CLOUDFLARE_API_EMAIL: '',
     CLOUDFLARE_ACCOUNT_ID: '',
@@ -758,6 +882,10 @@ function fakeEnv(fakeBin: {
     HONOWARDEN_TEST_RELEASE_PRERELEASE: fakeBin.isPrerelease ? '1' : '0',
     HONOWARDEN_TEST_TAG_WORKFLOW_URL: fakeBin.tagWorkflowUrl,
     HONOWARDEN_TEST_TARGET_COMMIT: fakeBin.targetCommit,
+    HOME: fakeBin.path,
+    XDG_CONFIG_HOME: join(fakeBin.path, 'empty-xdg-config'),
+    APPDATA: '',
+    USERPROFILE: fakeBin.path,
     PATH: `${fakeBin.path}${delimiter}${process.env.PATH ?? ''}`,
   }
 }

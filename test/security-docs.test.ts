@@ -104,6 +104,11 @@ describe('security review materials', () => {
     expect(knownLimitations).toContain('global request quota is opt-in')
     expect(knownLimitations).toContain('request_quota_buckets')
     expect(knownLimitations).toContain('secret-safe operator alert packet')
+    expect(knownLimitations).toContain('2026-07-14')
+    expect(knownLimitations).toContain('broad Wrangler OAuth session')
+    expect(knownLimitations).toContain(
+      'successful Wrangler command alone cannot prove scoped-only operation',
+    )
     expect(knownLimitations).toContain(
       'no external abuse notification sink or dashboard',
     )

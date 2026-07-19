@@ -1,9 +1,11 @@
 # Audit Events
 
-HonoWarden emits structured JSON audit lines and persists matching D1 audit
-rows only when `HONOWARDEN_AUDIT_LOGS=true`. The default is `false` in all
+HonoWarden emits most structured JSON audit lines and persists their matching
+D1 rows only when `HONOWARDEN_AUDIT_LOGS=true`. The default is `false` in all
 Wrangler environments to keep local development quiet and avoid accidental log
-volume.
+volume. Credential-generation routes are the exception: their required,
+secret-safe D1 audit row commits in the same transaction as the mutation even
+when optional audit emission is disabled.
 
 Audit events are designed to be secret-safe. Event builders drop context fields
 whose keys contain sensitive fragments such as `password`, `token`, `secret`,
@@ -45,6 +47,15 @@ Fields:
 ## Implemented Events
 
 - `admin.bootstrap`: successful restricted account bootstrap
+- `account.security_stamp.rotate`: successful security-stamp generation
+  commit that makes prior token/device and notification credentials
+  unauthorized and revokes outstanding login-with-device authorizations. The
+  Worker then synchronously unregisters notification sockets carrying the prior
+  stamp; ordinary profile revisions that retain the stamp preserve those
+  sockets. A
+  subsequent Durable Object transport failure is emitted separately as
+  `account_notification_session_invalidation_failed` and returned to the client
+  as `session_revocation_incomplete`
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection
@@ -67,12 +78,13 @@ Fields:
 
 ## D1 Persistence
 
-When audit logging is enabled, each built audit event is written to
-`audit_events` after the console JSON line is emitted. Persistence uses explicit
-columns for `schema_version`, `name`, `outcome`, `request_id`, `occurred_at`,
-actor identifiers, target identifiers, and sanitized `context_json`; it does
-not store a full request, response, token, password hash, TOTP secret, plaintext
-IP address, raw vault payload, or encrypted vault value.
+When optional audit logging is enabled, each built audit event is written to
+`audit_events` after the console JSON line is emitted. Required credential
+events instead write the same explicit columns inside the credential mutation
+batch so an audit failure rolls back the mutation. Their console JSON line is
+still emitted only when `HONOWARDEN_AUDIT_LOGS=true`. Neither path stores a full
+request, response, token, password hash, TOTP secret, plaintext IP address, raw
+vault payload, or encrypted vault value.
 
 Indexes support incident review by timestamp, event name, actor user, and
 request ID:
@@ -90,11 +102,12 @@ drops the row.
 
 ## Retention, Access, Export, And Deletion
 
-Audit rows retain for 365 days. When audit logging is enabled, the shared
-bounded cleanup path deletes at most 100 expired `audit_events` rows per inline
-password-grant maintenance slice or scheduled Worker run. Deletion is
-idempotent and ordered by `occurred_at` then `id` so repeated cron executions
-drain old rows gradually.
+Audit rows retain for 365 days. The scheduled Worker always deletes at most 100
+expired `audit_events` rows per run so required credential events remain inside
+that boundary even when optional audit logging is disabled. Password-grant
+maintenance also deletes a bounded slice when optional audit logging is
+enabled. Deletion is idempotent and ordered by `occurred_at` then `id` so
+repeated cron executions drain old rows gradually.
 
 Access is operator-only through Cloudflare D1 credentials. There is no public or
 authenticated product API for audit search in the alpha scope.

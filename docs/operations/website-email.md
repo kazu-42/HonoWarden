@@ -134,10 +134,21 @@ pnpm ops:readiness:packet -- --tag-workflow-run-id 28863312935 --tag-workflow-ur
 after `.workflow/week-26-release-tag-recovery/state.json` records the passed
 `Release Tag Verification` run; the packet revalidates that run before using it.
 
-The preflight is offline. It checks whether Cloudflare API auth,
-account/zone inputs, and forwarding-destination variables are present, but it
-does not call Cloudflare, create routes, send messages, or print token,
+The preflight is offline. Email Routing requires
+`CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` or a workflow-scoped
+`CLOUDFLARE_API_TOKEN`; any configured global key fails because it is
+break-glass-only and Wrangler gives complete global-key auth precedence over API
+tokens. It also checks account/zone inputs and forwarding-destination variables,
+but it does not call Cloudflare, create routes, send messages, or print token,
 global-key, operator-email, or destination values.
+
+The preflight emits a non-blocking presence warning based only on Wrangler OAuth
+auth-profile filenames, without opening profile contents. While the warning is
+present, a successful Wrangler command does not prove scoped-only operation. An operator
+who needs that proof must run `wrangler logout` for the default profile first;
+named profiles must also be deactivated with `wrangler auth deactivate` and
+removed with `wrangler auth delete <profile>` if they remain. Repository scripts
+do not log out, deactivate, delete, or otherwise modify operator sessions.
 
 The operations readiness packet is also read-only. It combines the alpha release
 completion audit, local email preflight, and recorded evidence files so deploy,

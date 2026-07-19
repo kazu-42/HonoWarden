@@ -8,6 +8,10 @@ import {
   loginDefensePolicy,
 } from '../src/domain/login-defense'
 import { requestQuotaPolicy } from '../src/domain/request-quota'
+import {
+  notificationCredentialRevisionHeader,
+  notificationSecurityStampHeader,
+} from '../src/notification-hub'
 import { encryptTotpSecret } from '../src/domain/totp-secret'
 import { signAccessToken, verifyAccessToken } from '../src/domain/tokens'
 import { hotp } from '../src/domain/totp'
@@ -574,10 +578,13 @@ describe('HonoWarden app', () => {
 
   it('returns explicit errors for unsupported alpha surfaces', async () => {
     for (const request of [
-      { method: 'POST', path: '/api/organizations' },
-      { method: 'POST', path: '/api/organizations/org-id/collections' },
+      { method: 'GET', path: '/api/organizations' },
       { method: 'POST', path: '/api/collections' },
       { method: 'POST', path: '/api/collections/collection-id' },
+      { method: 'POST', path: '/api/ciphers/create' },
+      { method: 'PUT', path: '/api/ciphers/cipher-id/share' },
+      { method: 'PUT', path: '/api/ciphers/cipher-id/collections_v2' },
+      { method: 'PUT', path: '/api/ciphers/share' },
       { method: 'POST', path: '/api/auth-requests' },
       { method: 'POST', path: '/api/auth-requests/auth-request-id' },
       { method: 'POST', path: '/api/attachments' },
@@ -599,6 +606,1196 @@ describe('HonoWarden app', () => {
             'This feature is intentionally not implemented in the alpha scope.',
         },
         requestId: 'unsupported-surface-request',
+      })
+    }
+  })
+
+  it('creates an organization and projects its confirmed owner and default collection', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [user],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const requestBody = organizationCreateBody()
+    const authorization = {
+      Authorization: `Bearer ${accessToken}`,
+    }
+
+    const createResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          ...authorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      },
+      env,
+    )
+
+    expect(createResponse.status).toBe(200)
+    const created = (await createResponse.json()) as Record<string, unknown>
+    expect(created).toEqual(
+      organizationResponseShape({
+        id: expect.any(String),
+        name: requestBody.name,
+        planType: requestBody.planType,
+      }),
+    )
+    const organizationId = String(created.Id)
+    expect(organizations).toEqual([
+      expect.objectContaining({
+        id: organizationId,
+        name: requestBody.name,
+        billingEmail: requestBody.billingEmail,
+        planType: requestBody.planType,
+        publicKey: requestBody.keys.publicKey,
+        privateKey: requestBody.keys.encryptedPrivateKey,
+        enabled: 1,
+        useTotp: 1,
+      }),
+    ])
+    expect(organizationUsers).toEqual([
+      expect.objectContaining({
+        id: expect.any(String),
+        organizationId,
+        userId: user.id,
+        email: user.email,
+        orgKey: requestBody.key,
+        status: 2,
+        type: 0,
+      }),
+    ])
+    const organizationUserId = String(organizationUsers[0]?.id)
+    expect(collections).toEqual([
+      expect.objectContaining({
+        id: expect.any(String),
+        organizationId,
+        encryptedName: requestBody.collectionName,
+        type: 0,
+      }),
+    ])
+    expect(collectionUsers).toEqual([
+      {
+        collectionId: collections[0]?.id,
+        organizationUserId,
+        readOnly: 0,
+        hidePasswords: 0,
+        manage: 1,
+      },
+    ])
+
+    const getResponse = await app.request(
+      `/api/organizations/${organizationId}`,
+      { headers: authorization },
+      env,
+    )
+    expect(getResponse.status).toBe(200)
+    await expect(getResponse.json()).resolves.toEqual(created)
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    const sync = (await syncResponse.json()) as {
+      profile: {
+        organizations: unknown[]
+        organizationsNew: unknown[]
+      }
+      collections: unknown[]
+      ciphers: unknown[]
+    }
+    const projectedOrganization = profileOrganizationShape({
+      id: organizationId,
+      key: requestBody.key,
+      name: requestBody.name,
+      planType: requestBody.planType,
+    })
+    expect(sync.profile.organizations).toEqual([projectedOrganization])
+    expect(sync.profile.organizationsNew).toEqual([projectedOrganization])
+    expect(sync.collections).toEqual([
+      {
+        Object: 'collectionDetails',
+        Id: collections[0]?.id,
+        OrganizationId: organizationId,
+        Name: requestBody.collectionName,
+        ReadOnly: false,
+        HidePasswords: false,
+        Manage: true,
+        Type: 0,
+      },
+    ])
+    expect(sync.ciphers).toEqual([])
+
+    const profileResponse = await app.request(
+      '/api/accounts/profile',
+      { headers: authorization },
+      env,
+    )
+    expect(profileResponse.status).toBe(200)
+    const profile = (await profileResponse.json()) as Record<string, unknown>
+    expect(profile.organizations).toEqual([projectedOrganization])
+    expect(profile.organizationsNew).toEqual([projectedOrganization])
+    expect(profile.Organizations).toEqual([projectedOrganization])
+    expect(profile.OrganizationsNew).toEqual([projectedOrganization])
+  })
+
+  it.each([
+    ['name', { name: undefined }],
+    ['key', { key: undefined }],
+    ['keys', { keys: undefined }],
+    [
+      'keys.publicKey',
+      { keys: { encryptedPrivateKey: '2.opaque-org-private-key' } },
+    ],
+    [
+      'keys.encryptedPrivateKey',
+      { keys: { publicKey: 'opaque-org-public-key' } },
+    ],
+    ['collectionName', { collectionName: undefined }],
+  ])('rejects organization creation missing %s', async (_, override) => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-organization-request',
+        },
+        body: JSON.stringify({
+          ...organizationCreateBody(),
+          ...override,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'invalid_request',
+        message: 'Organization payload is invalid.',
+      },
+      requestId: 'invalid-organization-request',
+    })
+  })
+
+  it('requires vault authentication to create an organization', async () => {
+    const response = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'unauthenticated-organization-request',
+        },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      { HONOWARDEN_TOKEN_SECRET: 'test-token-secret' },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'missing_token' },
+      requestId: 'unauthenticated-organization-request',
+    })
+  })
+
+  it('hides organizations and collections from another user', async () => {
+    const owner = authUserRecord()
+    const otherUser = {
+      ...authUserRecord(),
+      id: 'other-user-id',
+      email: 'Other@Example.Test',
+      emailNormalized: 'other@example.test',
+      securityStamp: 'other-security-stamp',
+    }
+    const ownerAccessToken = await accessTokenFor(owner)
+    const otherAccessToken = await accessTokenFor(otherUser)
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner, otherUser],
+      organizations: [],
+      organizationUsers: [],
+      collections: [],
+      collectionUsers: [],
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const createResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${ownerAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    expect(createResponse.status).toBe(200)
+    const created = (await createResponse.json()) as { Id: string }
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      {
+        headers: { Authorization: `Bearer ${otherAccessToken}` },
+      },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      profile: {
+        organizations: [],
+        organizationsNew: [],
+      },
+      collections: [],
+    })
+
+    for (const organizationId of [created.Id, 'missing-organization-id']) {
+      const getResponse = await app.request(
+        `/api/organizations/${organizationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${otherAccessToken}`,
+            'X-Request-Id': 'hidden-organization-request',
+          },
+        },
+        env,
+      )
+      expect(getResponse.status).toBe(404)
+      await expect(getResponse.json()).resolves.toEqual({
+        error: {
+          code: 'organization_not_found',
+          message: 'Organization was not found.',
+        },
+        requestId: 'hidden-organization-request',
+      })
+    }
+  })
+
+  it('supports owner collection CRUD, assigned projections, and cascade cleanup', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T00:00:00.000Z'))
+    const owner = authUserRecord()
+    const accessToken = await accessTokenFor(owner)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const collectionCiphers: Record<string, unknown>[] = []
+    const ciphers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+      collectionCiphers,
+      ciphers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    expect(organizationResponse.status).toBe(200)
+    const organization = (await organizationResponse.json()) as { Id: string }
+    const organizationUserId = String(organizationUsers[0]?.id)
+    const defaultCollectionId = String(collections[0]?.id)
+    const foundationRevision = String(organizations[0]?.revisionDate)
+    vi.setSystemTime(new Date('2026-07-16T00:00:10.000Z'))
+
+    const createResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: ' 2.opaque-created-collection\n',
+          externalId: 'external-collection-reference',
+          users: [],
+          groups: [],
+        }),
+      },
+      env,
+    )
+
+    expect(createResponse.status).toBe(200)
+    const created = (await createResponse.json()) as Record<string, unknown>
+    expect(created).toEqual(
+      collectionAccessDetailsShape({
+        id: expect.any(String),
+        organizationId: organization.Id,
+        name: ' 2.opaque-created-collection\n',
+        externalId: 'external-collection-reference',
+        organizationUserId,
+      }),
+    )
+    const collectionId = String(created.Id)
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        organizationId: organization.Id,
+        encryptedName: ' 2.opaque-created-collection\n',
+        externalId: 'external-collection-reference',
+        type: 0,
+      }),
+    )
+    expect(collectionUsers).toContainEqual({
+      collectionId,
+      organizationUserId,
+      readOnly: 0,
+      hidePasswords: 0,
+      manage: 1,
+    })
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:10.000Z',
+      updatedAt: '2026-07-16T00:00:10.000Z',
+    })
+    expect(organizations[0]?.revisionDate).not.toBe(foundationRevision)
+    const revisionAfterCreateResponse = await app.request(
+      '/api/accounts/revision-date',
+      { headers: authorization },
+      env,
+    )
+    expect(revisionAfterCreateResponse.status).toBe(200)
+    await expect(revisionAfterCreateResponse.json()).resolves.toBe(
+      '2026-07-16T00:00:10.000Z',
+    )
+
+    const organizationListResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      { headers: authorization },
+      env,
+    )
+    expect(organizationListResponse.status).toBe(200)
+    const organizationList = (await organizationListResponse.json()) as {
+      object: string
+      data: unknown[]
+      continuationToken: null
+    }
+    expect(organizationList.object).toBe('list')
+    expect(organizationList.continuationToken).toBeNull()
+    expect(organizationList.data).toHaveLength(2)
+    expect(organizationList.data).toEqual(
+      expect.arrayContaining([
+        collectionResponseShape({
+          id: defaultCollectionId,
+          organizationId: organization.Id,
+          name: organizationCreateBody().collectionName,
+          externalId: null,
+        }),
+        collectionResponseShape({
+          id: collectionId,
+          organizationId: organization.Id,
+          name: ' 2.opaque-created-collection\n',
+          externalId: 'external-collection-reference',
+        }),
+      ]),
+    )
+
+    const assignedListResponse = await app.request(
+      '/api/collections',
+      { headers: authorization },
+      env,
+    )
+    expect(assignedListResponse.status).toBe(200)
+    const assignedList = (await assignedListResponse.json()) as {
+      object: string
+      data: unknown[]
+      continuationToken: null
+    }
+    expect(assignedList.object).toBe('list')
+    expect(assignedList.continuationToken).toBeNull()
+    expect(assignedList.data).toHaveLength(2)
+    expect(assignedList.data).toEqual(
+      expect.arrayContaining([
+        collectionResponseShape({
+          id: defaultCollectionId,
+          organizationId: organization.Id,
+          name: organizationCreateBody().collectionName,
+          externalId: null,
+        }),
+        collectionResponseShape({
+          id: collectionId,
+          organizationId: organization.Id,
+          name: ' 2.opaque-created-collection\n',
+          externalId: 'external-collection-reference',
+        }),
+      ]),
+    )
+
+    const singleResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { headers: authorization },
+      env,
+    )
+    expect(singleResponse.status).toBe(200)
+    await expect(singleResponse.json()).resolves.toEqual(
+      collectionResponseShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: ' 2.opaque-created-collection\n',
+        externalId: 'external-collection-reference',
+      }),
+    )
+
+    const detailsResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}/details`,
+      { headers: authorization },
+      env,
+    )
+    expect(detailsResponse.status).toBe(200)
+    await expect(detailsResponse.json()).resolves.toEqual(created)
+
+    const usersResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}/users`,
+      { headers: authorization },
+      env,
+    )
+    expect(usersResponse.status).toBe(200)
+    await expect(usersResponse.json()).resolves.toEqual([
+      collectionUserSelectionShape(organizationUserId),
+    ])
+
+    vi.setSystemTime(new Date('2026-07-16T00:00:20.000Z'))
+    const renameResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '2.opaque-renamed-collection' }),
+      },
+      env,
+    )
+    expect(renameResponse.status).toBe(200)
+    const renamed = (await renameResponse.json()) as Record<string, unknown>
+    expect(renamed).toEqual(
+      collectionAccessDetailsShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: '2.opaque-renamed-collection',
+        externalId: 'external-collection-reference',
+        organizationUserId,
+      }),
+    )
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        encryptedName: '2.opaque-renamed-collection',
+        externalId: 'external-collection-reference',
+      }),
+    )
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:20.000Z',
+      updatedAt: '2026-07-16T00:00:20.000Z',
+    })
+
+    vi.setSystemTime(new Date('2026-07-16T00:00:25.000Z'))
+    const pascalCaseUpdateResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...renamed,
+          Name: '2.pascal-case-round-trip',
+          ExternalId: 'pascal-case-external-reference',
+        }),
+      },
+      env,
+    )
+    expect(pascalCaseUpdateResponse.status).toBe(200)
+    await expect(pascalCaseUpdateResponse.json()).resolves.toEqual(
+      collectionAccessDetailsShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: '2.pascal-case-round-trip',
+        externalId: 'pascal-case-external-reference',
+        organizationUserId,
+      }),
+    )
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        encryptedName: '2.pascal-case-round-trip',
+        externalId: 'pascal-case-external-reference',
+      }),
+    )
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:25.000Z',
+      updatedAt: '2026-07-16T00:00:25.000Z',
+    })
+
+    vi.setSystemTime(new Date('2026-07-16T00:00:30.000Z'))
+    const updateResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: '2.opaque-updated-collection',
+          externalId: null,
+          users: [
+            {
+              id: organizationUserId,
+              readOnly: false,
+              hidePasswords: false,
+              manage: true,
+            },
+          ],
+          groups: [],
+        }),
+      },
+      env,
+    )
+    expect(updateResponse.status).toBe(200)
+    await expect(updateResponse.json()).resolves.toEqual(
+      collectionAccessDetailsShape({
+        id: collectionId,
+        organizationId: organization.Id,
+        name: '2.opaque-updated-collection',
+        externalId: null,
+        organizationUserId,
+      }),
+    )
+    expect(collections).toContainEqual(
+      expect.objectContaining({
+        id: collectionId,
+        encryptedName: '2.opaque-updated-collection',
+        externalId: null,
+      }),
+    )
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:00:30.000Z',
+      updatedAt: '2026-07-16T00:00:30.000Z',
+    })
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      collections: expect.arrayContaining([
+        expect.objectContaining({
+          Id: collectionId,
+          OrganizationId: organization.Id,
+          Name: '2.opaque-updated-collection',
+          Manage: true,
+        }),
+      ]),
+    })
+
+    const organizationCipher = {
+      ...cipherRecord(),
+      id: 'organization-cipher-id',
+      organizationId: organization.Id,
+      cipherKey: '2.organization-cipher-key',
+    }
+    ciphers.push(organizationCipher)
+    collectionCiphers.push({
+      collectionId,
+      cipherId: organizationCipher.id,
+    })
+    const revisionBeforeDelete = String(organizations[0]?.revisionDate)
+    vi.setSystemTime(new Date('2026-07-16T00:01:00.000Z'))
+    const rejectedDeleteResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { method: 'DELETE', headers: authorization },
+      env,
+    )
+    expect(rejectedDeleteResponse.status).toBe(404)
+    expect(collections.some((row) => row.id === collectionId)).toBe(true)
+    expect(collectionCiphers).toEqual([
+      { collectionId, cipherId: organizationCipher.id },
+    ])
+    expect(organizations[0]?.revisionDate).toBe(revisionBeforeDelete)
+
+    collectionCiphers.push({
+      collectionId: defaultCollectionId,
+      cipherId: organizationCipher.id,
+    })
+    vi.setSystemTime(new Date('2026-07-16T00:02:00.000Z'))
+    const deleteResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { method: 'DELETE', headers: authorization },
+      env,
+    )
+    expect(deleteResponse.status).toBe(200)
+    expect(await deleteResponse.text()).toBe('')
+    expect(collections.some((row) => row.id === collectionId)).toBe(false)
+    expect(
+      collectionUsers.some((row) => row.collectionId === collectionId),
+    ).toBe(false)
+    expect(collectionCiphers).toEqual([
+      {
+        collectionId: defaultCollectionId,
+        cipherId: organizationCipher.id,
+      },
+    ])
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:02:00.000Z',
+      updatedAt: '2026-07-16T00:02:00.000Z',
+    })
+    expect(organizations[0]?.revisionDate).not.toBe(revisionBeforeDelete)
+    const revisionAfterDeleteResponse = await app.request(
+      '/api/accounts/revision-date',
+      { headers: authorization },
+      env,
+    )
+    expect(revisionAfterDeleteResponse.status).toBe(200)
+    await expect(revisionAfterDeleteResponse.json()).resolves.toBe(
+      '2026-07-16T00:02:00.000Z',
+    )
+
+    const deletedReadResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collectionId}`,
+      { headers: authorization },
+      env,
+    )
+    expect(deletedReadResponse.status).toBe(404)
+    await expect(deletedReadResponse.json()).resolves.toMatchObject({
+      error: { code: 'collection_not_found' },
+    })
+  })
+
+  it('bulk deletes collections atomically and validates the complete id set', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-16T00:03:00.000Z'))
+    const owner = authUserRecord()
+    const accessToken = await accessTokenFor(owner)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const collectionCiphers: Record<string, unknown>[] = []
+    const ciphers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+      collectionCiphers,
+      ciphers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    const organization = (await organizationResponse.json()) as { Id: string }
+
+    const createdIds: string[] = []
+    for (const name of ['2.first-created', '2.second-created']) {
+      const response = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'POST',
+          headers: { ...authorization, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        },
+        env,
+      )
+      expect(response.status).toBe(200)
+      createdIds.push(String(((await response.json()) as { Id: string }).Id))
+    }
+    ciphers.push(
+      {
+        ...cipherRecord(),
+        id: 'cipher-one',
+        organizationId: organization.Id,
+        cipherKey: '2.cipher-one-key',
+      },
+      {
+        ...cipherRecord(),
+        id: 'cipher-two',
+        organizationId: organization.Id,
+        cipherKey: '2.cipher-two-key',
+      },
+    )
+    collectionCiphers.push(
+      { collectionId: createdIds[0], cipherId: 'cipher-one' },
+      { collectionId: createdIds[1], cipherId: 'cipher-two' },
+    )
+
+    const partialAttempt = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'DELETE',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [createdIds[0], 'missing-collection-id'] }),
+      },
+      env,
+    )
+    expect(partialAttempt.status).toBe(404)
+    expect(
+      createdIds.every((id) => collections.some((row) => row.id === id)),
+    ).toBe(true)
+
+    for (const ids of [[], [createdIds[0], createdIds[0]]]) {
+      const invalidResponse = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'DELETE',
+          headers: { ...authorization, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        },
+        env,
+      )
+      expect(invalidResponse.status).toBe(400)
+      await expect(invalidResponse.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+    }
+
+    const orphaningAttempt = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'DELETE',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: createdIds }),
+      },
+      env,
+    )
+    expect(orphaningAttempt.status).toBe(404)
+    expect(
+      createdIds.every((id) => collections.some((row) => row.id === id)),
+    ).toBe(true)
+
+    const defaultCollectionId = String(
+      collections.find((row) => !createdIds.includes(String(row.id)))?.id,
+    )
+    collectionCiphers.push(
+      { collectionId: defaultCollectionId, cipherId: 'cipher-one' },
+      { collectionId: defaultCollectionId, cipherId: 'cipher-two' },
+    )
+    vi.setSystemTime(new Date('2026-07-16T00:04:00.000Z'))
+    const deleteResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'DELETE',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: createdIds }),
+      },
+      env,
+    )
+    expect(deleteResponse.status).toBe(200)
+    expect(await deleteResponse.text()).toBe('')
+    expect(
+      createdIds.some((id) => collections.some((row) => row.id === id)),
+    ).toBe(false)
+    expect(
+      collectionUsers.some((row) =>
+        createdIds.includes(String(row.collectionId)),
+      ),
+    ).toBe(false)
+    expect(collectionCiphers).toEqual([
+      { collectionId: defaultCollectionId, cipherId: 'cipher-one' },
+      { collectionId: defaultCollectionId, cipherId: 'cipher-two' },
+    ])
+    expect(organizations[0]).toMatchObject({
+      revisionDate: '2026-07-16T00:04:00.000Z',
+      updatedAt: '2026-07-16T00:04:00.000Z',
+    })
+  })
+
+  it('enforces confirmed assignment reads and owner-only collection mutations', async () => {
+    const owner = authUserRecord()
+    const member = {
+      ...authUserRecord(),
+      id: 'member-user-id',
+      email: 'Member@Example.Test',
+      emailNormalized: 'member@example.test',
+      securityStamp: 'member-security-stamp',
+    }
+    const unconfirmed = {
+      ...authUserRecord(),
+      id: 'unconfirmed-user-id',
+      email: 'Unconfirmed@Example.Test',
+      emailNormalized: 'unconfirmed@example.test',
+      securityStamp: 'unconfirmed-security-stamp',
+    }
+    const ownerToken = await accessTokenFor(owner)
+    const memberToken = await accessTokenFor(member)
+    const unconfirmedToken = await accessTokenFor(unconfirmed)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner, member, unconfirmed],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const ownerAuthorization = { Authorization: `Bearer ${ownerToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: {
+          ...ownerAuthorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    const organization = (await organizationResponse.json()) as { Id: string }
+    const createResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      {
+        method: 'POST',
+        headers: {
+          ...ownerAuthorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: '2.member-readable' }),
+      },
+      env,
+    )
+    const collection = (await createResponse.json()) as { Id: string }
+    organizationUsers.push(
+      {
+        id: 'member-organization-user-id',
+        organizationId: organization.Id,
+        userId: member.id,
+        email: member.email,
+        orgKey: '2.member-org-key',
+        status: 2,
+        type: 2,
+        permissions: null,
+      },
+      {
+        id: 'unconfirmed-organization-user-id',
+        organizationId: organization.Id,
+        userId: unconfirmed.id,
+        email: unconfirmed.email,
+        orgKey: '2.unconfirmed-org-key',
+        status: 1,
+        type: 2,
+        permissions: null,
+      },
+    )
+    collectionUsers.push(
+      {
+        collectionId: collection.Id,
+        organizationUserId: 'member-organization-user-id',
+        readOnly: 1,
+        hidePasswords: 1,
+        manage: 0,
+      },
+      {
+        collectionId: collection.Id,
+        organizationUserId: 'unconfirmed-organization-user-id',
+        readOnly: 0,
+        hidePasswords: 0,
+        manage: 1,
+      },
+    )
+
+    const memberAuthorization = { Authorization: `Bearer ${memberToken}` }
+    const assignedResponse = await app.request(
+      '/api/collections',
+      { headers: memberAuthorization },
+      env,
+    )
+    expect(assignedResponse.status).toBe(200)
+    await expect(assignedResponse.json()).resolves.toEqual({
+      object: 'list',
+      data: [
+        collectionResponseShape({
+          id: collection.Id,
+          organizationId: organization.Id,
+          name: '2.member-readable',
+          externalId: null,
+        }),
+      ],
+      continuationToken: null,
+    })
+
+    const memberListResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections`,
+      { headers: memberAuthorization },
+      env,
+    )
+    expect(memberListResponse.status).toBe(200)
+    await expect(memberListResponse.json()).resolves.toEqual({
+      object: 'list',
+      data: [
+        collectionResponseShape({
+          id: collection.Id,
+          organizationId: organization.Id,
+          name: '2.member-readable',
+          externalId: null,
+        }),
+      ],
+      continuationToken: null,
+    })
+
+    const memberReadResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+      { headers: memberAuthorization },
+      env,
+    )
+    expect(memberReadResponse.status).toBe(200)
+
+    for (const request of [
+      {
+        method: 'POST',
+        path: `/api/organizations/${organization.Id}/collections`,
+        body: { name: '2.denied-create' },
+        errorCode: 'organization_not_found',
+      },
+      {
+        method: 'PUT',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+        body: { name: '2.denied-update' },
+        errorCode: 'collection_not_found',
+      },
+      {
+        method: 'DELETE',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+        errorCode: 'collection_not_found',
+      },
+      {
+        method: 'GET',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}/details`,
+        errorCode: 'collection_not_found',
+      },
+      {
+        method: 'GET',
+        path: `/api/organizations/${organization.Id}/collections/${collection.Id}/users`,
+        errorCode: 'collection_not_found',
+      },
+    ]) {
+      const response = await app.request(
+        request.path,
+        {
+          method: request.method,
+          headers: {
+            ...memberAuthorization,
+            'Content-Type': 'application/json',
+            'X-Request-Id': 'hidden-collection-request',
+          },
+          ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+        },
+        env,
+      )
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: request.errorCode,
+          message:
+            request.errorCode === 'organization_not_found'
+              ? 'Organization was not found.'
+              : 'Collection was not found.',
+        },
+        requestId: 'hidden-collection-request',
+      })
+    }
+
+    const unconfirmedAuthorization = {
+      Authorization: `Bearer ${unconfirmedToken}`,
+    }
+    const unconfirmedListResponse = await app.request(
+      '/api/collections',
+      { headers: unconfirmedAuthorization },
+      env,
+    )
+    expect(unconfirmedListResponse.status).toBe(200)
+    await expect(unconfirmedListResponse.json()).resolves.toEqual({
+      object: 'list',
+      data: [],
+      continuationToken: null,
+    })
+    const hiddenResponse = await app.request(
+      `/api/organizations/${organization.Id}/collections/${collection.Id}`,
+      {
+        headers: {
+          ...unconfirmedAuthorization,
+          'X-Request-Id': 'unconfirmed-hidden-collection-request',
+        },
+      },
+      env,
+    )
+    expect(hiddenResponse.status).toBe(404)
+    await expect(hiddenResponse.json()).resolves.toMatchObject({
+      error: { code: 'collection_not_found' },
+      requestId: 'unconfirmed-hidden-collection-request',
+    })
+  })
+
+  it('validates collection payloads and rejects unsupported access assignments', async () => {
+    const owner = authUserRecord()
+    const accessToken = await accessTokenFor(owner)
+    const organizations: Record<string, unknown>[] = []
+    const organizationUsers: Record<string, unknown>[] = []
+    const collections: Record<string, unknown>[] = []
+    const collectionUsers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUsers: [owner],
+      organizations,
+      organizationUsers,
+      collections,
+      collectionUsers,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const organizationResponse = await app.request(
+      '/api/organizations',
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify(organizationCreateBody()),
+      },
+      env,
+    )
+    const organization = (await organizationResponse.json()) as { Id: string }
+    const organizationUserId = String(organizationUsers[0]?.id)
+
+    for (const payload of [
+      {},
+      { name: '' },
+      { name: 42 },
+      { name: '2.valid', externalId: 'x'.repeat(301) },
+      {
+        name: '2.valid',
+        users: [
+          {
+            id: organizationUserId,
+            readOnly: true,
+            hidePasswords: false,
+            manage: true,
+          },
+        ],
+      },
+    ]) {
+      const response = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'POST',
+          headers: {
+            ...authorization,
+            'Content-Type': 'application/json',
+            'X-Request-Id': 'invalid-collection-request',
+          },
+          body: JSON.stringify(payload),
+        },
+        env,
+      )
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+        requestId: 'invalid-collection-request',
+      })
+    }
+
+    for (const payload of [
+      {
+        name: '2.valid',
+        groups: [
+          {
+            id: 'unsupported-group-id',
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+          },
+        ],
+      },
+      {
+        name: '2.valid',
+        users: [
+          {
+            id: 'other-organization-user-id',
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+          },
+        ],
+      },
+      {
+        Name: '2.valid',
+        Users: [
+          {
+            Id: 'other-organization-user-id',
+            ReadOnly: false,
+            HidePasswords: false,
+            Manage: true,
+          },
+        ],
+      },
+    ]) {
+      const response = await app.request(
+        `/api/organizations/${organization.Id}/collections`,
+        {
+          method: 'POST',
+          headers: {
+            ...authorization,
+            'Content-Type': 'application/json',
+            'X-Request-Id': 'unsupported-collection-access-request',
+          },
+          body: JSON.stringify(payload),
+        },
+        env,
+      )
+      expect(response.status).toBe(501)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'unsupported_feature' },
+        requestId: 'unsupported-collection-access-request',
       })
     }
   })
@@ -796,6 +1993,8 @@ describe('HonoWarden app', () => {
           requestId: created.id,
           userId: user.id,
           type: 15,
+          securityStamp: user.securityStamp,
+          revisionDate: user.revisionDate,
         }),
       }),
     )
@@ -1308,83 +2507,6 @@ describe('HonoWarden app', () => {
     expect(authRequests).toHaveLength(0)
   })
 
-  it('returns empty collection metadata for authenticated users', async () => {
-    const user = authUserRecord()
-    const accessToken = await accessTokenFor(user)
-    const response = await app.request(
-      '/api/collections',
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-      {
-        DB: new FakeD1Database(null, [], {
-          authUser: user,
-        }),
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-      },
-    )
-
-    expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
-      object: 'list',
-      data: [],
-      continuationToken: null,
-    })
-  })
-
-  it('returns not found for collection metadata lookups', async () => {
-    const user = authUserRecord()
-    const accessToken = await accessTokenFor(user)
-    const response = await app.request(
-      '/api/collections/collection-id',
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'X-Request-Id': 'collection-read-request',
-        },
-      },
-      {
-        DB: new FakeD1Database(null, [], {
-          authUser: user,
-        }),
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-      },
-    )
-
-    expect(response.status).toBe(404)
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: 'collection_not_found',
-        message: 'Collection was not found.',
-      },
-      requestId: 'collection-read-request',
-    })
-  })
-
-  it('requires bearer authorization for collection metadata reads', async () => {
-    const response = await app.request(
-      '/api/collections',
-      {
-        headers: {
-          'X-Request-Id': 'collection-missing-token-request',
-        },
-      },
-      {
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-      },
-    )
-
-    expect(response.status).toBe(401)
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: 'missing_token',
-      },
-      requestId: 'collection-missing-token-request',
-    })
-  })
-
   it('keeps account bootstrap disabled by default', async () => {
     const response = await app.request('/api/accounts/bootstrap', {
       method: 'POST',
@@ -1578,6 +2700,43 @@ describe('HonoWarden app', () => {
       amr: ['Application'],
       device: 'fixture-device',
       sstamp: 'security-stamp',
+    })
+  })
+
+  it('rejects a password grant superseded before session commit', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+          'Device-Name': 'Fixture Device',
+          'Device-Type': '9',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'Person@Example.Test',
+          password: 'synthetic-master-password-hash',
+          scope: 'api offline_access',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+          deviceUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      ErrorModel: {
+        Message: 'Invalid username or password.',
+        Object: 'error',
+      },
     })
   })
 
@@ -5617,6 +6776,559 @@ describe('HonoWarden app', () => {
     expect(JSON.stringify(event)).not.toContain('test-token-secret')
   })
 
+  it('rotates the security stamp and invalidates every existing session atomically', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const authRequestSecret = '0123456789abcdef0123456789abcdef'
+    const authRequestAccessCode = 'high-entropy-access-code'
+    const approvedAuthRequest = {
+      ...authRequestRecord(),
+      status: 'approved',
+      requestApproved: 1,
+      approvingDeviceIdentifier: 'fixture-device',
+      encryptedResponseKey: 'opaque-encrypted-key',
+      responseAt: '2026-07-11T00:05:00.000Z',
+      accessCodeHash: await buildAuthRequestAccessCodeHash(
+        authRequestSecret,
+        'auth-request-id',
+        authRequestAccessCode,
+      ),
+    }
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+      {
+        id: buildDevicePathId('other-device'),
+        userId: user.id,
+        identifier: 'other-device',
+      },
+      {
+        id: 'external-user:device',
+        userId: 'external-user',
+        identifier: 'external-device',
+      },
+    ]
+    const refreshTokens = [
+      { id: 'current-token', userId: user.id },
+      { id: 'other-token', userId: user.id },
+      { id: 'external-token', userId: 'external-user' },
+    ]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      authRequests: [approvedAuthRequest],
+      requestQuotaBucket: unblockedRequestQuotaBucket(),
+    })
+    const notificationFetch = vi
+      .fn()
+      .mockResolvedValue(Response.json({ invalidated: 2 }))
+    const notificationHub = {
+      idFromName: vi.fn((name: string) => `do:${name}`),
+      get: vi.fn(() => ({ fetch: notificationFetch })),
+    }
+    const bindings = {
+      DB: database,
+      NOTIFICATION_HUB: notificationHub as unknown as DurableObjectNamespace,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_AUTH_REQUESTS_ENABLED: 'true',
+      HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+      HONOWARDEN_AUTH_REQUEST_SECRET: authRequestSecret,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-rotation-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      bindings,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.text()).resolves.toBe('')
+    expect(user.securityStamp).not.toBe('security-stamp')
+    expect(user.revisionDate).not.toBe('2026-07-06T00:00:00.000Z')
+    expect(devices.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(devices[2]).not.toHaveProperty('revokedAt')
+    expect(refreshTokens.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(refreshTokens[2]).not.toHaveProperty('revokedAt')
+    expect(approvedAuthRequest).toMatchObject({
+      status: 'superseded',
+      requestApproved: 0,
+      encryptedResponseKey: null,
+    })
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'account.security_stamp.rotate',
+        outcome: 'success',
+        requestId: 'security-stamp-rotation-request',
+        actorUserId: user.id,
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'account',
+        targetId: user.id,
+      }),
+    ])
+    expect(notificationHub.idFromName).toHaveBeenCalledWith(user.id)
+    expect(notificationFetch).toHaveBeenCalledOnce()
+    const invalidationRequest = notificationFetch.mock.calls[0]?.[0] as Request
+    expect(invalidationRequest.url).toBe('https://notification-hub/invalidate')
+    expect(invalidationRequest.method).toBe('POST')
+    expect(
+      invalidationRequest.headers.get(notificationSecurityStampHeader),
+    ).toBe(user.securityStamp)
+    expect(
+      invalidationRequest.headers.get(notificationCredentialRevisionHeader),
+    ).toBe(user.revisionDate)
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      user.masterPasswordHash,
+    )
+    expect(JSON.stringify(auditLog.mock.calls)).not.toContain(accessToken)
+
+    const oldTokenResponse = await app.request(
+      '/api/sync',
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      bindings,
+    )
+    expect(oldTokenResponse.status).toBe(401)
+    await expect(oldTokenResponse.json()).resolves.toMatchObject({
+      error: { code: 'invalid_token' },
+    })
+
+    const staleApprovalResponse = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: user.email,
+          password: authRequestAccessCode,
+          authRequest: 'auth-request-id',
+          deviceType: '8',
+          deviceIdentifier: 'requester-device',
+          deviceName: 'Requester',
+        }),
+      },
+      bindings,
+    )
+    expect(staleApprovalResponse.status).toBe(400)
+    await expect(staleApprovalResponse.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+  })
+
+  it('reports incomplete durable notification cleanup after committing rotation', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const previousSecurityStamp = user.securityStamp
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-notification-failure-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        NOTIFICATION_HUB: {
+          idFromName: () => 'user-object',
+          get: () => ({
+            fetch: vi.fn().mockRejectedValue(new Error('do unavailable')),
+          }),
+        } as unknown as DurableObjectNamespace,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'session_revocation_incomplete',
+        message:
+          'Account credentials rotated, but notification session cleanup is incomplete.',
+      },
+      requestId: 'security-stamp-notification-failure-request',
+    })
+    expect(user.securityStamp).not.toBe(previousSecurityStamp)
+    expect(database.auditEventInserts).toHaveLength(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'account_notification_session_invalidation_failed',
+      ),
+    )
+  })
+
+  it('rejects rotation before mutation when durable notification binding is missing', async () => {
+    const user = authUserRecord()
+    const previousSecurityStamp = user.securityStamp
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-notification-misconfigured-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'server_misconfigured',
+        message: 'Notification hub is unavailable.',
+      },
+      requestId: 'security-stamp-notification-misconfigured-request',
+    })
+    expect(user.securityStamp).toBe(previousSecurityStamp)
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('persists mandatory stamp-rotation audit without emitting disabled console logs', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-disabled-audit-log-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_AUDIT_LOGS: 'false',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'account.security_stamp.rotate',
+        outcome: 'success',
+        requestId: 'security-stamp-disabled-audit-log-request',
+      }),
+    ])
+    expect(auditLog).not.toHaveBeenCalled()
+  })
+
+  it('records invalid security-stamp proofs without mutating credentials', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const prepare = vi.spyOn(database, 'prepare')
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const before = {
+      masterPasswordHash: user.masterPasswordHash,
+      revisionDate: user.revisionDate,
+      securityStamp: user.securityStamp,
+    }
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'CF-Connecting-IP': '203.0.113.27',
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'invalid-security-stamp-proof-request',
+        },
+        body: JSON.stringify({ masterPasswordHash: 'wrong-hash' }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+        message: 'The supplied credentials are invalid.',
+      },
+      requestId: 'invalid-security-stamp-proof-request',
+    })
+    expect({
+      masterPasswordHash: user.masterPasswordHash,
+      revisionDate: user.revisionDate,
+      securityStamp: user.securityStamp,
+    }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+    const queries = prepare.mock.calls.map(([query]) => query)
+    expect(
+      queries.filter((query) => query.includes('INSERT INTO auth_attempts')),
+    ).toHaveLength(1)
+    expect(
+      queries.filter((query) =>
+        query.includes('INSERT INTO auth_failure_buckets'),
+      ),
+    ).toHaveLength(2)
+    expect(
+      queries.some((query) => query.includes('login_failed_count = ?')),
+    ).toBe(true)
+  })
+
+  it('locks repeated stamp proofs before mutation and rate limits their IP bucket', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const request = async (masterPasswordHash: string) =>
+      app.request(
+        '/api/accounts/security-stamp',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'CF-Connecting-IP': '203.0.113.28',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ masterPasswordHash }),
+        },
+        {
+          DB: database,
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+    for (
+      let attempt = 0;
+      attempt < loginDefensePolicy.accountFailureLimit;
+      attempt += 1
+    ) {
+      const response = await request(`wrong-hash-${attempt}`)
+      expect(response.status).toBe(400)
+    }
+
+    const blockedValidProof = await request(user.masterPasswordHash)
+    expect(blockedValidProof.status).toBe(400)
+    expect(user.securityStamp).toBe('security-stamp')
+
+    const remainingIpAttempts =
+      loginDefensePolicy.ipFailureLimit -
+      loginDefensePolicy.accountFailureLimit -
+      1
+    for (let attempt = 0; attempt < remainingIpAttempts; attempt += 1) {
+      const response = await request(user.masterPasswordHash)
+      const reachesIpLimit = attempt === remainingIpAttempts - 1
+      expect(response.status).toBe(reachesIpLimit ? 429 : 400)
+      if (reachesIpLimit) {
+        expect(response.headers.get('Retry-After')).toBe(
+          String(loginDefensePolicy.ipRetryAfterSeconds),
+        )
+      }
+    }
+
+    const blockedIpProof = await request(user.masterPasswordHash)
+    expect(blockedIpProof.status).toBe(429)
+    expect(blockedIpProof.headers.get('Retry-After')).toBe(
+      String(loginDefensePolicy.ipRetryAfterSeconds),
+    )
+    expect(user.securityStamp).toBe('security-stamp')
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('returns a revision conflict without partial session or audit changes', async () => {
+    const user = authUserRecord()
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+    ]
+    const refreshTokens = [{ id: 'current-token', userId: user.id }]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      credentialRotationConflict: true,
+    })
+    const before = structuredClone({ user, devices, refreshTokens })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-conflict-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'revision_conflict' },
+      requestId: 'security-stamp-conflict-request',
+    })
+    expect({ user, devices, refreshTokens }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('requires a supported body and recent password authentication for stamp rotation', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+
+    const malformed = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'malformed-security-stamp-request',
+        },
+        body: JSON.stringify({ otp: 'unsupported' }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    expect(malformed.status).toBe(400)
+    await expect(malformed.json()).resolves.toMatchObject({
+      error: { code: 'invalid_request' },
+    })
+
+    for (const accessToken of [
+      await refreshAccessTokenFor(user),
+      await stalePasswordAccessTokenFor(user),
+    ]) {
+      const response = await app.request(
+        '/api/accounts/security-stamp',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            MasterPasswordHash: user.masterPasswordHash,
+          }),
+        },
+        {
+          DB: database,
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+      expect(response.status).toBe(401)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'reauth_required' },
+      })
+    }
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('rolls back stamp and sessions when mandatory audit persistence fails', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+    ]
+    const refreshTokens = [{ id: 'current-token', userId: user.id }]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      credentialRotationFailureAt: 'audit',
+    })
+    const before = structuredClone({ user, devices, refreshTokens })
+    const response = await app.request(
+      '/api/accounts/security-stamp',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'security-stamp-audit-failure-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'database_unavailable',
+        message: 'Security-stamp rotation failed.',
+      },
+      requestId: 'security-stamp-audit-failure-request',
+    })
+    expect({ user, devices, refreshTokens }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining('account_security_stamp_rotation_failed'),
+    )
+  })
+
   it('lists folders for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -6521,20 +8233,11 @@ describe('HonoWarden app', () => {
     const body = (await response.json()) as Record<string, unknown> & {
       attachments?: unknown[]
     }
-    expect(body).toMatchObject({
-      object: 'cipher',
-      id: 'cipher-id',
-      organizationId: null,
-      folderId: 'folder-id',
-      type: 1,
-      favorite: true,
-      name: '2.encrypted-cipher-name',
+    expect(body).toEqual({
+      ...cipherCreateBody(),
       futureEncryptedShape: {
         value: '2.encrypted-future-field',
       },
-      revisionDate: '2026-07-06T00:05:00.000Z',
-      creationDate: '2026-07-06T00:04:00.000Z',
-      deletedDate: null,
       attachments: [
         {
           id: 'attachment-id',
@@ -6545,6 +8248,24 @@ describe('HonoWarden app', () => {
           sizeName: '15 B',
         },
       ],
+      object: 'cipher',
+      id: 'cipher-id',
+      organizationId: null,
+      folderId: 'folder-id',
+      type: 1,
+      favorite: true,
+      name: '2.encrypted-cipher-name',
+      edit: true,
+      viewPassword: true,
+      organizationUseTotp: false,
+      collectionIds: [],
+      permissions: {
+        delete: true,
+        restore: true,
+      },
+      revisionDate: '2026-07-06T00:05:00.000Z',
+      creationDate: '2026-07-06T00:04:00.000Z',
+      deletedDate: null,
     })
     expectOfficialAttachmentFieldTypes(body.attachments?.[0])
   })
@@ -6610,6 +8331,7 @@ describe('HonoWarden app', () => {
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            'X-Request-Id': 'opaque-cipher-not-found-request',
           },
         },
         {
@@ -6633,10 +8355,12 @@ describe('HonoWarden app', () => {
       )
 
       expect(response.status).toBe(404)
-      await expect(response.json()).resolves.toMatchObject({
+      await expect(response.json()).resolves.toEqual({
         error: {
           code: 'cipher_not_found',
+          message: 'Cipher was not found.',
         },
+        requestId: 'opaque-cipher-not-found-request',
       })
     }
   })
@@ -8443,6 +10167,773 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('bulk-moves only owned ciphers to a folder and back to no folder', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ownedOne = {
+      ...cipherRecord(),
+      id: '11111111-1111-4111-8111-111111111111',
+    }
+    const ownedTwo = {
+      ...cipherRecord(),
+      id: '22222222-2222-4222-8222-222222222222',
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: '33333333-3333-4333-8333-333333333333',
+      userId: 'other-user-id',
+      folderId: 'other-folder-id',
+    }
+    const ciphers = [ownedOne, ownedTwo, unowned]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers,
+      folders: [
+        {
+          id: 'target-folder-id',
+          userId: user.id,
+          name: '2.encrypted-target-folder',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+      ],
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const moveResponse = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [ownedOne.id, ownedTwo.id, unowned.id, 'missing-cipher-id'],
+          folderId: 'target-folder-id',
+        }),
+      },
+      env,
+    )
+
+    expect(moveResponse.status).toBe(200)
+    expect(ownedOne.folderId).toBe('target-folder-id')
+    expect(ownedTwo.folderId).toBe('target-folder-id')
+    expect(unowned).toMatchObject({
+      folderId: 'other-folder-id',
+      revisionDate: '2026-07-06T00:05:00.000Z',
+    })
+
+    const removeResponse = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [ownedOne.id, ownedTwo.id],
+          folderId: null,
+          organizationId: null,
+        }),
+      },
+      env,
+    )
+
+    expect(removeResponse.status).toBe(200)
+    expect(ownedOne.folderId).toBeNull()
+    expect(ownedTwo.folderId).toBeNull()
+
+    const singleUpdateResponse = await app.request(
+      `/api/ciphers/${ownedOne.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...cipherCreateBody(),
+          folderId: null,
+          revisionDate: ownedOne.revisionDate,
+          name: '2.single-update-after-bulk-routing',
+        }),
+      },
+      env,
+    )
+
+    expect(singleUpdateResponse.status).toBe(200)
+    await expect(singleUpdateResponse.json()).resolves.toMatchObject({
+      object: 'cipher',
+      id: ownedOne.id,
+      name: '2.single-update-after-bulk-routing',
+    })
+  })
+
+  it('bulk-trashes only active ciphers owned by the authenticated user', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const activeOwned = { ...cipherRecord(), id: 'active-owned-cipher' }
+    const alreadyTrashed = {
+      ...cipherRecord(),
+      id: 'already-trashed-cipher',
+      deletedAt: '2026-07-06T00:06:00.000Z',
+      revisionDate: '2026-07-06T00:06:00.000Z',
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'unowned-active-cipher',
+      userId: 'other-user-id',
+    }
+    const unownedBefore = { ...unowned }
+
+    const response = await app.request(
+      '/api/ciphers/delete',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [
+            activeOwned.id,
+            alreadyTrashed.id,
+            unowned.id,
+            'missing-cipher-id',
+          ],
+          organizationId: null,
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [activeOwned, alreadyTrashed, unowned],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(activeOwned.deletedAt).toEqual(expect.any(String))
+    expect(activeOwned.revisionDate).toBe(activeOwned.deletedAt)
+    expect(alreadyTrashed.deletedAt).toBe('2026-07-06T00:06:00.000Z')
+    expect(unowned).toEqual(unownedBefore)
+  })
+
+  it('bulk-restores owned trashed ciphers and returns the official list response', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const trashedOne = {
+      ...cipherRecord(),
+      id: 'trashed-owned-one',
+      deletedAt: '2026-07-06T00:06:00.000Z',
+    }
+    const trashedTwo = {
+      ...cipherRecord(),
+      id: 'trashed-owned-two',
+      deletedAt: '2026-07-06T00:07:00.000Z',
+    }
+    const activeOwned = { ...cipherRecord(), id: 'active-owned-cipher' }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'trashed-unowned-cipher',
+      userId: 'other-user-id',
+      deletedAt: '2026-07-06T00:08:00.000Z',
+    }
+
+    const response = await app.request(
+      '/api/ciphers/restore',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [
+            trashedOne.id,
+            trashedTwo.id,
+            activeOwned.id,
+            unowned.id,
+            'missing-cipher-id',
+          ],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [trashedOne, trashedTwo, activeOwned, unowned],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      object: string
+      data: Array<Record<string, unknown>>
+      continuationToken: string | null
+    }
+    expect(body.object).toBe('list')
+    expect(body.continuationToken).toBeNull()
+    expect(body.data.map((cipher) => cipher.id).sort()).toEqual(
+      [trashedOne.id, trashedTwo.id].sort(),
+    )
+    expect(body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          object: 'cipher',
+          id: trashedOne.id,
+          deletedDate: null,
+          revisionDate: expect.any(String),
+        }),
+        expect.objectContaining({
+          object: 'cipher',
+          id: trashedTwo.id,
+          deletedDate: null,
+          revisionDate: expect.any(String),
+        }),
+      ]),
+    )
+    expect(trashedOne.deletedAt).toBeNull()
+    expect(trashedTwo.deletedAt).toBeNull()
+    expect(unowned.deletedAt).toBe('2026-07-06T00:08:00.000Z')
+  })
+
+  it('bulk-permanently deletes owned ciphers and only their R2 attachments', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const activeOwned = { ...cipherRecord(), id: 'active-owned-cipher' }
+    const trashedOwned = {
+      ...cipherRecord(),
+      id: 'trashed-owned-cipher',
+      deletedAt: '2026-07-06T00:06:00.000Z',
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'unowned-cipher',
+      userId: 'other-user-id',
+    }
+    const ciphers = [activeOwned, trashedOwned, unowned]
+    const uploadedAttachment = {
+      ...attachmentRecord(),
+      id: 'owned-uploaded-attachment',
+      cipherId: activeOwned.id,
+      objectKey: 'attachments/owned-uploaded-object',
+    }
+    const pendingAttachment = {
+      ...pendingAttachmentRecord(),
+      id: 'owned-pending-attachment',
+      cipherId: trashedOwned.id,
+      objectKey: 'attachments/owned-pending-object',
+    }
+    const unownedAttachment = {
+      ...attachmentRecord(),
+      id: 'unowned-attachment',
+      userId: 'other-user-id',
+      cipherId: unowned.id,
+      objectKey: 'attachments/unowned-object',
+    }
+    const attachments = [
+      uploadedAttachment,
+      pendingAttachment,
+      unownedAttachment,
+    ]
+    const bucket = new FakeR2Bucket()
+    for (const attachment of attachments) {
+      await bucket.put(attachment.objectKey, attachment.id)
+    }
+
+    const response = await app.request(
+      '/api/ciphers',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [
+            activeOwned.id,
+            trashedOwned.id,
+            unowned.id,
+            'missing-cipher-id',
+          ],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          attachments,
+          authUser: user,
+          ciphers,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(ciphers).toEqual([unowned])
+    expect(attachments).toEqual([unownedAttachment])
+    expect(bucket.deletedKeys.sort()).toEqual(
+      [uploadedAttachment.objectKey, pendingAttachment.objectKey].sort(),
+    )
+    expect(bucket.has(uploadedAttachment.objectKey)).toBe(false)
+    expect(bucket.has(pendingAttachment.objectKey)).toBe(false)
+    expect(bucket.has(unownedAttachment.objectKey)).toBe(true)
+  })
+
+  it('emits secret-safe aggregate audit events for bulk cipher mutations', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ownedOne = {
+      ...cipherRecord(),
+      id: 'bulk-audit-owned-one',
+      encryptedJson: JSON.stringify({
+        name: '2.bulk-audit-secret-one',
+        type: 1,
+      }),
+    }
+    const ownedTwo = {
+      ...cipherRecord(),
+      id: 'bulk-audit-owned-two',
+      encryptedJson: JSON.stringify({
+        name: '2.bulk-audit-secret-two',
+        type: 1,
+      }),
+    }
+    const unowned = {
+      ...cipherRecord(),
+      id: 'bulk-audit-unowned',
+      userId: 'other-user-id',
+    }
+    const attachment = {
+      ...attachmentRecord(),
+      id: 'bulk-audit-attachment',
+      cipherId: ownedOne.id,
+      objectKey: 'attachments/bulk-audit-object-key',
+    }
+    const database = new FakeD1Database(null, [], {
+      attachments: [attachment],
+      authUser: user,
+      ciphers: [ownedOne, ownedTwo, unowned],
+      folders: [
+        {
+          id: 'bulk-audit-folder',
+          userId: user.id,
+          name: '2.bulk-audit-folder-secret',
+          revisionDate: '2026-07-06T00:03:00.000Z',
+        },
+      ],
+    })
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'bulk-audit-attachment-bytes')
+    const env = {
+      DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+    const ids = [ownedOne.id, ownedTwo.id, unowned.id, 'missing-cipher-id']
+
+    const moveResponse = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-move-request',
+        },
+        body: JSON.stringify({ ids, folderId: 'bulk-audit-folder' }),
+      },
+      env,
+    )
+    const trashResponse = await app.request(
+      '/api/ciphers/delete',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-delete-request',
+        },
+        body: JSON.stringify({ ids }),
+      },
+      env,
+    )
+    const restoreResponse = await app.request(
+      '/api/ciphers/restore',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-restore-request',
+        },
+        body: JSON.stringify({ ids }),
+      },
+      env,
+    )
+    const permanentDeleteResponse = await app.request(
+      '/api/ciphers',
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'bulk-audit-permanent-delete-request',
+        },
+        body: JSON.stringify({ ids }),
+      },
+      env,
+    )
+
+    expect([
+      moveResponse.status,
+      trashResponse.status,
+      restoreResponse.status,
+      permanentDeleteResponse.status,
+    ]).toEqual([200, 200, 200, 200])
+    expect(database.auditEventInserts.map((event) => event.name)).toEqual([
+      'cipher.update',
+      'cipher.delete',
+      'cipher.restore',
+      'cipher.permanent_delete',
+    ])
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        requestId: 'bulk-audit-move-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'updated',
+          operation: 'bulk_move',
+          requestedCount: 4,
+          affectedCount: 2,
+          hasFolder: true,
+        }),
+      }),
+      expect.objectContaining({
+        requestId: 'bulk-audit-delete-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'deleted',
+          operation: 'bulk_delete',
+          requestedCount: 4,
+          affectedCount: 2,
+        }),
+      }),
+      expect.objectContaining({
+        requestId: 'bulk-audit-restore-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'restored',
+          operation: 'bulk_restore',
+          requestedCount: 4,
+          affectedCount: 2,
+        }),
+      }),
+      expect.objectContaining({
+        requestId: 'bulk-audit-permanent-delete-request',
+        targetType: 'cipher',
+        targetId: null,
+        contextJson: JSON.stringify({
+          resultStatus: 'permanently_deleted',
+          operation: 'bulk_permanent_delete',
+          requestedCount: 4,
+          affectedCount: 2,
+          attachmentCount: 1,
+        }),
+      }),
+    ])
+    const serialized = JSON.stringify(database.auditEventInserts)
+    for (const secret of [
+      ...ids,
+      'bulk-audit-folder',
+      attachment.objectKey,
+      '2.bulk-audit-secret-one',
+      '2.bulk-audit-secret-two',
+      accessToken,
+      'test-token-secret',
+    ]) {
+      expect(serialized).not.toContain(secret)
+    }
+  })
+
+  it('treats empty and unknown bulk cipher ids as successful no-ops', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const ids of [[], ['missing-cipher-id']]) {
+      for (const { method, path, extraBody } of [
+        {
+          method: 'PUT',
+          path: '/api/ciphers/move',
+          extraBody: { folderId: null },
+        },
+        { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+        { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+        { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+      ] as const) {
+        const cipher = { ...cipherRecord() }
+        const ciphers = [cipher]
+        const bucket = new FakeR2Bucket()
+        const response = await app.request(
+          path,
+          {
+            method,
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids, ...extraBody }),
+          },
+          {
+            DB: new FakeD1Database(null, [], {
+              authUser: user,
+              ciphers,
+            }),
+            HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+            VAULT_OBJECTS: bucket as unknown as R2Bucket,
+          },
+        )
+
+        expect(response.status, `${method} ${path}`).toBe(200)
+        expect(ciphers).toEqual([cipher])
+        expect(bucket.deletedKeys).toEqual([])
+        if (path === '/api/ciphers/restore') {
+          await expect(response.json()).resolves.toEqual({
+            object: 'list',
+            data: [],
+            continuationToken: null,
+          })
+        }
+      }
+    }
+  })
+
+  it('rejects malformed and oversized bulk cipher id lists without mutation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const invalidIds = [
+      'not-an-array',
+      [''],
+      [1],
+      Array.from({ length: 1_001 }, (_, index) => `cipher-${index}`),
+    ]
+
+    for (const ids of invalidIds) {
+      for (const { method, path, extraBody } of [
+        {
+          method: 'PUT',
+          path: '/api/ciphers/move',
+          extraBody: { folderId: null },
+        },
+        { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+        { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+        { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+      ] as const) {
+        const cipher = { ...cipherRecord() }
+        const ciphers = [cipher]
+        const response = await app.request(
+          path,
+          {
+            method,
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids, ...extraBody }),
+          },
+          {
+            DB: new FakeD1Database(null, [], {
+              authUser: user,
+              ciphers,
+            }),
+            HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          },
+        )
+
+        expect(response.status, `${method} ${path}`).toBe(400)
+        await expect(response.json()).resolves.toMatchObject({
+          error: { code: 'invalid_request' },
+        })
+        expect(ciphers).toEqual([cipher])
+      }
+    }
+  })
+
+  it('accepts exactly 1000 ids on every bulk cipher route', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ids = Array.from({ length: 1_000 }, (_, index) => `cipher-${index}`)
+
+    for (const { method, path, extraBody } of [
+      {
+        method: 'PUT',
+        path: '/api/ciphers/move',
+        extraBody: { folderId: null },
+      },
+      { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+      { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+      { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+    ] as const) {
+      const response = await app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ids, ...extraBody }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers: [],
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          VAULT_OBJECTS: new FakeR2Bucket() as unknown as R2Bucket,
+        },
+      )
+
+      expect(response.status, `${method} ${path}`).toBe(200)
+    }
+  })
+
+  it('requires bulk move folderId to be a non-empty string or null', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const body of [
+      { ids: ['cipher-id'] },
+      { ids: ['cipher-id'], folderId: '' },
+      { ids: ['cipher-id'], folderId: '   ' },
+      { ids: ['cipher-id'], folderId: 42 },
+    ]) {
+      const response = await app.request(
+        '/api/ciphers/move',
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers: [{ ...cipherRecord() }],
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+    }
+  })
+
+  it('rejects non-null organizations on every bulk cipher route', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+
+    for (const { method, path, extraBody } of [
+      {
+        method: 'PUT',
+        path: '/api/ciphers/move',
+        extraBody: { folderId: null },
+      },
+      { method: 'PUT', path: '/api/ciphers/delete', extraBody: {} },
+      { method: 'PUT', path: '/api/ciphers/restore', extraBody: {} },
+      { method: 'DELETE', path: '/api/ciphers', extraBody: {} },
+    ] as const) {
+      const cipher = { ...cipherRecord() }
+      const ciphers = [cipher]
+      const response = await app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ids: [cipher.id],
+            organizationId: 'unsupported-organization-id',
+            ...extraBody,
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status, `${method} ${path}`).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+      expect(ciphers).toEqual([cipher])
+    }
+  })
+
+  it('rejects bulk moves to missing or unowned folders without mutation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const cipher = { ...cipherRecord() }
+    const ciphers = [cipher]
+    const response = await app.request(
+      '/api/ciphers/move',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [cipher.id],
+          folderId: 'unowned-folder-id',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers,
+          folders: [
+            {
+              id: 'unowned-folder-id',
+              userId: 'other-user-id',
+              name: '2.encrypted-unowned-folder',
+              revisionDate: '2026-07-06T00:03:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'cipher_folder_not_found' },
+    })
+    expect(ciphers).toEqual([cipher])
+  })
+
   it('updates a cipher for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -8464,6 +10955,7 @@ describe('HonoWarden app', () => {
         DB: new FakeD1Database(null, [], {
           authUser: user,
           cipher: {
+            ...cipherRecord(),
             createdAt: '2026-07-06T00:04:00.000Z',
           },
           cipherUpdateChanges: 1,
@@ -8513,6 +11005,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: cipherRecord(),
           cipherUpdateChanges: 1,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -8553,6 +11046,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: cipherRecord(),
           cipherUpdateChanges: 1,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -8725,6 +11219,7 @@ describe('HonoWarden app', () => {
         DB: new FakeD1Database(null, [], {
           authUser: user,
           cipher: {
+            ...cipherRecord(),
             revisionDate: '2026-07-06T00:05:00.000Z',
           },
           cipherUpdateChanges: 0,
@@ -8786,6 +11281,10 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: {
+            ...cipherRecord(),
+            deletedAt: '2026-07-06T00:06:00.000Z',
+          },
           cipherPermanentDeleteChanges: 1,
           cipherSoftDeleteChanges: 0,
         }),
@@ -8803,6 +11302,118 @@ describe('HonoWarden app', () => {
     expect(body).not.toHaveProperty('deletedDate')
   })
 
+  it('deletes uploaded attachment R2 objects when permanently deleting a cipher', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const cipher = {
+      ...cipherRecord(),
+      deletedAt: '2026-07-06T00:06:00.000Z',
+    }
+    const attachment = attachmentRecord()
+    const ciphers = [cipher]
+    const attachments = [attachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'encrypted-bytes')
+
+    const response = await app.request(
+      `/api/ciphers/${cipher.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          attachments,
+          authUser: user,
+          ciphers,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(bucket.has(attachment.objectKey)).toBe(false)
+    expect(bucket.deletedKeys).toEqual([attachment.objectKey])
+  })
+
+  it('does not delete foreign cipher R2 objects on owned or forbidden permanent deletes', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const ownedCipher = cipherRecord()
+    const foreignCipher = {
+      ...cipherRecord(),
+      id: 'foreign-cipher-id',
+      userId: 'foreign-user-id',
+    }
+    const ownedAttachment = attachmentRecord()
+    const foreignAttachment = {
+      ...attachmentRecord(),
+      id: 'foreign-attachment-id',
+      userId: foreignCipher.userId,
+      cipherId: foreignCipher.id,
+      objectKey: 'attachments/foreign-object-id',
+    }
+    const ciphers = [ownedCipher, foreignCipher]
+    const attachments = [ownedAttachment, foreignAttachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(ownedAttachment.objectKey, 'owned-encrypted-bytes')
+    await bucket.put(foreignAttachment.objectKey, 'foreign-encrypted-bytes')
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        attachments,
+        authUser: user,
+        ciphers,
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
+
+    const ownedDeleteResponse = await app.request(
+      `/api/ciphers/${ownedCipher.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      env,
+    )
+
+    expect(ownedDeleteResponse.status).toBe(200)
+    expect(bucket.has(ownedAttachment.objectKey)).toBe(false)
+    expect(bucket.has(foreignAttachment.objectKey)).toBe(true)
+    expect(ciphers).toEqual([foreignCipher])
+    expect(attachments).toEqual([foreignAttachment])
+
+    const foreignDeleteResponse = await app.request(
+      `/api/ciphers/${foreignCipher.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Request-Id': 'foreign-cipher-delete-request',
+        },
+      },
+      env,
+    )
+
+    expect(foreignDeleteResponse.status).toBe(404)
+    await expect(foreignDeleteResponse.json()).resolves.toEqual({
+      error: {
+        code: 'cipher_not_found',
+        message: 'Cipher was not found.',
+      },
+      requestId: 'foreign-cipher-delete-request',
+    })
+    expect(bucket.deletedKeys).toEqual([ownedAttachment.objectKey])
+    expect(bucket.has(foreignAttachment.objectKey)).toBe(true)
+    expect(ciphers).toEqual([foreignCipher])
+    expect(attachments).toEqual([foreignAttachment])
+  })
+
   it('permanently deletes a non-trashed cipher through the upstream DELETE route', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -8817,6 +11428,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          cipher: cipherRecord(),
           cipherPermanentDeleteChanges: 1,
           cipherSoftDeleteChanges: 1,
         }),
@@ -8832,11 +11444,17 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('permanently deletes a cipher through the upstream POST delete alias', async () => {
+  it('deletes pending attachment R2 objects through the upstream POST delete alias', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
+    const cipher = cipherRecord()
+    const attachment = pendingAttachmentRecord()
+    const ciphers = [cipher]
+    const attachments = [attachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'pending-encrypted-bytes')
     const response = await app.request(
-      '/api/ciphers/cipher-id/delete',
+      `/api/ciphers/${cipher.id}/delete`,
       {
         method: 'POST',
         headers: {
@@ -8845,11 +11463,12 @@ describe('HonoWarden app', () => {
       },
       {
         DB: new FakeD1Database(null, [], {
+          attachments,
           authUser: user,
-          cipherPermanentDeleteChanges: 1,
-          cipherSoftDeleteChanges: 0,
+          ciphers,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
       },
     )
 
@@ -8859,6 +11478,8 @@ describe('HonoWarden app', () => {
       id: 'cipher-id',
       revisionDate: expect.any(String),
     })
+    expect(bucket.has(attachment.objectKey)).toBe(false)
+    expect(bucket.deletedKeys).toEqual([attachment.objectKey])
   })
 
   it('restores a trashed cipher for the authenticated user', async () => {
@@ -8890,11 +11511,17 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('retains DELETE /api/ciphers/:id/delete as a permanent-delete alias', async () => {
+  it('retains DELETE /api/ciphers/:id/delete with attachment R2 cleanup', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
+    const cipher = cipherRecord()
+    const attachment = attachmentRecord()
+    const ciphers = [cipher]
+    const attachments = [attachment]
+    const bucket = new FakeR2Bucket()
+    await bucket.put(attachment.objectKey, 'encrypted-bytes')
     const response = await app.request(
-      '/api/ciphers/cipher-id/delete',
+      `/api/ciphers/${cipher.id}/delete`,
       {
         method: 'DELETE',
         headers: {
@@ -8903,10 +11530,12 @@ describe('HonoWarden app', () => {
       },
       {
         DB: new FakeD1Database(null, [], {
+          attachments,
           authUser: user,
-          cipherPermanentDeleteChanges: 1,
+          ciphers,
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
       },
     )
 
@@ -8916,6 +11545,8 @@ describe('HonoWarden app', () => {
       id: 'cipher-id',
       revisionDate: expect.any(String),
     })
+    expect(bucket.has(attachment.objectKey)).toBe(false)
+    expect(bucket.deletedKeys).toEqual([attachment.objectKey])
   })
 
   it('emits secret-safe audit events for cipher mutations', async () => {
@@ -8924,6 +11555,7 @@ describe('HonoWarden app', () => {
     const database = new FakeD1Database(null, [], {
       authUser: user,
       cipher: {
+        ...cipherRecord(),
         createdAt: '2026-07-06T00:04:00.000Z',
       },
       cipherPermanentDeleteChanges: 1,
@@ -9230,6 +11862,44 @@ describe('HonoWarden app', () => {
       },
       requestId: 'notification-hub-missing-token',
     })
+  })
+
+  it('proxies authenticated notification sockets with the authoritative credential generation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const fetch = vi.fn().mockResolvedValue(new Response('connected'))
+    const notificationHub = {
+      idFromName: vi.fn((name: string) => `do:${name}`),
+      get: vi.fn(() => ({ fetch })),
+    }
+    const response = await app.request(
+      'https://vault.example.test/notifications/hub',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Upgrade: 'websocket',
+          [notificationSecurityStampHeader]: 'client-controlled-value',
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        NOTIFICATION_HUB: notificationHub as unknown as DurableObjectNamespace,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(notificationHub.idFromName).toHaveBeenCalledWith(user.id)
+    expect(fetch).toHaveBeenCalledOnce()
+    const forwarded = fetch.mock.calls[0]?.[0] as Request
+    expect(forwarded.url).toBe('https://notification-hub/connect')
+    expect(forwarded.headers.get(notificationSecurityStampHeader)).toBe(
+      user.securityStamp,
+    )
+    expect(forwarded.headers.get(notificationCredentialRevisionHeader)).toBe(
+      user.revisionDate,
+    )
   })
 
   it('rejects anonymous notification requests that are not websocket upgrades', async () => {
@@ -9579,6 +12249,127 @@ function cipherCreateBody() {
       password: '2.encrypted-password',
       uris: [],
     },
+  }
+}
+
+function organizationCreateBody() {
+  return {
+    name: 'Example Organization',
+    billingEmail: 'billing@example.test',
+    planType: 0,
+    key: ' 2.opaque-member-wrapped-org-key\n',
+    keys: {
+      publicKey: '\topaque-org-public-key ',
+      encryptedPrivateKey: ' 2.opaque-org-private-key\n',
+    },
+    collectionName: '\t2.opaque-encrypted-default-collection ',
+  }
+}
+
+function organizationResponseShape(input: {
+  id: unknown
+  name: string
+  planType: number
+}) {
+  return {
+    Object: 'organization',
+    ...organizationFeatureShape(input),
+  }
+}
+
+function organizationFeatureShape(input: {
+  id: unknown
+  name: string
+  planType: number
+}) {
+  return {
+    Id: input.id,
+    Name: input.name,
+    Enabled: true,
+    UsePolicies: false,
+    UseSso: false,
+    UseKeyConnector: false,
+    UseScim: false,
+    UseGroups: false,
+    UseEvents: false,
+    UseDirectory: false,
+    UseTotp: true,
+    Use2fa: false,
+    UseApi: false,
+    UseResetPassword: false,
+    UseSecretsManager: false,
+    UsePasswordManager: true,
+    SelfHost: false,
+    Seats: 0,
+    MaxCollections: null,
+    MaxStorageGb: null,
+    MaxSeats: null,
+    MaxUsers: null,
+    MaxServiceAccounts: null,
+    PlanType: input.planType,
+    ProviderId: null,
+    ProviderName: null,
+  }
+}
+
+function profileOrganizationShape(input: {
+  id: string
+  key: string
+  name: string
+  planType: number
+}) {
+  return {
+    ...organizationFeatureShape(input),
+    Key: input.key,
+    Status: 2,
+    Type: 0,
+    Permissions: {},
+  }
+}
+
+function collectionResponseShape(input: {
+  id: unknown
+  organizationId: string
+  name: string
+  externalId: string | null
+}) {
+  return {
+    Object: 'collection',
+    Id: input.id,
+    OrganizationId: input.organizationId,
+    Name: input.name,
+    ExternalId: input.externalId,
+    DefaultUserCollectionEmail: null,
+    Type: 0,
+  }
+}
+
+function collectionAccessDetailsShape(input: {
+  id: unknown
+  organizationId: string
+  name: string
+  externalId: string | null
+  organizationUserId: string
+}) {
+  return {
+    ...collectionResponseShape(input),
+    Object: 'collectionAccessDetails',
+    Assigned: true,
+    ReadOnly: false,
+    HidePasswords: false,
+    Manage: true,
+    Unmanaged: false,
+    Groups: [],
+    Users: [collectionUserSelectionShape(input.organizationUserId)],
+  }
+}
+
+function collectionUserSelectionShape(id: string) {
+  return {
+    Id: id,
+    ReadOnly: false,
+    HidePasswords: false,
+    Manage: true,
   }
 }
 

@@ -68,7 +68,7 @@ function buildOpsReadinessPacket(options) {
   })
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     targetTag,
     targetVersion,
@@ -88,6 +88,11 @@ function buildOpsReadinessPacket(options) {
       configuredRoutes: configuredEmailRoutes(emailPreflight.report),
       requiredRoutes: emailPreflight.report?.routes?.length ?? 0,
       failedChecks: failedEmailPreflightChecks(emailPreflight.report),
+      failedCheckDetails: emailPreflightChecksByStatus(
+        emailPreflight.report,
+        'fail',
+      ).map(({ id, detail }) => ({ id, detail })),
+      warnings: emailPreflightChecksByStatus(emailPreflight.report, 'warning'),
       exitCode: emailPreflight.exitCode,
       error: emailPreflight.error,
     },
@@ -337,7 +342,7 @@ function failedEmailPreflightChecks(report) {
   return report.checks.flatMap((check) => {
     if (
       !check ||
-      check.status === 'pass' ||
+      check.status !== 'fail' ||
       typeof check.id !== 'string' ||
       check.id.length === 0
     ) {
@@ -345,6 +350,35 @@ function failedEmailPreflightChecks(report) {
     }
 
     return [check.id]
+  })
+}
+
+function emailPreflightChecksByStatus(report, status) {
+  if (!Array.isArray(report?.checks)) {
+    return []
+  }
+
+  return report.checks.flatMap((check) => {
+    if (
+      !check ||
+      check.status !== status ||
+      typeof check.id !== 'string' ||
+      check.id.length === 0 ||
+      typeof check.detail !== 'string'
+    ) {
+      return []
+    }
+
+    return [
+      {
+        id: check.id,
+        status,
+        detail: check.detail,
+        ...(typeof check.present === 'boolean' || check.present === null
+          ? { present: check.present }
+          : {}),
+      },
+    ]
   })
 }
 
@@ -360,7 +394,9 @@ function emailLocalInputsBlocker(report) {
   }
 
   if (failedChecks.length === 1 && failedChecks[0] === 'cloudflare_api_token') {
-    return 'cloudflare_api_token_missing'
+    return emailGlobalKeyRejected(report)
+      ? 'cloudflare_global_key_not_allowed'
+      : 'cloudflare_api_token_missing'
   }
 
   if (
@@ -392,7 +428,9 @@ function emailLocalInputsNextAction(report) {
 
   if (failedChecks.includes('cloudflare_api_token')) {
     actions.push(
-      'Set CLOUDFLARE_API_TOKEN with zone read, DNS write, and Email Routing write access, or set local-only CLOUDFLARE_API_KEY/CLOUDFLARE_GLOBAL_API_KEY auth with CLOUDFLARE_EMAIL.',
+      emailGlobalKeyRejected(report)
+        ? 'Remove global-key break-glass auth from the routine shell, then set CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN, or a workflow-scoped CLOUDFLARE_API_TOKEN, with zone read, DNS write, and Email Routing write access.'
+        : 'Set CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN, or a workflow-scoped CLOUDFLARE_API_TOKEN, with zone read, DNS write, and Email Routing write access.',
     )
   }
 
@@ -417,6 +455,20 @@ function emailLocalInputsNextAction(report) {
   }
 
   return `${actions.join(' ')} Keep values in the ignored local environment without committing secrets.`
+}
+
+function emailGlobalKeyRejected(report) {
+  if (!Array.isArray(report?.checks)) {
+    return false
+  }
+
+  return report.checks.some(
+    (check) =>
+      check?.id === 'cloudflare_api_token' &&
+      check.status === 'fail' &&
+      typeof check.detail === 'string' &&
+      check.detail.includes('global API key auth is break-glass only'),
+  )
 }
 
 function firstBlockingReason(requirements) {

@@ -29,6 +29,10 @@ import {
 } from './domain/audit'
 import type { AuditEventName, AuditEventOutcome } from './domain/audit'
 import {
+  nextCredentialRevisionDate,
+  parseSecurityStampRotationBody,
+} from './domain/account-credentials'
+import {
   buildBootstrapUserRecord,
   isBootstrapEnabled,
   resolveBootstrapAccount,
@@ -77,6 +81,8 @@ import { resolveRuntimeEnvironment } from './infra/environment'
 import {
   authRequestNotificationTypes,
   isDurableNotificationEnabled,
+  notificationCredentialRevisionHeader,
+  notificationSecurityStampHeader,
 } from './notification-hub'
 import type { AuthRequestNotificationType } from './notification-hub'
 import { buildServerConfig } from './protocol/config'
@@ -85,11 +91,13 @@ import {
   deleteCipherAttachment,
   findCipherAttachment,
   getCipherAttachmentStorageUsage,
+  listCipherAttachmentObjectKeysForOwnedCiphers,
   listCipherAttachmentsByUser,
   markCipherAttachmentUploaded,
   reserveCipherAttachmentUpload,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
+import { rotateAccountSecurityStamp } from './repositories/credential-repository'
 import {
   approveAuthRequest,
   consumeAuthRequestWithSession,
@@ -102,16 +110,43 @@ import {
 import type { AuthRequestRecord } from './repositories/auth-request-repository'
 import type { CipherAttachmentRecord } from './repositories/attachment-repository'
 import {
+  bulkMoveCiphers,
+  bulkPermanentlyDeleteCiphers,
+  bulkRestoreCiphers,
+  bulkSoftDeleteCiphers,
   createCipher,
   findCipherById,
   listCiphersByUser,
   listCiphersByUserPage,
   permanentlyDeleteCipher,
+  resolveCipherAccess,
   restoreCipher,
   softDeleteCipher,
   updateCipher,
 } from './repositories/cipher-repository'
 import type { CipherRecord } from './repositories/cipher-repository'
+import {
+  createOrganizationCollection,
+  createOrganizationFoundation,
+  deleteOrganizationCollection,
+  deleteOrganizationCollections,
+  findAccessibleOrganizationCollection,
+  findConfirmedOrganizationOwner,
+  findOrganizationForConfirmedMember,
+  findOwnerOrganizationCollection,
+  listAccessibleOrganizationCollections,
+  listAccessibleOrganizationCollectionsByOrganization,
+  listConfirmedOrganizationMemberships,
+  listOrganizationCollectionUsersForOwner,
+  updateOrganizationCollection,
+} from './repositories/organization-repository'
+import type {
+  OrganizationCollectionRecord,
+  OrganizationCollectionUserRecord,
+  OrganizationMembershipRecord,
+  OrganizationOwnerMembershipRecord,
+  OrganizationRecord,
+} from './repositories/organization-repository'
 import {
   createFolder,
   deleteFolder,
@@ -249,6 +284,8 @@ const totpChallengeTtlSeconds = 5 * 60
 const recentPasswordAuthTtlSeconds = 5 * 60
 const defaultListPageSize = 100
 const maxListPageSize = 500
+const maxBulkCipherIds = 1_000
+const maxR2DeleteKeysPerRequest = 1_000
 const signalRHeartbeatIntervalMs = 15_000
 const signalRRecordSeparator = '\u001e'
 
@@ -624,9 +661,16 @@ app.get('/notifications/hub', async (c) => {
     const stub = c.env.NOTIFICATION_HUB.get(
       c.env.NOTIFICATION_HUB.idFromName(auth.user.id),
     )
-    return stub.fetch(
-      new Request('https://notification-hub/connect', c.req.raw),
+    const request = new Request('https://notification-hub/connect', c.req.raw)
+    request.headers.set(
+      notificationSecurityStampHeader,
+      auth.user.securityStamp,
     )
+    request.headers.set(
+      notificationCredentialRevisionHeader,
+      auth.user.revisionDate,
+    )
+    return stub.fetch(request)
   }
 
   if (typeof WebSocketPair === 'undefined') {
@@ -819,15 +863,16 @@ app.get('/api/accounts/profile', async (c) => {
   }
 
   try {
-    const storage = await getCipherAttachmentStorageUsage(
-      c.env.DB,
-      auth.user.id,
-    )
+    const [storage, organizations] = await Promise.all([
+      getCipherAttachmentStorageUsage(c.env.DB, auth.user.id),
+      listConfirmedOrganizationMemberships(c.env.DB, auth.user.id),
+    ])
     return c.json(
       buildAccountProfileResponse(
         auth.user,
         storage,
         isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
+        organizations,
       ),
     )
   } catch {
@@ -879,6 +924,119 @@ app.post('/identity/accounts/register', (c) => {
   )
 })
 
+app.post('/api/organizations', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseOrganizationCreateRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Organization payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const now = new Date().toISOString()
+    const foundation = await createOrganizationFoundation(c.env.DB, {
+      organizationId: crypto.randomUUID(),
+      organizationUserId: crypto.randomUUID(),
+      collectionId: crypto.randomUUID(),
+      userId: auth.user.id,
+      email: auth.user.email,
+      name: request.name,
+      billingEmail: request.billingEmail,
+      planType: request.planType,
+      orgKey: request.orgKey,
+      publicKey: request.publicKey,
+      privateKey: request.privateKey,
+      encryptedCollectionName: request.encryptedCollectionName,
+      now,
+    })
+
+    return c.json(buildOrganizationResponse(foundation.organization))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Organization creation failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get('/api/organizations/:id', async (c) => {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const organization = await findOrganizationForConfirmedMember(c.env.DB, {
+      organizationId: c.req.param('id'),
+      userId: auth.user.id,
+    })
+    if (!organization) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json(buildOrganizationResponse(organization))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Organization lookup failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.get(
+  '/api/organizations/:id/collections/details',
+  listOrganizationCollectionDetailsRoute,
+)
+app.get(
+  '/api/organizations/:id/collections/:collectionId/details',
+  readOrganizationCollectionDetailsRoute,
+)
+app.get(
+  '/api/organizations/:id/collections/:collectionId/users',
+  listOrganizationCollectionUsersRoute,
+)
+app.get(
+  '/api/organizations/:id/collections/:collectionId',
+  readOrganizationCollectionRoute,
+)
+app.put(
+  '/api/organizations/:id/collections/:collectionId',
+  updateOrganizationCollectionRoute,
+)
+app.delete(
+  '/api/organizations/:id/collections/:collectionId',
+  deleteOrganizationCollectionRoute,
+)
+app.get('/api/organizations/:id/collections', listOrganizationCollectionsRoute)
+app.post(
+  '/api/organizations/:id/collections',
+  createOrganizationCollectionRoute,
+)
+app.delete(
+  '/api/organizations/:id/collections',
+  deleteOrganizationCollectionsRoute,
+)
+
 app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
 app.all('/api/sends', unsupportedPremiumFeature)
@@ -890,9 +1048,23 @@ app.get('/api/collections', async (c) => {
     return auth.response
   }
 
-  return c.json(buildEmptyListResponse())
+  try {
+    const collections = await listAccessibleOrganizationCollections(
+      c.env.DB,
+      auth.user.id,
+    )
+    return c.json(buildCollectionListResponse(collections))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Collection lookup failed.',
+      ),
+      503,
+    )
+  }
 })
-
 app.get('/api/collections/:id', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -908,9 +1080,12 @@ app.get('/api/collections/:id', async (c) => {
     404,
   )
 })
-
 app.all('/api/collections', unsupportedAlphaFeature)
 app.all('/api/collections/*', unsupportedAlphaFeature)
+app.all('/api/ciphers/create', unsupportedAlphaFeature)
+app.all('/api/ciphers/share', unsupportedAlphaFeature)
+app.all('/api/ciphers/:id/share', unsupportedAlphaFeature)
+app.all('/api/ciphers/:id/collections_v2', unsupportedAlphaFeature)
 app.all('/api/emergency-access', unsupportedPremiumFeature)
 app.all('/api/emergency-access/*', unsupportedPremiumFeature)
 app.post('/api/auth-requests', createAuthRequestRoute)
@@ -1460,6 +1635,7 @@ app.post('/identity/connect/token', async (c) => {
         currentTokenId: session.tokenId,
         userId: session.userId,
         deviceId: session.deviceId,
+        expectedSecurityStamp: session.user.securityStamp,
         deviceIdentifier: session.deviceIdentifier,
         deviceName: null,
         deviceType: null,
@@ -1826,8 +2002,10 @@ app.post('/identity/connect/token', async (c) => {
       resetAt: now,
     })
     await resetAuthFailureBucket(c.env.DB, accountBucketKey)
-    await createPasswordGrantSession(c.env.DB, {
+    const session = await createPasswordGrantSession(c.env.DB, {
       userId: user.id,
+      expectedMasterPasswordHash: user.masterPasswordHash,
+      expectedSecurityStamp: user.securityStamp,
       deviceIdentifier: device.identifier,
       deviceName: device.name,
       deviceType: device.type,
@@ -1838,6 +2016,9 @@ app.post('/identity/connect/token', async (c) => {
       ).toISOString(),
       now,
     })
+    if (session.status !== 'created') {
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
 
     const accessToken = await signAccessToken(
       accessTokenConfig.signer,
@@ -2064,11 +2245,20 @@ app.get('/api/sync', async (c) => {
   }
 
   try {
-    const [folders, ciphers, attachments, domainSettings] = await Promise.all([
+    const [
+      folders,
+      ciphers,
+      attachments,
+      domainSettings,
+      organizations,
+      collections,
+    ] = await Promise.all([
       listFoldersByUser(c.env.DB, auth.user.id),
       listCiphersByUser(c.env.DB, auth.user.id),
       listCipherAttachmentsByUser(c.env.DB, auth.user.id),
       getDomainSettingsForUser(c.env.DB, auth.user.id),
+      listConfirmedOrganizationMemberships(c.env.DB, auth.user.id),
+      listAccessibleOrganizationCollections(c.env.DB, auth.user.id),
     ])
 
     return c.json(
@@ -2079,6 +2269,8 @@ app.get('/api/sync', async (c) => {
         ciphers,
         attachments,
         domainSettings,
+        organizations,
+        collections,
       ),
     )
   } catch {
@@ -2147,6 +2339,265 @@ app.post('/api/accounts/export', async (c) => {
     )
   }
 })
+
+app.post('/api/accounts/security-stamp', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseSecurityStampRotationBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'The request body is invalid.',
+      ),
+      400,
+    )
+  }
+
+  if (
+    isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) &&
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidSecurityStampProofResponse(c, proofGate.rateLimited)
+    }
+
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.masterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidSecurityStampProofResponse(c, rateLimited)
+    }
+
+    const candidateRevisionDate = new Date().toISOString()
+    const nextRevisionDate = nextCredentialRevisionDate(
+      auth.user.revisionDate,
+      candidateRevisionDate,
+    )
+    const nextSecurityStamp = crypto.randomUUID()
+    const auditEventId = crypto.randomUUID()
+    const auditEvent = buildAuditEvent({
+      name: 'account.security_stamp.rotate',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: nextRevisionDate,
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        allSessionsRevoked: true,
+      },
+    })
+    const result = await rotateAccountSecurityStamp(c.env.DB, {
+      userId: auth.user.id,
+      expectedMasterPasswordHash: auth.user.masterPasswordHash,
+      expectedSecurityStamp: auth.user.securityStamp,
+      expectedRevisionDate: auth.user.revisionDate,
+      nextSecurityStamp,
+      nextRevisionDate,
+      auditEventId,
+      auditEvent,
+    })
+    if (result.status === 'conflict') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'The account credential generation changed concurrently.',
+        ),
+        409,
+      )
+    }
+
+    if (
+      !(await invalidateDurableNotificationSessions(c, auth.user.id, {
+        securityStamp: nextSecurityStamp,
+        revisionDate: nextRevisionDate,
+      }))
+    ) {
+      console.error(
+        JSON.stringify({
+          event: 'account_notification_session_invalidation_failed',
+          requestId: c.get('requestId'),
+          reason: 'notification_hub_unavailable',
+        }),
+      )
+      c.header('Cache-Control', 'no-store')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'session_revocation_incomplete',
+          'Account credentials rotated, but notification session cleanup is incomplete.',
+        ),
+        503,
+      )
+    }
+
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
+    c.header('Cache-Control', 'no-store')
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_security_stamp_rotation_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Security-stamp rotation failed.',
+      ),
+      503,
+    )
+  }
+})
+
+type CredentialProofDefenseState = {
+  accountBucketKey: string
+  ipBucketKey: string
+  now: string
+}
+
+type CredentialProofGate =
+  | {
+      allowed: true
+      state: CredentialProofDefenseState
+    }
+  | {
+      allowed: false
+      rateLimited: boolean
+    }
+
+async function checkCredentialProofDefense(
+  c: AppContext,
+  user: AuthUserRecord,
+): Promise<CredentialProofGate> {
+  const now = new Date().toISOString()
+  const [ipBucketKey, accountBucketKey] = await Promise.all([
+    buildAuthAttemptBucketKey('ip', extractClientAddress(c.req.raw.headers)),
+    buildAuthAttemptBucketKey('account', user.emailNormalized),
+  ])
+  const state = { accountBucketKey, ipBucketKey, now }
+  const [ipBucket, accountBucket] = await Promise.all([
+    findAuthFailureBucket(c.env.DB, ipBucketKey),
+    findAuthFailureBucket(c.env.DB, accountBucketKey),
+  ])
+
+  if (isAccountLocked({ lockedUntil: ipBucket?.lockedUntil ?? null, now })) {
+    return { allowed: false, rateLimited: true }
+  }
+
+  if (
+    isAccountLocked({
+      lockedUntil: accountBucket?.lockedUntil ?? null,
+      now,
+    }) ||
+    isAccountLocked({ lockedUntil: user.loginLockedUntil, now })
+  ) {
+    return {
+      allowed: false,
+      rateLimited: await recordCredentialProofFailure(c, user, state, false),
+    }
+  }
+
+  return { allowed: true, state }
+}
+
+async function recordCredentialProofFailure(
+  c: AppContext,
+  user: AuthUserRecord,
+  state: CredentialProofDefenseState,
+  recordAccountBucket: boolean,
+): Promise<boolean> {
+  await recordAuthAttempt(c.env.DB, {
+    id: crypto.randomUUID(),
+    bucketKey: state.ipBucketKey,
+    subjectKey: state.accountBucketKey,
+    successful: false,
+    occurredAt: state.now,
+  })
+  const ipFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+    bucketKey: state.ipBucketKey,
+    failureLimit: loginDefensePolicy.ipFailureLimit,
+    failureWindowSeconds: loginDefensePolicy.ipFailureWindowSeconds,
+    lockoutSeconds: loginDefensePolicy.ipRetryAfterSeconds,
+    now: state.now,
+  })
+
+  if (recordAccountBucket) {
+    const accountFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+      bucketKey: state.accountBucketKey,
+      failureLimit: loginDefensePolicy.accountFailureLimit,
+      failureWindowSeconds: loginDefensePolicy.accountFailureWindowSeconds,
+      lockoutSeconds: loginDefensePolicy.accountLockoutSeconds,
+      now: state.now,
+    })
+    await recordFailedLogin(c.env.DB, {
+      userId: user.id,
+      failedCount: accountFailureBucket.failedCount,
+      failedAt: accountFailureBucket.updatedAt,
+      lockedUntil: accountFailureBucket.lockedUntil,
+    })
+  }
+
+  return isAccountLocked({
+    lockedUntil: ipFailureBucket.lockedUntil,
+    now: state.now,
+  })
+}
+
+function invalidSecurityStampProofResponse(
+  c: AppContext,
+  rateLimited: boolean,
+): Response {
+  const error = apiError(
+    c.get('requestId'),
+    'invalid_request',
+    'The supplied credentials are invalid.',
+  )
+  if (rateLimited) {
+    c.header('Retry-After', String(loginDefensePolicy.ipRetryAfterSeconds))
+    return c.json(error, 429)
+  }
+
+  return c.json(error, 400)
+}
 
 app.get('/api/policies', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -3379,6 +3830,333 @@ app.get('/api/ciphers', async (c) => {
   }
 })
 
+app.put('/api/ciphers/move', bulkMoveCiphersRoute)
+app.put('/api/ciphers/delete', bulkTrashCiphersRoute)
+app.put('/api/ciphers/restore', bulkRestoreCiphersRoute)
+app.delete('/api/ciphers', bulkPermanentlyDeleteCiphersRoute)
+
+async function bulkMoveCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkMoveRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const now = new Date().toISOString()
+
+  try {
+    if (request.ids.length === 0) {
+      return c.body(null, 200)
+    }
+
+    if (request.folderId !== null) {
+      const folderExists = await folderBelongsToUser(c.env.DB, {
+        folderId: request.folderId,
+        userId: auth.user.id,
+      })
+
+      if (!folderExists) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'cipher_folder_not_found',
+            'Cipher folder was not found.',
+          ),
+          404,
+        )
+      }
+    }
+
+    const affectedCount = await bulkMoveCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      folderId: request.folderId,
+      revisionDate: now,
+    })
+
+    if (affectedCount > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.update',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'updated',
+          operation: 'bulk_move',
+          requestedCount: request.ids.length,
+          affectedCount,
+          hasFolder: request.folderId !== null,
+        },
+      })
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk move failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function bulkTrashCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  try {
+    const affectedCount = await bulkSoftDeleteCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      revisionDate: new Date().toISOString(),
+    })
+
+    if (affectedCount > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.delete',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'deleted',
+          operation: 'bulk_delete',
+          requestedCount: request.ids.length,
+          affectedCount,
+        },
+      })
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function bulkRestoreCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const revisionDate = new Date().toISOString()
+
+  try {
+    const restoredIds = await bulkRestoreCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      revisionDate,
+    })
+
+    if (restoredIds.length > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.restore',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'restored',
+          operation: 'bulk_restore',
+          requestedCount: request.ids.length,
+          affectedCount: restoredIds.length,
+        },
+      })
+    }
+
+    if (restoredIds.length === 0) {
+      return c.json(buildEmptyListResponse())
+    }
+
+    const restoredIdSet = new Set(restoredIds)
+    const restoredCiphers = request.ids.flatMap((id) => {
+      if (!restoredIdSet.has(id)) {
+        return []
+      }
+
+      return [
+        {
+          object: 'cipher',
+          id,
+          revisionDate,
+          deletedDate: null,
+        },
+      ]
+    })
+
+    return c.json({
+      object: 'list',
+      data: restoredCiphers,
+      continuationToken: null,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk restore failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function bulkPermanentlyDeleteCiphersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCipherBulkRequestBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Cipher bulk payload is invalid.',
+      ),
+      400,
+    )
+  }
+
+  let attachmentObjectKeys: string[]
+  try {
+    const attachments = await listCipherAttachmentObjectKeysForOwnedCiphers(
+      c.env.DB,
+      {
+        cipherIds: request.ids,
+        userId: auth.user.id,
+      },
+    )
+    attachmentObjectKeys = [
+      ...new Set(attachments.map((attachment) => attachment.objectKey)),
+    ]
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    await deleteR2Objects(c.env.VAULT_OBJECTS, attachmentObjectKeys)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const affectedCount = await bulkPermanentlyDeleteCiphers(c.env.DB, {
+      ids: request.ids,
+      userId: auth.user.id,
+      revisionDate: new Date().toISOString(),
+    })
+
+    if (affectedCount > 0) {
+      await emitVaultMutationAuditEvent(c, auth, {
+        name: 'cipher.permanent_delete',
+        outcome: 'success',
+        target: {
+          type: 'cipher',
+        },
+        context: {
+          resultStatus: 'permanently_deleted',
+          operation: 'bulk_permanent_delete',
+          requestedCount: request.ids.length,
+          affectedCount,
+          attachmentCount: attachmentObjectKeys.length,
+        },
+      })
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher bulk delete failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function deleteR2Objects(
+  bucket: R2Bucket,
+  objectKeys: readonly string[],
+): Promise<void> {
+  const uniqueObjectKeys = [...new Set(objectKeys)]
+
+  for (
+    let index = 0;
+    index < uniqueObjectKeys.length;
+    index += maxR2DeleteKeysPerRequest
+  ) {
+    await bucket.delete(
+      uniqueObjectKeys.slice(index, index + maxR2DeleteKeysPerRequest),
+    )
+  }
+}
+
 app.get('/api/ciphers/:id', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -3386,6 +4164,15 @@ app.get('/api/ciphers/:id', async (c) => {
   }
 
   try {
+    const access = await resolveCipherAccess(
+      c.env.DB,
+      auth.user.id,
+      c.req.param('id'),
+    )
+    if (!access.canRead) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
     const [cipher, attachments] = await Promise.all([
       findCipherById(c.env.DB, {
         id: c.req.param('id'),
@@ -3455,6 +4242,15 @@ app.put('/api/ciphers/:id', async (c) => {
           404,
         )
       }
+    }
+
+    const access = await resolveCipherAccess(
+      c.env.DB,
+      auth.user.id,
+      c.req.param('id'),
+    )
+    if (!access.canEdit) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
     const cipher = await updateCipher(c.env.DB, {
@@ -3644,6 +4440,23 @@ async function permanentlyDeleteCipherById(c: AppContext) {
   const now = new Date().toISOString()
 
   try {
+    const access = await resolveCipherAccess(c.env.DB, auth.user.id, cipherId)
+    if (!access.canDelete) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    const attachments = await listCipherAttachmentObjectKeysForOwnedCiphers(
+      c.env.DB,
+      {
+        cipherIds: [cipherId],
+        userId: auth.user.id,
+      },
+    )
+    const attachmentObjectKeys = [
+      ...new Set(attachments.map((attachment) => attachment.objectKey)),
+    ]
+    await deleteR2Objects(c.env.VAULT_OBJECTS, attachmentObjectKeys)
+
     const result = await permanentlyDeleteCipher(c.env.DB, {
       id: cipherId,
       userId: auth.user.id,
@@ -4019,12 +4832,15 @@ function buildSyncResponse(
   ciphers: readonly CipherRecord[] = [],
   attachments: readonly CipherAttachmentRecord[] = [],
   domainSettings: DomainSettings = emptyDomainSettings,
+  organizations: readonly OrganizationMembershipRecord[] = [],
+  collections: readonly OrganizationCollectionRecord[] = [],
 ) {
   const attachmentsByCipherId = buildAttachmentsByCipherId(attachments)
   const profile = buildSyncProfileResponse(
     user,
     sumCipherAttachmentStorage(attachments),
     premiumFeaturesEnabled,
+    organizations,
   )
   const folderResponses = folders.map(buildFolderResponse)
   const cipherResponses = ciphers.map((cipher) =>
@@ -4037,7 +4853,7 @@ function buildSyncResponse(
     object: 'sync',
     profile,
     folders: folderResponses,
-    collections: [],
+    collections: collections.map(buildCollectionDetailsResponse),
     ciphers: cipherResponses,
     domains,
     policies: [],
@@ -4290,10 +5106,137 @@ function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
   }
 }
 
+function buildOrganizationResponse(organization: OrganizationRecord) {
+  return {
+    Object: 'organization',
+    ...buildOrganizationFeatureResponse(organization),
+  }
+}
+
+function buildProfileOrganizationResponse(
+  membership: OrganizationMembershipRecord,
+) {
+  return {
+    ...buildOrganizationFeatureResponse(membership),
+    Key: membership.orgKey,
+    Status: 2,
+    Type: membership.type,
+    Permissions: {},
+  }
+}
+
+function buildOrganizationFeatureResponse(organization: OrganizationRecord) {
+  return {
+    Id: organization.id,
+    Name: organization.name,
+    Enabled: organization.enabled,
+    UsePolicies: false,
+    UseSso: false,
+    UseKeyConnector: false,
+    UseScim: false,
+    UseGroups: false,
+    UseEvents: false,
+    UseDirectory: false,
+    UseTotp: organization.useTotp,
+    Use2fa: false,
+    UseApi: false,
+    UseResetPassword: false,
+    UseSecretsManager: false,
+    UsePasswordManager: true,
+    SelfHost: false,
+    Seats: 0,
+    MaxCollections: null,
+    MaxStorageGb: null,
+    MaxSeats: null,
+    MaxUsers: null,
+    MaxServiceAccounts: null,
+    PlanType: organization.planType,
+    ProviderId: null,
+    ProviderName: null,
+  }
+}
+
+function buildCollectionListResponse(
+  collections: readonly OrganizationCollectionRecord[],
+) {
+  return {
+    object: 'list',
+    data: collections.map(buildCollectionResponse),
+    continuationToken: null,
+  }
+}
+
+function buildCollectionResponse(collection: OrganizationCollectionRecord) {
+  return {
+    Object: 'collection',
+    Id: collection.id,
+    OrganizationId: collection.organizationId,
+    Name: collection.encryptedName,
+    ExternalId: collection.externalId,
+    DefaultUserCollectionEmail: null,
+    Type: collection.type,
+  }
+}
+
+function buildCollectionAccessDetailsResponse(
+  collection: OrganizationCollectionRecord,
+  users: readonly OrganizationCollectionUserRecord[],
+) {
+  return {
+    ...buildCollectionResponse(collection),
+    Object: 'collectionAccessDetails',
+    Assigned: true,
+    ReadOnly: collection.readOnly,
+    HidePasswords: collection.hidePasswords,
+    Manage: collection.manage,
+    Unmanaged: false,
+    Groups: [],
+    Users: users.map(buildCollectionUserSelectionResponse),
+  }
+}
+
+function buildCollectionUserSelectionResponse(
+  user: OrganizationCollectionUserRecord,
+) {
+  return {
+    Id: user.organizationUserId,
+    ReadOnly: user.readOnly,
+    HidePasswords: user.hidePasswords,
+    Manage: user.manage,
+  }
+}
+
+function ownerCollectionAccess(
+  owner: OrganizationOwnerMembershipRecord,
+): OrganizationCollectionUserRecord {
+  return {
+    organizationUserId: owner.organizationUserId,
+    readOnly: false,
+    hidePasswords: false,
+    manage: true,
+  }
+}
+
+function buildCollectionDetailsResponse(
+  collection: OrganizationCollectionRecord,
+) {
+  return {
+    Object: 'collectionDetails',
+    Id: collection.id,
+    OrganizationId: collection.organizationId,
+    Name: collection.encryptedName,
+    ReadOnly: collection.readOnly,
+    HidePasswords: collection.hidePasswords,
+    Manage: collection.manage,
+    Type: collection.type,
+  }
+}
+
 function buildAccountProfileResponse(
   user: AuthUserRecord,
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
+  organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const userDecryptionOptions = masterPasswordUnlock
@@ -4311,7 +5254,12 @@ function buildAccountProfileResponse(
 
   return {
     object: 'profile',
-    ...buildProfileResponse(user, storageBytes, premiumFeaturesEnabled),
+    ...buildProfileResponse(
+      user,
+      storageBytes,
+      premiumFeaturesEnabled,
+      organizations,
+    ),
     UserDecryptionOptions: userDecryptionOptions,
     userDecryptionOptions,
     KeyConnectorUrl: null,
@@ -4350,9 +5298,13 @@ function buildSyncProfileResponse(
   user: AuthUserRecord,
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
+  organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
+  const organizationResponses = organizations.map(
+    buildProfileOrganizationResponse,
+  )
 
   return {
     providerOrganizations: [],
@@ -4366,8 +5318,8 @@ function buildSyncProfileResponse(
     premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
-    organizations: [],
-    organizationsNew: [],
+    organizations: organizationResponses,
+    organizationsNew: organizationResponses,
     usesKeyConnector: false,
     id: user.id,
     masterPasswordHint: null,
@@ -4385,9 +5337,13 @@ function buildProfileResponse(
   user: AuthUserRecord,
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
+  organizations: readonly OrganizationMembershipRecord[] = [],
 ) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeys = buildAccountKeysResponse(user)
+  const organizationResponses = organizations.map(
+    buildProfileOrganizationResponse,
+  )
 
   return {
     providerOrganizations: [],
@@ -4401,8 +5357,8 @@ function buildProfileResponse(
     premium: premiumFeaturesEnabled,
     culture: 'en-US',
     name,
-    organizations: [],
-    organizationsNew: [],
+    organizations: organizationResponses,
+    organizationsNew: organizationResponses,
     usesKeyConnector: false,
     id: user.id,
     masterPasswordHint: null,
@@ -4430,8 +5386,8 @@ function buildProfileResponse(
     ForcePasswordReset: false,
     UsesKeyConnector: false,
     VerifyDevices: false,
-    Organizations: [],
-    OrganizationsNew: [],
+    Organizations: organizationResponses,
+    OrganizationsNew: organizationResponses,
     Providers: [],
     ProviderOrganizations: [],
     Storage: storageBytes,
@@ -4733,9 +5689,11 @@ function apiError(
     | 'invalid_token'
     | 'missing_token'
     | 'notification_unavailable'
+    | 'organization_not_found'
     | 'rate_limited'
     | 'reauth_required'
     | 'revision_conflict'
+    | 'session_revocation_incomplete'
     | 'server_misconfigured'
     | 'storage_unavailable'
     | 'websocket_required',
@@ -4782,6 +5740,362 @@ function unsupportedFeatureResponse(
     },
     501,
   )
+}
+
+async function listOrganizationCollectionsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  try {
+    const organization = await findOrganizationForConfirmedMember(c.env.DB, {
+      organizationId,
+      userId: auth.user.id,
+    })
+    if (!organization) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    const collections =
+      await listAccessibleOrganizationCollectionsByOrganization(c.env.DB, {
+        organizationId,
+        userId: auth.user.id,
+      })
+    return c.json(buildCollectionListResponse(collections))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection list lookup failed.')
+  }
+}
+
+async function listOrganizationCollectionDetailsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  try {
+    const owner = await findConfirmedOrganizationOwner(c.env.DB, {
+      organizationId,
+      userId: auth.user.id,
+    })
+    if (!owner) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    const collections =
+      await listAccessibleOrganizationCollectionsByOrganization(c.env.DB, {
+        organizationId,
+        userId: auth.user.id,
+      })
+    const usersByCollection = await Promise.all(
+      collections.map((collection) =>
+        listOrganizationCollectionUsersForOwner(c.env.DB, {
+          organizationId,
+          collectionId: collection.id,
+          userId: auth.user.id,
+        }),
+      ),
+    )
+
+    return c.json({
+      object: 'list',
+      data: collections.map((collection, index) =>
+        buildCollectionAccessDetailsResponse(
+          collection,
+          usersByCollection[index] ?? [],
+        ),
+      ),
+      continuationToken: null,
+    })
+  } catch {
+    return collectionDatabaseUnavailable(
+      c,
+      'Collection access-details lookup failed.',
+    )
+  }
+}
+
+async function readOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const collection = await findAccessibleOrganizationCollection(c.env.DB, {
+      organizationId: routeParam(c, 'id'),
+      collectionId: routeParam(c, 'collectionId'),
+      userId: auth.user.id,
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.json(buildCollectionResponse(collection))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection lookup failed.')
+  }
+}
+
+async function readOrganizationCollectionDetailsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  const collectionId = routeParam(c, 'collectionId')
+  try {
+    const collection = await findOwnerOrganizationCollection(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    return c.json(buildCollectionAccessDetailsResponse(collection, users))
+  } catch {
+    return collectionDatabaseUnavailable(
+      c,
+      'Collection access-details lookup failed.',
+    )
+  }
+}
+
+async function listOrganizationCollectionUsersRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  const collectionId = routeParam(c, 'collectionId')
+  try {
+    const collection = await findOwnerOrganizationCollection(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    return c.json(users.map(buildCollectionUserSelectionResponse))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection user lookup failed.')
+  }
+}
+
+async function createOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  try {
+    const owner = await findConfirmedOrganizationOwner(c.env.DB, {
+      organizationId,
+      userId: auth.user.id,
+    })
+    if (!owner) {
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+
+    const request = parseCollectionCreateRequestBody(
+      await readJsonBody(c.req.raw),
+    )
+    if (!request.ok || request.encryptedName === null) {
+      return invalidCollectionRequest(c)
+    }
+    const accessDecision = collectionAccessSelectionDecision(request, owner)
+    if (accessDecision === 'invalid') {
+      return invalidCollectionRequest(c)
+    }
+    if (accessDecision === 'unsupported') {
+      return unsupportedCollectionAccessResponse(c)
+    }
+
+    const collection = await createOrganizationCollection(c.env.DB, {
+      id: crypto.randomUUID(),
+      organizationId,
+      organizationUserId: owner.organizationUserId,
+      userId: auth.user.id,
+      encryptedName: request.encryptedName,
+      externalId: request.externalId ?? null,
+      now: new Date().toISOString(),
+    })
+    return c.json(
+      buildCollectionAccessDetailsResponse(collection, [
+        ownerCollectionAccess(owner),
+      ]),
+    )
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection creation failed.')
+  }
+}
+
+async function updateOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const organizationId = routeParam(c, 'id')
+  const collectionId = routeParam(c, 'collectionId')
+  try {
+    const [owner, existing] = await Promise.all([
+      findConfirmedOrganizationOwner(c.env.DB, {
+        organizationId,
+        userId: auth.user.id,
+      }),
+      findOwnerOrganizationCollection(c.env.DB, {
+        organizationId,
+        collectionId,
+        userId: auth.user.id,
+      }),
+    ])
+    if (!owner || !existing) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const request = parseCollectionUpdateRequestBody(
+      await readJsonBody(c.req.raw),
+    )
+    if (!request.ok) {
+      return invalidCollectionRequest(c)
+    }
+    const accessDecision = collectionAccessSelectionDecision(
+      request,
+      owner,
+      true,
+    )
+    if (accessDecision === 'invalid') {
+      return invalidCollectionRequest(c)
+    }
+    if (accessDecision === 'unsupported') {
+      return unsupportedCollectionAccessResponse(c)
+    }
+
+    const collection = await updateOrganizationCollection(c.env.DB, {
+      id: collectionId,
+      organizationId,
+      userId: auth.user.id,
+      encryptedName: request.encryptedName,
+      externalId: request.externalId,
+      now: new Date().toISOString(),
+    })
+    if (!collection) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      organizationId,
+      collectionId,
+      userId: auth.user.id,
+    })
+    return c.json(buildCollectionAccessDetailsResponse(collection, users))
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection update failed.')
+  }
+}
+
+async function deleteOrganizationCollectionRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const deleted = await deleteOrganizationCollection(c.env.DB, {
+      organizationId: routeParam(c, 'id'),
+      collectionId: routeParam(c, 'collectionId'),
+      userId: auth.user.id,
+      now: new Date().toISOString(),
+    })
+    if (!deleted) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection deletion failed.')
+  }
+}
+
+async function deleteOrganizationCollectionsRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCollectionBulkDeleteRequestBody(
+    await readJsonBody(c.req.raw),
+  )
+  if (!request.ok) {
+    return invalidCollectionRequest(c)
+  }
+
+  try {
+    const deleted = await deleteOrganizationCollections(c.env.DB, {
+      organizationId: routeParam(c, 'id'),
+      collectionIds: request.collectionIds,
+      userId: auth.user.id,
+      now: new Date().toISOString(),
+    })
+    if (!deleted) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    return c.body(null, 200)
+  } catch {
+    return collectionDatabaseUnavailable(c, 'Collection deletion failed.')
+  }
+}
+
+function invalidCollectionRequest(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'invalid_request',
+      'Collection payload is invalid.',
+    ),
+    400,
+  )
+}
+
+function unsupportedCollectionAccessResponse(c: AppContext) {
+  return unsupportedFeatureResponse(
+    c,
+    'Collection access assignment requires the organization membership slice.',
+    false,
+  )
+}
+
+function collectionDatabaseUnavailable(c: AppContext, message: string) {
+  return c.json(
+    apiError(c.get('requestId'), 'database_unavailable', message),
+    503,
+  )
+}
+
+function routeParam(c: AppContext, name: 'id' | 'collectionId'): string {
+  return c.req.param(name) ?? ''
 }
 
 async function updateDomainSettingsRoute(c: AppContext) {
@@ -5365,6 +6679,22 @@ function cipherNotFoundError(requestIdValue: string) {
   return apiError(requestIdValue, 'cipher_not_found', 'Cipher was not found.')
 }
 
+function organizationNotFoundError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'organization_not_found',
+    'Organization was not found.',
+  )
+}
+
+function collectionNotFoundError(requestIdValue: string) {
+  return apiError(
+    requestIdValue,
+    'collection_not_found',
+    'Collection was not found.',
+  )
+}
+
 function attachmentNotFoundError(requestIdValue: string) {
   return apiError(
     requestIdValue,
@@ -5508,7 +6838,10 @@ async function createAuthRequestRoute(c: AppContext) {
       target: { type: 'auth_request', id },
     })
     if (owner) {
-      notifyAuthRequest(c, owner.id, id, authRequestNotificationTypes.pending)
+      notifyAuthRequest(c, owner.id, id, authRequestNotificationTypes.pending, {
+        securityStamp: owner.securityStamp,
+        revisionDate: owner.revisionDate,
+      })
     }
 
     return c.json(
@@ -5710,6 +7043,10 @@ function notifyAuthRequest(
   userId: string,
   requestId: string,
   type: AuthRequestNotificationType,
+  credentialGeneration?: {
+    securityStamp: string
+    revisionDate: string
+  },
 ): void {
   if (
     !isDurableNotificationEnabled(
@@ -5730,7 +7067,12 @@ function notifyAuthRequest(
     .fetch('https://notification-hub/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, userId, type }),
+      body: JSON.stringify({
+        requestId,
+        userId,
+        type,
+        ...credentialGeneration,
+      }),
     })
     .then((response) => {
       if (!response.ok)
@@ -5751,6 +7093,40 @@ function notifyAuthRequest(
     c.executionCtx.waitUntil(delivery)
   } catch {
     void delivery
+  }
+}
+
+async function invalidateDurableNotificationSessions(
+  c: AppContext,
+  userId: string,
+  generation: { securityStamp: string; revisionDate: string },
+): Promise<boolean> {
+  if (
+    !isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    )
+  ) {
+    return true
+  }
+
+  if (!c.env.NOTIFICATION_HUB) return false
+
+  try {
+    const stub = c.env.NOTIFICATION_HUB.get(
+      c.env.NOTIFICATION_HUB.idFromName(userId),
+    )
+    const response = await stub.fetch(
+      new Request('https://notification-hub/invalidate', {
+        method: 'POST',
+        headers: {
+          [notificationSecurityStampHeader]: generation.securityStamp,
+          [notificationCredentialRevisionHeader]: generation.revisionDate,
+        },
+      }),
+    )
+    return response.ok
+  } catch {
+    return false
   }
 }
 
@@ -6665,6 +8041,275 @@ function parseAccountProfileUpdateRequestBody(
   }
 }
 
+type CollectionAccessSelectionInput = {
+  id: string
+  readOnly: boolean
+  hidePasswords: boolean
+  manage: boolean
+}
+
+type CollectionWriteRequest = {
+  ok: true
+  encryptedName: string | null
+  externalId: string | null | undefined
+  groups: CollectionAccessSelectionInput[] | null
+  users: CollectionAccessSelectionInput[] | null
+}
+
+function parseCollectionCreateRequestBody(
+  body: unknown,
+): CollectionWriteRequest | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const encryptedName = parseBoundedOpaqueString(
+    readCollectionRequestField(body, 'name', 'Name'),
+    1_000,
+  )
+  const common = parseCollectionWriteRequestCommon(body)
+  if (!encryptedName || !common.ok) {
+    return { ok: false }
+  }
+
+  return {
+    ...common,
+    encryptedName,
+    externalId: common.externalId ?? null,
+  }
+}
+
+function parseCollectionUpdateRequestBody(
+  body: unknown,
+): CollectionWriteRequest | { ok: false } {
+  if (!isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const name = readCollectionRequestField(body, 'name', 'Name')
+  const encryptedName =
+    name === undefined || name === null
+      ? null
+      : parseBoundedOpaqueString(name, 1_000)
+  const common = parseCollectionWriteRequestCommon(body)
+  if (encryptedName === undefined || !common.ok) {
+    return { ok: false }
+  }
+
+  return {
+    ...common,
+    encryptedName,
+  }
+}
+
+function parseCollectionWriteRequestCommon(
+  body: Record<string, unknown>,
+): Omit<CollectionWriteRequest, 'encryptedName'> | { ok: false } {
+  const externalId = parseCollectionExternalId(
+    readCollectionRequestField(body, 'externalId', 'ExternalId'),
+  )
+  const groups = parseCollectionAccessSelections(
+    readCollectionRequestField(body, 'groups', 'Groups'),
+  )
+  const users = parseCollectionAccessSelections(
+    readCollectionRequestField(body, 'users', 'Users'),
+  )
+  if (!externalId.ok || !groups.ok || !users.ok) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    externalId: externalId.value,
+    groups: groups.value,
+    users: users.value,
+  }
+}
+
+function parseCollectionExternalId(
+  value: unknown,
+): { ok: true; value: string | null | undefined } | { ok: false } {
+  if (value === undefined) {
+    return { ok: true, value: undefined }
+  }
+  if (value === null) {
+    return { ok: true, value: null }
+  }
+
+  return typeof value === 'string' && value.length <= 300
+    ? { ok: true, value }
+    : { ok: false }
+}
+
+function parseCollectionAccessSelections(
+  value: unknown,
+):
+  { ok: true; value: CollectionAccessSelectionInput[] | null } | { ok: false } {
+  if (value === undefined || value === null) {
+    return { ok: true, value: null }
+  }
+  if (!Array.isArray(value) || value.length > 100) {
+    return { ok: false }
+  }
+
+  const selections: CollectionAccessSelectionInput[] = []
+  const seenIds = new Set<string>()
+  for (const candidate of value) {
+    if (!isPlainObject(candidate)) {
+      return { ok: false }
+    }
+    const id = parseRequiredString(
+      readCollectionRequestField(candidate, 'id', 'Id'),
+    )
+    const readOnly = readCollectionRequestField(
+      candidate,
+      'readOnly',
+      'ReadOnly',
+    )
+    const hidePasswords = readCollectionRequestField(
+      candidate,
+      'hidePasswords',
+      'HidePasswords',
+    )
+    const manage = readCollectionRequestField(candidate, 'manage', 'Manage')
+    if (
+      !id ||
+      id.length > 128 ||
+      seenIds.has(id) ||
+      typeof readOnly !== 'boolean' ||
+      typeof hidePasswords !== 'boolean' ||
+      typeof manage !== 'boolean' ||
+      (manage && (readOnly || hidePasswords))
+    ) {
+      return { ok: false }
+    }
+
+    seenIds.add(id)
+    selections.push({ id, readOnly, hidePasswords, manage })
+  }
+
+  return { ok: true, value: selections }
+}
+
+function readCollectionRequestField(
+  body: Record<string, unknown>,
+  camelCaseName: string,
+  pascalCaseName: string,
+): unknown {
+  return Object.hasOwn(body, camelCaseName)
+    ? body[camelCaseName]
+    : body[pascalCaseName]
+}
+
+function collectionAccessSelectionDecision(
+  request: CollectionWriteRequest,
+  owner: OrganizationOwnerMembershipRecord,
+  update = false,
+): 'supported' | 'invalid' | 'unsupported' {
+  if (request.groups && request.groups.length > 0) {
+    return 'unsupported'
+  }
+  if (request.users === null || (!update && request.users.length === 0)) {
+    return 'supported'
+  }
+  if (request.users.length !== 1) {
+    return request.users.length === 0 ? 'invalid' : 'unsupported'
+  }
+
+  const selection = request.users[0]
+  if (selection?.id !== owner.organizationUserId) {
+    return 'unsupported'
+  }
+
+  return !selection.readOnly && !selection.hidePasswords && selection.manage
+    ? 'supported'
+    : 'invalid'
+}
+
+function parseCollectionBulkDeleteRequestBody(
+  body: unknown,
+): { ok: true; collectionIds: string[] } | { ok: false } {
+  if (!isPlainObject(body) || !Array.isArray(body.ids)) {
+    return { ok: false }
+  }
+  if (body.ids.length < 1 || body.ids.length > 100) {
+    return { ok: false }
+  }
+
+  const collectionIds: string[] = []
+  const seen = new Set<string>()
+  for (const value of body.ids) {
+    const id = parseRequiredString(value)
+    if (!id || id.length > 128 || seen.has(id)) {
+      return { ok: false }
+    }
+    seen.add(id)
+    collectionIds.push(id)
+  }
+
+  return { ok: true, collectionIds }
+}
+
+function parseOrganizationCreateRequestBody(body: unknown):
+  | {
+      ok: true
+      name: string
+      billingEmail: string | null
+      planType: number
+      orgKey: string
+      publicKey: string
+      privateKey: string
+      encryptedCollectionName: string
+    }
+  | { ok: false } {
+  if (!isPlainObject(body) || !isPlainObject(body.keys)) {
+    return { ok: false }
+  }
+
+  const name = parseRequiredString(body.name)
+  const orgKey = parseRequiredOpaqueString(body.key)
+  const publicKey = parseRequiredOpaqueString(body.keys.publicKey)
+  const privateKey = parseRequiredOpaqueString(body.keys.encryptedPrivateKey)
+  const encryptedCollectionName = parseRequiredOpaqueString(body.collectionName)
+  const billingEmailValue = body.billingEmail
+  const billingEmail =
+    billingEmailValue === undefined || billingEmailValue === null
+      ? null
+      : typeof billingEmailValue === 'string'
+        ? billingEmailValue
+        : undefined
+  const planTypeValue = body.planType ?? 0
+  const planType =
+    typeof planTypeValue === 'number' &&
+    Number.isSafeInteger(planTypeValue) &&
+    planTypeValue >= 0
+      ? planTypeValue
+      : undefined
+
+  if (
+    !name ||
+    !orgKey ||
+    !publicKey ||
+    !privateKey ||
+    !encryptedCollectionName ||
+    billingEmail === undefined ||
+    planType === undefined
+  ) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    name,
+    billingEmail,
+    planType,
+    orgKey,
+    publicKey,
+    privateKey,
+    encryptedCollectionName,
+  }
+}
+
 function parseDomainSettingsRequestBody(body: unknown):
   | {
       ok: true
@@ -6815,6 +8460,62 @@ function parseFolderUpdateRequestBody(
   }
 }
 
+function parseCipherBulkRequestBody(
+  body: unknown,
+): { ok: true; ids: string[] } | { ok: false } {
+  if (!isPlainObject(body) || body.organizationId != null) {
+    return { ok: false }
+  }
+
+  if (!Array.isArray(body.ids) || body.ids.length > maxBulkCipherIds) {
+    return { ok: false }
+  }
+
+  const ids: string[] = []
+  const seenIds = new Set<string>()
+
+  for (const value of body.ids) {
+    if (typeof value !== 'string' || !value.trim()) {
+      return { ok: false }
+    }
+
+    const id = value.trim()
+    if (!seenIds.has(id)) {
+      ids.push(id)
+      seenIds.add(id)
+    }
+  }
+
+  return { ok: true, ids }
+}
+
+function parseCipherBulkMoveRequestBody(body: unknown):
+  | {
+      ok: true
+      ids: string[]
+      folderId: string | null
+    }
+  | { ok: false } {
+  const request = parseCipherBulkRequestBody(body)
+  if (!request.ok || !isPlainObject(body) || !Object.hasOwn(body, 'folderId')) {
+    return { ok: false }
+  }
+
+  if (body.folderId === null) {
+    return { ok: true, ids: request.ids, folderId: null }
+  }
+
+  if (typeof body.folderId !== 'string' || !body.folderId.trim()) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    ids: request.ids,
+    folderId: body.folderId.trim(),
+  }
+}
+
 function parseCipherCreateRequestBody(body: unknown):
   | {
       ok: true
@@ -6892,6 +8593,18 @@ function parseRequiredString(value: unknown): string | undefined {
   }
 
   return value
+}
+
+function parseRequiredOpaqueString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function parseBoundedOpaqueString(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  const parsed = parseRequiredOpaqueString(value)
+  return parsed && parsed.length <= maxLength ? parsed : undefined
 }
 
 function parseOptionalId(value: unknown): string | null | undefined {

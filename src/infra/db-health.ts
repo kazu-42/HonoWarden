@@ -12,6 +12,11 @@ export const requiredSchemaTables = [
   'audit_events',
   'user_totp',
   'totp_challenges',
+  'organizations',
+  'organization_users',
+  'collections',
+  'collection_users',
+  'collection_ciphers',
 ] as const
 
 export type DatabaseHealth =
