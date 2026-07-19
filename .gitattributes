@@ -1,0 +1,2 @@
+# Wrangler emits a trailing space in its generated runtime version header.
+worker-configuration.d.ts whitespace=-blank-at-eol
