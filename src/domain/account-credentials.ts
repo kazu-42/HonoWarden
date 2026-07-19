@@ -88,16 +88,19 @@ export function parseMasterPasswordChangeBody(
     return { ok: false }
   }
 
-  const authenticationData = readAliasedValue(body, [
+  const authenticationData = readNullableAlternativeValue(body, [
     'authenticationData',
     'AuthenticationData',
   ])
-  const unlockData = readAliasedValue(body, ['unlockData', 'UnlockData'])
-  const legacyHash = readAliasedValue(body, [
+  const unlockData = readNullableAlternativeValue(body, [
+    'unlockData',
+    'UnlockData',
+  ])
+  const legacyHash = readNullableAlternativeValue(body, [
     'newMasterPasswordHash',
     'NewMasterPasswordHash',
   ])
-  const legacyKey = readAliasedValue(body, ['key', 'Key'])
+  const legacyKey = readNullableAlternativeValue(body, ['key', 'Key'])
   if (
     !authenticationData.valid ||
     !unlockData.valid ||
@@ -210,6 +213,16 @@ function readAliasedValue(
   }
 
   return { present: true, valid: true, value: values[0] }
+}
+
+function readNullableAlternativeValue(
+  object: Record<string, unknown>,
+  names: readonly string[],
+): AliasedValue {
+  const value = readAliasedValue(object, names)
+  return value.present && value.valid && value.value === null
+    ? { present: false, valid: true }
+    : value
 }
 
 function parseAliasedBoundedString(

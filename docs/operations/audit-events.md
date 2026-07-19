@@ -56,6 +56,12 @@ Fields:
   subsequent Durable Object transport failure is emitted separately as
   `account_notification_session_invalidation_failed` and returned to the client
   as `session_revocation_incomplete`
+- `account.password.change`: successful authentication-hash and wrapped-user-key
+  generation change. Its `d1SessionsRevoked` context covers D1 device, refresh
+  token, and active auth-request invalidation only. Durable Object socket
+  cleanup runs after the required audit row commits; cleanup failure is reported
+  separately as `account_notification_session_invalidation_failed` and
+  `session_revocation_incomplete`.
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection

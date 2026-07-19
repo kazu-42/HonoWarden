@@ -2469,7 +2469,7 @@ app.post('/api/accounts/password', async (c) => {
         id: auth.user.id,
       },
       context: {
-        allSessionsRevoked: true,
+        d1SessionsRevoked: true,
         kdfUnchanged: true,
       },
     })

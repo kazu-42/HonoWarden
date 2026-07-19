@@ -58,7 +58,7 @@ const passwordChangeInput = {
       id: 'user-id',
     },
     context: {
-      allSessionsRevoked: true,
+      d1SessionsRevoked: true,
       kdfUnchanged: true,
     },
   }),
@@ -97,7 +97,7 @@ describe('credential repository', () => {
         id: 'password-change-audit-event-id',
         name: 'account.password.change',
         contextJson: JSON.stringify({
-          allSessionsRevoked: true,
+          d1SessionsRevoked: true,
           kdfUnchanged: true,
         }),
       }),

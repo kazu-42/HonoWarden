@@ -124,6 +124,38 @@ describe('account credential domain', () => {
     })
   })
 
+  it('treats nullable alternative password representations as absent', () => {
+    const structured = structuredPasswordChangeBody()
+
+    expect(
+      parseMasterPasswordChangeBody({
+        ...structured,
+        newMasterPasswordHash: null,
+        key: null,
+      }),
+    ).toMatchObject({
+      ok: true,
+      variant: 'structured',
+    })
+    expect(
+      parseMasterPasswordChangeBody({
+        masterPasswordHash: 'synthetic-current-hash',
+        newMasterPasswordHash: 'synthetic-next-hash',
+        key: '2.synthetic-next-wrapped-user-key',
+        authenticationData: null,
+        unlockData: null,
+        masterPasswordHint: null,
+      }),
+    ).toEqual({
+      ok: true,
+      currentMasterPasswordHash: 'synthetic-current-hash',
+      nextMasterPasswordHash: 'synthetic-next-hash',
+      nextUserKey: '2.synthetic-next-wrapped-user-key',
+      credentialMetadata: null,
+      variant: 'legacy',
+    })
+  })
+
   it('rejects partial, contradictory, drifted, hinted, and oversized payloads', () => {
     const structured = structuredPasswordChangeBody()
     const oversizedKey = 'k'.repeat(

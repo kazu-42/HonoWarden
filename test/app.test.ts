@@ -6936,6 +6936,10 @@ describe('HonoWarden app', () => {
         name: 'account.password.change',
         outcome: 'success',
         requestId: 'password-change-request',
+        contextJson: JSON.stringify({
+          d1SessionsRevoked: true,
+          kdfUnchanged: true,
+        }),
       }),
     ])
     expect(auditLog).toHaveBeenCalledTimes(1)
@@ -7238,7 +7242,17 @@ describe('HonoWarden app', () => {
       masterPasswordHash: 'synthetic-next-master-password-hash',
       userKey: '2.synthetic-next-user-key',
     })
-    expect(database.auditEventInserts).toHaveLength(1)
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        contextJson: JSON.stringify({
+          d1SessionsRevoked: true,
+          kdfUnchanged: true,
+        }),
+      }),
+    ])
+    expect(database.auditEventInserts[0]?.contextJson).not.toContain(
+      'allSessionsRevoked',
+    )
     expect(errorLog).toHaveBeenCalledWith(
       expect.stringContaining(
         'account_notification_session_invalidation_failed',
@@ -7246,7 +7260,7 @@ describe('HonoWarden app', () => {
     )
   })
 
-  it('supports the pinned transitional legacy-only password payload', async () => {
+  it('supports the pinned legacy payload with nullable structured alternatives', async () => {
     const user = authUserRecord()
     const database = new FakeD1Database(null, [], { authUser: user })
     const response = await app.request(
@@ -7261,6 +7275,8 @@ describe('HonoWarden app', () => {
           masterPasswordHash: user.masterPasswordHash,
           newMasterPasswordHash: 'synthetic-legacy-next-hash',
           key: '2.synthetic-legacy-next-user-key',
+          authenticationData: null,
+          unlockData: null,
           masterPasswordHint: '',
         }),
       },

@@ -14,7 +14,7 @@
     { "id": "03", "name": "tdd-implementation", "status": "completed" },
     { "id": "04", "name": "real-d1-lifecycle", "status": "completed" },
     { "id": "05", "name": "docs-evidence", "status": "completed" },
-    { "id": "06", "name": "independent-review", "status": "pending" }
+    { "id": "06", "name": "independent-review", "status": "in_progress" }
   ],
   "verification": {
     "status": "candidate_passed",
@@ -22,7 +22,7 @@
       { "command": "pnpm check", "status": "passed" },
       { "command": "pnpm lint", "status": "passed" },
       { "command": "pnpm format", "status": "passed" },
-      { "command": "pnpm test", "status": "passed", "tests": 988 },
+      { "command": "pnpm test", "status": "passed", "tests": 989 },
       {
         "command": "pnpm compat:test",
         "status": "passed",
@@ -38,6 +38,11 @@
         "command": "pnpm account:password-change:lifecycle",
         "status": "passed",
         "checks": 15
+      },
+      {
+        "command": "codex review --commit 01b27137b48c1225668d582256c6f24e7b188c43",
+        "status": "remediated",
+        "findings": 2
       }
     ]
   }

@@ -11,14 +11,16 @@ test/domain/account-credentials.test.ts
 test/repositories/credential-repository.test.ts` initially reported 14
   failures because the password-change parser and repository operation did not
   exist.
-- Domain/repository GREEN: the focused suites pass 26 parser and transaction
+- Domain/repository GREEN: the focused suites pass 27 parser and transaction
   tests, including alias conflicts, KDF/salt drift, batch rollback at every
-  statement, and stale/concurrent generation conflicts.
+  statement, stale/concurrent generation conflicts, and nullable inactive
+  request alternatives.
 - Route RED: eight new HTTP tests returned the previous 404 while the existing
   247 app tests stayed green.
 - Route GREEN: `pnpm vitest run test/app.test.ts` passes all 257 tests, including
   old/new login and sync, proof defense, mandatory audit, durable notification
-  preflight and post-commit cleanup failure, and legacy-only payload support.
+  preflight and post-commit cleanup failure, and nullable legacy-only payload
+  support.
 - Compatibility GREEN: `pnpm vitest run
 test/compat/compat-fixtures.test.ts
 test/compat/fixture-route-replay.test.ts
