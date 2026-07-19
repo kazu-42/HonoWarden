@@ -93,6 +93,48 @@ export async function initializeAccountKeyPair(
     database
       .prepare(
         `
+          INSERT INTO audit_events (
+            id,
+            schema_version,
+            name,
+            outcome,
+            request_id,
+            occurred_at,
+            actor_user_id,
+            actor_device_identifier,
+            target_type,
+            target_id,
+            context_json
+          )
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          FROM users
+          WHERE id = ?
+            AND disabled_at IS NULL
+            AND public_key IS NULL
+            AND private_key IS NULL
+            AND security_stamp = ?
+            AND revision_date = ?
+        `,
+      )
+      .bind(
+        input.auditEventId,
+        event.schemaVersion,
+        event.name,
+        event.outcome,
+        event.requestId,
+        event.occurredAt,
+        event.actor?.userId ?? null,
+        event.actor?.deviceIdentifier ?? null,
+        event.target?.type ?? null,
+        event.target?.id ?? null,
+        event.context ? JSON.stringify(event.context) : null,
+        input.userId,
+        input.expectedSecurityStamp,
+        input.expectedRevisionDate,
+      ),
+    database
+      .prepare(
+        `
           UPDATE users
           SET
             public_key = ?,
@@ -117,50 +159,6 @@ export async function initializeAccountKeyPair(
         input.expectedSecurityStamp,
         input.expectedRevisionDate,
       ),
-    database
-      .prepare(
-        `
-          INSERT INTO audit_events (
-            id,
-            schema_version,
-            name,
-            outcome,
-            request_id,
-            occurred_at,
-            actor_user_id,
-            actor_device_identifier,
-            target_type,
-            target_id,
-            context_json
-          )
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-          FROM users
-          WHERE id = ?
-            AND disabled_at IS NULL
-            AND public_key = ?
-            AND private_key = ?
-            AND security_stamp = ?
-            AND revision_date = ?
-        `,
-      )
-      .bind(
-        input.auditEventId,
-        event.schemaVersion,
-        event.name,
-        event.outcome,
-        event.requestId,
-        event.occurredAt,
-        event.actor?.userId ?? null,
-        event.actor?.deviceIdentifier ?? null,
-        event.target?.type ?? null,
-        event.target?.id ?? null,
-        event.context ? JSON.stringify(event.context) : null,
-        input.userId,
-        input.publicKey,
-        input.wrappedPrivateKey,
-        input.expectedSecurityStamp,
-        input.nextRevisionDate,
-      ),
   ])
 
   if (results.length !== 2) {
@@ -169,7 +167,7 @@ export async function initializeAccountKeyPair(
     )
   }
 
-  const [userResult, auditResult] = results
+  const [auditResult, userResult] = results
   const updatedUsers = (userResult?.results ?? []) as UpdatedUserRow[]
   const userChanges = updatedUsers.length
   const auditChanges = auditResult?.meta.changes ?? 0

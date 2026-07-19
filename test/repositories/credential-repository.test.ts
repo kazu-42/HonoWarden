@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { buildAuditEvent } from '../../src/domain/audit'
 import {
@@ -127,6 +127,7 @@ describe('credential repository', () => {
   it('initializes one account keypair and required audit atomically without rotating sessions', async () => {
     const state = credentialState()
     const database = new FakeD1Database(null, [], state)
+    const prepare = vi.spyOn(database, 'prepare')
     const sessionsBefore = structuredClone({
       devices: state.devices,
       refreshTokens: state.refreshTokens,
@@ -170,6 +171,13 @@ describe('credential repository', () => {
     const auditJson = JSON.stringify(database.auditEventInserts)
     expect(auditJson).not.toContain('synthetic-public-key')
     expect(auditJson).not.toContain('synthetic-wrapped-private-key')
+
+    const queries = prepare.mock.calls.map(([query]) => String(query))
+    expect(queries).toHaveLength(2)
+    expect(queries[0]).toContain('INSERT INTO audit_events')
+    expect(queries[0]).toContain('public_key IS NULL')
+    expect(queries[0]).toContain('private_key IS NULL')
+    expect(queries[1]).toContain('UPDATE users')
   })
 
   it.each([
