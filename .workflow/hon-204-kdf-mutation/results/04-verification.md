@@ -133,3 +133,30 @@ rotations, both prior device/refresh generation revocations, both audit rows,
 final PBKDF2 projections, and byte-identical encrypted vault data. Broad
 repository verification is green. Both exact-head reviews remain pending on
 this candidate and are not represented as passed here.
+
+## Ninth Review Contract Clarification
+
+The Spark fallback standard review raised one P2 suggesting that disabled
+accounts be removed from the prelogin target and stored KDF population. That
+change would make a reversible disable transition observable by changing the
+anonymous KDF response and could remap unknown-account decoys. HonoWarden keeps
+prelogin derivation metadata stable while password, refresh, and authenticated
+session paths reject disabled users. A route regression now pins both halves of
+that boundary.
+
+The resulting candidate passes:
+
+- targeted route regression: 1 test, with 271 unrelated app tests skipped
+- combined focused suite: 6 files and 381 tests
+- `pnpm test`: 86 files and 1,051 tests
+- `pnpm check`
+- `pnpm lint`
+- `pnpm format`
+- `pnpm compat:test`: 3 files and 101 tests
+- standalone real local D1 lifecycle: all 36 checks
+- `pnpm release:gate`: overall ready, 11 pass, 0 manual, 0 block
+- `pnpm brand:scan`
+- `git diff --check`
+- workflow verifier
+
+Both exact-head reviews must rerun after the clarification commit.

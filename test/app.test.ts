@@ -471,6 +471,55 @@ describe('HonoWarden app', () => {
     }
   })
 
+  it('keeps reversible account disable state out of prelogin KDF metadata', async () => {
+    const disabledUser = {
+      ...authUserRecord(),
+      kdfAlgorithm: 'argon2id',
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      disabledAt: '2026-07-19T00:00:00.000Z',
+    }
+    const database = new FakeD1Database(null, [], {
+      authUser: disabledUser,
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_ALLOWED_EMAILS: 'person@example.test pending@example.test',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    for (const email of ['person@example.test', 'pending@example.test']) {
+      const response = await app.request(
+        '/identity/accounts/prelogin',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        },
+        env,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toMatchObject({
+        kdf: 1,
+        kdfIterations: 6,
+        kdfMemory: 32,
+        kdfParallelism: 4,
+      })
+    }
+
+    const passwordGrant = await passwordGrantRequest(
+      database,
+      disabledUser.masterPasswordHash,
+      'disabled-account-device',
+    )
+    expect(passwordGrant.status).toBe(400)
+    await expect(passwordGrant.json()).resolves.toMatchObject({
+      error: 'invalid_grant',
+    })
+  })
+
   it('fails prelogin loudly for an invalid stored KDF instead of projecting PBKDF2', async () => {
     const response = await app.request(
       '/identity/accounts/prelogin',

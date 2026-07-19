@@ -117,7 +117,10 @@ Secret-handling invariants:
    population weighted by account count. This includes readable legacy tuples
    and emits only valid resource profiles already stored. Unrelated malformed or
    client-unreadable rows are excluded so one corrupt account cannot fail every
-   allowed prelogin; an invalid exact target still fails closed. An empty valid
+   allowed prelogin; an invalid exact target still fails closed. Reversibly
+   disabled accounts retain their exact target and population contribution so
+   account-state transitions do not change anonymous KDF metadata; password,
+   refresh, and authenticated-session paths still reject them. An empty valid
    population falls back to bootstrap PBKDF2 `600000`. The HMAC is keyed by
    `HONOWARDEN_TOKEN_SECRET`, and a missing secret fails before D1.
 7. A missing Durable Object binding fails before mutation. Once D1 commits,

@@ -79,9 +79,11 @@ inputs, not minor documentation notes.
   population by account count but are not a proof of cryptographic
   indistinguishability; the email allowlist remains the primary boundary.
   Unrelated invalid rows are excluded from that population while an invalid exact
-  target fails closed. Each allowed prelogin performs a grouped KDF-population
-  read, which is acceptable for the current alpha and requires scale monitoring
-  before broader exposure.
+  target fails closed. Reversibly disabled accounts retain their KDF projection
+  and population weight so the anonymous endpoint does not expose disable/enable
+  transitions; disabled authentication and sessions remain rejected. Each
+  allowed prelogin performs a grouped KDF-population read, which is acceptable
+  for the current alpha and requires scale monitoring before broader exposure.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation

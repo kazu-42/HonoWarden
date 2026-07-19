@@ -246,3 +246,28 @@ tests, compatibility passes 101 tests, and the standalone local D1 lifecycle
 passes all 36 checks. Typecheck, lint, format, type generation, release gate,
 brand scan, diff check, and workflow verification also pass. Both exact-head
 reviews must rerun after this remediation is committed.
+
+## Ninth Review Finding And Disposition
+
+The Spark fallback exact-head review of `b8ce7b2` reported one P2: exclude
+disabled users from the exact prelogin target and grouped KDF population. The
+finding is not accepted because it conflicts with HonoWarden's reversible
+account-state boundary:
+
+- prelogin KDF and salt are anonymous client-derivation metadata, not proof of
+  account access
+- disable does not mutate that credential generation, so replacing it with a
+  decoy would expose the disable/enable transition through a changed response
+- removing a disabled row from the grouped population can also remap stable
+  decoys for unrelated unknown allowed emails
+- password grant, refresh grant, access-token authentication, and vault access
+  already reject disabled accounts generically
+
+The contract is now explicit in the authentication state machine, data flow,
+known limitations, and a route regression that proves an exact disabled target
+and its population contribution remain stable while password grant is denied.
+The combined focused suite passes 6 files and 381 tests, the repository suite
+passes 86 files and 1,051 tests, compatibility passes 101 tests, and the
+standalone local D1 lifecycle passes all 36 checks. Typecheck, lint, format,
+release gate, brand scan, diff check, and workflow verification also pass. This
+clarification changes the candidate head, so both exact-head reviews must rerun.

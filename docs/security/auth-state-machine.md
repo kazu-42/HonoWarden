@@ -14,7 +14,15 @@ must remain stable for alpha.
 | temporarily locked | failed password attempts       | prelogin, eventual retry                               | password grant until lock expires                |
 | TOTP setup pending | authenticated setup            | setup verify                                           | login without valid challenge if TOTP is enabled |
 | TOTP enabled       | setup verify                   | password grant followed by TOTP challenge verification | token issuance without TOTP code                 |
-| disabled           | account lifecycle operator CLI | none for auth/session use                              | password grant, refresh grant, sync, vault CRUD  |
+| disabled           | account lifecycle operator CLI | prelogin metadata only                                 | password grant, refresh grant, sync, vault CRUD  |
+
+Prelogin metadata is not authentication or authorization. Account disable is a
+reversible operator state and does not alter the account salt or KDF generation.
+The exact KDF target and its contribution to the stored decoy population remain
+stable while disabled; replacing either with an unknown-account decoy would
+make the disable transition observable through this anonymous endpoint. Every
+grant and authenticated-session path still rejects the disabled account with
+the same generic boundary used for invalid credentials.
 
 ## Password Grant
 

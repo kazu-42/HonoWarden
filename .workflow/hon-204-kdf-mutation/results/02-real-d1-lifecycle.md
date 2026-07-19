@@ -28,8 +28,8 @@ Observed HTTP statuses:
 D1 readback after each stopped Worker proved an Argon2id `1/6/32/4` generation
 followed by PBKDF2 `0/600000/null/null`. The first revision advanced from the
 seeded `2026-07-19T00:00:00.000Z` value to
-`2026-07-19T11:45:49.765Z`; the final revision advanced again to
-`2026-07-19T11:45:51.641Z`. Each generation retained the normalized email and
+`2026-07-19T12:02:22.818Z`; the final revision advanced again to
+`2026-07-19T12:02:24.470Z`. Each generation retained the normalized email and
 encrypted cipher JSON, rotated the security stamp, revoked the prior device and
 refresh session, activated the new device, and added one
 `account.kdf.change` audit row for a final count of two. With a one-account
