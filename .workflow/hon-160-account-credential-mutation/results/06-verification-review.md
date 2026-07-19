@@ -4,9 +4,9 @@ Status: P1/P2 remediations passed locally; fresh publication checks pending.
 
 ## Host verification
 
-- Complete app and notification-hub tests: 256 tests passed.
+- Complete app and notification-hub tests: 257 tests passed.
 - Scheduled-retention tests after the review correction: 9 tests passed.
-- Full Vitest suite: 84 files, 956 tests passed.
+- Full Vitest suite: 84 files, 958 tests passed.
 - `pnpm check`, `pnpm lint`, `pnpm format`, and `pnpm brand:scan` passed.
 - Workflow Node tests: 17 tests passed, including deterministic
   managed-checkpoint coverage.
@@ -31,6 +31,7 @@ A fresh ignored local D1 applied every migration and passed:
 - exactly one required audit row;
 - no Worker audit JSON line when `HONOWARDEN_AUDIT_LOGS=false`;
 - clean password relogin and sync;
+- atomic refresh-token rotation and sync with the refreshed access token;
 - forced audit-trigger failure with complete batch rollback; and
 - two concurrent attempts with exactly one success and one audit row.
 
@@ -72,6 +73,16 @@ different stamps. New regressions prove that a same-stamp profile revision keeps
 the socket and that delayed same-stamp delivery cannot downgrade active ordering.
 The current local head must still receive fresh CI and a clean Codex review.
 
+The next exact-head review found a second P1: refresh rotation revoked its parent
+before a later batch inserted the replacement, allowing credential rotation to
+interleave between those writes. Password-session creation is now guarded by the
+authenticated password hash and stamp, while refresh replacement insertion,
+parent revocation, and device update execute in one stamp-guarded D1 batch. A
+zero-row or inconsistent outcome fails closed and invalidates the device session.
+New repository/HTTP regressions and the fresh local-D1 password, refresh, and
+sync path pass. This new local head still requires publication, CI, and another
+clean exact-head Codex review.
+
 ## Linear source-ready checkpoint
 
 The deterministic writer and an independently implemented GraphQL readback
@@ -91,5 +102,5 @@ both verified HON-202 as In Progress with one exact managed comment:
 This evidence proves source readiness only. PR checks, reviewed merge,
 main-branch readback, deployment, production operation, and compatibility
 promotion remain unclaimed. The current published PR head and CI are superseded
-by the locally verified same-stamp notification remediation until that exact new
-head passes CI and review.
+by the locally verified generation-guarded session-issuance remediation until
+that exact new head passes CI and review.

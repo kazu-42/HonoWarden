@@ -12,6 +12,10 @@ Positive evidence:
 - A subsequent login can recreate/unrevoke its device session while old access
   and refresh tokens remain invalid. An approval issued before rotation cannot
   mint a new session afterward.
+- Password-session creation revalidates the authenticated password hash and
+  security stamp in its write batch. Refresh rotation inserts the replacement,
+  revokes the parent, and updates the active device in one guarded batch, leaving
+  no inter-transaction window for credential rotation to bypass.
 - Authenticated notification sockets carry the current security stamp. The
   account revision orders competing stamp generations but is not itself a
   session identity: ordinary same-stamp profile revisions preserve the socket.
@@ -27,6 +31,8 @@ Fail-closed evidence:
   state; rate-limit and audit behavior do not reveal account existence.
 - Expected-stamp/revision mismatch from a concurrent mutation changes zero rows
   and cannot revoke the newer generation.
+- A stale password or refresh grant creates no token. A failed refresh rotation
+  invalidates the device session rather than exposing a partially rotated chain.
 - Forced user-update, session-revoke, auth-request invalidation, or audit-insert
   failure rolls the complete batch back. No false success response or success
   log is emitted.

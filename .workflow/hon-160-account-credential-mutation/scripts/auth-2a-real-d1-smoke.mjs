@@ -218,6 +218,21 @@ try {
     },
   )
   assert.equal(newTokenResponse.status, 200)
+  const refreshResponse = await refreshLogin(
+    activeServer.origin,
+    loginBody.refresh_token,
+  )
+  assert.equal(refreshResponse.status, 200)
+  const refreshBody = await refreshResponse.json()
+  assert.equal(typeof refreshBody.access_token, 'string')
+  assert.equal(typeof refreshBody.refresh_token, 'string')
+  const refreshedTokenResponse = await globalThis.fetch(
+    `${activeServer.origin}/api/sync`,
+    {
+      headers: { Authorization: `Bearer ${refreshBody.access_token}` },
+    },
+  )
+  assert.equal(refreshedTokenResponse.status, 200)
   await activeServer.stop()
   activeServer = null
 
@@ -225,7 +240,7 @@ try {
   assert.equal(reloginState.ownerActiveDevices, 1)
   assert.equal(reloginState.ownerRevokedDevices, 1)
   assert.equal(reloginState.ownerActiveRefreshTokens, 1)
-  assert.equal(reloginState.ownerRevokedRefreshTokens, 2)
+  assert.equal(reloginState.ownerRevokedRefreshTokens, 3)
   assert.equal(reloginState.ownerActiveAuthRequests, 0)
   assert.equal(reloginState.ownerSupersededAuthRequests, 2)
   assert.equal(reloginState.ownerRetainedAuthResponseKeys, 0)
@@ -344,6 +359,8 @@ try {
     relogin: {
       passwordGrantStatus: loginResponse.status,
       newAccessTokenSyncStatus: newTokenResponse.status,
+      refreshGrantStatus: refreshResponse.status,
+      refreshedAccessTokenSyncStatus: refreshedTokenResponse.status,
       state: reloginState,
     },
     rollback: {
@@ -433,6 +450,17 @@ async function passwordLogin(origin) {
       deviceIdentifier: 'fixture-device',
       deviceName: 'Synthetic CLI',
       deviceType: '8',
+    }),
+  })
+}
+
+async function refreshLogin(origin, refreshToken) {
+  return globalThis.fetch(`${origin}/identity/connect/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
     }),
   })
 }

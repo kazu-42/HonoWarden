@@ -29,6 +29,10 @@ Status: source-ready locally.
   before returning success, while ordinary same-stamp profile revisions preserve
   the socket. Pending auth-request delivery revalidates the stamp before exposing
   request metadata.
+- Bound password-session creation to the exact password hash and security stamp
+  that were authenticated. Refresh rotation now inserts the replacement, revokes
+  its parent, and updates the still-active device in one generation-guarded D1
+  batch instead of leaving a revocation/insertion race between transactions.
 - Kept password, KDF, account-key, and user-key mutation routes out of this
   slice.
 - Extended fake D1 with transactional credential-rotation behavior and rollback
@@ -49,6 +53,9 @@ Status: source-ready locally.
   Same-stamp requests remain valid across ordinary account revision changes.
 - Login-with-device approvals issued before rotation cannot mint a new session
   afterward.
+- A password or refresh grant that loses a race with credential rotation cannot
+  create a token for the superseded generation; the refresh failure path also
+  invalidates the associated device session.
 - Repeated invalid proofs cannot remain an unthrottled online verifier, and a
   correct proof cannot bypass an active account or IP lock.
 - Another user's devices, refresh tokens, and auth requests are not changed.
@@ -96,6 +103,15 @@ request hint. The security stamp is now the socket authorization identity. The
 revision only prevents an older, different stamp from becoming active; delayed
 same-stamp delivery is accepted without downgrading the active revision. Focused
 tests cover both profile-update preservation and delayed same-stamp delivery.
+
+The next exact-head review found that refresh rotation used one transaction to
+revoke the parent and a later transaction to insert its replacement. Credential
+rotation could interleave and leave that late replacement outside the revocation
+batch. Both password-session creation and refresh rotation now revalidate the
+authenticated generation at write time. The refresh replacement, parent
+revocation, and device update are one guarded D1 batch; any zero-row outcome
+fails closed and invalidates the session. Repository, HTTP, and fresh local-D1
+password/refresh/sync coverage exercise the corrected boundary.
 
 ## Excluded
 

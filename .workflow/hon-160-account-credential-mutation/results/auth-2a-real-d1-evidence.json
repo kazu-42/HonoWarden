@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T23:21:45.505Z",
+  "generatedAt": "2026-07-18T23:58:03.648Z",
   "status": "passed",
   "scope": "fresh local D1 and local Worker with synthetic data only",
   "migrations": {
@@ -71,13 +71,15 @@
   "relogin": {
     "passwordGrantStatus": 200,
     "newAccessTokenSyncStatus": 200,
+    "refreshGrantStatus": 200,
+    "refreshedAccessTokenSyncStatus": 200,
     "state": {
       "securityStampIsOld": false,
       "revisionIsOld": false,
       "ownerActiveDevices": 1,
       "ownerRevokedDevices": 1,
       "ownerActiveRefreshTokens": 1,
-      "ownerRevokedRefreshTokens": 2,
+      "ownerRevokedRefreshTokens": 3,
       "ownerActiveAuthRequests": 0,
       "ownerSupersededAuthRequests": 2,
       "ownerRetainedAuthResponseKeys": 0,

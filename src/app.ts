@@ -1635,6 +1635,7 @@ app.post('/identity/connect/token', async (c) => {
         currentTokenId: session.tokenId,
         userId: session.userId,
         deviceId: session.deviceId,
+        expectedSecurityStamp: session.user.securityStamp,
         deviceIdentifier: session.deviceIdentifier,
         deviceName: null,
         deviceType: null,
@@ -2001,8 +2002,10 @@ app.post('/identity/connect/token', async (c) => {
       resetAt: now,
     })
     await resetAuthFailureBucket(c.env.DB, accountBucketKey)
-    await createPasswordGrantSession(c.env.DB, {
+    const session = await createPasswordGrantSession(c.env.DB, {
       userId: user.id,
+      expectedMasterPasswordHash: user.masterPasswordHash,
+      expectedSecurityStamp: user.securityStamp,
       deviceIdentifier: device.identifier,
       deviceName: device.name,
       deviceType: device.type,
@@ -2013,6 +2016,9 @@ app.post('/identity/connect/token', async (c) => {
       ).toISOString(),
       now,
     })
+    if (session.status !== 'created') {
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
 
     const accessToken = await signAccessToken(
       accessTokenConfig.signer,

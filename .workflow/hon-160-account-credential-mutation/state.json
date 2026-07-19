@@ -2,7 +2,7 @@
   "title": "HON-160 Account Credential Mutation",
   "slug": "hon-160-account-credential-mutation",
   "created_at": "2026-07-18T16:14:20+00:00",
-  "updated_at": "2026-07-18T23:39:16Z",
+  "updated_at": "2026-07-19T00:00:27Z",
   "status": "pr_remediation_ready",
   "approval": {
     "required": true,
@@ -27,8 +27,8 @@
   "publication": {
     "pull_request": 101,
     "status": "draft",
-    "superseded_published_head": "bc1837024db4eddd6260d9f34774bebcb4747b55",
-    "latest_local_state": "Published-head P1 and four P2 findings remediated; commit, push, fresh CI, and clean exact-head review pending",
+    "superseded_published_head": "62bcd08b4fc2556456fcec84f3bc38be6cb87d9e",
+    "latest_local_state": "Two published-head P1 and four P2 findings remediated; commit, push, fresh CI, and clean exact-head review pending",
     "admin_merge_authorized": true
   },
   "wave2_rebase_verification": {
@@ -56,19 +56,19 @@
   "verification": {
     "status": "passed",
     "checks": [
-      "complete app and notification hub: 256 tests",
+      "complete app and notification hub: 257 tests",
       "scheduled retention: 9 tests",
-      "full Vitest: 84 files, 956 tests",
+      "full Vitest: 84 files, 958 tests",
       "pnpm check",
       "pnpm lint",
       "pnpm format",
       "pnpm brand:scan",
       "workflow Node tests: 17 tests",
-      "fresh local D1 transaction, rollback, auth-request invalidation, credential-proof defense, and audit-toggle smoke",
+      "fresh local D1 transaction, rollback, auth-request invalidation, password and refresh session issuance, credential-proof defense, and audit-toggle smoke",
       "git diff --check",
       "independent complete-diff review: no actionable findings",
       "focused managed-checkpoint review: no actionable findings"
     ],
-    "boundary": "Draft PR #101 exists. The current local same-stamp notification remediation still needs commit, push, exact-head CI and review, admin merge, main readback, and Linear closeout. Deployment, production operation, and compatibility promotion remain pending."
+    "boundary": "Draft PR #101 exists. The current local generation-guarded session-issuance remediation still needs commit, push, exact-head CI and review, admin merge, main readback, and Linear closeout. Deployment, production operation, and compatibility promotion remain pending."
   }
 }

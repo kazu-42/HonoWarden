@@ -2703,6 +2703,43 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rejects a password grant superseded before session commit', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Device-Identifier': 'fixture-device',
+          'Device-Name': 'Fixture Device',
+          'Device-Type': '9',
+        },
+        body: new URLSearchParams({
+          grant_type: 'password',
+          username: 'Person@Example.Test',
+          password: 'synthetic-master-password-hash',
+          scope: 'api offline_access',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: authUserRecord(),
+          deviceUpdateChanges: 0,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_grant',
+      ErrorModel: {
+        Message: 'Invalid username or password.',
+        Object: 'error',
+      },
+    })
+  })
+
   it('parses premium enablement explicitly and only changes the access-token premium claim', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-13T00:00:00.000Z'))
