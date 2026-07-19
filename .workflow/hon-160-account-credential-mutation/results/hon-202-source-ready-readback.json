@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-07-18T17:22:28.603Z",
+  "mode": "apply",
+  "action": "created",
+  "status": "exact",
+  "issue": {
+    "identifier": "HON-202",
+    "id": "970db431-0888-47b6-a299-bf6b81573462",
+    "state": {
+      "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+      "name": "In Progress",
+      "type": "started"
+    },
+    "parent": {
+      "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+      "identifier": "HON-160"
+    },
+    "project": {
+      "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+      "name": "HonoWarden Post-Alpha Roadmap"
+    },
+    "priority": 0,
+    "archivedAt": null,
+    "checks": {
+      "identifier": true,
+      "title": true,
+      "canonicalMarker": true,
+      "parent": true,
+      "project": true,
+      "state": true,
+      "priority": true,
+      "nonArchived": true
+    }
+  },
+  "managedComment": {
+    "id": "0c373036-cfb6-4b39-aeae-d397852645ef",
+    "updatedAt": "2026-07-18T17:22:28.035Z",
+    "bytes": 1667,
+    "sha256": "d6e492c056bee7afbaa0accbf12ba98b666887e254254ef4c810cf8cae8380af",
+    "checks": {
+      "singleManagedComment": true,
+      "exactBody": true,
+      "exactBytes": true,
+      "exactSha256": true
+    }
+  },
+  "expectedComment": {
+    "bytes": 1667,
+    "sha256": "d6e492c056bee7afbaa0accbf12ba98b666887e254254ef4c810cf8cae8380af"
+  },
+  "errors": []
+}

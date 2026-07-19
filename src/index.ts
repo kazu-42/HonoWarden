@@ -1,6 +1,5 @@
 import app from './app'
 import type { Bindings } from './bindings'
-import { isAuditLoggingEnabled } from './domain/audit'
 import { isAuthRequestFeatureEnabled } from './domain/auth-request'
 import { isGlobalRequestQuotaEnabled } from './domain/request-quota'
 import { isRefreshTokenRetentionEnabled } from './domain/tokens'
@@ -22,7 +21,9 @@ export default {
       env.DB,
       new Date(controller.scheduledTime).toISOString(),
       {
-        auditEvents: isAuditLoggingEnabled(env.HONOWARDEN_AUDIT_LOGS),
+        // Security-sensitive routes persist mandatory rows even when optional
+        // audit emission is disabled, so retention must always run.
+        auditEvents: true,
         authRequests: isAuthRequestFeatureEnabled(
           env.HONOWARDEN_AUTH_REQUESTS_ENABLED,
         ),

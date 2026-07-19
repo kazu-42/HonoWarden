@@ -52,8 +52,14 @@ Retention rules:
 - TOTP login challenges are eligible when they are expired or already consumed.
 - refresh-token rows that have been expired for at least 30 days are eligible
   when `HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED=true`.
-- audit events older than 365 days are eligible for deletion when
+- audit events older than 365 days are always eligible for deletion by the
+  scheduled handler. Inline password-grant cleanup also processes them when
   `HONOWARDEN_AUDIT_LOGS=true`.
+
+Scheduled audit cleanup is independent of optional audit emission because
+security-sensitive credential routes persist required audit rows even when
+`HONOWARDEN_AUDIT_LOGS=false`. Keeping cleanup unconditional prevents those
+mandatory rows from bypassing the 365-day retention boundary.
 
 ### Refresh-token history
 

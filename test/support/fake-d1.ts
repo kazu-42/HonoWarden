@@ -49,6 +49,9 @@ type FakeD1DatabaseOptions = {
   totpChallengeUpdateChanges?: number
   auditEventCleanupChanges?: number
   auditEventInsertThrows?: boolean
+  credentialRotationConflict?: boolean
+  credentialRotationFailureAt?:
+    'user' | 'devices' | 'refresh_tokens' | 'auth_requests' | 'audit'
   requestQuotaBucket?: Record<string, unknown> | null
   requestQuotaCleanupChanges?: number
   requestQuotaInsertThrows?: boolean
@@ -1241,6 +1244,14 @@ export class FakeD1Database {
       __fakeBoundValues: unknown[]
     }>
 
+    if (isCredentialRotationBatch(fakeStatements)) {
+      return applyCredentialRotationBatch(
+        this.options,
+        fakeStatements,
+        this.auditEventInserts,
+      ) as D1Result<T>[]
+    }
+
     if (isOrganizationFoundationBatch(fakeStatements)) {
       return applyOrganizationFoundationBatch(
         this.options,
@@ -1446,6 +1457,281 @@ export class FakeD1Database {
       },
     }))
   }
+}
+
+function isCredentialRotationBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  return (
+    statements.length === 5 &&
+    statements.some(
+      (statement) =>
+        /UPDATE\s+users/.test(statement.__fakeQuery) &&
+        statement.__fakeQuery.includes('security_stamp = ?'),
+    ) &&
+    statements.some((statement) =>
+      /UPDATE\s+devices/.test(statement.__fakeQuery),
+    ) &&
+    statements.some((statement) =>
+      /UPDATE\s+refresh_tokens/.test(statement.__fakeQuery),
+    ) &&
+    statements.some((statement) =>
+      /UPDATE\s+auth_requests/.test(statement.__fakeQuery),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO audit_events'),
+    )
+  )
+}
+
+function applyCredentialRotationBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+  auditEventInserts: FakeAuditEventInsert[],
+): D1Result[] {
+  const userRows = uniqueRows([
+    ...(options.authUser ? [options.authUser] : []),
+    ...(options.authUsers ?? []),
+  ])
+  const snapshots = [
+    ...userRows.map((row) => ({ row, values: { ...row } })),
+    ...(options.devices ?? []).map((row) => ({ row, values: { ...row } })),
+    ...(options.refreshTokens ?? []).map((row) => ({
+      row,
+      values: { ...row },
+    })),
+    ...(options.authRequests ?? []).map((row) => ({
+      row,
+      values: { ...row },
+    })),
+  ]
+  const auditLength = auditEventInserts.length
+
+  try {
+    const userStatement = requiredFakeStatement(
+      statements,
+      (query) => /UPDATE\s+users/.test(query),
+      'user',
+    )
+    const deviceStatement = requiredFakeStatement(
+      statements,
+      (query) => /UPDATE\s+devices/.test(query),
+      'devices',
+    )
+    const refreshStatement = requiredFakeStatement(
+      statements,
+      (query) => /UPDATE\s+refresh_tokens/.test(query),
+      'refresh_tokens',
+    )
+    const authRequestStatement = requiredFakeStatement(
+      statements,
+      (query) => /UPDATE\s+auth_requests/.test(query),
+      'auth_requests',
+    )
+    const auditStatement = requiredFakeStatement(
+      statements,
+      (query) => query.includes('INSERT INTO audit_events'),
+      'audit',
+    )
+    const userValues = userStatement.__fakeBoundValues
+    const user = userRows.find((row) => row.id === userValues[3])
+    const generationMatches =
+      !options.credentialRotationConflict &&
+      user != null &&
+      fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
+      fakeColumn(user, 'masterPasswordHash', 'master_password_hash') ===
+        userValues[4] &&
+      fakeColumn(user, 'securityStamp', 'security_stamp') === userValues[5] &&
+      fakeColumn(user, 'revisionDate', 'revision_date') === userValues[6]
+    const results = new Map<FakePreparedStatement, D1Result>()
+
+    if (generationMatches && user) {
+      setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[0])
+      setFakeColumn(user, 'revisionDate', 'revision_date', userValues[1])
+      setFakeColumn(user, 'updatedAt', 'updated_at', userValues[2])
+    }
+    failCredentialRotationAt(options, 'user')
+    results.set(userStatement, fakeResult(generationMatches ? 1 : 0))
+
+    const deviceValues = deviceStatement.__fakeBoundValues
+    const deviceChanges = generationMatches
+      ? mutateActiveRows(
+          options.devices ?? [],
+          String(deviceValues[2]),
+          String(deviceValues[0]),
+          String(deviceValues[1]),
+        )
+      : 0
+    failCredentialRotationAt(options, 'devices')
+    results.set(deviceStatement, fakeResult(deviceChanges))
+
+    const refreshValues = refreshStatement.__fakeBoundValues
+    const refreshChanges = generationMatches
+      ? mutateActiveRows(
+          options.refreshTokens ?? [],
+          String(refreshValues[1]),
+          String(refreshValues[0]),
+          null,
+        )
+      : 0
+    failCredentialRotationAt(options, 'refresh_tokens')
+    results.set(refreshStatement, fakeResult(refreshChanges))
+
+    const authRequestValues = authRequestStatement.__fakeBoundValues
+    const authRequestChanges = generationMatches
+      ? supersedeActiveAuthRequests(
+          options.authRequests ?? [],
+          String(authRequestValues[1]),
+          String(authRequestValues[0]),
+        )
+      : 0
+    failCredentialRotationAt(options, 'auth_requests')
+    results.set(authRequestStatement, fakeResult(authRequestChanges))
+
+    if (generationMatches) {
+      const values = auditStatement.__fakeBoundValues
+      if (auditEventInserts.some((event) => event.id === values[0])) {
+        throw new Error('duplicate credential rotation audit event')
+      }
+      auditEventInserts.push({
+        id: String(values[0]),
+        schemaVersion: Number(values[1]),
+        name: String(values[2]),
+        outcome: String(values[3]),
+        requestId: String(values[4]),
+        occurredAt: String(values[5]),
+        actorUserId: nullableString(values[6]),
+        actorDeviceIdentifier: nullableString(values[7]),
+        targetType: nullableString(values[8]),
+        targetId: nullableString(values[9]),
+        contextJson: nullableString(values[10]),
+      })
+    }
+    failCredentialRotationAt(options, 'audit')
+    results.set(auditStatement, fakeResult(generationMatches ? 1 : 0))
+
+    return statements.map(
+      (statement) => results.get(statement) ?? fakeResult(0),
+    )
+  } catch (error) {
+    for (const { row, values } of snapshots) {
+      for (const key of Object.keys(row)) {
+        delete row[key]
+      }
+      Object.assign(row, values)
+    }
+    auditEventInserts.splice(auditLength)
+    throw error
+  }
+}
+
+function requiredFakeStatement(
+  statements: FakePreparedStatement[],
+  matches: (query: string) => boolean,
+  name: string,
+): FakePreparedStatement {
+  const statement = statements.find((candidate) =>
+    matches(candidate.__fakeQuery),
+  )
+  if (!statement) {
+    throw new Error(`credential rotation ${name} statement missing`)
+  }
+  return statement
+}
+
+function uniqueRows(
+  rows: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  return [...new Set(rows)]
+}
+
+function fakeColumn(
+  row: Record<string, unknown>,
+  camelName: string,
+  snakeName: string,
+): unknown {
+  return row[camelName] ?? row[snakeName]
+}
+
+function setFakeColumn(
+  row: Record<string, unknown>,
+  camelName: string,
+  snakeName: string,
+  value: unknown,
+): void {
+  if (snakeName in row && !(camelName in row)) {
+    row[snakeName] = value
+  } else {
+    row[camelName] = value
+  }
+}
+
+function mutateActiveRows(
+  rows: Record<string, unknown>[],
+  userId: string,
+  revokedAt: string,
+  updatedAt: string | null,
+): number {
+  let changes = 0
+  for (const row of rows) {
+    if (
+      fakeColumn(row, 'userId', 'user_id') !== userId ||
+      fakeColumn(row, 'revokedAt', 'revoked_at') != null
+    ) {
+      continue
+    }
+    setFakeColumn(row, 'revokedAt', 'revoked_at', revokedAt)
+    if (updatedAt !== null) {
+      setFakeColumn(row, 'updatedAt', 'updated_at', updatedAt)
+    }
+    changes += 1
+  }
+  return changes
+}
+
+function supersedeActiveAuthRequests(
+  rows: Record<string, unknown>[],
+  userId: string,
+  updatedAt: string,
+): number {
+  let changes = 0
+  for (const row of rows) {
+    const status = fakeColumn(row, 'status', 'status')
+    if (
+      fakeColumn(row, 'userId', 'user_id') !== userId ||
+      (status !== 'pending' && status !== 'approved')
+    ) {
+      continue
+    }
+
+    setFakeColumn(row, 'status', 'status', 'superseded')
+    setFakeColumn(row, 'requestApproved', 'request_approved', 0)
+    setFakeColumn(row, 'encryptedResponseKey', 'encrypted_response_key', null)
+    setFakeColumn(row, 'updatedAt', 'updated_at', updatedAt)
+    changes += 1
+  }
+  return changes
+}
+
+function failCredentialRotationAt(
+  options: FakeD1DatabaseOptions,
+  stage: NonNullable<FakeD1DatabaseOptions['credentialRotationFailureAt']>,
+): void {
+  if (options.credentialRotationFailureAt === stage) {
+    throw new Error(`credential rotation ${stage} failed`)
+  }
+}
+
+function fakeResult(changes: number): D1Result {
+  return {
+    success: true,
+    results: [],
+    meta: { ...fakeMeta, changes },
+  }
+}
+
+function nullableString(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value)
 }
 
 type FakePreparedStatement = {

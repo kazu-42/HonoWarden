@@ -39,7 +39,7 @@ describe('HonoWarden scheduled maintenance', () => {
 
     expect(cleanup).toHaveBeenCalledTimes(1)
     expect(cleanup).toHaveBeenCalledWith(db, '2026-07-08T00:00:00.000Z', {
-      auditEvents: false,
+      auditEvents: true,
       authRequests: false,
       refreshTokens: false,
       requestQuotaBuckets: false,
@@ -265,8 +265,8 @@ describe('HonoWarden scheduled maintenance', () => {
     },
   )
 
-  it('skips audit-event cleanup while audit logging is disabled', async () => {
-    const db = new FakeD1Database('0006', [])
+  it('retains mandatory audit rows for only 365 days when optional logging is disabled', async () => {
+    const db = new FakeD1Database('0007', [])
     const context = {
       waitUntil: vi.fn(),
       passThroughOnException: vi.fn(),
@@ -290,7 +290,12 @@ describe('HonoWarden scheduled maintenance', () => {
       ),
     ).resolves.toBeUndefined()
 
-    expect(db.auditEventCleanupDeletes).toEqual([])
+    expect(db.auditEventCleanupDeletes).toEqual([
+      {
+        expiredBefore: '2025-07-09T00:00:00.000Z',
+        limit: 100,
+      },
+    ])
     expect(context.waitUntil).toHaveBeenCalledTimes(1)
   })
 

@@ -75,7 +75,7 @@ Implemented:
 - constant-time comparison for presented master password hash
 - HMAC-signed access tokens
 - random refresh token generation with secret-bound SHA-256 hash storage
-- device upsert before refresh token persistence
+- generation-guarded device/session upsert before refresh token persistence
 - stable invalid grant, invalid request, misconfigured, and database unavailable responses
 
 ## Week 7 Increment
@@ -84,7 +84,8 @@ Implemented:
 
 - `refresh_token` grant support on `POST /identity/connect/token`
 - refresh token lookup by secret-bound hash
-- refresh token rotation with old-token revocation and child token insertion
+- atomic refresh token rotation with generation-guarded child insertion,
+  old-token revocation, and active-device update in one D1 batch
 - session invalidation when a revoked token is presented again
 - invalid grant handling for unknown, expired, disabled-user, and revoked-device refresh tokens
 - refresh grant compatibility fixture

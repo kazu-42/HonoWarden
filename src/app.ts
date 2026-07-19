@@ -29,6 +29,10 @@ import {
 } from './domain/audit'
 import type { AuditEventName, AuditEventOutcome } from './domain/audit'
 import {
+  nextCredentialRevisionDate,
+  parseSecurityStampRotationBody,
+} from './domain/account-credentials'
+import {
   buildBootstrapUserRecord,
   isBootstrapEnabled,
   resolveBootstrapAccount,
@@ -77,6 +81,8 @@ import { resolveRuntimeEnvironment } from './infra/environment'
 import {
   authRequestNotificationTypes,
   isDurableNotificationEnabled,
+  notificationCredentialRevisionHeader,
+  notificationSecurityStampHeader,
 } from './notification-hub'
 import type { AuthRequestNotificationType } from './notification-hub'
 import { buildServerConfig } from './protocol/config'
@@ -91,6 +97,7 @@ import {
   reserveCipherAttachmentUpload,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
+import { rotateAccountSecurityStamp } from './repositories/credential-repository'
 import {
   approveAuthRequest,
   consumeAuthRequestWithSession,
@@ -654,9 +661,16 @@ app.get('/notifications/hub', async (c) => {
     const stub = c.env.NOTIFICATION_HUB.get(
       c.env.NOTIFICATION_HUB.idFromName(auth.user.id),
     )
-    return stub.fetch(
-      new Request('https://notification-hub/connect', c.req.raw),
+    const request = new Request('https://notification-hub/connect', c.req.raw)
+    request.headers.set(
+      notificationSecurityStampHeader,
+      auth.user.securityStamp,
     )
+    request.headers.set(
+      notificationCredentialRevisionHeader,
+      auth.user.revisionDate,
+    )
+    return stub.fetch(request)
   }
 
   if (typeof WebSocketPair === 'undefined') {
@@ -1621,6 +1635,7 @@ app.post('/identity/connect/token', async (c) => {
         currentTokenId: session.tokenId,
         userId: session.userId,
         deviceId: session.deviceId,
+        expectedSecurityStamp: session.user.securityStamp,
         deviceIdentifier: session.deviceIdentifier,
         deviceName: null,
         deviceType: null,
@@ -1987,8 +2002,10 @@ app.post('/identity/connect/token', async (c) => {
       resetAt: now,
     })
     await resetAuthFailureBucket(c.env.DB, accountBucketKey)
-    await createPasswordGrantSession(c.env.DB, {
+    const session = await createPasswordGrantSession(c.env.DB, {
       userId: user.id,
+      expectedMasterPasswordHash: user.masterPasswordHash,
+      expectedSecurityStamp: user.securityStamp,
       deviceIdentifier: device.identifier,
       deviceName: device.name,
       deviceType: device.type,
@@ -1999,6 +2016,9 @@ app.post('/identity/connect/token', async (c) => {
       ).toISOString(),
       now,
     })
+    if (session.status !== 'created') {
+      return c.json(tokenErrorResponse(invalidGrantError()), 400)
+    }
 
     const accessToken = await signAccessToken(
       accessTokenConfig.signer,
@@ -2319,6 +2339,265 @@ app.post('/api/accounts/export', async (c) => {
     )
   }
 })
+
+app.post('/api/accounts/security-stamp', async (c) => {
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseSecurityStampRotationBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'The request body is invalid.',
+      ),
+      400,
+    )
+  }
+
+  if (
+    isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) &&
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidSecurityStampProofResponse(c, proofGate.rateLimited)
+    }
+
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.masterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidSecurityStampProofResponse(c, rateLimited)
+    }
+
+    const candidateRevisionDate = new Date().toISOString()
+    const nextRevisionDate = nextCredentialRevisionDate(
+      auth.user.revisionDate,
+      candidateRevisionDate,
+    )
+    const nextSecurityStamp = crypto.randomUUID()
+    const auditEventId = crypto.randomUUID()
+    const auditEvent = buildAuditEvent({
+      name: 'account.security_stamp.rotate',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: nextRevisionDate,
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        allSessionsRevoked: true,
+      },
+    })
+    const result = await rotateAccountSecurityStamp(c.env.DB, {
+      userId: auth.user.id,
+      expectedMasterPasswordHash: auth.user.masterPasswordHash,
+      expectedSecurityStamp: auth.user.securityStamp,
+      expectedRevisionDate: auth.user.revisionDate,
+      nextSecurityStamp,
+      nextRevisionDate,
+      auditEventId,
+      auditEvent,
+    })
+    if (result.status === 'conflict') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'The account credential generation changed concurrently.',
+        ),
+        409,
+      )
+    }
+
+    if (
+      !(await invalidateDurableNotificationSessions(c, auth.user.id, {
+        securityStamp: nextSecurityStamp,
+        revisionDate: nextRevisionDate,
+      }))
+    ) {
+      console.error(
+        JSON.stringify({
+          event: 'account_notification_session_invalidation_failed',
+          requestId: c.get('requestId'),
+          reason: 'notification_hub_unavailable',
+        }),
+      )
+      c.header('Cache-Control', 'no-store')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'session_revocation_incomplete',
+          'Account credentials rotated, but notification session cleanup is incomplete.',
+        ),
+        503,
+      )
+    }
+
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
+    c.header('Cache-Control', 'no-store')
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_security_stamp_rotation_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Security-stamp rotation failed.',
+      ),
+      503,
+    )
+  }
+})
+
+type CredentialProofDefenseState = {
+  accountBucketKey: string
+  ipBucketKey: string
+  now: string
+}
+
+type CredentialProofGate =
+  | {
+      allowed: true
+      state: CredentialProofDefenseState
+    }
+  | {
+      allowed: false
+      rateLimited: boolean
+    }
+
+async function checkCredentialProofDefense(
+  c: AppContext,
+  user: AuthUserRecord,
+): Promise<CredentialProofGate> {
+  const now = new Date().toISOString()
+  const [ipBucketKey, accountBucketKey] = await Promise.all([
+    buildAuthAttemptBucketKey('ip', extractClientAddress(c.req.raw.headers)),
+    buildAuthAttemptBucketKey('account', user.emailNormalized),
+  ])
+  const state = { accountBucketKey, ipBucketKey, now }
+  const [ipBucket, accountBucket] = await Promise.all([
+    findAuthFailureBucket(c.env.DB, ipBucketKey),
+    findAuthFailureBucket(c.env.DB, accountBucketKey),
+  ])
+
+  if (isAccountLocked({ lockedUntil: ipBucket?.lockedUntil ?? null, now })) {
+    return { allowed: false, rateLimited: true }
+  }
+
+  if (
+    isAccountLocked({
+      lockedUntil: accountBucket?.lockedUntil ?? null,
+      now,
+    }) ||
+    isAccountLocked({ lockedUntil: user.loginLockedUntil, now })
+  ) {
+    return {
+      allowed: false,
+      rateLimited: await recordCredentialProofFailure(c, user, state, false),
+    }
+  }
+
+  return { allowed: true, state }
+}
+
+async function recordCredentialProofFailure(
+  c: AppContext,
+  user: AuthUserRecord,
+  state: CredentialProofDefenseState,
+  recordAccountBucket: boolean,
+): Promise<boolean> {
+  await recordAuthAttempt(c.env.DB, {
+    id: crypto.randomUUID(),
+    bucketKey: state.ipBucketKey,
+    subjectKey: state.accountBucketKey,
+    successful: false,
+    occurredAt: state.now,
+  })
+  const ipFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+    bucketKey: state.ipBucketKey,
+    failureLimit: loginDefensePolicy.ipFailureLimit,
+    failureWindowSeconds: loginDefensePolicy.ipFailureWindowSeconds,
+    lockoutSeconds: loginDefensePolicy.ipRetryAfterSeconds,
+    now: state.now,
+  })
+
+  if (recordAccountBucket) {
+    const accountFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+      bucketKey: state.accountBucketKey,
+      failureLimit: loginDefensePolicy.accountFailureLimit,
+      failureWindowSeconds: loginDefensePolicy.accountFailureWindowSeconds,
+      lockoutSeconds: loginDefensePolicy.accountLockoutSeconds,
+      now: state.now,
+    })
+    await recordFailedLogin(c.env.DB, {
+      userId: user.id,
+      failedCount: accountFailureBucket.failedCount,
+      failedAt: accountFailureBucket.updatedAt,
+      lockedUntil: accountFailureBucket.lockedUntil,
+    })
+  }
+
+  return isAccountLocked({
+    lockedUntil: ipFailureBucket.lockedUntil,
+    now: state.now,
+  })
+}
+
+function invalidSecurityStampProofResponse(
+  c: AppContext,
+  rateLimited: boolean,
+): Response {
+  const error = apiError(
+    c.get('requestId'),
+    'invalid_request',
+    'The supplied credentials are invalid.',
+  )
+  if (rateLimited) {
+    c.header('Retry-After', String(loginDefensePolicy.ipRetryAfterSeconds))
+    return c.json(error, 429)
+  }
+
+  return c.json(error, 400)
+}
 
 app.get('/api/policies', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -5414,6 +5693,7 @@ function apiError(
     | 'rate_limited'
     | 'reauth_required'
     | 'revision_conflict'
+    | 'session_revocation_incomplete'
     | 'server_misconfigured'
     | 'storage_unavailable'
     | 'websocket_required',
@@ -6558,7 +6838,10 @@ async function createAuthRequestRoute(c: AppContext) {
       target: { type: 'auth_request', id },
     })
     if (owner) {
-      notifyAuthRequest(c, owner.id, id, authRequestNotificationTypes.pending)
+      notifyAuthRequest(c, owner.id, id, authRequestNotificationTypes.pending, {
+        securityStamp: owner.securityStamp,
+        revisionDate: owner.revisionDate,
+      })
     }
 
     return c.json(
@@ -6760,6 +7043,10 @@ function notifyAuthRequest(
   userId: string,
   requestId: string,
   type: AuthRequestNotificationType,
+  credentialGeneration?: {
+    securityStamp: string
+    revisionDate: string
+  },
 ): void {
   if (
     !isDurableNotificationEnabled(
@@ -6780,7 +7067,12 @@ function notifyAuthRequest(
     .fetch('https://notification-hub/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, userId, type }),
+      body: JSON.stringify({
+        requestId,
+        userId,
+        type,
+        ...credentialGeneration,
+      }),
     })
     .then((response) => {
       if (!response.ok)
@@ -6801,6 +7093,40 @@ function notifyAuthRequest(
     c.executionCtx.waitUntil(delivery)
   } catch {
     void delivery
+  }
+}
+
+async function invalidateDurableNotificationSessions(
+  c: AppContext,
+  userId: string,
+  generation: { securityStamp: string; revisionDate: string },
+): Promise<boolean> {
+  if (
+    !isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    )
+  ) {
+    return true
+  }
+
+  if (!c.env.NOTIFICATION_HUB) return false
+
+  try {
+    const stub = c.env.NOTIFICATION_HUB.get(
+      c.env.NOTIFICATION_HUB.idFromName(userId),
+    )
+    const response = await stub.fetch(
+      new Request('https://notification-hub/invalidate', {
+        method: 'POST',
+        headers: {
+          [notificationSecurityStampHeader]: generation.securityStamp,
+          [notificationCredentialRevisionHeader]: generation.revisionDate,
+        },
+      }),
+    )
+    return response.ok
+  } catch {
+    return false
   }
 }
 

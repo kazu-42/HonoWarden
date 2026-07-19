@@ -1,0 +1,74 @@
+{
+  "title": "HON-160 Account Credential Mutation",
+  "slug": "hon-160-account-credential-mutation",
+  "created_at": "2026-07-18T16:14:20+00:00",
+  "updated_at": "2026-07-19T00:00:27Z",
+  "status": "pr_remediation_ready",
+  "approval": {
+    "required": true,
+    "granted": true,
+    "notes": "The user authorized reviewed GitHub publication and admin merge. Deployment, production, secret, real-user, and real-credential mutations remain separate gates."
+  },
+  "linear_issue": "HON-160",
+  "source_pins": {
+    "clients": "web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1",
+    "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+  },
+  "linear_checkpoint": {
+    "issue": "HON-202",
+    "state": "In Progress",
+    "status": "exact",
+    "comment_id": "0c373036-cfb6-4b39-aeae-d397852645ef",
+    "comment_bytes": 1667,
+    "comment_sha256": "d6e492c056bee7afbaa0accbf12ba98b666887e254254ef4c810cf8cae8380af",
+    "sync_readback": "results/hon-202-source-ready-readback.json",
+    "independent_readback": "results/hon-202-source-ready-independent-readback.json"
+  },
+  "publication": {
+    "pull_request": 101,
+    "status": "draft",
+    "superseded_published_head": "62bcd08b4fc2556456fcec84f3bc38be6cb87d9e",
+    "latest_local_state": "Two published-head P1 and four P2 findings remediated; commit, push, fresh CI, and clean exact-head review pending",
+    "admin_merge_authorized": true
+  },
+  "wave2_rebase_verification": {
+    "verified_at": "2026-07-18T21:05:40Z",
+    "base": "d395d02e5ef4b0cea6a4833646af8a4f5810e3ce",
+    "implementation_commit": "de4f328",
+    "backup_commit": "bdfdd5b884afb0b3bfc263ca28d1cf380f0898f3",
+    "range_diff": "exact",
+    "focused_vitest": "4 files, 261 tests",
+    "full_vitest": "84 files, 944 tests",
+    "workflow_node_tests": "17 tests",
+    "real_d1": "passed with synthetic data only",
+    "release_gate": "11 pass, 0 manual, 0 block",
+    "independent_review": "no actionable findings",
+    "review_sandbox_note": "83 files and 941 tests passed; 3 unchanged backup CLI tests timed out while the host full suite passed 84 files and 944 tests"
+  },
+  "packets": [
+    { "id": "01-official-contract", "status": "done" },
+    { "id": "02-current-boundary", "status": "done" },
+    { "id": "03-test-rollback", "status": "done" },
+    { "id": "04-linear-decomposition", "status": "done" },
+    { "id": "05-auth-2a-implementation", "status": "done" },
+    { "id": "06-verification-review", "status": "done" }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "complete app and notification hub: 257 tests",
+      "scheduled retention: 9 tests",
+      "full Vitest: 84 files, 958 tests",
+      "pnpm check",
+      "pnpm lint",
+      "pnpm format",
+      "pnpm brand:scan",
+      "workflow Node tests: 17 tests",
+      "fresh local D1 transaction, rollback, auth-request invalidation, password and refresh session issuance, credential-proof defense, and audit-toggle smoke",
+      "git diff --check",
+      "independent complete-diff review: no actionable findings",
+      "focused managed-checkpoint review: no actionable findings"
+    ],
+    "boundary": "Draft PR #101 exists. The current local generation-guarded session-issuance remediation still needs commit, push, exact-head CI and review, admin merge, main readback, and Linear closeout. Deployment, production operation, and compatibility promotion remain pending."
+  }
+}
