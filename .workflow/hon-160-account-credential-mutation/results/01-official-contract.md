@@ -38,9 +38,17 @@ Primary paths at the pinned revisions above:
 - Server `v2026.6.1` bounds are inclusive: PBKDF2-SHA256 iterations
   `600000..2000000`; Argon2id iterations `2..10`, memory `15..1024` MiB, and
   parallelism `1..16`.
+- Client `web-v2026.6.1` `Argon2KdfConfig` accepts Argon2id memory
+  `16..1024` MiB for both setting and prelogin validation. HonoWarden therefore
+  uses the server/client intersection `16..1024` MiB and rejects the
+  server-only 15 MiB value before mutation.
 - KDF mutation stores the new authentication hash, wrapped user key, KDF fields,
   security stamp, and account revision as one user generation. Logout is the
   default behavior for the pinned server.
+- Password prelogin returns an exact stored generation for a known account and
+  uses a normalized-email, keyed-hash selection over PBKDF2 and Argon2id decoys
+  for an unknown account. HonoWarden preserves that stable mixed-algorithm
+  property with its own domain-separated secret use and client-safe decoys.
 
 Primary paths at the pinned revisions above:
 
@@ -48,7 +56,9 @@ Primary paths at the pinned revisions above:
 - Server: `src/Core/KeyManagement/Kdf/Implementations/ChangeKdfCommand.cs`
 - Server: `src/Core/Utilities/KdfSettingsValidator.cs`
 - Server: `src/Core/KeyManagement/Kdf/KdfConstants.cs`
+- Server: `src/Identity/Controllers/AccountsController.cs`
 - Clients: `libs/common/src/key-management/kdf/change-kdf.service.ts`
+- Clients: `libs/key-management/src/models/kdf-config.ts`
 
 ## Security stamp and account keys
 

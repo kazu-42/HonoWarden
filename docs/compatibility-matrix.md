@@ -22,7 +22,9 @@ so it does not add a flow to any row's `liveEvidence` and does not promote a
 verification level.
 
 `POST /api/accounts/kdf` is pinned to the same revisions. Focused tests cover
-the complete PBKDF2-SHA256 and Argon2id bounds, and
+the complete PBKDF2-SHA256 bounds and the client-safe Argon2id intersection.
+The pinned server permits 15 MiB, while pinned clients require at least 16 MiB,
+so HonoWarden accepts only `16..1024` MiB. The
 `pnpm account:kdf-change:lifecycle` proves a PBKDF2-to-Argon2id generation
 change through local Wrangler and real local D1. It verifies prelogin, password
 and refresh token responses, profile, sync, old-generation rejection, and D1

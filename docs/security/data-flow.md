@@ -100,7 +100,8 @@ Secret-handling invariants:
    old client-derived authentication hash as proof.
 3. Worker requires matching authentication and unlock KDF settings, the same
    unchanged normalized-email salt, and one supported KDF configuration within
-   the pinned inclusive bounds.
+   the pinned server/client intersection. In particular, Argon2id memory starts
+   at 16 MiB because pinned clients reject the server-only 15 MiB boundary.
 4. The credential-proof defense and constant-time old-hash comparison run before
    mutation. Unknown or structurally invalid stored KDF values fail at the auth
    repository read boundary and cannot become a PBKDF2 fallback.
@@ -109,8 +110,10 @@ Secret-handling invariants:
    device and refresh sessions; supersedes active auth requests; and persists
    `account.kdf.change`.
 6. Prelogin, password and refresh token responses, profile, and sync all project
-   the same stored generation. Unknown allowed prelogin accounts receive a valid
-   synthetic default rather than an account-existence error.
+   the same stored generation. Unknown allowed prelogin accounts receive an
+   email-stable HMAC-selected decoy from client-valid PBKDF2 and Argon2id shapes
+   rather than a fixed account-existence signal. The HMAC is domain-separated
+   and keyed by `HONOWARDEN_TOKEN_SECRET`; a missing secret fails before D1.
 7. Post-commit Durable Object cleanup has the same forward-only recovery boundary
    as password change. Its failure never restores the old KDF generation.
 

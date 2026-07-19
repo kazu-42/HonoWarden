@@ -10,15 +10,19 @@ Key invariants:
   active, allowing a reader-capable release to precede later activation
 - request authentication/unlock data must have the same unchanged account salt
   and exactly the same new KDF
-- PBKDF2-SHA256 and Argon2id bounds are inclusive and pinned to the verified
-  upstream revisions
+- PBKDF2-SHA256 and Argon2id bounds are inclusive and use the verified pinned
+  server/client intersection, rejecting the server-only 15 MiB Argon2 value
 - malformed, missing, unknown, mixed, drifted, stale, concurrent, and failed-D1
   paths cannot partially mutate credential or session state
 - authentication hash, wrapped user key, KDF fields, security stamp, revision,
   session revocation, auth-request invalidation, and required audit row form one
   D1 generation
 - prelogin, password and refresh token responses, profile, and sync use one
-  stored-KDF mapping; unknown stored algorithms fail before session mutation
+  stored-KDF mapping; unknown stored algorithms fail before session mutation,
+  while unknown allowed accounts receive an email-stable, domain-separated
+  HMAC decoy spanning client-valid PBKDF2 and Argon2id shapes
+- allowed prelogin requires `HONOWARDEN_TOKEN_SECRET` before D1 access and logs
+  only a non-secret configuration reason when the secret is absent
 - no plaintext password, unwrapped key, hash, wrapped key, token, or request body
   enters audit context or workflow evidence
 

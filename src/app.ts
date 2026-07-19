@@ -810,9 +810,32 @@ async function handlePrelogin(c: AppContext) {
   const emailNormalized = normalizeEmail(
     (body as { email: string }).email,
   ) as string
+  const preloginKdfSecret = c.env?.HONOWARDEN_TOKEN_SECRET
+  if (!preloginKdfSecret?.trim()) {
+    console.error(
+      JSON.stringify({
+        event: 'account_prelogin_kdf_lookup_failed',
+        requestId: c.get('requestId'),
+        reason: 'token_secret_missing',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Prelogin KDF protection is not configured.',
+      ),
+      503,
+    )
+  }
+
   try {
     const user = await findAuthUserByEmail(c.env.DB, emailNormalized)
-    const response = buildPreloginKdfResponse(emailNormalized, user)
+    const response = await buildPreloginKdfResponse(
+      emailNormalized,
+      user,
+      preloginKdfSecret,
+    )
     if (!response) {
       throw new Error('stored account KDF generation is invalid')
     }

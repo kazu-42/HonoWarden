@@ -326,6 +326,10 @@ describe('account credential domain', () => {
       argon2idKdf({ memory: accountCredentialKdfPolicy.argon2Memory.min - 1 }),
     ],
     [
+      'Argon2id server-only memory minimum rejected by the pinned client',
+      argon2idKdf({ memory: 15 }),
+    ],
+    [
       'Argon2id above maximum memory',
       argon2idKdf({ memory: accountCredentialKdfPolicy.argon2Memory.max + 1 }),
     ],

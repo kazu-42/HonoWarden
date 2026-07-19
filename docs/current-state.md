@@ -1143,15 +1143,17 @@ Implemented:
 - authenticated `POST /api/accounts/kdf` with current client-derived hash proof,
   unchanged normalized-email salt, and matching authentication/unlock data;
   the writer is default-off behind `HONOWARDEN_KDF_MUTATION_ENABLED`
-- inclusive PBKDF2-SHA256 bounds `600000..2000000` and Argon2id bounds of
-  iterations `2..10`, memory `15..1024` MiB, and parallelism `1..16`
+- inclusive PBKDF2-SHA256 bounds `600000..2000000` and client-safe Argon2id
+  bounds of iterations `2..10`, memory `16..1024` MiB, and parallelism
+  `1..16`; the pinned server accepts 15 MiB, but pinned clients reject it
 - one generation-guarded D1 batch that replaces the authentication hash, opaque
   wrapped user key, and KDF columns; rotates security stamp/revision; revokes
   devices and refresh tokens; supersedes active auth requests; and persists the
   required `account.kdf.change` audit event
 - exact stored KDF projection through known-account prelogin, password and
   refresh token responses, account profile unlock metadata, and sync unlock
-  metadata; unknown allowed prelogin accounts receive a valid synthetic default
+  metadata; unknown allowed prelogin accounts receive an email-stable,
+  secret-keyed decoy selected from client-valid PBKDF2 and Argon2id shapes
 - fail-closed stored-KDF validation at the auth repository boundary so unknown
   algorithms cannot be silently projected as PBKDF2 after session mutation
 - `pnpm account:kdf-change:lifecycle` real local-D1 synthetic evidence for

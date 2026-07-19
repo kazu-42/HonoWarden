@@ -342,6 +342,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], { authUser: user }),
         HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
 
@@ -377,6 +378,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], { authUser: null }),
         HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
 
@@ -409,6 +411,7 @@ describe('HonoWarden app', () => {
           authUser: { ...authUserRecord(), kdfAlgorithm: 'unknown-kdf' },
         }),
         HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
 
@@ -416,6 +419,31 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: 'database_unavailable' },
     })
+  })
+
+  it('fails allowed prelogin before D1 when the decoy secret is missing', async () => {
+    const database = new FakeD1Database(null, [], {
+      authUser: authUserRecord(),
+    })
+    const prepare = vi.spyOn(database, 'prepare')
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'person@example.test' }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'server_misconfigured' },
+    })
+    expect(prepare).not.toHaveBeenCalled()
   })
 
   it('denies prelogin for emails outside the allowlist', async () => {
@@ -7047,6 +7075,7 @@ describe('HonoWarden app', () => {
       {
         DB: database,
         HONOWARDEN_ALLOWED_EMAILS: user.emailNormalized,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
     expect(preloginResponse.status).toBe(200)

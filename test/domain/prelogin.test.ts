@@ -61,15 +61,19 @@ describe('prelogin domain', () => {
     })
   })
 
-  it('projects an exact known Argon2id generation in legacy and current shapes', () => {
+  it('projects an exact known Argon2id generation in legacy and current shapes', async () => {
     expect(
-      buildPreloginKdfResponse('person@example.test', {
-        emailNormalized: 'person@example.test',
-        kdfAlgorithm: 'argon2id',
-        kdfIterations: 6,
-        kdfMemory: 32,
-        kdfParallelism: 4,
-      }),
+      await buildPreloginKdfResponse(
+        'person@example.test',
+        {
+          emailNormalized: 'person@example.test',
+          kdfAlgorithm: 'argon2id',
+          kdfIterations: 6,
+          kdfMemory: 32,
+          kdfParallelism: 4,
+        },
+        'test-token-secret',
+      ),
     ).toEqual({
       kdf: 1,
       kdfIterations: 6,
@@ -85,31 +89,59 @@ describe('prelogin domain', () => {
     })
   })
 
-  it('uses a valid synthetic generation for an unknown allowed account', () => {
-    expect(buildPreloginKdfResponse('unknown@example.test', null)).toEqual({
+  it('uses an email-stable secret-keyed synthetic generation for an unknown allowed account', async () => {
+    const first = await buildPreloginKdfResponse(
+      'unknown@example.test',
+      null,
+      'test-token-secret',
+    )
+    expect(first).toEqual(
+      await buildPreloginKdfResponse(
+        'unknown@example.test',
+        null,
+        'test-token-secret',
+      ),
+    )
+    expect(first).toEqual({
+      kdf: 1,
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      kdfSettings: {
+        kdfType: 1,
+        iterations: 6,
+        memory: 32,
+        parallelism: 4,
+      },
+      salt: 'unknown@example.test',
+    })
+    await expect(
+      buildPreloginKdfResponse(
+        'unknown@example.test',
+        null,
+        'prelogin-secret-one',
+      ),
+    ).resolves.toMatchObject({
       kdf: 0,
       kdfIterations: 600000,
       kdfMemory: null,
       kdfParallelism: null,
-      kdfSettings: {
-        kdfType: 0,
-        iterations: 600000,
-        memory: null,
-        parallelism: null,
-      },
-      salt: 'unknown@example.test',
     })
   })
 
-  it('refuses to project an invalid stored KDF generation', () => {
+  it('refuses to project an invalid stored KDF generation', async () => {
     expect(
-      buildPreloginKdfResponse('person@example.test', {
-        emailNormalized: 'person@example.test',
-        kdfAlgorithm: 'unknown-kdf',
-        kdfIterations: 600000,
-        kdfMemory: null,
-        kdfParallelism: null,
-      }),
+      await buildPreloginKdfResponse(
+        'person@example.test',
+        {
+          emailNormalized: 'person@example.test',
+          kdfAlgorithm: 'unknown-kdf',
+          kdfIterations: 600000,
+          kdfMemory: null,
+          kdfParallelism: null,
+        },
+        'test-token-secret',
+      ),
     ).toBeNull()
   })
 })

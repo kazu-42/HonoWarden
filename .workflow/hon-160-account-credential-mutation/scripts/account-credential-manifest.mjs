@@ -62,7 +62,7 @@ export const accountCredentialPlan = {
       goal: 'Change an existing account between accepted PBKDF2-SHA256 and Argon2id configurations without producing an undecryptable credential generation.',
       scope: [
         'Implement `POST /api/accounts/kdf` with old-hash proof, unchanged account salt, and identical new authentication/unlock KDF data.',
-        'Enforce pinned inclusive bounds: PBKDF2 iterations 600000..2000000; Argon2id iterations 2..10, memory 15..1024 MiB, and parallelism 1..16.',
+        'Enforce the pinned server/client intersection: PBKDF2 iterations 600000..2000000; Argon2id iterations 2..10, memory 16..1024 MiB, and parallelism 1..16.',
         'Project the stored KDF type and parameters consistently through prelogin, password/refresh token responses, profile, and sync.',
       ],
       acceptance: [

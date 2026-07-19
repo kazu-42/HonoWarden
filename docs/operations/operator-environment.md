@@ -220,6 +220,14 @@ operator inputs for [TOTP Secret Rotation](totp-secret-rotation.md). They are
 not Worker runtime variable names and must not be committed, logged, or copied
 into Linear/GitHub evidence.
 
+`HONOWARDEN_TOKEN_SECRET` also keys the domain-separated, email-stable KDF decoy
+selection used for allowlisted accounts that do not exist. Allowed prelogin
+fails with `503 server_misconfigured` before D1 access when this secret is
+missing or blank, so known and unknown accounts share the same configuration
+failure boundary. Rotating the secret changes only unknown-account decoy
+assignment in addition to its documented token blast radius; it does not change
+stored KDF generations.
+
 ## KDF Mutation Rollout
 
 `HONOWARDEN_KDF_MUTATION_ENABLED` is a non-secret, default-off rollout gate for

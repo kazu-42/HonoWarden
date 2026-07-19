@@ -9,8 +9,9 @@ pnpm account:kdf-change:lifecycle
 pnpm vitest run test/ops/account-kdf-change-lifecycle.test.ts
 ```
 
-Both commands passed. The direct runner completed all 17 checks, and the ops
-test reran the isolated lifecycle in 11.57 seconds.
+Both commands passed on the review-remediated candidate. The direct runner
+completed all 17 checks, and the ops test reran the isolated lifecycle in 36.63
+seconds.
 
 Observed HTTP statuses:
 

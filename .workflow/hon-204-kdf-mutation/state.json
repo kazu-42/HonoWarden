@@ -25,7 +25,7 @@
     "focused": "passed",
     "localD1": "passed",
     "full": "passed",
-    "standardReview": "remediation_complete_rerun_pending",
+    "standardReview": "second_remediation_complete_rerun_pending",
     "fiveAxisReview": "pending"
   }
 }

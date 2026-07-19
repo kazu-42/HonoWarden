@@ -7,7 +7,7 @@ export const accountCredentialPolicy = {
 export const accountCredentialKdfPolicy = {
   pbkdf2Iterations: { min: 600_000, max: 2_000_000 },
   argon2Iterations: { min: 2, max: 10 },
-  argon2Memory: { min: 15, max: 1024 },
+  argon2Memory: { min: 16, max: 1024 },
   argon2Parallelism: { min: 1, max: 16 },
 } as const
 

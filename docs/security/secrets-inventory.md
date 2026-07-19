@@ -1,20 +1,20 @@
 # Secrets Inventory
 
-Last reviewed: 2026-07-09.
+Last reviewed: 2026-07-19.
 
 This inventory distinguishes true secrets from sensitive operational artifacts.
 Do not commit real secret values to the repository.
 
 ## Runtime Secrets
 
-| Name                                    | Required For                                                                  | Storage                      | Rotation Trigger                                                 | Failure Mode                                        |
-| --------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------- | --------------------------------------------------- |
-| `HONOWARDEN_BOOTSTRAP_TOKEN`            | restricted account bootstrap                                                  | Wrangler secret or local env | suspected exposure, operator change, after bootstrap window      | bootstrap returns forbidden or disabled             |
-| `HONOWARDEN_TOKEN_SECRET`               | refresh-token hashing and legacy no-kid access-token fallback                 | Wrangler secret or local env | suspected exposure, release key rotation, environment compromise | token exchange and authenticated routes fail closed |
-| `HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET` | active key-id access-token signing when staged key rotation is enabled        | Wrangler secret or local env | suspected exposure, staged access-token key rotation             | token exchange and authenticated routes fail closed |
-| `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS` | previous key-id access-token verification during a staged access-token rotate | Wrangler secret or local env | previous key retirement after token TTL and safety window        | token exchange and authenticated routes fail closed |
-| `HONOWARDEN_TOTP_SECRET`                | AES-GCM wrapping of TOTP setup secrets                                        | Wrangler secret or local env | suspected exposure or planned TOTP re-enrollment event           | TOTP setup/login fails closed                       |
-| `HONOWARDEN_AUTH_REQUEST_SECRET`        | keyed auth-request access-code, account, and device verifiers                 | Wrangler secret or local env | suspected exposure or planned auth-request verifier rotation     | auth-request routes fail closed                     |
+| Name                                    | Required For                                                                                                         | Storage                      | Rotation Trigger                                                 | Failure Mode                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `HONOWARDEN_BOOTSTRAP_TOKEN`            | restricted account bootstrap                                                                                         | Wrangler secret or local env | suspected exposure, operator change, after bootstrap window      | bootstrap returns forbidden or disabled                                |
+| `HONOWARDEN_TOKEN_SECRET`               | refresh-token hashing, legacy no-kid access-token fallback, and domain-separated unknown-account prelogin KDF decoys | Wrangler secret or local env | suspected exposure, release key rotation, environment compromise | allowed prelogin, token exchange, and authenticated routes fail closed |
+| `HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET` | active key-id access-token signing when staged key rotation is enabled                                               | Wrangler secret or local env | suspected exposure, staged access-token key rotation             | token exchange and authenticated routes fail closed                    |
+| `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS` | previous key-id access-token verification during a staged access-token rotate                                        | Wrangler secret or local env | previous key retirement after token TTL and safety window        | token exchange and authenticated routes fail closed                    |
+| `HONOWARDEN_TOTP_SECRET`                | AES-GCM wrapping of TOTP setup secrets                                                                               | Wrangler secret or local env | suspected exposure or planned TOTP re-enrollment event           | TOTP setup/login fails closed                                          |
+| `HONOWARDEN_AUTH_REQUEST_SECRET`        | keyed auth-request access-code, account, and device verifiers                                                        | Wrangler secret or local env | suspected exposure or planned auth-request verifier rotation     | auth-request routes fail closed                                        |
 
 ## Runtime Configuration
 
@@ -62,7 +62,9 @@ Do not commit real secret values to the repository.
   no-kid fallback while refresh-token hashes are preserved.
 - `HONOWARDEN_TOKEN_SECRET` rotation invalidates existing refresh-token hash
   lookups and legacy no-kid access-token fallback. Plan forced re-login and
-  session invalidation when that secret is affected.
+  session invalidation when that secret is affected. Rotation also reassigns
+  the synthetic KDF decoy returned for an unknown allowlisted email, but does
+  not alter any stored account KDF generation.
 - Partial or malformed access-token keyring configuration fails closed instead
   of silently falling back to `HONOWARDEN_TOKEN_SECRET`.
 - TOTP secret rotation should use

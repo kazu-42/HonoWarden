@@ -41,6 +41,17 @@ const defaultKdfResponse = {
   kdfParallelism: null,
 } satisfies PreloginKdfResponse
 
+const syntheticKdfPool = [
+  { kdfType: 0, iterations: 600000, memory: null, parallelism: null },
+  { kdfType: 0, iterations: 600000, memory: null, parallelism: null },
+  { kdfType: 0, iterations: 1000000, memory: null, parallelism: null },
+  { kdfType: 1, iterations: 3, memory: 64, parallelism: 4 },
+  { kdfType: 1, iterations: 6, memory: 32, parallelism: 4 },
+  { kdfType: 1, iterations: 2, memory: 16, parallelism: 1 },
+] as const satisfies readonly AccountCredentialKdf[]
+
+const syntheticKdfDomain = 'honowarden:prelogin-kdf:v1:'
+
 export function resolvePrelogin(
   requestBody: unknown,
   allowedEmailsValue: string | undefined,
@@ -76,22 +87,19 @@ export function resolvePrelogin(
   }
 }
 
-export function buildPreloginKdfResponse(
+export async function buildPreloginKdfResponse(
   emailNormalized: string,
   generation: AccountCredentialGeneration | null,
-): ProjectedPreloginKdfResponse | null {
+  secret: string,
+): Promise<ProjectedPreloginKdfResponse | null> {
   if (generation && generation.emailNormalized !== emailNormalized) {
     return null
   }
 
+  const syntheticKdf = await deriveSyntheticKdf(emailNormalized, secret)
   const kdf = generation
     ? accountCredentialKdfFromStoredGeneration(generation)
-    : {
-        kdfType: defaultKdfResponse.kdf,
-        iterations: defaultKdfResponse.kdfIterations,
-        memory: defaultKdfResponse.kdfMemory,
-        parallelism: defaultKdfResponse.kdfParallelism,
-      }
+    : syntheticKdf
   if (!kdf) {
     return null
   }
@@ -104,6 +112,29 @@ export function buildPreloginKdfResponse(
     kdfSettings: { ...kdf },
     salt: emailNormalized,
   }
+}
+
+async function deriveSyntheticKdf(
+  emailNormalized: string,
+  secret: string,
+): Promise<AccountCredentialKdf> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const digest = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(`${syntheticKdfDomain}${emailNormalized}`),
+  )
+  const index =
+    new DataView(digest).getUint32(0, false) % syntheticKdfPool.length
+
+  return { ...syntheticKdfPool[index]! }
 }
 
 export function parseAllowedEmails(value: string | undefined): Set<string> {

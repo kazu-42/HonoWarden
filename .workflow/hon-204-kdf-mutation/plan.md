@@ -12,11 +12,13 @@ undecryptable generation.
   matching authentication/unlock data for one new KDF generation.
 - The account salt remains the normalized email and both representations use
   the same new KDF.
-- Inclusive KDF bounds match the pinned upstream contract.
+- Inclusive KDF bounds match the pinned server/client intersection.
 - Hash, wrapped user key, KDF fields, security stamp, revision, session
   revocation, auth-request invalidation, and audit event commit atomically.
 - Prelogin, password/refresh responses, profile, and sync project the stored KDF
-  consistently. Unknown stored algorithms fail closed.
+  consistently. Unknown stored algorithms fail closed, while unknown allowed
+  accounts receive a secret-keyed client-valid decoy without a fixed existence
+  signal.
 - Boundary, drift, stale generation, rollback, enumeration resistance, and
   old/new session behavior have focused tests and a real local D1 lifecycle.
 - KDF readers ship independently of a default-off writer so the first deploy is
