@@ -183,3 +183,13 @@ tests, typecheck, lint, format, type generation with no diff, release gate 11/11
 brand scan, diff check, and workflow verification. These are implementation
 checks only; both exact-head reviews remain required after the remediation
 commit.
+
+## Eleventh Review Rejection Containment
+
+The standard review's waitUntil-rejection concern was hardened at the scheduling
+boundary. The targeted regression passes 1 test with 271 skipped, the full app
+suite passes 272 tests, and the repository suite passes 87 files and 1,053
+tests. The captured promise passed to `waitUntil` resolves after a rejected
+Durable Object fetch while preserving immediate HTTP 200 and the existing
+redacted failure event. Exact-head reviews remain pending on the remediation
+commit.

@@ -305,3 +305,18 @@ committed.
 The `0014a` suffix follows the existing forward-only reconciliation precedent
 and avoids colliding with the unmerged HON-161 `0015_personal_api_keys.sql` lane
 or rewriting either worktree's ownership.
+
+## Eleventh Review Finding And Remediation
+
+The standard exact-head review of `9b66e63` raised one P3: the promise passed to
+`waitUntil` did not visibly own a rejection handler. The inner invalidation
+function already converts Durable Object lookup, fetch, and deadline errors to
+`false`, and the existing rejection regression passed. The scheduling boundary
+is nevertheless hardened with `.catch(() => false)` before logging the common
+failure result, making its never-reject contract explicit and resilient to a
+future inner refactor. The route regression now captures the exact promise
+passed to `waitUntil` and proves it resolves after a rejected Durable Object
+fetch while HTTP 200 and redacted failure logging remain unchanged.
+
+This changes the candidate head. Focused, broad, and both exact-head review
+gates must rerun before merge.

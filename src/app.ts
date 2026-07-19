@@ -7569,21 +7569,19 @@ function scheduleDurableNotificationSessionInvalidation(
   }
 
   const requestId = c.get('requestId')
-  const cleanup = invalidateDurableNotificationSessions(
-    c,
-    userId,
-    generation,
-  ).then((success) => {
-    if (success) return
+  const cleanup = invalidateDurableNotificationSessions(c, userId, generation)
+    .catch(() => false)
+    .then((success) => {
+      if (success) return
 
-    console.error(
-      JSON.stringify({
-        event: 'account_notification_session_invalidation_failed',
-        requestId,
-        reason: 'notification_hub_unavailable',
-      }),
-    )
-  })
+      console.error(
+        JSON.stringify({
+          event: 'account_notification_session_invalidation_failed',
+          requestId,
+          reason: 'notification_hub_unavailable',
+        }),
+      )
+    })
 
   try {
     c.executionCtx.waitUntil(cleanup)

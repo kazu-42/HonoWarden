@@ -7480,6 +7480,7 @@ describe('HonoWarden app', () => {
 
   it('acknowledges a committed KDF generation when notification cleanup fails', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const waitUntil = vi.fn()
     const user = authUserRecord()
     const database = new FakeD1Database(null, [], { authUser: user })
     const response = await app.request(
@@ -7504,6 +7505,7 @@ describe('HonoWarden app', () => {
         HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
+      { waitUntil } as unknown as ExecutionContext,
     )
 
     expect(response.status).toBe(200)
@@ -7519,6 +7521,9 @@ describe('HonoWarden app', () => {
     expect(database.auditEventInserts).toEqual([
       expect.objectContaining({ name: 'account.kdf.change' }),
     ])
+    expect(waitUntil).toHaveBeenCalledOnce()
+    const cleanup = waitUntil.mock.calls[0]?.[0] as Promise<void>
+    await expect(cleanup).resolves.toBeUndefined()
     expect(errorLog).toHaveBeenCalledWith(
       expect.stringContaining(
         'account_notification_session_invalidation_failed',
