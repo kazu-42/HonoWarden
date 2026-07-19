@@ -28,6 +28,10 @@
 - If audit insert or any batch member fails, surface 503 and require D1 to roll
   back the keypair and revision.
 - If a projection sees partial stored state, fail without returning either key.
+- Bootstrap may persist only a missing pair or a complete pair with a wrapped
+  user key; reject every other key envelope before D1.
+- Validate projections before profile mutation or backup success audit so a 503
+  cannot conceal a committed update or contradictory success record.
 - If a review finds P1/P2/P3, reopen implementation and rerun all affected
   focused, full, and exact-head gates.
 

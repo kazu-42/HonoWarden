@@ -1,4 +1,5 @@
 import { normalizeEmail, parseAllowedEmails } from './prelogin'
+import { classifyAccountKeyState } from './account-keys'
 
 export type BootstrapAccountPayload = {
   email: string
@@ -80,6 +81,17 @@ export function resolveBootstrapAccount(
     }
   }
 
+  const userKey = optionalString(requestBody.userKey)
+  const publicKey = optionalString(requestBody.publicKey)
+  const privateKey = optionalString(requestBody.privateKey)
+  const accountKeyState = classifyAccountKeyState({ publicKey, privateKey })
+  if (
+    accountKeyState.status === 'invalid' ||
+    (accountKeyState.status === 'complete' && userKey === null)
+  ) {
+    return invalidBootstrapRequest()
+  }
+
   return {
     ok: true,
     payload: {
@@ -87,9 +99,9 @@ export function resolveBootstrapAccount(
       emailNormalized,
       displayName: optionalString(requestBody.displayName),
       masterPasswordHash,
-      userKey: optionalString(requestBody.userKey),
-      publicKey: optionalString(requestBody.publicKey),
-      privateKey: optionalString(requestBody.privateKey),
+      userKey,
+      publicKey,
+      privateKey,
     },
   }
 }

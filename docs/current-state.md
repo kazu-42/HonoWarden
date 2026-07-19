@@ -1203,6 +1203,9 @@ Implemented:
   profile, sync, backup, and the dedicated account-key response; a missing
   wrapped user key or partial stored pair fails without exposing key material or
   mutating a session
+- bootstrap rejects partial pairs and complete pairs without a wrapped user key
+  before D1; profile updates and successful backup audits validate the same
+  projection before committing their side effects
 - tracked false defaults in development, staging, production, `.env.example`,
   generated Worker bindings, and operator rollout documentation
 - pinned `account_keys` read/write compatibility fixtures

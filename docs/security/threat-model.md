@@ -208,8 +208,9 @@ Explicitly excluded public sharing surface:
     initialization requires a non-empty wrapped user key and the exact active
     both-null stamp/revision generation, persists a required redacted audit in
     the same D1 batch, treats exact replay as a no-op, rejects replacement/V2
-    input, and uses complete-only projections before any touched token-session
-    mutation.
+    input, constrains bootstrap to missing-or-complete key envelopes, and uses
+    complete-only projections before touched token-session, profile, or backup
+    success side effects.
 
 ## Required Follow-Up Before Real Secrets
 

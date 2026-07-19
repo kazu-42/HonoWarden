@@ -273,6 +273,13 @@ different existing value fail without overwrite or disclosure. Full
 replacement and data rewrap belong to HON-206 and must never be routed through
 this initializer.
 
+The existing operator-only bootstrap route enforces the same stored-state
+boundary: account-key columns are both absent or both present, and a present
+pair requires a non-empty wrapped user key. Profile mutation and backup export
+also validate this envelope before updating the account or recording a
+successful export. A 503 caused by invalid stored key state therefore does not
+mean either side effect committed.
+
 The top-level, staging, and production `wrangler.jsonc` values remain false.
 Source merge does not activate the routes. Activation requires separate
 official-client lifecycle evidence and operator approval; disabling the flag is

@@ -16,6 +16,10 @@
   partial-state outcomes remain conflicts.
 - Password, TOTP, auth-request, and refresh-token flows construct the projection
   before challenge consumption, session creation, or token rotation.
+- Bootstrap rejects partial pairs and complete pairs without a wrapped user key
+  before D1, so supported account creation cannot seed an unusable projection.
+- Profile updates and backup exports validate the projection before the user
+  update or successful export audit can commit.
 
 ## Invariants proved
 
@@ -31,6 +35,8 @@
   retry, even when the resulting keypair has the requested values.
 - Partial stored state cannot consume a TOTP challenge, create a password-grant
   session, rotate a refresh token, or disclose either surviving value.
+- Projection failure cannot leave a committed profile update or a successful
+  audit for a backup that was not returned.
 
 ## Verification
 

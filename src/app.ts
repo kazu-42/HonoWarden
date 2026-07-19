@@ -2389,6 +2389,14 @@ app.post('/api/accounts/export', async (c) => {
       listCipherAttachmentsByUser(c.env.DB, auth.user.id),
     ])
     const generatedAt = new Date().toISOString()
+    const exportResponse = buildBackupExportResponse({
+      user: auth.user,
+      folders,
+      ciphers,
+      attachments,
+      generatedAt,
+      requestId: c.get('requestId'),
+    })
 
     await emitBackupExportAuditEvent(c, auth, 'success', {
       folderCount: folders.length,
@@ -2405,16 +2413,7 @@ app.post('/api/accounts/export', async (c) => {
       )}.json"`,
     )
 
-    return c.json(
-      buildBackupExportResponse({
-        user: auth.user,
-        folders,
-        ciphers,
-        attachments,
-        generatedAt,
-        requestId: c.get('requestId'),
-      }),
-    )
+    return c.json(exportResponse)
   } catch {
     await emitBackupExportAuditEvent(c, auth, 'failure', {
       reason: 'database_unavailable',
@@ -7385,6 +7384,7 @@ async function handleAccountProfileUpdate(c: AppContext) {
   }
 
   try {
+    buildAccountKeyProjection(auth.user)
     const now = new Date().toISOString()
     const result = await updateAccountProfile(c.env.DB, {
       userId: auth.user.id,

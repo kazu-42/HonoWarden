@@ -13,11 +13,14 @@ any replacement path or exposing unwrapped key material.
 - `POST /api/accounts/keys` accepts one complete bounded legacy keypair,
   rejects partial/ambiguous/V2 input before D1, and treats an exact replay as a
   successful no-op while rejecting any different replacement.
+- The existing bootstrap writer persists only a missing pair or a complete pair
+  with its wrapped user key; it cannot create a state rejected by projections.
 - First initialization advances only account revision, preserves the security
   stamp and all existing sessions, and commits one redacted required audit
   event atomically with the keypair.
 - Profile, password token, refresh token, and sync all project the same complete
-  keypair; partial stored state is never returned by any touched projection.
+  keypair; partial stored state is never returned by any touched projection,
+  and profile/export side effects occur only after projection validation.
 - Fake-D1 and real local D1 tests prove rollback, stale-write, cross-user,
   disabled-user, idempotency, session-preservation, and audit invariants.
 - Focused and full repository gates, pinned-client synthetic evidence,
@@ -61,6 +64,8 @@ any replacement path or exposing unwrapped key material.
   must be tested, not inferred.
 - Existing corrupt partial rows must fail explicitly and must not leak the
   surviving half through legacy projections.
+- Projection validation must precede profile mutations and backup success audit
+  persistence so a failed response cannot leave a committed success side effect.
 
 ## Approval Required
 

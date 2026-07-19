@@ -2781,6 +2781,38 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('rejects an incomplete bootstrap key envelope before D1', async () => {
+    const database = new FakeD1Database(null, [])
+    const prepare = vi.spyOn(database, 'prepare')
+    const response = await app.request(
+      '/api/accounts/bootstrap',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-HonoWarden-Bootstrap-Token': 'expected-token',
+        },
+        body: JSON.stringify({
+          email: 'person@example.test',
+          masterPasswordHash: 'synthetic-master-password-hash',
+          publicKey: 'synthetic-public-key',
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+        HONOWARDEN_BOOTSTRAP_ENABLED: 'true',
+        HONOWARDEN_BOOTSTRAP_TOKEN: 'expected-token',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'invalid_request' },
+    })
+    expect(prepare).not.toHaveBeenCalled()
+  })
+
   it('returns conflict for duplicate bootstrap accounts', async () => {
     const response = await app.request(
       '/api/accounts/bootstrap',
@@ -4566,6 +4598,48 @@ describe('HonoWarden app', () => {
     expect(serialized).not.toContain('2.encrypted')
   })
 
+  it('does not audit backup success when account-key projection is invalid', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = {
+      ...authUserRecord(),
+      publicKey: 'synthetic-surviving-public-key',
+      privateKey: null,
+    }
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/export',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await recentPasswordAccessTokenFor(user)}`,
+          'X-Request-Id': 'invalid-key-backup-export-request',
+        },
+      },
+      {
+        DB: database,
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    expect(database.auditEventInserts).toHaveLength(1)
+    expect(database.auditEventInserts[0]).toMatchObject({
+      name: 'backup.export',
+      outcome: 'failure',
+      requestId: 'invalid-key-backup-export-request',
+    })
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    const emitted = JSON.parse(auditLog.mock.calls[0]?.[0] ?? '{}')
+    expect(emitted).toMatchObject({
+      name: 'backup.export',
+      outcome: 'failure',
+    })
+    expect(JSON.stringify(emitted)).not.toContain(
+      'synthetic-surviving-public-key',
+    )
+  })
+
   it('sets up TOTP for an authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await recentPasswordAccessTokenFor(user)
@@ -5987,6 +6061,41 @@ describe('HonoWarden app', () => {
       Storage: 15,
       MaxStorageGb: 1,
     })
+  })
+
+  it('validates account-key projection before updating the profile', async () => {
+    const user = {
+      ...authUserRecord(),
+      publicKey: 'synthetic-surviving-public-key',
+      privateKey: null,
+    }
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      userUpdateChanges: 1,
+    })
+    const prepare = vi.spyOn(database, 'prepare')
+    const response = await app.request(
+      '/api/accounts/profile',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: 'Must Not Commit' }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    expect(
+      prepare.mock.calls.some(([query]) =>
+        String(query).includes('display_name = ?'),
+      ),
+    ).toBe(false)
   })
 
   it('rejects invalid account profile update payloads', async () => {

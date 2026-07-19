@@ -147,11 +147,15 @@ Failure invariants:
 - malformed, unknown, oversized, partial, or V2 input is state-free
 - a missing or blank wrapped user key fails before initialization and no
   complete account-key projection is returned
+- bootstrap rejects a partial pair or a complete pair without a wrapped user
+  key before account insertion
 - stale stamp/revision, disabled user, cross-user id, partial stored state, or a
   different existing pair cannot overwrite account keys
 - audit reservation or user-update failure rolls the whole D1 batch back
 - a partial stored pair cannot be returned or consume a TOTP challenge, create
   an auth session, or rotate a refresh token
+- profile updates and backup success audits occur only after the same projection
+  validates, so a projection failure leaves neither side effect
 - this initializer never rotates a security stamp; true replacement belongs to
   a separate state machine with data-rewrap and session-revocation rules
 

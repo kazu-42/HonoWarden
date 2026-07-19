@@ -143,6 +143,9 @@ Secret-handling invariants:
    bounded V1 public key and opaque wrapped-private key to
    `POST /api/accounts/keys`. Unknown, partial, conflicting-alias, or V2 fields
    fail before mutation.
+   The operator-only bootstrap writer independently permits only a missing pair
+   or a complete pair with its wrapped user key, so it cannot seed a state that
+   this projection rejects.
 3. Worker classifies stored account-key state as both-null, complete, or
    invalid. Only both-null can initialize. An exact complete replay returns the
    existing response without a write; a missing wrapped user key, any different
@@ -157,7 +160,8 @@ Secret-handling invariants:
 6. Token, refresh-token, profile, sync, backup, and account-key responses use
    one complete-state projection. Password/TOTP, auth-request, and refresh-token
    flows validate that projection before challenge consumption, session
-   creation, or token rotation.
+   creation, or token rotation. Profile updates validate it before updating the
+   user row, and backup export builds it before persisting a success audit.
 
 Secret-handling invariants:
 

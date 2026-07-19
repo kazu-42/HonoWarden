@@ -9,7 +9,7 @@ const endpoint = 'https://api.linear.app/graphql'
 const issueId = '4eeebb24-7112-4e05-9d91-9b1fabbea57c'
 const issueIdentifier = 'HON-205'
 const marker = '<!-- honowarden-managed:HON-205:execution-plan -->'
-const checkedAt = '2026-07-20 01:40 JST'
+const checkedAt = '2026-07-20 01:55 JST'
 const mode = parseMode(process.argv.slice(2))
 const workflowRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -32,7 +32,7 @@ const body = [
   'Implementation packets:',
   '1. Pin the V1 `publicKey` + `encryptedPrivateKey` request and legacy/nested response envelope; add strict bounded parser and stored-state tests.',
   '2. Add guarded migration-free D1 initialization requiring an existing wrapped user key, using `UPDATE ... RETURNING id` plus one required audit event in the same batch.',
-  '3. Add exact-true default-off GET/POST routes and one complete-state projection rule for token, refresh, profile, and sync.',
+  '3. Add exact-true default-off GET/POST routes, keep bootstrap key envelopes missing-or-complete, and apply one complete-state projection rule before token, refresh, profile, sync, and export side effects.',
   '4. Prove real local D1 initialization/replay/conflict/rollback/restart behavior, run pinned synthetic compatibility evidence, update docs, review, PR/CI, merge/main, and exact Linear closeout.',
   '',
   'Security and behavior invariants:',
@@ -40,6 +40,7 @@ const body = [
   '- V2 signature/security/signed-public-key fields are unsupported and rejected before D1. The server stores opaque public and wrapped-private values only.',
   '- First initialization advances revision and atomically audits it while preserving the security stamp and all existing sessions. True replacement remains HON-206.',
   '- Partial stored state is never returned by GET, token, refresh, profile, or sync.',
+  '- Bootstrap cannot persist a partial pair or a complete pair without its wrapped user key. Profile updates and backup success audits occur only after projection validation.',
   '',
   'Completion gates:',
   '- Focused/full/compatibility tests, real local D1 readback, typecheck/lint/format/release gate, standard review, and separate five-axis review.',
