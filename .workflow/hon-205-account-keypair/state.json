@@ -16,12 +16,12 @@
     },
     {
       "id": "02-repository",
-      "status": "in_progress",
-      "result": null
+      "status": "completed",
+      "result": "results/02-repository.md"
     },
     {
       "id": "03-routes-projections",
-      "status": "pending",
+      "status": "in_progress",
       "result": null
     },
     {

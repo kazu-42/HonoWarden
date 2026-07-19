@@ -50,6 +50,7 @@ type FakeD1DatabaseOptions = {
   totpChallengeUpdateChanges?: number
   auditEventCleanupChanges?: number
   auditEventInsertThrows?: boolean
+  accountKeyInitializationFailureAt?: 'user' | 'audit'
   credentialRotationConflict?: boolean
   credentialRotationFailureAt?:
     'user' | 'devices' | 'refresh_tokens' | 'auth_requests' | 'audit'
@@ -1256,6 +1257,14 @@ export class FakeD1Database {
       __fakeBoundValues: unknown[]
     }>
 
+    if (isAccountKeyInitializationBatch(fakeStatements)) {
+      return applyAccountKeyInitializationBatch(
+        this.options,
+        fakeStatements,
+        this.auditEventInserts,
+      ) as D1Result<T>[]
+    }
+
     if (isCredentialRotationBatch(fakeStatements)) {
       return applyCredentialRotationBatch(
         this.options,
@@ -1468,6 +1477,124 @@ export class FakeD1Database {
         changes: this.options.deviceUpdateChanges ?? 1,
       },
     }))
+  }
+}
+
+function isAccountKeyInitializationBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  return (
+    statements.length === 2 &&
+    statements.some(
+      (statement) =>
+        /UPDATE\s+users/.test(statement.__fakeQuery) &&
+        statement.__fakeQuery.includes('public_key = ?') &&
+        statement.__fakeQuery.includes('private_key = ?') &&
+        statement.__fakeQuery.includes('public_key IS NULL') &&
+        statement.__fakeQuery.includes('private_key IS NULL') &&
+        statement.__fakeQuery.includes('RETURNING id'),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO audit_events'),
+    )
+  )
+}
+
+function applyAccountKeyInitializationBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+  auditEventInserts: FakeAuditEventInsert[],
+): D1Result[] {
+  const userRows = uniqueRows([
+    ...(options.authUser ? [options.authUser] : []),
+    ...(options.authUsers ?? []),
+  ])
+  const snapshots = userRows.map((row) => ({ row, values: { ...row } }))
+  const auditLength = auditEventInserts.length
+
+  try {
+    const userStatement = statements.find(
+      (statement) =>
+        /UPDATE\s+users/.test(statement.__fakeQuery) &&
+        statement.__fakeQuery.includes('public_key = ?'),
+    )
+    const auditStatement = statements.find((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO audit_events'),
+    )
+    if (!userStatement || !auditStatement) {
+      throw new Error('account key initialization statement missing')
+    }
+
+    const values = userStatement.__fakeBoundValues
+    const user = userRows.find((row) => row.id === values[4])
+    const generationMatches =
+      user != null &&
+      fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
+      fakeColumn(user, 'publicKey', 'public_key') == null &&
+      fakeColumn(user, 'privateKey', 'private_key') == null &&
+      fakeColumn(user, 'securityStamp', 'security_stamp') === values[5] &&
+      fakeColumn(user, 'revisionDate', 'revision_date') === values[6]
+
+    if (generationMatches && user) {
+      setFakeColumn(user, 'publicKey', 'public_key', values[0])
+      setFakeColumn(user, 'privateKey', 'private_key', values[1])
+      setFakeColumn(user, 'revisionDate', 'revision_date', values[2])
+      setFakeColumn(user, 'updatedAt', 'updated_at', values[3])
+    }
+    failAccountKeyInitializationAt(options, 'user')
+
+    const results = new Map<FakePreparedStatement, D1Result>()
+    results.set(userStatement, {
+      success: true,
+      results: generationMatches && user ? [{ id: user.id }] : [],
+      meta: { ...fakeMeta, changes: generationMatches ? 1 : 0 },
+    })
+
+    if (generationMatches) {
+      const auditValues = auditStatement.__fakeBoundValues
+      if (auditEventInserts.some((event) => event.id === auditValues[0])) {
+        throw new Error('duplicate account key initialization audit event')
+      }
+      auditEventInserts.push({
+        id: String(auditValues[0]),
+        schemaVersion: Number(auditValues[1]),
+        name: String(auditValues[2]),
+        outcome: String(auditValues[3]),
+        requestId: String(auditValues[4]),
+        occurredAt: String(auditValues[5]),
+        actorUserId: nullableString(auditValues[6]),
+        actorDeviceIdentifier: nullableString(auditValues[7]),
+        targetType: nullableString(auditValues[8]),
+        targetId: nullableString(auditValues[9]),
+        contextJson: nullableString(auditValues[10]),
+      })
+    }
+    failAccountKeyInitializationAt(options, 'audit')
+    results.set(auditStatement, fakeResult(generationMatches ? 1 : 0))
+
+    return statements.map(
+      (statement) => results.get(statement) ?? fakeResult(0),
+    )
+  } catch (error) {
+    for (const { row, values } of snapshots) {
+      for (const key of Object.keys(row)) {
+        delete row[key]
+      }
+      Object.assign(row, values)
+    }
+    auditEventInserts.splice(auditLength)
+    throw error
+  }
+}
+
+function failAccountKeyInitializationAt(
+  options: FakeD1DatabaseOptions,
+  stage: NonNullable<
+    FakeD1DatabaseOptions['accountKeyInitializationFailureAt']
+  >,
+): void {
+  if (options.accountKeyInitializationFailureAt === stage) {
+    throw new Error(`account key initialization ${stage} failed`)
   }
 }
 
