@@ -4,7 +4,9 @@ Initial reviewed commit: `7f8c4d4c0ec7329ed44fc814001ae25a2b94dc55`
 
 Second reviewed commit: `f32f1f71d1d6ce9761326ac35c44c10b91270495`
 
-Status: second remediation complete; exact-head re-review pending
+Third reviewed commit: `784a18f9cd5c442c6044104999768b0405779931`
+
+Status: third remediation complete; exact-head re-review pending
 
 ## Finding
 
@@ -58,3 +60,27 @@ merge approval. A clean standard review must run again on the final exact head.
 Focused remediation verification passed 3 files and 307 tests. Because this
 remediation changes code again, broad verification and both exact-head reviews
 must rerun before merge approval.
+
+## Third Review Finding
+
+- P2: the six-entry synthetic KDF pool could never return an accepted tuple
+  outside those presets. A known account using PBKDF2 `700000`, for example,
+  was therefore distinguishable from every unknown allowlisted address despite
+  the secret-keyed HMAC selection.
+
+## Third Remediation
+
+- replaced finite preset selection with a domain-versioned HMAC derivation over
+  the complete accepted PBKDF2 and Argon2id parameter ranges
+- kept algorithm choice and every parameter deterministic for one normalized
+  email and secret while making every accepted tuple a plausible decoy
+- added fixed non-preset PBKDF2 and Argon2id vectors plus sampled policy-bound
+  coverage
+- regenerated tracked Wrangler bindings so the default-off rollout variable is
+  represented in generated environment types
+
+Focused verification passes 3 files and 309 tests; full verification passes 86
+files and 1,041 tests, 101 compatibility tests, the 17-check local D1 lifecycle,
+typecheck, lint, format, type generation, release gate, brand scan, diff check,
+and workflow verification. Clean standard plus five-axis reviews must run on
+the resulting exact commit.

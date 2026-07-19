@@ -1,4 +1,5 @@
 import {
+  accountCredentialKdfPolicy,
   accountCredentialKdfFromStoredGeneration,
   type AccountCredentialGeneration,
   type AccountCredentialKdf,
@@ -41,16 +42,7 @@ const defaultKdfResponse = {
   kdfParallelism: null,
 } satisfies PreloginKdfResponse
 
-const syntheticKdfPool = [
-  { kdfType: 0, iterations: 600000, memory: null, parallelism: null },
-  { kdfType: 0, iterations: 600000, memory: null, parallelism: null },
-  { kdfType: 0, iterations: 1000000, memory: null, parallelism: null },
-  { kdfType: 1, iterations: 3, memory: 64, parallelism: 4 },
-  { kdfType: 1, iterations: 6, memory: 32, parallelism: 4 },
-  { kdfType: 1, iterations: 2, memory: 16, parallelism: 1 },
-] as const satisfies readonly AccountCredentialKdf[]
-
-const syntheticKdfDomain = 'honowarden:prelogin-kdf:v1:'
+const syntheticKdfDomain = 'honowarden:prelogin-kdf:v2:'
 
 export function resolvePrelogin(
   requestBody: unknown,
@@ -131,10 +123,48 @@ async function deriveSyntheticKdf(
     key,
     encoder.encode(`${syntheticKdfDomain}${emailNormalized}`),
   )
-  const index =
-    new DataView(digest).getUint32(0, false) % syntheticKdfPool.length
+  const view = new DataView(digest)
 
-  return { ...syntheticKdfPool[index]! }
+  if (view.getUint8(0) % 2 === 0) {
+    return {
+      kdfType: 0,
+      iterations: syntheticBoundedInteger(
+        view,
+        1,
+        accountCredentialKdfPolicy.pbkdf2Iterations,
+      ),
+      memory: null,
+      parallelism: null,
+    }
+  }
+
+  return {
+    kdfType: 1,
+    iterations: syntheticBoundedInteger(
+      view,
+      1,
+      accountCredentialKdfPolicy.argon2Iterations,
+    ),
+    memory: syntheticBoundedInteger(
+      view,
+      5,
+      accountCredentialKdfPolicy.argon2Memory,
+    ),
+    parallelism: syntheticBoundedInteger(
+      view,
+      9,
+      accountCredentialKdfPolicy.argon2Parallelism,
+    ),
+  }
+}
+
+function syntheticBoundedInteger(
+  view: DataView,
+  byteOffset: number,
+  range: { min: number; max: number },
+): number {
+  const size = range.max - range.min + 1
+  return range.min + (view.getUint32(byteOffset, false) % size)
 }
 
 export function parseAllowedEmails(value: string | undefined): Set<string> {

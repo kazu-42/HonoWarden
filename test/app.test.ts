@@ -385,12 +385,12 @@ describe('HonoWarden app', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({
       kdf: 0,
-      kdfIterations: 600000,
+      kdfIterations: 1540333,
       kdfMemory: null,
       kdfParallelism: null,
       kdfSettings: {
         kdfType: 0,
-        iterations: 600000,
+        iterations: 1540333,
         memory: null,
         parallelism: null,
       },

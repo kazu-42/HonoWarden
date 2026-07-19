@@ -21,7 +21,8 @@ Verified live through the GitHub content API on 2026-07-19.
 - The pinned identity prelogin returns exact stored KDF data for known accounts
   and selects unknown-account PBKDF2/Argon2id decoys with a normalized-email,
   keyed hash. HonoWarden uses the same stable mixed-algorithm property with
-  domain separation and only client-safe decoy values.
+  domain separation and derives every parameter across its complete accepted
+  client-safe space.
 
 Primary source paths are already catalogued in
 `.workflow/hon-160-account-credential-mutation/results/01-official-contract.md`.

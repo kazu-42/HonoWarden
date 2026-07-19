@@ -1153,7 +1153,8 @@ Implemented:
 - exact stored KDF projection through known-account prelogin, password and
   refresh token responses, account profile unlock metadata, and sync unlock
   metadata; unknown allowed prelogin accounts receive an email-stable,
-  secret-keyed decoy selected from client-valid PBKDF2 and Argon2id shapes
+  secret-keyed decoy derived across the complete accepted PBKDF2 and Argon2id
+  parameter space so no accepted stored tuple is exclusive to known accounts
 - fail-closed stored-KDF validation at the auth repository boundary so unknown
   algorithms cannot be silently projected as PBKDF2 after session mutation
 - `pnpm account:kdf-change:lifecycle` real local-D1 synthetic evidence for

@@ -20,7 +20,7 @@ Key invariants:
 - prelogin, password and refresh token responses, profile, and sync use one
   stored-KDF mapping; unknown stored algorithms fail before session mutation,
   while unknown allowed accounts receive an email-stable, domain-separated
-  HMAC decoy spanning client-valid PBKDF2 and Argon2id shapes
+  HMAC decoy spanning the complete accepted PBKDF2 and Argon2id parameter space
 - allowed prelogin requires `HONOWARDEN_TOKEN_SECRET` before D1 access and logs
   only a non-secret configuration reason when the secret is absent
 - no plaintext password, unwrapped key, hash, wrapped key, token, or request body
