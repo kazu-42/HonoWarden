@@ -6776,6 +6776,509 @@ describe('HonoWarden app', () => {
     expect(JSON.stringify(event)).not.toContain('test-token-secret')
   })
 
+  it('verifies the current password hash and returns the pinned empty policy', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/verify-password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await refreshAccessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'verify-password-request',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.json()).resolves.toEqual({
+      object: 'masterPasswordPolicy',
+      minComplexity: null,
+      minLength: null,
+      requireLower: null,
+      requireUpper: null,
+      requireNumbers: null,
+      requireSpecial: null,
+      enforceOnLogin: null,
+    })
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('records invalid password verification proofs without changing credentials', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const prepare = vi.spyOn(database, 'prepare')
+    const before = structuredClone(user)
+    const response = await app.request(
+      '/api/accounts/verify-password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'CF-Connecting-IP': '203.0.113.29',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ masterPasswordHash: 'wrong-current-hash' }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'invalid_request',
+        message: 'The supplied credentials are invalid.',
+      },
+    })
+    expect(user).toMatchObject({
+      masterPasswordHash: before.masterPasswordHash,
+      userKey: before.userKey,
+      securityStamp: before.securityStamp,
+      revisionDate: before.revisionDate,
+    })
+    expect(database.auditEventInserts).toEqual([])
+    expect(
+      prepare.mock.calls.some(([query]) =>
+        query.includes('INSERT INTO auth_attempts'),
+      ),
+    ).toBe(true)
+  })
+
+  it('changes the master-password generation and preserves encrypted vault data', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const previousKdf = {
+      emailNormalized: user.emailNormalized,
+      kdfAlgorithm: user.kdfAlgorithm,
+      kdfIterations: user.kdfIterations,
+      kdfMemory: user.kdfMemory,
+      kdfParallelism: user.kdfParallelism,
+    }
+    const previousCipher = cipherRecord()
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+      {
+        id: buildDevicePathId('other-device'),
+        userId: user.id,
+        identifier: 'other-device',
+      },
+    ]
+    const refreshTokens = [
+      { id: 'current-token', userId: user.id },
+      { id: 'other-token', userId: user.id },
+    ]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers: [previousCipher],
+      devices,
+      refreshTokens,
+    })
+    const oldAccessToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${oldAccessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'password-change-request',
+        },
+        body: JSON.stringify(masterPasswordChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.text()).resolves.toBe('')
+    expect(user).toMatchObject({
+      ...previousKdf,
+      masterPasswordHash: 'synthetic-next-master-password-hash',
+      userKey: '2.synthetic-next-user-key',
+      securityStamp: expect.not.stringMatching(/^security-stamp$/),
+      revisionDate: expect.not.stringMatching(/^2026-07-06T00:00:00\.000Z$/),
+    })
+    expect(devices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(refreshTokens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(previousCipher).toEqual(cipherRecord())
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'account.password.change',
+        outcome: 'success',
+        requestId: 'password-change-request',
+      }),
+    ])
+    expect(auditLog).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      'synthetic-next-master-password-hash',
+    )
+    expect(JSON.stringify(auditLog.mock.calls)).not.toContain(
+      '2.synthetic-next-user-key',
+    )
+
+    const oldTokenResponse = await app.request(
+      '/api/sync',
+      { headers: { Authorization: `Bearer ${oldAccessToken}` } },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    expect(oldTokenResponse.status).toBe(401)
+
+    const oldPasswordResponse = await passwordGrantRequest(
+      database,
+      'synthetic-master-password-hash',
+      'old-password-device',
+    )
+    expect(oldPasswordResponse.status).toBe(400)
+
+    const newPasswordResponse = await passwordGrantRequest(
+      database,
+      'synthetic-next-master-password-hash',
+      'new-password-device',
+    )
+    expect(newPasswordResponse.status).toBe(200)
+    const newToken = (await newPasswordResponse.json()) as {
+      access_token: string
+      Key: string
+      Kdf: number
+      KdfIterations: number
+    }
+    expect(newToken).toMatchObject({
+      Key: '2.synthetic-next-user-key',
+      Kdf: 0,
+      KdfIterations: 600000,
+    })
+    const newSyncResponse = await app.request(
+      '/api/sync',
+      { headers: { Authorization: `Bearer ${newToken.access_token}` } },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    expect(newSyncResponse.status).toBe(200)
+    const newSync = (await newSyncResponse.json()) as {
+      profile: { key: string }
+      ciphers: unknown[]
+    }
+    expect(newSync.profile.key).toBe('2.synthetic-next-user-key')
+    expect(newSync.ciphers).toEqual([
+      expect.objectContaining({
+        id: previousCipher.id,
+        name: '2.encrypted-cipher-name',
+      }),
+    ])
+  })
+
+  it('rejects password hints and structured credential drift before mutation', async () => {
+    for (const bodyForUser of [
+      (user: ReturnType<typeof authUserRecord>) => ({
+        ...masterPasswordChangeBody(user),
+        masterPasswordHint: 'unsupported hint',
+      }),
+      (user: ReturnType<typeof authUserRecord>) => {
+        const body = masterPasswordChangeBody(user)
+        return {
+          ...body,
+          authenticationData: {
+            ...body.authenticationData,
+            salt: 'different@example.test',
+          },
+          unlockData: {
+            ...body.unlockData,
+            salt: 'different@example.test',
+          },
+        }
+      },
+      (user: ReturnType<typeof authUserRecord>) => {
+        const body = masterPasswordChangeBody(user)
+        const kdf = { ...body.authenticationData.kdf, iterations: 600001 }
+        return {
+          ...body,
+          authenticationData: { ...body.authenticationData, kdf },
+          unlockData: { ...body.unlockData, kdf },
+        }
+      },
+    ]) {
+      const user = authUserRecord()
+      const database = new FakeD1Database(null, [], { authUser: user })
+      const before = structuredClone(user)
+      const response = await app.request(
+        '/api/accounts/password',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${await accessTokenFor(user)}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(bodyForUser(user)),
+        },
+        {
+          DB: database,
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+      expect(user).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+    }
+  })
+
+  it('rejects a wrong current hash before password-change mutation', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const before = structuredClone(user)
+    const response = await app.request(
+      '/api/accounts/password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'CF-Connecting-IP': '203.0.113.30',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...masterPasswordChangeBody(user),
+          masterPasswordHash: 'wrong-current-hash',
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    expect(user).toMatchObject({
+      masterPasswordHash: before.masterPasswordHash,
+      userKey: before.userKey,
+      securityStamp: before.securityStamp,
+      revisionDate: before.revisionDate,
+    })
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('returns a conflict without partial password or session changes', async () => {
+    const user = authUserRecord()
+    const devices = [{ id: 'device-id', userId: user.id }]
+    const refreshTokens = [{ id: 'token-id', userId: user.id }]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      credentialRotationConflict: true,
+    })
+    const before = structuredClone({ user, devices, refreshTokens })
+    const response = await app.request(
+      '/api/accounts/password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(masterPasswordChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'revision_conflict' },
+    })
+    expect({ user, devices, refreshTokens }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('rolls password and sessions back when mandatory audit persistence fails', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const devices = [{ id: 'device-id', userId: user.id }]
+    const refreshTokens = [{ id: 'token-id', userId: user.id }]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      credentialRotationFailureAt: 'audit',
+    })
+    const before = structuredClone({ user, devices, refreshTokens })
+    const response = await app.request(
+      '/api/accounts/password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'password-change-audit-failure-request',
+        },
+        body: JSON.stringify(masterPasswordChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'database_unavailable' },
+      requestId: 'password-change-audit-failure-request',
+    })
+    expect({ user, devices, refreshTokens }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining('account_password_change_failed'),
+    )
+  })
+
+  it('rejects password change before mutation when notification binding is missing', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const before = structuredClone(user)
+    const response = await app.request(
+      '/api/accounts/password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(masterPasswordChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'server_misconfigured' },
+    })
+    expect(user).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('reports incomplete notification cleanup after committing password change', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(masterPasswordChangeBody(user)),
+      },
+      {
+        DB: database,
+        NOTIFICATION_HUB: {
+          idFromName: () => 'user-object',
+          get: () => ({
+            fetch: vi.fn().mockRejectedValue(new Error('do unavailable')),
+          }),
+        } as unknown as DurableObjectNamespace,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'session_revocation_incomplete',
+        message:
+          'Account password changed, but notification session cleanup is incomplete.',
+      },
+    })
+    expect(user).toMatchObject({
+      masterPasswordHash: 'synthetic-next-master-password-hash',
+      userKey: '2.synthetic-next-user-key',
+    })
+    expect(database.auditEventInserts).toHaveLength(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'account_notification_session_invalidation_failed',
+      ),
+    )
+  })
+
+  it('supports the pinned transitional legacy-only password payload', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/password',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          masterPasswordHash: user.masterPasswordHash,
+          newMasterPasswordHash: 'synthetic-legacy-next-hash',
+          key: '2.synthetic-legacy-next-user-key',
+          masterPasswordHint: '',
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(user).toMatchObject({
+      masterPasswordHash: 'synthetic-legacy-next-hash',
+      userKey: '2.synthetic-legacy-next-user-key',
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+    })
+  })
+
   it('rotates the security stamp and invalidates every existing session atomically', async () => {
     const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
     const user = authUserRecord()
@@ -12151,6 +12654,58 @@ function authUserRecord() {
     totpEncryptedSecret: null,
     totpLastAcceptedStep: null,
   }
+}
+
+function masterPasswordChangeBody(user: ReturnType<typeof authUserRecord>) {
+  const kdf = {
+    kdfType: 0,
+    iterations: user.kdfIterations,
+    memory: user.kdfMemory,
+    parallelism: user.kdfParallelism,
+  }
+  return {
+    masterPasswordHash: user.masterPasswordHash,
+    newMasterPasswordHash: 'synthetic-next-master-password-hash',
+    key: '2.synthetic-next-user-key',
+    masterPasswordHint: '',
+    authenticationData: {
+      kdf,
+      masterPasswordAuthenticationHash: 'synthetic-next-master-password-hash',
+      salt: user.emailNormalized,
+    },
+    unlockData: {
+      kdf,
+      masterKeyWrappedUserKey: '2.synthetic-next-user-key',
+      salt: user.emailNormalized,
+    },
+  }
+}
+
+function passwordGrantRequest(
+  database: FakeD1Database,
+  passwordHash: string,
+  deviceIdentifier: string,
+) {
+  return app.request(
+    '/identity/connect/token',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'password',
+        username: 'person@example.test',
+        password: passwordHash,
+        scope: 'api offline_access',
+        deviceIdentifier,
+        deviceName: 'Password Change Test',
+        deviceType: '8',
+      }),
+    },
+    {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    },
+  )
 }
 
 function refreshTokenSessionRecord() {

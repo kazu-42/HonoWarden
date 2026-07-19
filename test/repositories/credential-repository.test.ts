@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildAuditEvent } from '../../src/domain/audit'
-import { rotateAccountSecurityStamp } from '../../src/repositories/credential-repository'
+import {
+  changeAccountMasterPassword,
+  rotateAccountSecurityStamp,
+} from '../../src/repositories/credential-repository'
 import { FakeD1Database } from '../support/fake-d1'
 
 const rotationInput = {
@@ -31,7 +34,159 @@ const rotationInput = {
   }),
 } as const
 
+const passwordChangeInput = {
+  ...rotationInput,
+  expectedEmailNormalized: 'person@example.test',
+  expectedKdfAlgorithm: 'pbkdf2-sha256',
+  expectedKdfIterations: 600000,
+  expectedKdfMemory: null,
+  expectedKdfParallelism: null,
+  nextMasterPasswordHash: 'synthetic-next-authentication-hash',
+  nextUserKey: '2.synthetic-next-wrapped-user-key',
+  auditEventId: 'password-change-audit-event-id',
+  auditEvent: buildAuditEvent({
+    name: 'account.password.change',
+    outcome: 'success',
+    requestId: 'password-change-request',
+    occurredAt: '2026-07-19T00:00:01.000Z',
+    actor: {
+      userId: 'user-id',
+      deviceIdentifier: 'fixture-device',
+    },
+    target: {
+      type: 'account',
+      id: 'user-id',
+    },
+    context: {
+      allSessionsRevoked: true,
+      kdfUnchanged: true,
+    },
+  }),
+} as const
+
 describe('credential repository', () => {
+  it('changes the password generation and revokes every session atomically', async () => {
+    const state = credentialState()
+    const database = new FakeD1Database(null, [], state)
+
+    await expect(
+      changeAccountMasterPassword(database, passwordChangeInput),
+    ).resolves.toEqual({
+      status: 'changed',
+      securityStamp: 'next-security-stamp',
+      revisionDate: '2026-07-19T00:00:01.000Z',
+      revokedDeviceCount: 2,
+      revokedRefreshTokenCount: 2,
+      invalidatedAuthRequestCount: 2,
+      auditEventId: 'password-change-audit-event-id',
+    })
+
+    expect(state.authUser).toMatchObject({
+      masterPasswordHash: 'synthetic-next-authentication-hash',
+      userKey: '2.synthetic-next-wrapped-user-key',
+      securityStamp: 'next-security-stamp',
+      revisionDate: '2026-07-19T00:00:01.000Z',
+      emailNormalized: 'person@example.test',
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+    })
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        id: 'password-change-audit-event-id',
+        name: 'account.password.change',
+        contextJson: JSON.stringify({
+          allSessionsRevoked: true,
+          kdfUnchanged: true,
+        }),
+      }),
+    ])
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      'synthetic-next-authentication-hash',
+    )
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      'synthetic-next-wrapped-user-key',
+    )
+  })
+
+  it.each([
+    ['salt', { expectedEmailNormalized: 'stale@example.test' }],
+    ['KDF', { expectedKdfIterations: 600001 }],
+    ['revision', { expectedRevisionDate: '2026-07-18T00:00:00.000Z' }],
+  ] as const)(
+    'leaves credentials and sessions unchanged on stale %s generation',
+    async (_name, staleInput) => {
+      const state = credentialState()
+      const database = new FakeD1Database(null, [], state)
+      const before = structuredClone(state)
+
+      await expect(
+        changeAccountMasterPassword(database, {
+          ...passwordChangeInput,
+          ...staleInput,
+        }),
+      ).resolves.toEqual({ status: 'conflict' })
+      expect(state).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+    },
+  )
+
+  it.each([
+    'user',
+    'devices',
+    'refresh_tokens',
+    'auth_requests',
+    'audit',
+  ] as const)(
+    'rolls password change back when the %s statement fails',
+    async (stage) => {
+      const state = {
+        ...credentialState(),
+        credentialRotationFailureAt: stage,
+      }
+      const database = new FakeD1Database(null, [], state)
+      const before = structuredClone({
+        authUser: state.authUser,
+        devices: state.devices,
+        refreshTokens: state.refreshTokens,
+        authRequests: state.authRequests,
+      })
+
+      await expect(
+        changeAccountMasterPassword(database, passwordChangeInput),
+      ).rejects.toThrow(`credential rotation ${stage} failed`)
+      expect({
+        authUser: state.authUser,
+        devices: state.devices,
+        refreshTokens: state.refreshTokens,
+        authRequests: state.authRequests,
+      }).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+    },
+  )
+
+  it('commits only one concurrent password change from the same generation', async () => {
+    const state = credentialState()
+    const database = new FakeD1Database(null, [], state)
+    const results = await Promise.all([
+      changeAccountMasterPassword(database, passwordChangeInput),
+      changeAccountMasterPassword(database, {
+        ...passwordChangeInput,
+        nextMasterPasswordHash: 'competing-next-hash',
+        nextUserKey: '2.competing-next-user-key',
+        nextSecurityStamp: 'competing-security-stamp',
+        auditEventId: 'competing-password-change-audit-id',
+      }),
+    ])
+
+    expect(results.map((result) => result.status).sort()).toEqual([
+      'changed',
+      'conflict',
+    ])
+    expect(database.auditEventInserts).toHaveLength(1)
+  })
+
   it('rotates one generation, revokes every owner session, and inserts one audit event', async () => {
     const state = credentialState()
     const database = new FakeD1Database(null, [], state)
@@ -196,7 +351,13 @@ function credentialState() {
   return {
     authUser: {
       id: 'user-id',
+      emailNormalized: 'person@example.test',
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
       masterPasswordHash: 'synthetic-authentication-hash',
+      userKey: '2.synthetic-wrapped-user-key',
       securityStamp: 'old-security-stamp',
       revisionDate: '2026-07-19T00:00:00.000Z',
       disabledAt: null,

@@ -251,6 +251,21 @@ const replayFixtures = [
     path: 'accounts/revision-date-success.json',
   },
   {
+    path: 'accounts/verify-password-success.json',
+    allowMutatingFixtures: true,
+    database: {
+      authUser: { ...replayUser },
+    },
+  },
+  {
+    path: 'accounts/password-change-success.json',
+    allowMutatingFixtures: true,
+    systemTime: new Date('2026-07-19T00:00:00.000Z'),
+    database: {
+      authUser: { ...replayUser },
+    },
+  },
+  {
     path: 'metadata/policies-list-success.json',
   },
   {

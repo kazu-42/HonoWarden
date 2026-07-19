@@ -1,0 +1,44 @@
+{
+  "title": "HON-203 password verification and change",
+  "slug": "hon-203-password-change",
+  "created_at": "2026-07-19T00:54:48+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local implementation and exact-head admin merge are authorized; production mutation remains separately gated."
+  },
+  "packets": [
+    { "id": "01", "name": "official-contract", "status": "completed" },
+    { "id": "02", "name": "security-boundary", "status": "completed" },
+    { "id": "03", "name": "tdd-implementation", "status": "completed" },
+    { "id": "04", "name": "real-d1-lifecycle", "status": "completed" },
+    { "id": "05", "name": "docs-evidence", "status": "completed" },
+    { "id": "06", "name": "independent-review", "status": "pending" }
+  ],
+  "verification": {
+    "status": "candidate_passed",
+    "checks": [
+      { "command": "pnpm check", "status": "passed" },
+      { "command": "pnpm lint", "status": "passed" },
+      { "command": "pnpm format", "status": "passed" },
+      { "command": "pnpm test", "status": "passed", "tests": 988 },
+      {
+        "command": "pnpm compat:test",
+        "status": "passed",
+        "tests": 101
+      },
+      { "command": "pnpm brand:scan", "status": "passed" },
+      {
+        "command": "pnpm release:gate",
+        "status": "passed",
+        "checks": 11
+      },
+      {
+        "command": "pnpm account:password-change:lifecycle",
+        "status": "passed",
+        "checks": 15
+      }
+    ]
+  }
+}

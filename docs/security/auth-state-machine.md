@@ -1,6 +1,6 @@
 # Authentication State Machine
 
-Last reviewed: 2026-07-09.
+Last reviewed: 2026-07-19.
 
 This document records the server-side authentication and session states that
 must remain stable for alpha.
@@ -40,6 +40,42 @@ Failure invariants:
 - unknown, disabled, locked, or wrong-password account returns generic
   invalid-grant wording
 - login defense failures are recorded without plaintext client address storage
+
+## Password Verification And Change
+
+```text
+authenticated bearer token at current security stamp
+  -> current authentication-hash proof is well formed?
+  -> credential-proof defense allows attempt?
+  -> current hash matches in constant time?
+  -> verify only?
+       yes -> return empty password policy without credential mutation
+       no  -> structured/legacy generation is internally consistent?
+           -> structured salt and KDF equal stored generation?
+           -> guarded D1 batch changes hash + wrapped key + stamp + revision,
+              revokes all sessions/auth requests, and persists mandatory audit
+           -> invalidate Durable Object notification sessions
+```
+
+Success invariants:
+
+- KDF, normalized-email salt, account identity, and encrypted vault rows remain
+  unchanged
+- old access tokens fail because the security stamp changed
+- old refresh tokens and devices are revoked, and old password grants fail
+- the new client-derived hash can log in and the new opaque wrapped user key can
+  unlock the unchanged encrypted vault through normal client cryptography
+
+Failure invariants:
+
+- malformed, oversized, mixed-alias, non-empty-hint, KDF-drift, salt-drift, and
+  wrong-current-proof requests do not mutate the credential generation
+- a stale generation returns `revision_conflict`; the guarded D1 batch leaves
+  credentials, sessions, auth requests, and audit rows unchanged
+- a failed D1 batch statement rolls back the entire mutation
+- Durable Object cleanup is post-commit; its failure returns
+  `session_revocation_incomplete` while the new D1 credential generation stays
+  authoritative
 
 ## TOTP Setup
 

@@ -1,6 +1,6 @@
 # Security Data Flow
 
-Last reviewed: 2026-07-09.
+Last reviewed: 2026-07-19.
 
 This document describes where sensitive data enters, moves, and persists.
 
@@ -56,6 +56,40 @@ Data stored:
 - access token is not stored server-side
 - refresh token plaintext is not stored in D1
 - D1 stores refresh-token hash, device id, expiry, and revocation state
+
+## Password Verification And Change
+
+1. An authenticated client posts its current client-derived authentication hash
+   to `POST /api/accounts/verify-password` or as the current proof in
+   `POST /api/accounts/password`.
+2. Worker validates the bearer token and current security stamp, then applies
+   the existing IP/account credential-proof defenses.
+3. Verify-password performs a constant-time hash comparison and returns only an
+   empty `masterPasswordPolicy` projection. It does not mutate credentials or
+   emit credential material.
+4. Password change accepts pinned structured, transitional legacy, or matching
+   dual representations. Structured authentication and unlock data must agree
+   on KDF and salt, and those values must match the stored account generation.
+5. One generation-guarded D1 batch replaces only the authentication hash and
+   opaque wrapped user key, advances the security stamp and revision, revokes
+   all active device and refresh-token sessions, supersedes active auth
+   requests, and inserts the required `account.password.change` audit row.
+6. Folder, cipher, attachment, email, and KDF columns are outside that batch and
+   remain unchanged. A stale generation or any failed batch statement leaves
+   the old credential generation and sessions unchanged.
+7. After commit, Worker invalidates authenticated Durable Object notification
+   sessions with the new generation. This socket cleanup is outside D1's atomic
+   boundary: failure returns an explicit `session_revocation_incomplete` 503,
+   while the password and D1 session revocation remain committed.
+
+Secret-handling invariants:
+
+- HonoWarden receives client-derived authentication hashes and opaque encrypted
+  user keys, not plaintext master passwords or plaintext vault keys.
+- non-empty password hints are rejected before proof or mutation because there
+  is no persisted hint contract
+- audit and logs exclude current/new hashes, wrapped user keys, access tokens,
+  refresh tokens, request bodies, and encrypted vault payloads
 
 ## Refresh Grant
 
@@ -171,6 +205,8 @@ persisted atomically with their mutation regardless of that optional setting.
 Current event coverage:
 
 - bootstrap success
+- password change, account-wide token/device revocation, prior-stamp
+  invalidation, and active auth-request supersession
 - security-stamp generation rotation, account-wide token/device revocation,
   prior-stamp invalidation of authenticated notification sockets, and
   invalidation of outstanding login-with-device authorizations; ordinary

@@ -1,6 +1,6 @@
 # Security Review Index
 
-Last reviewed: 2026-07-11.
+Last reviewed: 2026-07-19.
 
 Use these documents together when reviewing alpha readiness:
 
@@ -26,6 +26,7 @@ Use these documents together when reviewing alpha readiness:
 - `pnpm lint`
 - `pnpm test`
 - `pnpm compat:test`
+- `pnpm account:password-change:lifecycle`
 - `pnpm format`
 - repository brand scan
 - workflow verifier

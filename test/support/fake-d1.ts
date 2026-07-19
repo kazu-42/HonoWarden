@@ -1534,21 +1534,34 @@ function applyCredentialRotationBatch(
       'audit',
     )
     const userValues = userStatement.__fakeBoundValues
-    const user = userRows.find((row) => row.id === userValues[3])
-    const generationMatches =
-      !options.credentialRotationConflict &&
-      user != null &&
-      fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
-      fakeColumn(user, 'masterPasswordHash', 'master_password_hash') ===
-        userValues[4] &&
-      fakeColumn(user, 'securityStamp', 'security_stamp') === userValues[5] &&
-      fakeColumn(user, 'revisionDate', 'revision_date') === userValues[6]
+    const passwordChange =
+      /SET\s+master_password_hash = \?,\s+user_key = \?/.test(
+        userStatement.__fakeQuery,
+      )
+    const userIdIndex = passwordChange ? 5 : 3
+    const user = userRows.find((row) => row.id === userValues[userIdIndex])
+    const generationMatches = passwordChange
+      ? passwordChangeGenerationMatches(options, user, userValues)
+      : securityStampGenerationMatches(options, user, userValues)
     const results = new Map<FakePreparedStatement, D1Result>()
 
     if (generationMatches && user) {
-      setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[0])
-      setFakeColumn(user, 'revisionDate', 'revision_date', userValues[1])
-      setFakeColumn(user, 'updatedAt', 'updated_at', userValues[2])
+      if (passwordChange) {
+        setFakeColumn(
+          user,
+          'masterPasswordHash',
+          'master_password_hash',
+          userValues[0],
+        )
+        setFakeColumn(user, 'userKey', 'user_key', userValues[1])
+        setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[2])
+        setFakeColumn(user, 'revisionDate', 'revision_date', userValues[3])
+        setFakeColumn(user, 'updatedAt', 'updated_at', userValues[4])
+      } else {
+        setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[0])
+        setFakeColumn(user, 'revisionDate', 'revision_date', userValues[1])
+        setFakeColumn(user, 'updatedAt', 'updated_at', userValues[2])
+      }
     }
     failCredentialRotationAt(options, 'user')
     results.set(userStatement, fakeResult(generationMatches ? 1 : 0))
@@ -1625,6 +1638,43 @@ function applyCredentialRotationBatch(
   }
 }
 
+function securityStampGenerationMatches(
+  options: FakeD1DatabaseOptions,
+  user: Record<string, unknown> | undefined,
+  values: unknown[],
+): boolean {
+  return (
+    !options.credentialRotationConflict &&
+    user != null &&
+    fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
+    fakeColumn(user, 'masterPasswordHash', 'master_password_hash') ===
+      values[4] &&
+    fakeColumn(user, 'securityStamp', 'security_stamp') === values[5] &&
+    fakeColumn(user, 'revisionDate', 'revision_date') === values[6]
+  )
+}
+
+function passwordChangeGenerationMatches(
+  options: FakeD1DatabaseOptions,
+  user: Record<string, unknown> | undefined,
+  values: unknown[],
+): boolean {
+  return (
+    !options.credentialRotationConflict &&
+    user != null &&
+    fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
+    fakeColumn(user, 'masterPasswordHash', 'master_password_hash') ===
+      values[6] &&
+    fakeColumn(user, 'emailNormalized', 'email_normalized') === values[7] &&
+    fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm') === values[8] &&
+    fakeColumn(user, 'kdfIterations', 'kdf_iterations') === values[9] &&
+    fakeColumn(user, 'kdfMemory', 'kdf_memory') === values[10] &&
+    fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') === values[11] &&
+    fakeColumn(user, 'securityStamp', 'security_stamp') === values[12] &&
+    fakeColumn(user, 'revisionDate', 'revision_date') === values[13]
+  )
+}
+
 function requiredFakeStatement(
   statements: FakePreparedStatement[],
   matches: (query: string) => boolean,
@@ -1650,7 +1700,7 @@ function fakeColumn(
   camelName: string,
   snakeName: string,
 ): unknown {
-  return row[camelName] ?? row[snakeName]
+  return camelName in row ? row[camelName] : row[snakeName]
 }
 
 function setFakeColumn(

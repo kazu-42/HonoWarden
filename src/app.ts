@@ -29,7 +29,10 @@ import {
 } from './domain/audit'
 import type { AuditEventName, AuditEventOutcome } from './domain/audit'
 import {
+  matchesPasswordChangeCredentialGeneration,
   nextCredentialRevisionDate,
+  parseCurrentPasswordProofBody,
+  parseMasterPasswordChangeBody,
   parseSecurityStampRotationBody,
 } from './domain/account-credentials'
 import {
@@ -97,7 +100,10 @@ import {
   reserveCipherAttachmentUpload,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
-import { rotateAccountSecurityStamp } from './repositories/credential-repository'
+import {
+  changeAccountMasterPassword,
+  rotateAccountSecurityStamp,
+} from './repositories/credential-repository'
 import {
   approveAuthRequest,
   consumeAuthRequestWithSession,
@@ -2340,6 +2346,209 @@ app.post('/api/accounts/export', async (c) => {
   }
 })
 
+app.post('/api/accounts/verify-password', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseCurrentPasswordProofBody(await readJsonBody(c.req.raw))
+  if (!request.ok) {
+    return invalidCredentialRequest(c)
+  }
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidCredentialProofResponse(c, proofGate.rateLimited)
+    }
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.masterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidCredentialProofResponse(c, rateLimited)
+    }
+
+    c.header('Cache-Control', 'no-store')
+    return c.json(buildEmptyMasterPasswordPolicyResponse())
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_password_verification_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Password verification failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/password', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseMasterPasswordChangeBody(await readJsonBody(c.req.raw))
+  if (
+    !request.ok ||
+    !matchesPasswordChangeCredentialGeneration(request, auth.user)
+  ) {
+    return invalidCredentialRequest(c)
+  }
+  if (
+    isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) &&
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidCredentialProofResponse(c, proofGate.rateLimited)
+    }
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.currentMasterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidCredentialProofResponse(c, rateLimited)
+    }
+
+    const nextRevisionDate = nextCredentialRevisionDate(
+      auth.user.revisionDate,
+      new Date().toISOString(),
+    )
+    const nextSecurityStamp = crypto.randomUUID()
+    const auditEventId = crypto.randomUUID()
+    const auditEvent = buildAuditEvent({
+      name: 'account.password.change',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: nextRevisionDate,
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        allSessionsRevoked: true,
+        kdfUnchanged: true,
+      },
+    })
+    const result = await changeAccountMasterPassword(c.env.DB, {
+      userId: auth.user.id,
+      expectedMasterPasswordHash: auth.user.masterPasswordHash,
+      expectedEmailNormalized: auth.user.emailNormalized,
+      expectedKdfAlgorithm: auth.user.kdfAlgorithm,
+      expectedKdfIterations: auth.user.kdfIterations,
+      expectedKdfMemory: auth.user.kdfMemory,
+      expectedKdfParallelism: auth.user.kdfParallelism,
+      expectedSecurityStamp: auth.user.securityStamp,
+      expectedRevisionDate: auth.user.revisionDate,
+      nextMasterPasswordHash: request.nextMasterPasswordHash,
+      nextUserKey: request.nextUserKey,
+      nextSecurityStamp,
+      nextRevisionDate,
+      auditEventId,
+      auditEvent,
+    })
+    if (result.status === 'conflict') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'The account credential generation changed concurrently.',
+        ),
+        409,
+      )
+    }
+
+    if (
+      !(await invalidateDurableNotificationSessions(c, auth.user.id, {
+        securityStamp: nextSecurityStamp,
+        revisionDate: nextRevisionDate,
+      }))
+    ) {
+      console.error(
+        JSON.stringify({
+          event: 'account_notification_session_invalidation_failed',
+          requestId: c.get('requestId'),
+          reason: 'notification_hub_unavailable',
+        }),
+      )
+      c.header('Cache-Control', 'no-store')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'session_revocation_incomplete',
+          'Account password changed, but notification session cleanup is incomplete.',
+        ),
+        503,
+      )
+    }
+
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
+    c.header('Cache-Control', 'no-store')
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_password_change_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Password change failed.',
+      ),
+      503,
+    )
+  }
+})
+
 app.post('/api/accounts/security-stamp', async (c) => {
   const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
@@ -2377,7 +2586,7 @@ app.post('/api/accounts/security-stamp', async (c) => {
   try {
     const proofGate = await checkCredentialProofDefense(c, auth.user)
     if (!proofGate.allowed) {
-      return invalidSecurityStampProofResponse(c, proofGate.rateLimited)
+      return invalidCredentialProofResponse(c, proofGate.rateLimited)
     }
 
     if (
@@ -2392,7 +2601,7 @@ app.post('/api/accounts/security-stamp', async (c) => {
         proofGate.state,
         true,
       )
-      return invalidSecurityStampProofResponse(c, rateLimited)
+      return invalidCredentialProofResponse(c, rateLimited)
     }
 
     const candidateRevisionDate = new Date().toISOString()
@@ -2582,10 +2791,11 @@ async function recordCredentialProofFailure(
   })
 }
 
-function invalidSecurityStampProofResponse(
+function invalidCredentialProofResponse(
   c: AppContext,
   rateLimited: boolean,
 ): Response {
+  c.header('Cache-Control', 'no-store')
   const error = apiError(
     c.get('requestId'),
     'invalid_request',
@@ -2597,6 +2807,31 @@ function invalidSecurityStampProofResponse(
   }
 
   return c.json(error, 400)
+}
+
+function invalidCredentialRequest(c: AppContext): Response {
+  c.header('Cache-Control', 'no-store')
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'invalid_request',
+      'The request body is invalid.',
+    ),
+    400,
+  )
+}
+
+function buildEmptyMasterPasswordPolicyResponse() {
+  return {
+    object: 'masterPasswordPolicy',
+    minComplexity: null,
+    minLength: null,
+    requireLower: null,
+    requireUpper: null,
+    requireNumbers: null,
+    requireSpecial: null,
+    enforceOnLogin: null,
+  }
 }
 
 app.get('/api/policies', async (c) => {
