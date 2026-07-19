@@ -193,3 +193,8 @@ tests. The captured promise passed to `waitUntil` resolves after a rejected
 Durable Object fetch while preserving immediate HTTP 200 and the existing
 redacted failure event. Exact-head reviews remain pending on the remediation
 commit.
+
+The resulting `5e65bd1` exact head passed the standard review with no actionable
+finding and the separate five-axis review with no P1/P2/P3 finding and a final
+`MERGE READY` verdict. Remote migration and official-client rollback evidence
+remain explicit post-merge operational gates, not claimed results.

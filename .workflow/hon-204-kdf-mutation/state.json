@@ -13,7 +13,7 @@
     "01-contract": "completed",
     "02-domain-repository": "completed",
     "03-route-projections": "completed",
-    "04-verification-review": "in_progress"
+    "04-verification-review": "completed"
   },
   "approval": {
     "localImplementation": true,
@@ -25,7 +25,7 @@
     "focused": "passed_6_files_85_population_remediation_tests",
     "localD1": "passed_38_checks_round_trip_with_revision_and_population_readback",
     "full": "passed_87_files_1053_tests_after_wait_until_remediation",
-    "standardReview": "p3_wait_until_rejection_remediated_rerun_pending",
-    "fiveAxisReview": "p2_secret_finding_rejected_p3_population_scan_remediated_rerun_pending"
+    "standardReview": "clean_5e65bd1",
+    "fiveAxisReview": "merge_ready_5e65bd1_no_p1_p2_p3"
   }
 }
