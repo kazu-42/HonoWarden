@@ -28,7 +28,7 @@ any replacement path or exposing unwrapped key material.
 
 - Base: `main@50a3fabb059f45f1f26b06571faf8339cccc7f21` after HON-204.
 - Linear: HON-205 is In Progress, unblocked, and blocks HON-206 and HON-207.
-- Compatibility pins: Bitwarden server
+- Compatibility pins: upstream server
   `a09c7edb03ae6d4fdece784f1250c67be73d5fe0` and clients
   `39f07436ca60e3f25eac47777671754f288a98f1`.
 - The schema already has nullable `users.public_key` and `users.private_key`;
