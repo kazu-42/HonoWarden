@@ -77,9 +77,11 @@ null and no `account.keys.initialize` row; retry is safe after infrastructure
 recovery. The local lifecycle proves both audit-insert failure before update and
 user-update failure after audit reservation roll the complete batch back. A
 complete exact pair plus one audit means the generation committed and must be
-treated as success. A partial or different pair is an incident
-boundary: disable the route, preserve the row and logs, and use a separately
-reviewed recovery plan. Never use HON-205 POST as replacement or data-rewrap.
+treated as success. A missing or blank wrapped user key is rejected before the
+batch and must be repaired through a separately reviewed account-recovery path.
+A partial or different pair is an incident boundary: disable the route,
+preserve the row and logs, and use a separately reviewed recovery plan. Never
+use HON-205 POST as replacement or data-rewrap.
 
 ## Data Rollback
 

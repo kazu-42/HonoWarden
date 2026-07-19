@@ -34,8 +34,9 @@ Real secrets: none
   `39f07436ca60e3f25eac47777671754f288a98f1`
 
 The pinned V1 client sends only `publicKey` and `encryptedPrivateKey`. The
-pinned server permits the write only when neither account-key column is already
-set and returns both the legacy key fields and nested account-key response.
+pinned server permits the write only when a wrapped user key already exists and
+neither account-key column is set, then returns both the legacy key fields and
+nested account-key response.
 HonoWarden accepts the pinned camel-case form and equivalent Pascal-case aliases
 but rejects unknown, mixed, partial, or V2 fields before D1. True replacement,
 signature keys, signed public keys, security state, TDE, and data rewrap remain
@@ -102,12 +103,12 @@ and the legacy plus nested read envelope against the Hono app.
 ## Atomicity And Recovery Boundary
 
 The D1 batch first reserves the required audit row from the exact active,
-both-null, security-stamp/revision source generation and then performs the
-guarded user update. D1 executes the batch transactionally. A stale or already
-initialized generation produces neither row; a failed audit statement aborts
-before the user update; a failed update rolls the audit insert back. The
-runner's two account-scoped abort triggers prove both failure orders against
-real local D1 rather than only FakeD1.
+non-empty-user-key, both-null, security-stamp/revision source generation and then
+performs the guarded user update. D1 executes the batch transactionally. A stale
+or already initialized generation produces neither row; a failed audit
+statement aborts before the user update; a failed update rolls the audit insert
+back. The runner's two account-scoped abort triggers prove both failure orders
+against real local D1 rather than only FakeD1.
 
 An exact completed pair is a successful no-op. A different or partial pair is
 not recoverable through this initializer. Operators should diagnose partial

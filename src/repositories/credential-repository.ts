@@ -110,6 +110,8 @@ export async function initializeAccountKeyPair(
           FROM users
           WHERE id = ?
             AND disabled_at IS NULL
+            AND user_key IS NOT NULL
+            AND length(trim(user_key)) > 0
             AND public_key IS NULL
             AND private_key IS NULL
             AND security_stamp = ?
@@ -143,6 +145,8 @@ export async function initializeAccountKeyPair(
             updated_at = ?
           WHERE id = ?
             AND disabled_at IS NULL
+            AND user_key IS NOT NULL
+            AND length(trim(user_key)) > 0
             AND public_key IS NULL
             AND private_key IS NULL
             AND security_stamp = ?

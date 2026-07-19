@@ -131,7 +131,7 @@ Explicitly excluded public sharing surface:
 | Threat                 | Current Controls                                                                                                                                                                                                                               | Residual Risk                                                                                                                                |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spoofing               | HMAC access tokens, refresh-token hashing, device identifiers, security stamp checks, TOTP challenge flow                                                                                                                                      | no asymmetric token keys; bulk trusted-device approval is not implemented                                                                    |
-| Tampering              | D1 owner predicates, account-key both-null/stamp/revision guard plus required audit, attachment metadata predicates, revision conflict checks, backup checksum validation; organization policy mutation remains unsupported                    | account-key replacement and partial-state repair are intentionally unavailable                                                               |
+| Tampering              | D1 owner predicates, account-key wrapped-user-key/both-null/stamp/revision guard plus required audit, attachment metadata predicates, revision conflict checks, backup checksum validation; organization policy mutation remains unsupported   | account-key replacement and partial-state repair are intentionally unavailable                                                               |
 | Repudiation            | opt-in D1-persisted audit events for bootstrap, auth failures, refresh reuse, backup export, folder/cipher/attachment mutations, device revoke, revoke-all-other-sessions, TOTP change, and TOTP disable; Worker runtime Logpush to R2         | audit coverage does not yet include unsupported organization/public-sharing surfaces; automated log-retention deletion is still operator-run |
 | Information disclosure | generic auth failures, owner-scoped queries, complete-only account-key projection, encrypted vault payload storage, recent-auth export gate, secret-safe audit filtering; organization and public sharing routes remain unsupported            | platform logs/backups/user exports remain sensitive operational data                                                                         |
 | Denial of service      | password-grant IP and account lockouts, bounded fixture tests; organization and public sharing routes remain unsupported                                                                                                                       | no global request quota, queue, export-specific throttle, public-link abuse dashboard, or Send-specific rate limit                           |
@@ -205,10 +205,11 @@ Explicitly excluded public sharing surface:
 
 13. Account-key overwrite or partial-key disclosure.
     Current mitigation: dedicated routes are default-off and owner-authenticated;
-    initialization requires the exact active both-null stamp/revision generation,
-    persists a required redacted audit in the same D1 batch, treats exact replay
-    as a no-op, rejects replacement/V2 input, and uses complete-only projections
-    before any touched token-session mutation.
+    initialization requires a non-empty wrapped user key and the exact active
+    both-null stamp/revision generation, persists a required redacted audit in
+    the same D1 batch, treats exact replay as a no-op, rejects replacement/V2
+    input, and uses complete-only projections before any touched token-session
+    mutation.
 
 ## Required Follow-Up Before Real Secrets
 

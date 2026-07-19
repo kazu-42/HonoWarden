@@ -263,13 +263,15 @@ either route. Missing, blank, false, or any other value returns
 `501 unsupported_feature` before authentication or D1 access.
 
 The initializer accepts only a complete bounded opaque public key and wrapped
-private key for an active authenticated account whose two stored key columns are
-both null. The first commit advances account revision and writes one required
-redacted audit event atomically; the security stamp and existing sessions remain
-unchanged so the initiating client can finish its bootstrap. An exact replay is
-a successful no-op. Partial stored state, V2 fields, and any different existing
-value fail without overwrite or disclosure. Full replacement and data rewrap
-belong to HON-206 and must never be routed through this initializer.
+private key for an active authenticated account whose wrapped user key is
+non-empty and whose two stored account-key columns are both null. The first
+commit advances account revision and writes one required redacted audit event
+atomically; the security stamp and existing sessions remain unchanged so the
+initiating client can finish its bootstrap. An exact replay is a successful
+no-op. A missing wrapped user key, partial stored state, V2 fields, and any
+different existing value fail without overwrite or disclosure. Full
+replacement and data rewrap belong to HON-206 and must never be routed through
+this initializer.
 
 The top-level, staging, and production `wrangler.jsonc` values remain false.
 Source merge does not activate the routes. Activation requires separate

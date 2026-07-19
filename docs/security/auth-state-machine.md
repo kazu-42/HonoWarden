@@ -124,6 +124,7 @@ Failure invariants:
 ```text
 explicit account-key route flag enabled
   -> authenticated active user at current security stamp
+  -> non-empty wrapped user key exists?
   -> strict complete bounded V1 public/wrapped-private payload?
   -> stored state?
        both null -> reserve mandatory audit from exact source generation,
@@ -144,6 +145,8 @@ Failure invariants:
 
 - a disabled flag returns unsupported before authentication or D1 access
 - malformed, unknown, oversized, partial, or V2 input is state-free
+- a missing or blank wrapped user key fails before initialization and no
+  complete account-key projection is returned
 - stale stamp/revision, disabled user, cross-user id, partial stored state, or a
   different existing pair cannot overwrite account keys
 - audit reservation or user-update failure rolls the whole D1 batch back

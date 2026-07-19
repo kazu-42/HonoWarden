@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-19T15:24:34.695Z",
-  "checkedAt": "2026-07-20 00:20 JST",
-  "mode": "verify",
+  "generatedAt": "2026-07-19T16:39:07.158Z",
+  "checkedAt": "2026-07-20 01:40 JST",
+  "mode": "apply",
   "status": "exact",
   "issue": {
     "id": "4eeebb24-7112-4e05-9d91-9b1fabbea57c",
@@ -17,11 +17,11 @@
     "managedCommentCount": 1
   },
   "plan": {
-    "bytes": 2165,
-    "sha256": "3bd42d2bc1233da08f30f95829357db83b140d516ddb7582173bb0f8a77f15bf",
+    "bytes": 2321,
+    "sha256": "f372ef88e1fa49ff110e990c03c2796d28332727d568ba662c396435b38d228e",
     "commentId": "d8d7d012-b8b7-448d-be2d-61b3db8afe77"
   },
-  "operations": [],
+  "operations": ["updated_execution_plan"],
   "checks": {
     "issueIdentity": true,
     "active": true,

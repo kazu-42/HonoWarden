@@ -177,12 +177,18 @@ describe('credential repository', () => {
     expect(queries[0]).toContain('INSERT INTO audit_events')
     expect(queries[0]).toContain('public_key IS NULL')
     expect(queries[0]).toContain('private_key IS NULL')
+    expect(queries[0]).toContain('user_key IS NOT NULL')
+    expect(queries[0]).toContain('length(trim(user_key)) > 0')
     expect(queries[1]).toContain('UPDATE users')
+    expect(queries[1]).toContain('user_key IS NOT NULL')
+    expect(queries[1]).toContain('length(trim(user_key)) > 0')
   })
 
   it.each([
     ['cross-user', { userId: 'other-user-id' }, {}],
     ['disabled user', {}, { disabledAt: '2026-07-19T00:00:00.000Z' }],
+    ['missing wrapped user key', {}, { userKey: null }],
+    ['blank wrapped user key', {}, { userKey: '  ' }],
     ['stale stamp', { expectedSecurityStamp: 'stale-security-stamp' }, {}],
     [
       'stale revision',

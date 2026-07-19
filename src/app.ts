@@ -2500,6 +2500,10 @@ app.get('/api/accounts/keys', async (c) => {
   if (!auth.ok) {
     return auth.response
   }
+  if (!hasWrappedUserKey(auth.user)) {
+    logInvalidAccountKeyState(c, 'wrapped_user_key_missing')
+    return invalidAccountKeyStateResponse(c)
+  }
 
   const state = classifyAccountKeyState(auth.user)
   if (state.status === 'missing') {
@@ -2535,6 +2539,10 @@ app.post('/api/accounts/keys', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
+  }
+  if (!hasWrappedUserKey(auth.user)) {
+    logInvalidAccountKeyState(c, 'wrapped_user_key_missing')
+    return invalidAccountKeyStateResponse(c)
   }
 
   const request = parseAccountKeyInitializationBody(
@@ -2605,6 +2613,10 @@ app.post('/api/accounts/keys', async (c) => {
       const currentUser = await findAuthUserById(c.env.DB, auth.user.id)
       if (!currentUser || currentUser.disabledAt) {
         return accountKeyConflictResponse(c)
+      }
+      if (!hasWrappedUserKey(currentUser)) {
+        logInvalidAccountKeyState(c, 'wrapped_user_key_missing')
+        return invalidAccountKeyStateResponse(c)
       }
       const concurrentState = classifyAccountKeyState(currentUser)
       if (concurrentState.status === 'invalid') {
@@ -5357,6 +5369,9 @@ function buildAccountKeyProjection(user: AuthUserRecord) {
       accountKeys: null,
     }
   }
+  if (!hasWrappedUserKey(user)) {
+    throw new Error('stored account keypair has no wrapped user key')
+  }
 
   const accountKeys = {
     object: 'privateKeys',
@@ -5381,6 +5396,10 @@ function buildAccountKeysEndpointResponse(
   user: AuthUserRecord,
   keyPair: AccountKeyPair,
 ) {
+  if (!hasWrappedUserKey(user)) {
+    throw new Error('stored account keypair has no wrapped user key')
+  }
+
   return {
     object: 'keys',
     key: user.userKey,
@@ -5416,14 +5435,25 @@ function invalidAccountKeyStateResponse(c: AppContext) {
   )
 }
 
-function logInvalidAccountKeyState(c: AppContext) {
+function logInvalidAccountKeyState(
+  c: AppContext,
+  reason:
+    | 'stored_state_invalid'
+    | 'wrapped_user_key_missing' = 'stored_state_invalid',
+) {
   console.error(
     JSON.stringify({
       event: 'account_key_state_invalid',
       requestId: c.get('requestId'),
-      reason: 'stored_state_invalid',
+      reason,
     }),
   )
+}
+
+function hasWrappedUserKey(
+  user: AuthUserRecord,
+): user is AuthUserRecord & { userKey: string } {
+  return typeof user.userKey === 'string' && user.userKey.trim().length > 0
 }
 
 function buildMasterPasswordUnlockResponse(user: AuthUserRecord) {

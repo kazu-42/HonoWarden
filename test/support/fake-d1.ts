@@ -1527,9 +1527,13 @@ function applyAccountKeyInitializationBatch(
 
     const values = userStatement.__fakeBoundValues
     const user = userRows.find((row) => row.id === values[4])
+    const wrappedUserKey =
+      user == null ? null : fakeColumn(user, 'userKey', 'user_key')
     const generationMatches =
       user != null &&
       fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
+      typeof wrappedUserKey === 'string' &&
+      wrappedUserKey.trim().length > 0 &&
       fakeColumn(user, 'publicKey', 'public_key') == null &&
       fakeColumn(user, 'privateKey', 'private_key') == null &&
       fakeColumn(user, 'securityStamp', 'security_stamp') === values[5] &&

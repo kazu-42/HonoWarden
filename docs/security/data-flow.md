@@ -139,16 +139,18 @@ Secret-handling invariants:
 
 1. The dedicated routes return unsupported before authentication or D1 unless
    `HONOWARDEN_ACCOUNT_KEYS_ENABLED=true`.
-2. An authenticated active user posts one bounded V1 public key and opaque
-   wrapped-private key to `POST /api/accounts/keys`. Unknown, partial,
-   conflicting-alias, or V2 fields fail before mutation.
+2. An authenticated active user with a non-empty wrapped user key posts one
+   bounded V1 public key and opaque wrapped-private key to
+   `POST /api/accounts/keys`. Unknown, partial, conflicting-alias, or V2 fields
+   fail before mutation.
 3. Worker classifies stored account-key state as both-null, complete, or
    invalid. Only both-null can initialize. An exact complete replay returns the
-   existing response without a write; any different complete pair or partial
-   stored state fails without returning either value.
+   existing response without a write; a missing wrapped user key, any different
+   complete pair, or partial stored state fails without returning key material.
 4. One D1 batch reserves a redacted `account.keys.initialize` audit row from the
-   exact active both-null security-stamp/revision generation and then updates
-   that same generation with the opaque pair and next account revision.
+   exact active, non-empty-user-key, both-null security-stamp/revision generation
+   and then updates that same generation with the opaque pair and next account
+   revision.
 5. Security stamp, authentication hash, KDF, wrapped user key, devices, refresh
    tokens, auth requests, ciphers, and attachments are outside the batch and
    remain unchanged.

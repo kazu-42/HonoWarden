@@ -7197,6 +7197,88 @@ describe('HonoWarden app', () => {
     }
   })
 
+  it('rejects account-key initialization and reads without a wrapped user key', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = {
+      ...authUserRecord(),
+      userKey: null,
+      publicKey: null,
+      privateKey: null,
+    }
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const batch = vi.spyOn(database, 'batch')
+    const before = structuredClone(user)
+    const accessToken = await accessTokenFor(user)
+    const env = {
+      DB: database,
+      HONOWARDEN_ACCOUNT_KEYS_ENABLED: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const initialize = await app.request(
+      '/api/accounts/keys',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(accountKeyInitializationBody()),
+      },
+      env,
+    )
+
+    expect(initialize.status).toBe(409)
+    await expect(initialize.json()).resolves.toMatchObject({
+      error: { code: 'account_key_state_invalid' },
+    })
+    expect(user).toEqual(before)
+    expect(batch).not.toHaveBeenCalled()
+    expect(database.auditEventInserts).toEqual([])
+
+    Object.assign(user, {
+      publicKey: 'synthetic-existing-public-key',
+      privateKey: '2.synthetic-existing-wrapped-private-key',
+    })
+
+    for (const method of ['GET', 'POST'] as const) {
+      const response = await app.request(
+        '/api/accounts/keys',
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            ...(method === 'POST'
+              ? { 'Content-Type': 'application/json' }
+              : {}),
+          },
+          ...(method === 'POST'
+            ? {
+                body: JSON.stringify({
+                  publicKey: user.publicKey,
+                  encryptedPrivateKey: user.privateKey,
+                }),
+              }
+            : {}),
+        },
+        env,
+      )
+
+      expect(response.status).toBe(409)
+      const body = JSON.stringify(await response.json())
+      expect(body).toContain('account_key_state_invalid')
+      expect(body).not.toContain(user.publicKey)
+      expect(body).not.toContain(user.privateKey)
+    }
+    expect(batch).not.toHaveBeenCalled()
+    expect(database.auditEventInserts).toEqual([])
+    expect(JSON.stringify(error.mock.calls)).toContain(
+      'wrapped_user_key_missing',
+    )
+    expect(JSON.stringify(error.mock.calls)).not.toContain(user.publicKey)
+    expect(JSON.stringify(error.mock.calls)).not.toContain(user.privateKey)
+  })
+
   it('initializes once, preserves the current session, and projects the pair everywhere', async () => {
     const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
     const user = {
