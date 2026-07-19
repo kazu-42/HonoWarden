@@ -466,6 +466,8 @@ function startWorker({ persistTo, port, inspectorPort }) {
       '--var',
       'HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED:false',
       '--var',
+      'HONOWARDEN_KDF_MUTATION_ENABLED:true',
+      '--var',
       'HONOWARDEN_AUDIT_LOGS:false',
     ],
     {

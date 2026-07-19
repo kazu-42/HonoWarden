@@ -19,12 +19,16 @@ undecryptable generation.
   consistently. Unknown stored algorithms fail closed.
 - Boundary, drift, stale generation, rollback, enumeration resistance, and
   old/new session behavior have focused tests and a real local D1 lifecycle.
+- KDF readers ship independently of a default-off writer so the first deploy is
+  a reader-capable rollback target before any Argon2id generation can commit.
 - Full repository checks and two independent exact-head reviews pass before PR.
 
 ## Constraints
 
 - Never receive or log a plaintext master password or an unwrapped user key.
 - No production mutation, real-user fixture, deploy, or secret rotation.
+- Keep `HONOWARDEN_KDF_MUTATION_ENABLED=false` in tracked environments; local
+  lifecycle evidence may opt in explicitly without activating a deployment.
 - Reuse the existing guarded credential-generation transaction and proof
   defense rather than adding a second mutation model.
 - Keep the pinned upstream server/client commits immutable in evidence.

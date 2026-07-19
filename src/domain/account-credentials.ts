@@ -60,6 +60,10 @@ export type SecurityStampRotationRequest = {
 export type SecurityStampRotationParseResult =
   ({ ok: true } & SecurityStampRotationRequest) | { ok: false }
 
+export function isKdfMutationEnabled(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === 'true'
+}
+
 export function parseSecurityStampRotationBody(
   body: unknown,
 ): SecurityStampRotationParseResult {

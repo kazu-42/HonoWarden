@@ -23,4 +23,6 @@ Branch rules:
 - Unknown inbound KDF values return a generic invalid-request response.
 - Unknown stored KDF values are infrastructure/data-integrity failures and must
   never be projected as a supported algorithm.
+- The writer is default-off. Reader support must be deployed and retained as
+  the rollback target before a later environment version enables mutation.
 - No production action is part of this workflow.

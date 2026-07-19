@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   accountCredentialKdfPolicy,
   accountCredentialPolicy,
+  isKdfMutationEnabled,
   matchesKdfChangeCredentialGeneration,
   matchesPasswordChangeCredentialGeneration,
   nextCredentialRevisionDate,
@@ -13,6 +14,14 @@ import {
 } from '../../src/domain/account-credentials'
 
 describe('account credential domain', () => {
+  it('keeps KDF mutation disabled unless the rollout flag is exact true', () => {
+    expect(isKdfMutationEnabled(undefined)).toBe(false)
+    expect(isKdfMutationEnabled('')).toBe(false)
+    expect(isKdfMutationEnabled('false')).toBe(false)
+    expect(isKdfMutationEnabled('yes')).toBe(false)
+    expect(isKdfMutationEnabled(' TRUE ')).toBe(true)
+  })
+
   it('parses the official camel-case and Pascal-case security-stamp proofs', () => {
     expect(
       parseSecurityStampRotationBody({

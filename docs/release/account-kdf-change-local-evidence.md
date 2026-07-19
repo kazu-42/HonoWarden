@@ -48,7 +48,9 @@ applies all D1 migrations, seeds one synthetic account and encrypted cipher,
 starts `wrangler dev --local` on free loopback ports, exercises the complete
 lifecycle, reads D1 state back through Wrangler, stops the Worker, and removes
 the temporary directory. `--persist-to <path>` retains an explicitly selected
-local database for investigation.
+local database for investigation. The runner explicitly passes
+`HONOWARDEN_KDF_MUTATION_ENABLED=true`; every tracked deployment configuration
+keeps the irreversible writer false.
 
 ## Required Observations
 
@@ -80,6 +82,11 @@ Durable Object socket cleanup occurs after D1 commit and cannot participate in
 that transaction. A cleanup failure returns `session_revocation_incomplete` and
 keeps the new generation. Recovery restores notification infrastructure and
 invalidates stale sockets; it never restores the old credential generation.
+
+The rollout is two-stage: first deploy and verify all PBKDF2/Argon2id reader
+paths with the writer disabled, then activate the writer in a later version
+whose rollback target is reader-capable. After an Argon2id commit, recovery may
+disable new writes or roll forward but must not deploy a pre-reader release.
 
 ## Limits
 

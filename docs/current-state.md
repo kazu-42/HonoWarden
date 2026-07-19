@@ -1141,7 +1141,8 @@ Not implemented:
 Implemented:
 
 - authenticated `POST /api/accounts/kdf` with current client-derived hash proof,
-  unchanged normalized-email salt, and matching authentication/unlock data
+  unchanged normalized-email salt, and matching authentication/unlock data;
+  the writer is default-off behind `HONOWARDEN_KDF_MUTATION_ENABLED`
 - inclusive PBKDF2-SHA256 bounds `600000..2000000` and Argon2id bounds of
   iterations `2..10`, memory `15..1024` MiB, and parallelism `1..16`
 - one generation-guarded D1 batch that replaces the authentication hash, opaque
@@ -1161,6 +1162,8 @@ Not implemented:
 
 - official client UI or production KDF-change evidence; those remain aggregate
   credential closeout work and do not promote compatibility rows
+- deployed writer activation; tracked development, staging, and production
+  configurations remain false until a reader-capable rollback version exists
 
 ## Week 26 Account Lifecycle Operator CLI
 

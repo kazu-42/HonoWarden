@@ -6987,6 +6987,7 @@ describe('HonoWarden app', () => {
       {
         DB: database,
         HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -7131,6 +7132,41 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('keeps KDF mutation state-free and default-off for rollback safety', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const prepare = vi.spyOn(database, 'prepare')
+    const before = structuredClone(user)
+    const response = await app.request(
+      '/api/accounts/kdf',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(kdfChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(501)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.json()).resolves.toMatchObject({
+      Message: 'KDF mutation is not activated on this server.',
+      error: {
+        code: 'unsupported_feature',
+        message: 'KDF mutation is not activated on this server.',
+      },
+    })
+    expect(user).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+    expect(prepare).not.toHaveBeenCalled()
+  })
+
   it('keeps the complete KDF generation state-free on proof and D1 failure', async () => {
     for (const failure of ['proof', 'audit'] as const) {
       const user = authUserRecord()
@@ -7164,6 +7200,7 @@ describe('HonoWarden app', () => {
         },
         {
           DB: database,
+          HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
           HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
         },
       )
@@ -7208,6 +7245,7 @@ describe('HonoWarden app', () => {
       },
       {
         DB: database,
+        HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -7246,6 +7284,7 @@ describe('HonoWarden app', () => {
       },
       {
         DB: database,
+        HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -7275,6 +7314,7 @@ describe('HonoWarden app', () => {
       {
         DB: database,
         HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )

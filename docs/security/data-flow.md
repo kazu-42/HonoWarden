@@ -93,23 +93,25 @@ Secret-handling invariants:
 
 ## KDF Change
 
-1. An authenticated client derives a complete new authentication/unlock
+1. The default-off KDF writer gate must be explicitly enabled. Reader paths stay
+   active while disabled so existing Argon2id generations remain usable.
+2. An authenticated client derives a complete new authentication/unlock
    generation locally and posts it to `POST /api/accounts/kdf` together with the
    old client-derived authentication hash as proof.
-2. Worker requires matching authentication and unlock KDF settings, the same
+3. Worker requires matching authentication and unlock KDF settings, the same
    unchanged normalized-email salt, and one supported KDF configuration within
    the pinned inclusive bounds.
-3. The credential-proof defense and constant-time old-hash comparison run before
+4. The credential-proof defense and constant-time old-hash comparison run before
    mutation. Unknown or structurally invalid stored KDF values fail at the auth
    repository read boundary and cannot become a PBKDF2 fallback.
-4. One guarded D1 batch replaces authentication hash, opaque wrapped user key,
+5. One guarded D1 batch replaces authentication hash, opaque wrapped user key,
    KDF algorithm and parameters, security stamp, and revision; revokes active
    device and refresh sessions; supersedes active auth requests; and persists
    `account.kdf.change`.
-5. Prelogin, password and refresh token responses, profile, and sync all project
+6. Prelogin, password and refresh token responses, profile, and sync all project
    the same stored generation. Unknown allowed prelogin accounts receive a valid
    synthetic default rather than an account-existence error.
-6. Post-commit Durable Object cleanup has the same forward-only recovery boundary
+7. Post-commit Durable Object cleanup has the same forward-only recovery boundary
    as password change. Its failure never restores the old KDF generation.
 
 ## Refresh Grant

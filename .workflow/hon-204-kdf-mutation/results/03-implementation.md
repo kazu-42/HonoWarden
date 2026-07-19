@@ -6,6 +6,8 @@ notification cleanup boundary as existing password change.
 
 Key invariants:
 
+- the irreversible writer is default-off while PBKDF2/Argon2id readers remain
+  active, allowing a reader-capable release to precede later activation
 - request authentication/unlock data must have the same unchanged account salt
   and exactly the same new KDF
 - PBKDF2-SHA256 and Argon2id bounds are inclusive and pinned to the verified
@@ -23,4 +25,6 @@ Key invariants:
 The implementation also adds a synthetic Wrangler/local-D1 lifecycle command,
 an ops regression test, conservative compatibility/current-state/security docs,
 and explicit evidence limitations. No schema migration was required because the
-initial users table already owns all KDF columns.
+initial users table already owns all KDF columns. Every tracked Wrangler
+environment remains disabled; only the isolated local lifecycle passes an
+explicit flag override.

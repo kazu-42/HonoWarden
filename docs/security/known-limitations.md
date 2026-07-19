@@ -73,7 +73,8 @@ inputs, not minor documentation notes.
 - existing-account PBKDF2/Argon2id KDF change is covered by focused tests and a
   synthetic local Wrangler/D1 lifecycle. No official client UI or production
   KDF-change run is recorded, and this local evidence does not promote a client
-  compatibility row.
+  compatibility row. The irreversible writer remains default-off in every
+  tracked environment until a reader-capable rollback target is deployed.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation

@@ -31,6 +31,7 @@ import type { AuditEventName, AuditEventOutcome } from './domain/audit'
 import {
   accountCredentialKdfAlgorithmForType,
   accountCredentialKdfFromStoredGeneration,
+  isKdfMutationEnabled,
   matchesKdfChangeCredentialGeneration,
   matchesPasswordChangeCredentialGeneration,
   nextCredentialRevisionDate,
@@ -2587,6 +2588,14 @@ app.post('/api/accounts/password', async (c) => {
 
 app.post('/api/accounts/kdf', async (c) => {
   c.header('Cache-Control', 'no-store')
+  if (!isKdfMutationEnabled(c.env?.HONOWARDEN_KDF_MUTATION_ENABLED)) {
+    return unsupportedFeatureResponse(
+      c,
+      'KDF mutation is not activated on this server.',
+      true,
+    )
+  }
+
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response

@@ -80,7 +80,8 @@ Failure invariants:
 ## KDF Change
 
 ```text
-authenticated bearer token at current security stamp
+explicit KDF writer rollout flag enabled
+  -> authenticated bearer token at current security stamp
   -> new authentication/unlock data agree on salt and KDF?
   -> unchanged normalized-email salt and bounded PBKDF2/Argon2id settings?
   -> credential-proof defense allows attempt and old hash matches?
@@ -98,6 +99,7 @@ Success invariants:
 
 Failure invariants:
 
+- a disabled writer returns unsupported before authentication or D1 access
 - out-of-range, missing, unknown, mixed, or salt-drifted data is state-free
 - a stale old generation returns `revision_conflict` without partial revocation
 - every failed D1 batch statement rolls back user, session, auth-request, and

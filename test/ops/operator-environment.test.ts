@@ -134,6 +134,18 @@ describe('operator environment policy', () => {
     expect(operatorDocs).toContain('status: `misconfigured`')
   })
 
+  it('documents the default-off KDF mutation rollout boundary', () => {
+    const envExample = readRepoFile('.env.example')
+    const operatorDocs = readRepoFile('docs/operations/operator-environment.md')
+    const rollbackGuide = readRepoFile('docs/release/rollback-guide.md')
+
+    expect(envExample).toMatch(/^HONOWARDEN_KDF_MUTATION_ENABLED=false$/m)
+    expect(operatorDocs).toContain('KDF Mutation Rollout')
+    expect(operatorDocs).toContain('HONOWARDEN_KDF_MUTATION_ENABLED')
+    expect(rollbackGuide).toContain('reader-capable rollback target')
+    expect(rollbackGuide).toMatch(/pre-reader\s+release/)
+  })
+
   it('documents Cloudflare account access review without secret values', () => {
     const accessReview = readRepoFile(
       'docs/operations/cloudflare-access-control.md',

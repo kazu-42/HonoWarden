@@ -37,6 +37,21 @@ pnpm wrangler deploy --env production
 
 5. Verify `/health`, `/health/db`, and synthetic login/sync.
 
+## KDF Mutation Rollback
+
+Deploy KDF reader support with `HONOWARDEN_KDF_MUTATION_ENABLED=false` before
+any environment exposes the writer. Preserve that deployment as the
+reader-capable rollback target, then activate the writer only in a later Worker
+version. Disabling the flag stops new KDF changes without changing existing
+credential state.
+
+Once any account has committed Argon2id, do not roll back to a pre-reader
+release. Such a release projects the stored generation as PBKDF2, causing the
+client to derive the wrong authentication hash. Roll back to the recorded
+reader-capable version or roll forward with a compatible fix. Never restore an
+old password hash, wrapped user key, security stamp, or KDF generation because
+that can resurrect revoked sessions.
+
 ## Data Rollback
 
 There are no down migrations for alpha. Use fresh-target restore:

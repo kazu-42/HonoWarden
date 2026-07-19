@@ -220,6 +220,28 @@ operator inputs for [TOTP Secret Rotation](totp-secret-rotation.md). They are
 not Worker runtime variable names and must not be committed, logged, or copied
 into Linear/GitHub evidence.
 
+## KDF Mutation Rollout
+
+`HONOWARDEN_KDF_MUTATION_ENABLED` is a non-secret, default-off rollout gate for
+`POST /api/accounts/kdf`. Only exact `true` after trimming and case
+normalization enables the writer. Missing, blank, false, or any other value
+returns `501 unsupported_feature` before authentication or database mutation.
+PBKDF2 and Argon2id readers remain active regardless of this flag so disabling
+new writes never locks an account that already committed an Argon2id generation.
+
+The first deployment of KDF-capable code must keep the flag false in every
+environment. Verify its prelogin, token, profile, sync, backup, and
+authentication readers before creating a second Worker version that enables the
+flag. Record that first version as the reader-capable rollback target. After any
+Argon2id generation has committed, rollback means disabling the writer or
+deploying that reader-capable version; never deploy a pre-reader release that
+projects every stored generation as PBKDF2.
+
+The tracked top-level, staging, and production values remain false. The local
+synthetic lifecycle passes an explicit Wrangler `--var` override and is not
+deployment activation evidence. Production activation requires separate
+operator approval and official-client credential closeout evidence.
+
 ## WebAuthn Runtime Policy
 
 HON-208 defines the configuration contract only. It does not add a WebAuthn
