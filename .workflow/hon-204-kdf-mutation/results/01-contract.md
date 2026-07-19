@@ -20,9 +20,13 @@ Verified live through the GitHub content API on 2026-07-19.
   one operation and logs out existing clients by default.
 - The pinned identity prelogin returns exact stored KDF data for known accounts
   and selects unknown-account PBKDF2/Argon2id decoys with a normalized-email,
-  keyed hash. HonoWarden uses the same stable mixed-algorithm property with
-  domain separation and derives every parameter across its complete accepted
-  client-safe space.
+  keyed hash. HonoWarden keeps the same domain-separated, email-stable property
+  but hardens the selection against local distribution and resource-cost
+  signals: one D1 snapshot returns the exact target plus the complete stored
+  KDF population, and the keyed hash selects an unknown-account decoy from that
+  population weighted by account count. This includes readable legacy tuples
+  and never synthesizes a validation-maximum resource profile. An empty
+  population alone falls back to the bootstrap PBKDF2 default.
 
 Primary source paths are already catalogued in
 `.workflow/hon-160-account-credential-mutation/results/01-official-contract.md`.

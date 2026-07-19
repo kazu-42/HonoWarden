@@ -1,5 +1,4 @@
 import {
-  accountCredentialKdfPolicy,
   accountCredentialKdfFromStoredGeneration,
   type AccountCredentialGeneration,
   type AccountCredentialKdf,
@@ -19,6 +18,18 @@ export type ProjectedPreloginKdfResponse = {
   kdfParallelism: number | null
   kdfSettings: AccountCredentialKdf
   salt: string
+}
+
+export type PreloginKdfDistributionEntry = Omit<
+  AccountCredentialGeneration,
+  'emailNormalized'
+> & {
+  accountCount: number
+}
+
+export type PreloginKdfContext = {
+  target: AccountCredentialGeneration | null
+  distribution: PreloginKdfDistributionEntry[]
 }
 
 export type PreloginDecision =
@@ -42,7 +53,14 @@ const defaultKdfResponse = {
   kdfParallelism: null,
 } satisfies PreloginKdfResponse
 
-const syntheticKdfDomain = 'honowarden:prelogin-kdf:v2:'
+const defaultAccountKdf = {
+  kdfType: defaultKdfResponse.kdf,
+  iterations: defaultKdfResponse.kdfIterations,
+  memory: defaultKdfResponse.kdfMemory,
+  parallelism: defaultKdfResponse.kdfParallelism,
+} satisfies AccountCredentialKdf
+
+const syntheticKdfDomain = 'honowarden:prelogin-kdf:v3:'
 
 export function resolvePrelogin(
   requestBody: unknown,
@@ -81,20 +99,39 @@ export function resolvePrelogin(
 
 export async function buildPreloginKdfResponse(
   emailNormalized: string,
-  generation: AccountCredentialGeneration | null,
+  context: PreloginKdfContext,
   secret: string,
 ): Promise<ProjectedPreloginKdfResponse | null> {
-  if (generation && generation.emailNormalized !== emailNormalized) {
+  if (
+    !context ||
+    !Array.isArray(context.distribution) ||
+    (context.target && context.target.emailNormalized !== emailNormalized)
+  ) {
     return null
   }
 
-  const syntheticKdf = await deriveSyntheticKdf(emailNormalized, secret)
-  const kdf = generation
-    ? accountCredentialKdfFromStoredGeneration(generation)
-    : syntheticKdf
-  if (!kdf) {
+  const distribution = normalizeStoredKdfDistribution(context.distribution)
+  if (!distribution) {
     return null
   }
+  const targetKdf = context.target
+    ? accountCredentialKdfFromStoredGeneration(context.target)
+    : null
+  if (
+    (context.target && !targetKdf) ||
+    (targetKdf && !distribution.some((entry) => equalKdf(entry.kdf, targetKdf)))
+  ) {
+    return null
+  }
+
+  const syntheticKdf = await deriveSyntheticKdf(
+    emailNormalized,
+    secret,
+    distribution.length > 0
+      ? distribution
+      : [{ kdf: defaultAccountKdf, accountCount: 1 }],
+  )
+  const kdf = targetKdf ?? syntheticKdf
 
   return {
     kdf: kdf.kdfType,
@@ -109,6 +146,7 @@ export async function buildPreloginKdfResponse(
 async function deriveSyntheticKdf(
   emailNormalized: string,
   secret: string,
+  distribution: WeightedKdf[],
 ): Promise<AccountCredentialKdf> {
   const encoder = new TextEncoder()
   const key = await crypto.subtle.importKey(
@@ -124,47 +162,80 @@ async function deriveSyntheticKdf(
     encoder.encode(`${syntheticKdfDomain}${emailNormalized}`),
   )
   const view = new DataView(digest)
+  const total = distribution.reduce((sum, entry) => sum + entry.accountCount, 0)
+  let selected = Number(view.getBigUint64(0, false) % BigInt(total))
 
-  if (view.getUint8(0) % 2 === 0) {
-    return {
-      kdfType: 0,
-      iterations: syntheticBoundedInteger(
-        view,
-        1,
-        accountCredentialKdfPolicy.pbkdf2Iterations,
-      ),
-      memory: null,
-      parallelism: null,
+  for (const entry of distribution) {
+    if (selected < entry.accountCount) {
+      return { ...entry.kdf }
+    }
+    selected -= entry.accountCount
+  }
+
+  throw new Error('prelogin KDF distribution selection failed')
+}
+
+type WeightedKdf = {
+  kdf: AccountCredentialKdf
+  accountCount: number
+}
+
+function normalizeStoredKdfDistribution(
+  entries: PreloginKdfDistributionEntry[],
+): WeightedKdf[] | null {
+  const byKdf = new Map<string, WeightedKdf>()
+  let total = 0
+
+  for (const entry of entries) {
+    const kdf = accountCredentialKdfFromStoredGeneration({
+      emailNormalized: 'distribution@invalid.example',
+      kdfAlgorithm: entry.kdfAlgorithm,
+      kdfIterations: entry.kdfIterations,
+      kdfMemory: entry.kdfMemory,
+      kdfParallelism: entry.kdfParallelism,
+    })
+    if (
+      !kdf ||
+      !Number.isSafeInteger(entry.accountCount) ||
+      entry.accountCount < 1 ||
+      !Number.isSafeInteger(total + entry.accountCount)
+    ) {
+      return null
+    }
+
+    total += entry.accountCount
+    const key = serializeKdf(kdf)
+    const existing = byKdf.get(key)
+    if (existing) {
+      if (!Number.isSafeInteger(existing.accountCount + entry.accountCount)) {
+        return null
+      }
+      existing.accountCount += entry.accountCount
+    } else {
+      byKdf.set(key, { kdf, accountCount: entry.accountCount })
     }
   }
 
-  return {
-    kdfType: 1,
-    iterations: syntheticBoundedInteger(
-      view,
-      1,
-      accountCredentialKdfPolicy.argon2Iterations,
-    ),
-    memory: syntheticBoundedInteger(
-      view,
-      5,
-      accountCredentialKdfPolicy.argon2Memory,
-    ),
-    parallelism: syntheticBoundedInteger(
-      view,
-      9,
-      accountCredentialKdfPolicy.argon2Parallelism,
-    ),
-  }
+  return [...byKdf.values()].sort((left, right) =>
+    compareSerializedKdf(serializeKdf(left.kdf), serializeKdf(right.kdf)),
+  )
 }
 
-function syntheticBoundedInteger(
-  view: DataView,
-  byteOffset: number,
-  range: { min: number; max: number },
-): number {
-  const size = range.max - range.min + 1
-  return range.min + (view.getUint32(byteOffset, false) % size)
+function equalKdf(left: AccountCredentialKdf, right: AccountCredentialKdf) {
+  return serializeKdf(left) === serializeKdf(right)
+}
+
+function serializeKdf(kdf: AccountCredentialKdf): string {
+  return [
+    kdf.kdfType,
+    kdf.iterations,
+    kdf.memory ?? '',
+    kdf.parallelism ?? '',
+  ].join(':')
+}
+
+function compareSerializedKdf(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }
 
 export function parseAllowedEmails(value: string | undefined): Set<string> {

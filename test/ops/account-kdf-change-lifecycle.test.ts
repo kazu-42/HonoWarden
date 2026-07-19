@@ -47,10 +47,12 @@ describe('account KDF-change local D1 lifecycle', () => {
       },
       routes: {
         prelogin: 200,
+        unknownPreloginBeforeChange: 200,
         oldLoginBeforeChange: 200,
         verifyBeforeChange: 200,
         kdfChange: 200,
         preloginAfterChange: 200,
+        unknownPreloginAfterChange: 200,
         oldAccessAfterChange: 401,
         oldRefreshAfterChange: 400,
         oldLoginAfterChange: 400,
@@ -69,6 +71,10 @@ describe('account KDF-change local D1 lifecycle', () => {
     )
     expect(report.checks).toContainEqual({
       id: 'kdf_changed_to_argon2id',
+      status: 'pass',
+    })
+    expect(report.checks).toContainEqual({
+      id: 'unknown_prelogin_tracks_stored_distribution',
       status: 'pass',
     })
     expect(report.limitations).toContain(

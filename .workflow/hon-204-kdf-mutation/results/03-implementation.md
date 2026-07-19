@@ -19,8 +19,13 @@ Key invariants:
   D1 generation
 - prelogin, password and refresh token responses, profile, and sync use one
   stored-KDF mapping; unknown stored algorithms fail before session mutation,
-  while unknown allowed accounts receive an email-stable, domain-separated
-  HMAC decoy spanning the complete accepted PBKDF2 and Argon2id parameter space
+  while one read-only D1 snapshot returns the exact target plus the complete
+  stored KDF population for prelogin; unknown allowed accounts receive an
+  email-stable, domain-separated HMAC selection from that population weighted
+  by account count, including readable legacy tuples and only resource profiles
+  that are already stored
+- an empty database uses the bootstrap PBKDF2 default; malformed distribution
+  rows or an exact target absent from its own snapshot fail closed
 - allowed prelogin requires `HONOWARDEN_TOKEN_SECRET` before D1 access and logs
   only a non-secret configuration reason when the secret is absent
 - no plaintext password, unwrapped key, hash, wrapped key, token, or request body

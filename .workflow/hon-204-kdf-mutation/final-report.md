@@ -2,7 +2,7 @@
 
 Status: in progress
 
-Implementation, focused tests, and real local D1 lifecycle are complete. Full
-repository verification, exact-head reviews, PR/CI, merge, Linear closeout, and
-worktree cleanup remain. This report will be finalized only after those gates
-pass.
+Implementation, focused tests, real local D1 lifecycle, and full repository
+verification are complete. Exact-head reviews, PR/CI, merge, Linear closeout,
+and worktree cleanup remain. This report will be finalized only after those
+gates pass.

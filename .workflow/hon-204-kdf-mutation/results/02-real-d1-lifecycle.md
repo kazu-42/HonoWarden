@@ -9,13 +9,14 @@ pnpm account:kdf-change:lifecycle
 pnpm vitest run test/ops/account-kdf-change-lifecycle.test.ts
 ```
 
-Both commands passed on the review-remediated candidate. The direct runner
-completed all 17 checks, and the ops test reran the isolated lifecycle in 36.63
-seconds.
+Both commands passed on the fourth-remediation candidate. The standalone runner
+completed all 18 checks, and the ops test reran the same isolated lifecycle as
+part of the focused 4-file, 312-test suite.
 
 Observed HTTP statuses:
 
-- prelogin before and after: `200`
+- known-account prelogin before and after: `200`
+- unknown allowlisted prelogin before and after: `200`
 - old login before change: `200`
 - KDF change: `200`
 - old access token after change: `401`
@@ -25,7 +26,9 @@ Observed HTTP statuses:
 D1 readback proved one Argon2id `1/6/32/4` generation, unchanged normalized
 email and encrypted cipher JSON, rotated security stamp/revision, revoked old
 device and refresh session, active new device, and exactly one
-`account.kdf.change` audit row.
+`account.kdf.change` audit row. With a one-account population, unknown
+allowlisted prelogin tracked the stored distribution from PBKDF2
+`0/600000/null/null` before mutation to Argon2id `1/6/32/4` after mutation.
 
 The run used only synthetic hashes, wrapped keys, and encrypted payloads in a
 temporary local Wrangler persistence directory. It did not touch a remote

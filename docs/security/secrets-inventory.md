@@ -63,8 +63,9 @@ Do not commit real secret values to the repository.
 - `HONOWARDEN_TOKEN_SECRET` rotation invalidates existing refresh-token hash
   lookups and legacy no-kid access-token fallback. Plan forced re-login and
   session invalidation when that secret is affected. Rotation also reassigns
-  the synthetic KDF decoy returned for an unknown allowlisted email, but does
-  not alter any stored account KDF generation.
+  the synthetic KDF decoy returned for an unknown allowlisted email. Changes to
+  the stored KDF population can also remap that decoy. Neither operation alters
+  any stored account KDF generation.
 - Partial or malformed access-token keyring configuration fails closed instead
   of silently falling back to `HONOWARDEN_TOKEN_SECRET`.
 - TOTP secret rotation should use

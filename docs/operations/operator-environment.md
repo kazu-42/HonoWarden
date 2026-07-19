@@ -220,13 +220,15 @@ operator inputs for [TOTP Secret Rotation](totp-secret-rotation.md). They are
 not Worker runtime variable names and must not be committed, logged, or copied
 into Linear/GitHub evidence.
 
-`HONOWARDEN_TOKEN_SECRET` also keys the domain-separated, email-stable KDF decoy
-selection used for allowlisted accounts that do not exist. Allowed prelogin
-fails with `503 server_misconfigured` before D1 access when this secret is
-missing or blank, so known and unknown accounts share the same configuration
-failure boundary. Rotating the secret changes only unknown-account decoy
-assignment in addition to its documented token blast radius; it does not change
-stored KDF generations.
+`HONOWARDEN_TOKEN_SECRET` also keys the domain-separated, email-stable selection
+used for allowlisted accounts that do not exist. The selection is weighted by
+the current stored KDF population, including readable legacy generations, and
+therefore emits only a resource profile already in use. Allowed prelogin fails
+with `503 server_misconfigured` before D1 access when this secret is missing or
+blank, so known and unknown accounts share the same configuration failure
+boundary. Rotating the secret or changing the stored population can remap an
+unknown-account decoy; neither changes a known account's exact projection or
+any stored KDF generation. The allowlist remains the primary prelogin boundary.
 
 ## KDF Mutation Rollout
 

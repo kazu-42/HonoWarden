@@ -182,6 +182,7 @@ import {
   buildDeviceId,
   createPasswordGrantSession,
   findAuthFailureBucket,
+  findPreloginKdfContext,
   findAuthUserByEmail,
   findAuthUserById,
   findDeviceByIdentifier,
@@ -830,10 +831,10 @@ async function handlePrelogin(c: AppContext) {
   }
 
   try {
-    const user = await findAuthUserByEmail(c.env.DB, emailNormalized)
+    const kdfContext = await findPreloginKdfContext(c.env.DB, emailNormalized)
     const response = await buildPreloginKdfResponse(
       emailNormalized,
-      user,
+      kdfContext,
       preloginKdfSecret,
     )
     if (!response) {

@@ -1,4 +1,8 @@
 import { accountCredentialKdfFromStoredGeneration } from '../domain/account-credentials'
+import type {
+  PreloginKdfContext,
+  PreloginKdfDistributionEntry,
+} from '../domain/prelogin'
 import { refreshTokenRetentionDays } from '../domain/tokens'
 
 export type AuthUserRecord = {
@@ -279,6 +283,14 @@ type AuthUserRow = {
   totpLastAcceptedStep: number | null
 }
 
+type PreloginKdfRow = PreloginKdfDistributionEntry & {
+  targetEmailNormalized: string | null
+  targetKdfAlgorithm: string | null
+  targetKdfIterations: number | null
+  targetKdfMemory: number | null
+  targetKdfParallelism: number | null
+}
+
 type RefreshTokenSessionRow = {
   tokenId: string
   userId: string
@@ -338,6 +350,84 @@ type DeviceRow = {
 
 type KnownDeviceRow = {
   found: number
+}
+
+export async function findPreloginKdfContext(
+  database: AuthLookupDatabase,
+  emailNormalized: string,
+): Promise<PreloginKdfContext> {
+  const result = await database
+    .prepare(
+      `
+        WITH target AS (
+          SELECT
+            email_normalized,
+            kdf_algorithm,
+            kdf_iterations,
+            kdf_memory,
+            kdf_parallelism
+          FROM users
+          WHERE email_normalized = ?
+          LIMIT 1
+        ),
+        distribution AS (
+          SELECT
+            kdf_algorithm,
+            kdf_iterations,
+            kdf_memory,
+            kdf_parallelism,
+            COUNT(*) as accountCount
+          FROM users
+          GROUP BY
+            kdf_algorithm,
+            kdf_iterations,
+            kdf_memory,
+            kdf_parallelism
+        )
+        SELECT
+          distribution.kdf_algorithm as kdfAlgorithm,
+          distribution.kdf_iterations as kdfIterations,
+          distribution.kdf_memory as kdfMemory,
+          distribution.kdf_parallelism as kdfParallelism,
+          distribution.accountCount,
+          target.email_normalized as targetEmailNormalized,
+          target.kdf_algorithm as targetKdfAlgorithm,
+          target.kdf_iterations as targetKdfIterations,
+          target.kdf_memory as targetKdfMemory,
+          target.kdf_parallelism as targetKdfParallelism
+        FROM distribution
+        LEFT JOIN target ON 1 = 1
+        ORDER BY
+          distribution.kdf_algorithm ASC,
+          distribution.kdf_iterations ASC,
+          distribution.kdf_memory ASC,
+          distribution.kdf_parallelism ASC
+      `,
+    )
+    .bind(emailNormalized)
+    .all<PreloginKdfRow>()
+  const rows = result.results
+  const first = rows[0]
+
+  return {
+    target:
+      first?.targetEmailNormalized == null
+        ? null
+        : {
+            emailNormalized: first.targetEmailNormalized,
+            kdfAlgorithm: first.targetKdfAlgorithm ?? '',
+            kdfIterations: first.targetKdfIterations ?? 0,
+            kdfMemory: first.targetKdfMemory,
+            kdfParallelism: first.targetKdfParallelism,
+          },
+    distribution: rows.map((row) => ({
+      kdfAlgorithm: row.kdfAlgorithm,
+      kdfIterations: row.kdfIterations,
+      kdfMemory: row.kdfMemory,
+      kdfParallelism: row.kdfParallelism,
+      accountCount: row.accountCount,
+    })),
+  }
 }
 
 export async function findAuthUserByEmail(

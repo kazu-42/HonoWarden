@@ -110,11 +110,15 @@ Secret-handling invariants:
    device and refresh sessions; supersedes active auth requests; and persists
    `account.kdf.change`.
 6. Prelogin, password and refresh token responses, profile, and sync all project
-   the same stored generation. Unknown allowed prelogin accounts receive an
-   email-stable HMAC-derived decoy across the complete accepted PBKDF2 and
-   Argon2id parameter space, so no accepted stored tuple is impossible for an
-   unknown account. The HMAC is domain-separated and keyed by
-   `HONOWARDEN_TOKEN_SECRET`; a missing secret fails before D1.
+   the same stored generation. One read-only D1 snapshot returns the exact
+   prelogin target plus the complete grouped stored KDF population. A known
+   account receives its exact validated generation; an unknown allowed account
+   receives a domain-separated, email-stable HMAC selection from that
+   population weighted by account count. This includes readable legacy tuples
+   and emits only resource profiles already stored. An empty population alone
+   falls back to bootstrap PBKDF2 `600000`; malformed or internally
+   inconsistent context fails closed. The HMAC is keyed by
+   `HONOWARDEN_TOKEN_SECRET`, and a missing secret fails before D1.
 7. Post-commit Durable Object cleanup has the same forward-only recovery boundary
    as password change. Its failure never restores the old KDF generation.
 

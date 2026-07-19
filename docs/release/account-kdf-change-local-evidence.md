@@ -16,7 +16,8 @@ This evidence covers an existing account changing from PBKDF2-SHA256 to
 Argon2id through HonoWarden HTTP routes and a fully migrated local D1 database.
 It verifies exact KDF projection, atomic credential/session mutation,
 old-generation rejection, new-generation login metadata, required audit
-persistence, and encrypted-vault preservation.
+persistence, encrypted-vault preservation, and unknown allowlisted prelogin
+tracking the stored KDF population before and after mutation.
 
 The runner uses synthetic client-derived authentication hashes, opaque wrapped
 user keys, and encrypted vault payloads. It never supplies a plaintext master
@@ -58,6 +59,10 @@ The passing report must establish:
 
 - known-account prelogin changes from PBKDF2 `0/600000/null/null` to Argon2id
   `1/6/32/4`, including the current `kdfSettings` shape
+- with the one seeded account, unknown allowlisted prelogin changes from the
+  same PBKDF2 profile to the same Argon2id profile, proving the decoy is selected
+  from the current stored distribution rather than synthesized at a validation
+  boundary
 - the old access token, refresh token, and old-KDF authentication hash fail
 - the new authentication hash logs in and verifies
 - password and refresh token responses, profile, and sync all project Argon2id
@@ -66,6 +71,9 @@ The passing report must establish:
 - old device and refresh-token rows are revoked while the new device is active
 - exactly one `account.kdf.change` audit row exists
 - encrypted cipher JSON is byte-for-byte unchanged
+
+The report contains 18 named checks. The unknown-address fixture remains
+synthetic and pending throughout the run; it is never inserted into D1.
 
 Focused route and repository tests separately cover every bound and
 just-outside value, missing Argon2id parameters, unknown algorithms, mixed

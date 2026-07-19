@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
 const databaseName = 'honowarden'
 const email = 'hon204-lifecycle@example.test'
+const pendingEmail = 'hon204-pending@example.test'
 const userId = 'hon204-lifecycle-user'
 const cipherId = 'hon204-lifecycle-cipher'
 const oldHash = 'synthetic-hon204-old-authentication-hash'
@@ -79,6 +80,17 @@ async function main(args = process.argv.slice(2)) {
       prelogin.body.kdf === 0 && prelogin.body.kdfIterations === 600000,
       'prelogin KDF does not match the seeded account',
     )
+    const unknownPreloginBefore = await preloginRequest(baseUrl, pendingEmail)
+    assertStatus(
+      unknownPreloginBefore,
+      200,
+      'unknown-account prelogin before KDF change',
+    )
+    assert(
+      unknownPreloginBefore.body.kdf === 0 &&
+        unknownPreloginBefore.body.kdfIterations === 600000,
+      'unknown-account prelogin did not use the stored PBKDF2 population',
+    )
 
     const oldLogin = await passwordGrant(baseUrl, oldHash, oldDevice)
     assertStatus(oldLogin, 200, 'old-password login before change')
@@ -141,6 +153,19 @@ async function main(args = process.argv.slice(2)) {
         preloginAfter.body.kdfSettings?.kdfType === 1 &&
         preloginAfter.body.salt === email,
       'prelogin did not project the Argon2id generation',
+    )
+    const unknownPreloginAfter = await preloginRequest(baseUrl, pendingEmail)
+    assertStatus(
+      unknownPreloginAfter,
+      200,
+      'unknown-account prelogin after KDF change',
+    )
+    assert(
+      unknownPreloginAfter.body.kdf === 1 &&
+        unknownPreloginAfter.body.kdfIterations === 6 &&
+        unknownPreloginAfter.body.kdfMemory === 32 &&
+        unknownPreloginAfter.body.kdfParallelism === 4,
+      'unknown-account prelogin did not track the stored Argon2id population',
     )
 
     const oldAccessAfter = await authorizedJson(
@@ -239,6 +264,11 @@ async function main(args = process.argv.slice(2)) {
     const readback = await readDatabaseState(persistTo)
     const checks = [
       check('prelogin_projects_argon2id', preloginAfter.body.kdf === 1),
+      check(
+        'unknown_prelogin_tracks_stored_distribution',
+        unknownPreloginBefore.body.kdf === 0 &&
+          unknownPreloginAfter.body.kdf === 1,
+      ),
       check('old_access_token_rejected', oldAccessAfter.status === 401),
       check('old_refresh_token_rejected', oldRefreshAfter.status === 400),
       check('old_kdf_login_rejected', oldLoginAfter.status === 400),
@@ -269,10 +299,12 @@ async function main(args = process.argv.slice(2)) {
       },
       routes: {
         prelogin: prelogin.status,
+        unknownPreloginBeforeChange: unknownPreloginBefore.status,
         oldLoginBeforeChange: oldLogin.status,
         verifyBeforeChange: verifyBefore.status,
         kdfChange: kdfChange.status,
         preloginAfterChange: preloginAfter.status,
+        unknownPreloginAfterChange: unknownPreloginAfter.status,
         oldAccessAfterChange: oldAccessAfter.status,
         oldRefreshAfterChange: oldRefreshAfter.status,
         oldLoginAfterChange: oldLoginAfter.status,
@@ -439,6 +471,14 @@ function jsonHeaders() {
   return { 'Content-Type': 'application/json' }
 }
 
+function preloginRequest(baseUrl, accountEmail) {
+  return requestJson(baseUrl, '/identity/accounts/prelogin', {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email: accountEmail }),
+  })
+}
+
 function startWorker({ persistTo, port, inspectorPort }) {
   const child = spawn(
     'pnpm',
@@ -460,7 +500,7 @@ function startWorker({ persistTo, port, inspectorPort }) {
       '--log-level',
       'error',
       '--var',
-      `HONOWARDEN_ALLOWED_EMAILS:${email}`,
+      `HONOWARDEN_ALLOWED_EMAILS:${email},${pendingEmail}`,
       '--var',
       `HONOWARDEN_TOKEN_SECRET:${tokenSecret}`,
       '--var',

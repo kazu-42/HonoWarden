@@ -385,16 +385,47 @@ describe('HonoWarden app', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({
       kdf: 0,
-      kdfIterations: 1540333,
+      kdfIterations: 600000,
       kdfMemory: null,
       kdfParallelism: null,
       kdfSettings: {
         kdfType: 0,
-        iterations: 1540333,
+        iterations: 600000,
         memory: null,
         parallelism: null,
       },
       salt: 'person@example.test',
+    })
+  })
+
+  it('uses the stored KDF population for an unknown allowlisted account', async () => {
+    const legacyUser = {
+      ...authUserRecord(),
+      id: 'legacy-user-id',
+      email: 'Legacy@Example.Test',
+      emailNormalized: 'legacy@example.test',
+      kdfIterations: 100000,
+    }
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'pending@example.test' }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUsers: [legacyUser] }),
+        HONOWARDEN_ALLOWED_EMAILS: 'pending@example.test',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      kdf: 0,
+      kdfIterations: 100000,
+      kdfMemory: null,
+      kdfParallelism: null,
     })
   })
 

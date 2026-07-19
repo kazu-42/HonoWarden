@@ -428,6 +428,17 @@ export class FakeD1Database {
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
         if (
+          query.includes('WITH target AS') &&
+          query.includes('COUNT(*) as accountCount')
+        ) {
+          return {
+            success: true,
+            results: listPreloginKdfRows(options, boundValues) as T[],
+            meta: fakeMeta,
+          }
+        }
+
+        if (
           query.includes('FROM organization_users membership') &&
           query.includes('INNER JOIN organizations organization') &&
           query.includes('membership.user_id = ?') &&
@@ -3045,6 +3056,83 @@ function findAuthUser(
   }
 
   return options.authUsers[0] ?? null
+}
+
+function listPreloginKdfRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  const targetEmailNormalized = String(boundValues[0] ?? '')
+  const target = users.find(
+    (user) =>
+      fakeColumn(user, 'emailNormalized', 'email_normalized') ===
+      targetEmailNormalized,
+  )
+  const groups = new Map<
+    string,
+    {
+      kdfAlgorithm: unknown
+      kdfIterations: unknown
+      kdfMemory: unknown
+      kdfParallelism: unknown
+      accountCount: number
+    }
+  >()
+
+  for (const user of users) {
+    const kdfAlgorithm = fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm')
+    const kdfIterations = fakeColumn(user, 'kdfIterations', 'kdf_iterations')
+    const kdfMemory = fakeColumn(user, 'kdfMemory', 'kdf_memory') ?? null
+    const kdfParallelism =
+      fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') ?? null
+    const key = JSON.stringify([
+      kdfAlgorithm,
+      kdfIterations,
+      kdfMemory,
+      kdfParallelism,
+    ])
+    const existing = groups.get(key)
+    if (existing) {
+      existing.accountCount += 1
+    } else {
+      groups.set(key, {
+        kdfAlgorithm,
+        kdfIterations,
+        kdfMemory,
+        kdfParallelism,
+        accountCount: 1,
+      })
+    }
+  }
+
+  const targetFields = {
+    targetEmailNormalized:
+      target == null
+        ? null
+        : fakeColumn(target, 'emailNormalized', 'email_normalized'),
+    targetKdfAlgorithm:
+      target == null
+        ? null
+        : fakeColumn(target, 'kdfAlgorithm', 'kdf_algorithm'),
+    targetKdfIterations:
+      target == null
+        ? null
+        : fakeColumn(target, 'kdfIterations', 'kdf_iterations'),
+    targetKdfMemory:
+      target == null
+        ? null
+        : (fakeColumn(target, 'kdfMemory', 'kdf_memory') ?? null),
+    targetKdfParallelism:
+      target == null
+        ? null
+        : (fakeColumn(target, 'kdfParallelism', 'kdf_parallelism') ?? null),
+  }
+
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, row]) => ({ ...row, ...targetFields }))
 }
 
 function findKnownDeviceRow(
