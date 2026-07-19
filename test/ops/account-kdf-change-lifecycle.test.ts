@@ -95,11 +95,19 @@ describe('account KDF-change local D1 lifecycle', () => {
       status: 'pass',
     })
     expect(report.checks).toContainEqual({
+      id: 'kdf_population_tracks_argon2id_generation',
+      status: 'pass',
+    })
+    expect(report.checks).toContainEqual({
       id: 'unknown_prelogin_tracks_stored_distribution',
       status: 'pass',
     })
     expect(report.checks).toContainEqual({
       id: 'kdf_changed_back_to_pbkdf2',
+      status: 'pass',
+    })
+    expect(report.checks).toContainEqual({
+      id: 'kdf_population_tracks_final_pbkdf2_generation',
       status: 'pass',
     })
     expect(report.checks).toContainEqual({

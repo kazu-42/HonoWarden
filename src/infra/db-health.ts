@@ -17,6 +17,7 @@ export const requiredSchemaTables = [
   'collections',
   'collection_users',
   'collection_ciphers',
+  'account_kdf_population',
 ] as const
 
 export type DatabaseHealth =

@@ -19,6 +19,8 @@ undecryptable generation.
   consistently. Unknown stored algorithms fail closed, while unknown allowed
   accounts receive a secret-keyed client-valid decoy without a fixed existence
   signal.
+- Prelogin reads a transactionally maintained KDF population summary rather
+  than aggregating all account rows per request.
 - Boundary, drift, stale generation, rollback, enumeration resistance, and
   old/new session behavior have focused tests and a real local D1 lifecycle.
 - KDF readers ship independently of a default-off writer so the first deploy is

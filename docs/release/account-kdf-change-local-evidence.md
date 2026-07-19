@@ -18,7 +18,8 @@ local D1 database. It verifies exact KDF projection, atomic credential/session
 mutation, old-generation rejection after both changes, new-generation login
 metadata, revision and audit persistence, encrypted-vault preservation, and
 unknown allowlisted prelogin tracking the stored KDF population at every
-generation.
+generation. It also reads the materialized population table after both changes
+to prove the user trigger moved exactly one count to the committed tuple.
 
 The runner uses synthetic client-derived authentication hashes, opaque wrapped
 user keys, and encrypted vault payloads. It never supplies a plaintext master
@@ -74,25 +75,33 @@ The passing report must establish:
   the first generation and PBKDF2 for the final generation
 - the authentication hash, wrapped user key, KDF columns, security stamp, and
   account revision commit as one generation twice
+- the materialized KDF population contains exactly the committed Argon2id tuple
+  after the first mutation and exactly the final PBKDF2 tuple after the second
 - direct D1 readback proves the account revision advances after each mutation
 - each prior device and refresh-token generation is revoked while the new
   device is active
 - exactly two `account.kdf.change` audit rows exist
 - encrypted cipher JSON is byte-for-byte unchanged
 
-The report contains 36 named checks. The unknown-address fixture remains
+The report contains 38 named checks. The unknown-address fixture remains
 synthetic and pending throughout the run; it is never inserted into D1.
 
 Focused route and repository tests separately cover every bound and
 just-outside value, missing Argon2id parameters, unknown algorithms, mixed
 authentication/unlock data, salt drift, stale generation conflicts, every D1
-batch failure, concurrency, and missing Durable Object bindings.
+batch failure, concurrency, and missing Durable Object bindings. A separate
+real local-D1 migration test starts with existing users, applies `0014a`, and
+proves backfill plus insert, KDF-update, and delete trigger transitions. It also
+deletes the aggregate deliberately and proves the trigger aborts and rolls back
+the source user update with the expected integrity error.
 
 ## Atomicity And Recovery
 
 D1 atomically updates the user generation, revokes device and refresh sessions,
-supersedes active auth requests, and persists the mandatory audit event. A
-stale guard or failed statement leaves the prior generation authoritative.
+supersedes active auth requests, persists the mandatory audit event, and moves
+the materialized KDF population count. A stale guard or failed statement leaves
+the prior generation authoritative. The user update uses `RETURNING id`; D1
+trigger changes therefore cannot be mistaken for multiple user updates.
 
 Durable Object socket cleanup occurs after D1 commit and cannot participate in
 that transaction. A missing binding fails before mutation. After commit,

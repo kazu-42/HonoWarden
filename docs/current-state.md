@@ -1149,12 +1149,18 @@ Implemented:
 - one generation-guarded D1 batch that replaces the authentication hash, opaque
   wrapped user key, and KDF columns; rotates security stamp/revision; revokes
   devices and refresh tokens; supersedes active auth requests; and persists the
-  required `account.kdf.change` audit event
+  required `account.kdf.change` audit event; the guarded user statement uses
+  `RETURNING id` so trigger-side row changes cannot corrupt the exactly-one-user
+  commit check
+- forward-only migration `0014a_kdf_population.sql` backfills a materialized
+  count for every stored KDF tuple and maintains it with fail-loud user
+  insert/delete/KDF-update triggers in the same D1 transaction
 - exact stored KDF projection through known-account prelogin, password and
   refresh token responses, account profile unlock metadata, and sync unlock
-  metadata; one prelogin D1 snapshot also returns the grouped client-readable
-  stored KDF population, and unknown allowed accounts receive an email-stable,
-  secret-keyed selection from that population weighted by account count,
+  metadata; one prelogin D1 snapshot also returns the materialized
+  client-readable stored KDF population without grouping the users table, and
+  unknown allowed accounts receive an email-stable, secret-keyed selection from
+  that population weighted by account count,
   including readable legacy tuples and only valid resource profiles already in
   use; unrelated malformed rows are excluded, an invalid target fails closed,
   and an empty valid population falls back to bootstrap PBKDF2 `600000`
@@ -1166,7 +1172,8 @@ Implemented:
 - `pnpm account:kdf-change:lifecycle` real local-D1 synthetic evidence for
   a PBKDF2-to-Argon2id-to-PBKDF2 round trip, rejection of both prior credential
   and session generations, exact login/profile/sync projections, two direct
-  revision advances, two audit rows, and encrypted-vault preservation
+  revision advances, transaction-local population changes, two audit rows, and
+  encrypted-vault preservation
 
 Not implemented:
 

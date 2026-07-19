@@ -82,8 +82,11 @@ inputs, not minor documentation notes.
   target fails closed. Reversibly disabled accounts retain their KDF projection
   and population weight so the anonymous endpoint does not expose disable/enable
   transitions; disabled authentication and sessions remain rejected. Each
-  allowed prelogin performs a grouped KDF-population read, which is acceptable
-  for the current alpha and requires scale monitoring before broader exposure.
+  allowed prelogin reads the materialized distinct KDF tuples rather than
+  grouping all users. The tuple set can still grow with account-specific KDF
+  configurations and requires cardinality and latency monitoring before broader
+  exposure. Migration triggers abort a user insert/delete/KDF update if the old
+  tuple count is missing instead of allowing silent population drift.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation

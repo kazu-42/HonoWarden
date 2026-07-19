@@ -22,10 +22,10 @@
     "secretRotation": false
   },
   "verification": {
-    "focused": "passed_6_files_381_tests",
-    "localD1": "passed_36_checks_round_trip_with_revision_readback",
-    "full": "passed_86_files_1051_tests",
-    "standardReview": "p2_disabled_prelogin_finding_rejected_contract_clarified_rerun_pending",
-    "fiveAxisReview": "round_trip_revision_remediation_changed_head_rerun_pending"
+    "focused": "passed_6_files_85_population_remediation_tests",
+    "localD1": "passed_38_checks_round_trip_with_revision_and_population_readback",
+    "full": "passed_87_files_1053_tests",
+    "standardReview": "clean_at_4ddbdcb_superseded_by_population_remediation_rerun_pending",
+    "fiveAxisReview": "p2_secret_finding_rejected_p3_population_scan_remediated_rerun_pending"
   }
 }

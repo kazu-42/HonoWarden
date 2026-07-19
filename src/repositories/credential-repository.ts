@@ -60,6 +60,10 @@ type CredentialGenerationMutationResult = {
   auditEventId: string
 }
 
+type UpdatedUserRow = {
+  id: string
+}
+
 export async function changeAccountKdf(
   database: CredentialRepositoryDatabase,
   input: ChangeAccountKdfInput,
@@ -91,6 +95,7 @@ export async function changeAccountKdf(
             AND kdf_parallelism IS ?
             AND security_stamp = ?
             AND revision_date = ?
+          RETURNING id
         `,
       )
       .bind(
@@ -145,6 +150,7 @@ export async function changeAccountMasterPassword(
             AND kdf_parallelism IS ?
             AND security_stamp = ?
             AND revision_date = ?
+          RETURNING id
         `,
       )
       .bind(
@@ -188,6 +194,7 @@ export async function rotateAccountSecurityStamp(
             AND master_password_hash = ?
             AND security_stamp = ?
             AND revision_date = ?
+          RETURNING id
         `,
       )
       .bind(
@@ -341,7 +348,8 @@ async function commitCredentialGenerationMutation(
     authRequestResult,
     auditResult,
   ] = results
-  const userChanges = userResult?.meta.changes ?? 0
+  const updatedUsers = (userResult?.results ?? []) as UpdatedUserRow[]
+  const userChanges = updatedUsers.length
   const deviceChanges = deviceResult?.meta.changes ?? 0
   const refreshChanges = refreshResult?.meta.changes ?? 0
   const authRequestChanges = authRequestResult?.meta.changes ?? 0
@@ -358,7 +366,12 @@ async function commitCredentialGenerationMutation(
     }
     return null
   }
-  if (userChanges !== 1 || auditChanges !== 1) {
+  if (
+    !userResult?.success ||
+    userChanges !== 1 ||
+    updatedUsers[0]?.id !== input.userId ||
+    auditChanges !== 1
+  ) {
     throw new Error('credential rotation batch did not commit one generation')
   }
 

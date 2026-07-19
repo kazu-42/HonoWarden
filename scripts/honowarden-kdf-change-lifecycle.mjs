@@ -469,6 +469,10 @@ async function main(args = process.argv.slice(2)) {
       ),
       check('wrapped_user_key_replaced', firstReadback.userKeyCommitted),
       check('kdf_changed_to_argon2id', firstReadback.kdfCommitted),
+      check(
+        'kdf_population_tracks_argon2id_generation',
+        firstReadback.populationMatchesExpectedGeneration,
+      ),
       check('account_salt_unchanged', firstReadback.accountSaltUnchanged),
       check(
         'security_stamp_rotated',
@@ -488,6 +492,10 @@ async function main(args = process.argv.slice(2)) {
       check(
         'kdf_changed_back_to_pbkdf2',
         kdfChangeBackToPbkdf2.status === 200 && finalReadback.kdfCommitted,
+      ),
+      check(
+        'kdf_population_tracks_final_pbkdf2_generation',
+        finalReadback.populationMatchesExpectedGeneration,
       ),
       check(
         'old_argon_access_token_rejected',
@@ -872,6 +880,18 @@ async function readDatabaseState(persistTo, expected) {
     WHERE actor_user_id = ${sql(userId)} AND name = 'account.kdf.change';
     SELECT encrypted_json
     FROM ciphers WHERE id = ${sql(cipherId)} AND user_id = ${sql(userId)};
+    SELECT
+      kdf_algorithm,
+      kdf_iterations,
+      CASE WHEN kdf_memory_is_null = 1 THEN NULL ELSE kdf_memory END AS kdf_memory,
+      CASE WHEN kdf_parallelism_is_null = 1 THEN NULL ELSE kdf_parallelism END AS kdf_parallelism,
+      account_count
+    FROM account_kdf_population
+    ORDER BY
+      kdf_algorithm,
+      kdf_iterations,
+      kdf_memory,
+      kdf_parallelism;
   `
   const result = await runWrangler([
     'd1',
@@ -891,6 +911,7 @@ async function readDatabaseState(persistTo, expected) {
   const refreshTokens = executions[2]?.results ?? []
   const audit = executions[3]?.results?.[0] ?? {}
   const cipher = executions[4]?.results?.[0] ?? {}
+  const population = executions[5]?.results ?? []
   const expectedRefreshTokens = refreshTokens.filter(
     (token) => token.device_id === expected.revokedRefreshDeviceId,
   )
@@ -904,6 +925,13 @@ async function readDatabaseState(persistTo, expected) {
       Number(account.kdf_iterations) === expected.kdfIterations &&
       account.kdf_memory === expected.kdfMemory &&
       account.kdf_parallelism === expected.kdfParallelism,
+    populationMatchesExpectedGeneration:
+      population.length === 1 &&
+      population[0]?.kdf_algorithm === expected.kdfAlgorithm &&
+      Number(population[0]?.kdf_iterations) === expected.kdfIterations &&
+      population[0]?.kdf_memory === expected.kdfMemory &&
+      population[0]?.kdf_parallelism === expected.kdfParallelism &&
+      Number(population[0]?.account_count) === 1,
     accountSaltUnchanged: account.email_normalized === email,
     securityStamp:
       typeof account.security_stamp === 'string' ? account.security_stamp : '',

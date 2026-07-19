@@ -377,21 +377,30 @@ export async function findPreloginKdfContext(
           SELECT
             kdf_algorithm,
             kdf_iterations,
-            kdf_memory,
-            kdf_parallelism
-          FROM users
+            CASE
+              WHEN kdf_memory_is_null = 1 THEN NULL
+              ELSE kdf_memory
+            END AS kdf_memory,
+            CASE
+              WHEN kdf_parallelism_is_null = 1 THEN NULL
+              ELSE kdf_parallelism
+            END AS kdf_parallelism,
+            account_count
+          FROM account_kdf_population
           WHERE (
             kdf_algorithm = 'pbkdf2-sha256'
             AND typeof(kdf_iterations) = 'integer'
             AND kdf_iterations BETWEEN ? AND ?
-            AND kdf_memory IS NULL
-            AND kdf_parallelism IS NULL
+            AND kdf_memory_is_null = 1
+            AND kdf_parallelism_is_null = 1
           ) OR (
             kdf_algorithm = 'argon2id'
             AND typeof(kdf_iterations) = 'integer'
             AND kdf_iterations BETWEEN ? AND ?
+            AND kdf_memory_is_null = 0
             AND typeof(kdf_memory) = 'integer'
             AND kdf_memory BETWEEN ? AND ?
+            AND kdf_parallelism_is_null = 0
             AND typeof(kdf_parallelism) = 'integer'
             AND kdf_parallelism BETWEEN ? AND ?
           )
@@ -402,13 +411,8 @@ export async function findPreloginKdfContext(
             kdf_iterations,
             kdf_memory,
             kdf_parallelism,
-            COUNT(*) as accountCount
+            account_count as accountCount
           FROM valid_population
-          GROUP BY
-            kdf_algorithm,
-            kdf_iterations,
-            kdf_memory,
-            kdf_parallelism
         ),
         anchor AS (
           SELECT 1 AS singleton

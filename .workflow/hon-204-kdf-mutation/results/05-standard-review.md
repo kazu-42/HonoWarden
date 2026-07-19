@@ -271,3 +271,37 @@ passes 86 files and 1,051 tests, compatibility passes 101 tests, and the
 standalone local D1 lifecycle passes all 36 checks. Typecheck, lint, format,
 release gate, brand scan, diff check, and workflow verification also pass. This
 clarification changes the candidate head, so both exact-head reviews must rerun.
+
+## Tenth Review Findings And Disposition
+
+The Spark fallback standard exact-head review of `4ddbdcb` was clean. A separate
+five-axis review raised two findings:
+
+- P2: allowed prelogin returns 503 when `HONOWARDEN_TOKEN_SECRET` is missing
+- P3: allowed prelogin scans and groups all users for every request
+
+The P2 is not accepted as a defect. The same secret is already required for
+token exchange, refresh-token lookup, and authenticated routes. Returning a
+synthetic unkeyed or fixed decoy would hide an infrastructure outage and weaken
+the anonymous enumeration boundary. HonoWarden intentionally returns a generic
+fail-loud 503 before D1 access and logs no email or secret.
+
+The P3 is accepted. Forward-only migration `0014a_kdf_population.sql` backfills
+KDF tuple counts and maintains them with user insert/delete/KDF-update triggers.
+Prelogin now reads distinct materialized tuples rather than aggregating users.
+The trigger is part of the source user statement, fails the source mutation if
+the old count is missing, and therefore cannot commit population drift. Because
+D1 includes trigger side effects in `meta.changes`, credential user updates now
+use `UPDATE ... RETURNING id` for the exactly-one-user invariant.
+
+Focused TDD failed on the missing migration, old query, and absent lifecycle
+checks, then passed 6 files and 85 tests. The standalone real local D1 lifecycle
+passes all 38 checks, including exact population readback after both mutation
+directions. A second real D1 test proves existing-row backfill, all three trigger
+paths, fail-loud aggregate drift detection, and source-row rollback. Broad
+verification and both exact-head reviews must rerun after the remediation is
+committed.
+
+The `0014a` suffix follows the existing forward-only reconciliation precedent
+and avoids colliding with the unmerged HON-161 `0015_personal_api_keys.sql` lane
+or rewriting either worktree's ownership.

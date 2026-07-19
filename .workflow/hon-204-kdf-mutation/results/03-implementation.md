@@ -16,11 +16,16 @@ Key invariants:
   paths cannot partially mutate credential or session state
 - authentication hash, wrapped user key, KDF fields, security stamp, revision,
   session revocation, auth-request invalidation, and required audit row form one
-  D1 generation
+  D1 generation; the user update returns its ID directly so materialization
+  trigger changes do not affect the exactly-one-user guard
+- forward-only migration `0014a_kdf_population.sql` backfills exact KDF tuple
+  counts and maintains them through transaction-local user insert, delete, and
+  KDF-update triggers; missing old counts abort the source mutation
 - prelogin, password and refresh token responses, profile, and sync use one
   stored-KDF mapping; unknown stored algorithms fail before session mutation,
-  while one read-only D1 snapshot returns the exact target plus the
-  client-readable stored KDF population for prelogin; unknown allowed accounts
+  while one read-only D1 snapshot returns the exact target plus the materialized
+  client-readable stored KDF population for prelogin without grouping users on
+  each request; unknown allowed accounts
   receive an email-stable, domain-separated HMAC selection from that population
   weighted by account count, including readable legacy tuples and only resource
   profiles that are already stored
@@ -37,7 +42,5 @@ Key invariants:
 
 The implementation also adds a synthetic Wrangler/local-D1 lifecycle command,
 an ops regression test, conservative compatibility/current-state/security docs,
-and explicit evidence limitations. No schema migration was required because the
-initial users table already owns all KDF columns. Every tracked Wrangler
-environment remains disabled; only the isolated local lifecycle passes an
-explicit flag override.
+and explicit evidence limitations. Every tracked Wrangler environment remains
+disabled; only the isolated local lifecycle passes an explicit flag override.

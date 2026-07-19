@@ -45,6 +45,11 @@ reader-capable rollback target, then activate the writer only in a later Worker
 version. Disabling the flag stops new KDF changes without changing existing
 credential state.
 
+Migration `0014a` is forward-only. Keep `account_kdf_population` and its user
+triggers in place during a Worker rollback; older code can ignore them, while
+the triggers continue to preserve counts for a subsequent reader-capable roll
+forward. Do not drop or rebuild the table in place during incident response.
+
 Once any account has committed Argon2id, do not roll back to a pre-reader
 release. Such a release projects the stored generation as PBKDF2, causing the
 client to derive the wrong authentication hash. Roll back to the recorded

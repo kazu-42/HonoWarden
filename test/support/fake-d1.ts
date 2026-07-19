@@ -430,7 +430,7 @@ export class FakeD1Database {
       async all<T = unknown>(): Promise<D1Result<T>> {
         if (
           query.includes('WITH target AS') &&
-          query.includes('COUNT(*) as accountCount')
+          query.includes('FROM account_kdf_population')
         ) {
           return {
             success: true,
@@ -1599,7 +1599,14 @@ function applyCredentialRotationBatch(
       }
     }
     failCredentialRotationAt(options, 'user')
-    results.set(userStatement, fakeResult(generationMatches ? 1 : 0))
+    results.set(userStatement, {
+      success: true,
+      results: generationMatches && user ? [{ id: user.id }] : [],
+      meta: {
+        ...fakeMeta,
+        changes: generationMatches ? (kdfChange ? 3 : 1) : 0,
+      },
+    })
 
     const deviceValues = deviceStatement.__fakeBoundValues
     const deviceChanges = generationMatches
@@ -3929,4 +3936,5 @@ export const requiredTables = [
   'collections',
   'collection_users',
   'collection_ciphers',
+  'account_kdf_population',
 ] as const

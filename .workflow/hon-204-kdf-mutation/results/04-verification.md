@@ -160,3 +160,26 @@ The resulting candidate passes:
 - workflow verifier
 
 Both exact-head reviews must rerun after the clarification commit.
+
+## Tenth Review Scalability Remediation
+
+The five-axis review's per-request users aggregation finding was reproduced and
+replaced with a forward-only materialized KDF population. Focused TDD first
+failed on the absent migration, old grouped query, and missing lifecycle
+readback, then passed 6 files and 85 tests.
+
+Real local D1 evidence now covers two complementary paths:
+
+- the 38-check HTTP lifecycle proves the population moves with both committed
+  credential generations
+- a migration-first regression seeds existing users before applying `0014a`,
+  proves backfill plus insert/update/delete trigger counts, corrupts the
+  aggregate deliberately, and proves the source user update aborts unchanged
+- the separate password-change real D1 lifecycle passes all 15 checks, proving
+  the shared `RETURNING id` guard preserves the non-KDF credential path
+
+The pre-review candidate also passes 87 files and 1,053 tests, 101 compatibility
+tests, typecheck, lint, format, type generation with no diff, release gate 11/11,
+brand scan, diff check, and workflow verification. These are implementation
+checks only; both exact-head reviews remain required after the remediation
+commit.

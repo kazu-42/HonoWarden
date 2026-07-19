@@ -54,6 +54,9 @@ pnpm backup:export -- \
   serves the encrypted device key routes.
 - `0010_equivalent_domains.sql` must be applied before deploying a Worker
   commit that serves custom equivalent-domain settings writes.
+- `0014a_kdf_population.sql` must be applied before deploying a Worker commit
+  that serves materialized KDF prelogin reads. Keep KDF mutation disabled while
+  migration and reader behavior are verified.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.
 - Update `docs/release/migration-freeze.md` in the same change when migrations

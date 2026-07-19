@@ -108,21 +108,26 @@ Secret-handling invariants:
 5. One guarded D1 batch replaces authentication hash, opaque wrapped user key,
    KDF algorithm and parameters, security stamp, and revision; revokes active
    device and refresh sessions; supersedes active auth requests; and persists
-   `account.kdf.change`.
+   `account.kdf.change`. Migration `0014a` maintains the materialized KDF tuple
+   count through a user-update trigger in that same transaction. The guarded
+   user statement returns its updated ID directly, keeping the exactly-one-user
+   check independent from trigger-side `meta.changes`.
 6. Prelogin, password and refresh token responses, profile, and sync all project
    the same stored generation. One read-only D1 snapshot returns the exact
-   prelogin target plus the grouped client-readable stored KDF population. A known
-   account receives its exact validated generation; an unknown allowed account
-   receives a domain-separated, email-stable HMAC selection from that
-   population weighted by account count. This includes readable legacy tuples
-   and emits only valid resource profiles already stored. Unrelated malformed or
-   client-unreadable rows are excluded so one corrupt account cannot fail every
-   allowed prelogin; an invalid exact target still fails closed. Reversibly
-   disabled accounts retain their exact target and population contribution so
-   account-state transitions do not change anonymous KDF metadata; password,
-   refresh, and authenticated-session paths still reject them. An empty valid
-   population falls back to bootstrap PBKDF2 `600000`. The HMAC is keyed by
-   `HONOWARDEN_TOKEN_SECRET`, and a missing secret fails before D1.
+   prelogin target plus the materialized client-readable stored KDF population,
+   avoiding a users-table aggregation on each request. A known account receives
+   its exact validated generation; an unknown allowed account receives a
+   domain-separated, email-stable HMAC selection from that population weighted
+   by account count. This includes readable legacy tuples and emits only valid
+   resource profiles already stored. Unrelated malformed or client-unreadable
+   rows are excluded so one corrupt account cannot fail every allowed prelogin;
+   an invalid exact target still fails closed. Reversibly disabled accounts
+   retain their exact target and population contribution so account-state
+   transitions do not change anonymous KDF metadata; password, refresh, and
+   authenticated-session paths still reject them. An empty valid population
+   falls back to bootstrap PBKDF2 `600000`. The HMAC is keyed by
+   `HONOWARDEN_TOKEN_SECRET`, and a missing secret fails before D1 rather than
+   hiding a token-signing infrastructure outage behind a weaker fallback.
 7. A missing Durable Object binding fails before mutation. Once D1 commits,
    Durable Object cleanup is forward-only and scheduled through `waitUntil`:
    transport latency cannot delay acknowledgement, and failure is logged as
