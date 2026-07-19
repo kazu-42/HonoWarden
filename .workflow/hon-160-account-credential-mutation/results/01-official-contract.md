@@ -48,8 +48,9 @@ Primary paths at the pinned revisions above:
 - Password prelogin returns an exact stored generation for a known account and
   uses a normalized-email, keyed-hash selection over PBKDF2 and Argon2id decoys
   for an unknown account. HonoWarden preserves that stable mixed-algorithm
-  property with its own domain-separated secret and derives parameters across
-  its complete accepted space so every stored tuple remains a plausible decoy.
+  property with its own domain-separated secret and selects from the actual
+  client-readable stored population weighted by account count. This represents
+  readable legacy tuples without synthesizing unused high-cost profiles.
 
 Primary paths at the pinned revisions above:
 

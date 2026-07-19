@@ -1152,11 +1152,14 @@ Implemented:
   required `account.kdf.change` audit event
 - exact stored KDF projection through known-account prelogin, password and
   refresh token responses, account profile unlock metadata, and sync unlock
-  metadata; one prelogin D1 snapshot also returns the grouped stored KDF
-  population, and unknown allowed accounts receive an email-stable,
+  metadata; one prelogin D1 snapshot also returns the grouped client-readable
+  stored KDF population, and unknown allowed accounts receive an email-stable,
   secret-keyed selection from that population weighted by account count,
-  including readable legacy tuples and only resource profiles already in use;
-  an empty database falls back to bootstrap PBKDF2 `600000`
+  including readable legacy tuples and only valid resource profiles already in
+  use; unrelated malformed rows are excluded, an invalid target fails closed,
+  and an empty valid population falls back to bootstrap PBKDF2 `600000`
+- post-commit notification cleanup failure is logged without changing the 200
+  acknowledgement, so supported clients persist the already committed local KDF
 - fail-closed stored-KDF validation at the auth repository boundary so unknown
   algorithms cannot be silently projected as PBKDF2 after session mutation
 - `pnpm account:kdf-change:lifecycle` real local-D1 synthetic evidence for

@@ -68,13 +68,13 @@ credential generation is never "rolled back" by restoring an old hash or old
 security stamp, because that would resurrect compromised sessions. Recovery is
 a new forward credential generation after reauthentication.
 
-D1 and a Durable Object cannot share one transaction. If D1 commits a rotation
-but the synchronous notification invalidation transport then fails, the API
-returns `session_revocation_incomplete` and keeps the new generation. It never
-restores the old stamp. Generation-aware notification delivery still removes
-stale registrations before sending future request metadata; recovery is an
-operator-observed retry path followed by fresh password authentication and, if
-needed, another forward rotation.
+D1 and a Durable Object cannot share one transaction. A post-commit notification
+transport failure never restores the old stamp. Security-stamp and password
+operations expose `session_revocation_incomplete`; KDF mutation logs the same
+transport failure but acknowledges the committed generation so the official
+client persists its matching local KDF. Generation-aware notification delivery
+still removes stale registrations before sending future request metadata;
+recovery is an operator-observed forward path.
 
 No real account, production Worker, plaintext password, raw token, unwrapped
 key, or private vault data is used in any local or committed evidence.

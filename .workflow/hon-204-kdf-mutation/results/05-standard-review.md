@@ -8,7 +8,9 @@ Third reviewed commit: `784a18f9cd5c442c6044104999768b0405779931`
 
 Fourth reviewed commit: `7ce78bc6d7b6539a6793873e996d92b9666ec983`
 
-Status: fourth remediation complete in the working tree; exact-head re-review
+Fifth reviewed commit: `74b44cc50b1ba5f8b0bdfd9fbcc59e88b8a68e72`
+
+Status: fifth remediation complete in the working tree; exact-head re-review
 pending
 
 ## Finding
@@ -123,3 +125,29 @@ the standalone local D1 lifecycle passes all 18 checks. Typecheck, lint,
 format, type generation, release gate, brand scan, diff check, and workflow
 verification also pass. Both independent reviews must rerun on the committed
 exact head before merge approval.
+
+## Fifth Review Finding
+
+- P1: post-commit Durable Object invalidation failure returned HTTP 503 after D1
+  had already committed the new KDF generation. The pinned client updates its
+  local master key, unlock data, wrapped user key, and KDF only after the request
+  succeeds, so this response left the client on the revoked generation.
+
+## Fifth Remediation
+
+- preserve the pre-mutation notification binding check, but acknowledge HTTP 200
+  after an irreversible D1 commit even when notification transport fails
+- retain the redacted `account_notification_session_invalidation_failed` error
+  signal for operational recovery
+- isolate malformed or client-unreadable unrelated KDF rows from the prelogin
+  population while retaining fail-closed validation for an invalid exact target
+- use an anchor row so target data and an empty valid population remain one D1
+  snapshot; fall back to PBKDF2 `600000` only for unknown accounts with no valid
+  stored population
+
+Focused TDD failed on the five new regression conditions and then passed 3 files
+and 314 tests. The combined focused suite passes 4 files and 315 tests, the full
+suite passes 86 files and 1,048 tests, compatibility passes 101 tests, and the
+standalone real local D1 lifecycle passes all 18 checks. Typecheck, lint, format,
+type generation, release gate, brand scan, diff check, and workflow verification
+also pass. Both exact-head reviews must rerun on the committed remediation.

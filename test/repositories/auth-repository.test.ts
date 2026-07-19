@@ -180,10 +180,42 @@ describe('auth repository', () => {
         },
       ],
     })
-    expect(database.boundValues).toEqual(['person@example.test'])
+    expect(database.boundValues[0]).toBe('person@example.test')
     expect(database.query).toContain('WITH target AS')
     expect(database.query).toContain('COUNT(*) as accountCount')
     expect(database.query).toContain('GROUP BY')
+    expect(database.query).toContain('valid_population AS')
+    expect(database.query).toContain('anchor AS')
+  })
+
+  it('preserves an exact target when the valid stored population is empty', async () => {
+    const database = new RecordingPreloginD1Database([
+      {
+        kdfAlgorithm: null,
+        kdfIterations: null,
+        kdfMemory: null,
+        kdfParallelism: null,
+        accountCount: null,
+        targetEmailNormalized: 'person@example.test',
+        targetKdfAlgorithm: 'argon2id',
+        targetKdfIterations: 4,
+        targetKdfMemory: 64,
+        targetKdfParallelism: 4,
+      },
+    ])
+
+    await expect(
+      findPreloginKdfContext(database, 'person@example.test'),
+    ).resolves.toEqual({
+      target: {
+        emailNormalized: 'person@example.test',
+        kdfAlgorithm: 'argon2id',
+        kdfIterations: 4,
+        kdfMemory: 64,
+        kdfParallelism: 4,
+      },
+      distribution: [],
+    })
   })
 
   it('upserts a device and stores only the refresh token hash', async () => {

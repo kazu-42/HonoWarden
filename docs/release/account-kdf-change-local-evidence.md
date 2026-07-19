@@ -87,9 +87,11 @@ supersedes active auth requests, and persists the mandatory audit event. A
 stale guard or failed statement leaves the prior generation authoritative.
 
 Durable Object socket cleanup occurs after D1 commit and cannot participate in
-that transaction. A cleanup failure returns `session_revocation_incomplete` and
-keeps the new generation. Recovery restores notification infrastructure and
-invalidates stale sockets; it never restores the old credential generation.
+that transaction. A missing binding fails before mutation. A transport failure
+after commit emits `account_notification_session_invalidation_failed` but keeps
+HTTP 200, allowing the official client to persist the same new KDF generation.
+Recovery restores notification infrastructure and invalidates stale sockets; it
+never restores the old credential generation.
 
 The rollout is two-stage: first deploy and verify all PBKDF2/Argon2id reader
 paths with the writer disabled, then activate the writer in a later version

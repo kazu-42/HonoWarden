@@ -222,8 +222,10 @@ into Linear/GitHub evidence.
 
 `HONOWARDEN_TOKEN_SECRET` also keys the domain-separated, email-stable selection
 used for allowlisted accounts that do not exist. The selection is weighted by
-the current stored KDF population, including readable legacy generations, and
-therefore emits only a resource profile already in use. Allowed prelogin fails
+the current client-readable stored KDF population, including readable legacy
+generations, and therefore emits only a valid profile already in use. Unrelated
+malformed or unreadable rows are excluded; an empty valid population uses the
+bootstrap PBKDF2 `600000` fallback. Allowed prelogin fails
 with `503 server_misconfigured` before D1 access when this secret is missing or
 blank, so known and unknown accounts share the same configuration failure
 boundary. Rotating the secret or changing the stored population can remap an

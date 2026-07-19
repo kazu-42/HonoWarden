@@ -266,10 +266,41 @@ describe('prelogin domain', () => {
     await expect(
       buildPreloginKdfResponse(
         'unknown@example.test',
-        preloginContext(null, [distributionEntry(pbkdf2Generation(600000), 0)]),
+        preloginContext(null, [
+          distributionEntry(pbkdf2Generation(600000), 0),
+          {
+            kdfAlgorithm: 'unknown-kdf',
+            kdfIterations: 600000,
+            kdfMemory: null,
+            kdfParallelism: null,
+            accountCount: 1,
+          },
+          distributionEntry(pbkdf2Generation(100000), 2),
+        ]),
         'test-token-secret',
       ),
-    ).resolves.toBeNull()
+    ).resolves.toMatchObject({
+      kdf: 0,
+      kdfIterations: 100000,
+      kdfMemory: null,
+      kdfParallelism: null,
+    })
+
+    await expect(
+      buildPreloginKdfResponse(
+        'unknown@example.test',
+        preloginContext(null, [
+          distributionEntry(pbkdf2Generation(4999), 1),
+          distributionEntry(argon2idGeneration(2, 15, 1), 1),
+        ]),
+        'test-token-secret',
+      ),
+    ).resolves.toMatchObject({
+      kdf: 0,
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+    })
   })
 })
 

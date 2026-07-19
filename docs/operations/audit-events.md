@@ -66,6 +66,9 @@ Fields:
   generation change after the default-off writer is explicitly activated. Its
   redacted context records only prior/next KDF type and D1 session revocation;
   rollback keeps the committed generation and uses a reader-capable Worker.
+  Post-commit notification transport failure is logged separately as
+  `account_notification_session_invalidation_failed`; the API still acknowledges
+  the committed generation so the client persists its corresponding local KDF.
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection

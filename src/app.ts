@@ -2743,14 +2743,8 @@ app.post('/api/accounts/kdf', async (c) => {
           reason: 'notification_hub_unavailable',
         }),
       )
-      return c.json(
-        apiError(
-          c.get('requestId'),
-          'session_revocation_incomplete',
-          'Account KDF changed, but notification session cleanup is incomplete.',
-        ),
-        503,
-      )
+      // The D1 generation is already authoritative. A failure response would
+      // prevent supported clients from persisting the matching local KDF.
     }
 
     if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {

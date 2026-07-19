@@ -75,11 +75,13 @@ inputs, not minor documentation notes.
   KDF-change run is recorded, and this local evidence does not promote a client
   compatibility row. The irreversible writer remains default-off in every
   tracked environment until a reader-capable rollback target is deployed.
-  Unknown-account prelogin decoys match the current stored KDF population by
-  account count but are not a proof of cryptographic indistinguishability; the
-  email allowlist remains the primary boundary. Each allowed prelogin performs
-  a grouped KDF-population read, which is acceptable for the current alpha and
-  requires scale monitoring before broader exposure.
+  Unknown-account prelogin decoys match the current client-readable stored KDF
+  population by account count but are not a proof of cryptographic
+  indistinguishability; the email allowlist remains the primary boundary.
+  Unrelated invalid rows are excluded from that population while an invalid exact
+  target fails closed. Each allowed prelogin performs a grouped KDF-population
+  read, which is acceptable for the current alpha and requires scale monitoring
+  before broader exposure.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation

@@ -429,6 +429,48 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('isolates unrelated invalid KDF rows from known and unknown prelogin', async () => {
+    const validUser = {
+      ...authUserRecord(),
+      kdfIterations: 100000,
+    }
+    const invalidUser = {
+      ...authUserRecord(),
+      id: 'invalid-user-id',
+      email: 'Invalid@Example.Test',
+      emailNormalized: 'invalid@example.test',
+      kdfAlgorithm: 'unknown-kdf',
+    }
+    const database = new FakeD1Database(null, [], {
+      authUsers: [validUser, invalidUser],
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_ALLOWED_EMAILS: 'person@example.test pending@example.test',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    for (const email of ['person@example.test', 'pending@example.test']) {
+      const response = await app.request(
+        '/identity/accounts/prelogin',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        },
+        env,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toMatchObject({
+        kdf: 0,
+        kdfIterations: 100000,
+        kdfMemory: null,
+        kdfParallelism: null,
+      })
+    }
+  })
+
   it('fails prelogin loudly for an invalid stored KDF instead of projecting PBKDF2', async () => {
     const response = await app.request(
       '/identity/accounts/prelogin',
@@ -7385,6 +7427,54 @@ describe('HonoWarden app', () => {
     })
     expect(user).toEqual(before)
     expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('acknowledges a committed KDF generation when notification cleanup fails', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/kdf',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(kdfChangeBody(user)),
+      },
+      {
+        DB: database,
+        NOTIFICATION_HUB: {
+          idFromName: () => 'user-object',
+          get: () => ({
+            fetch: vi.fn().mockRejectedValue(new Error('do unavailable')),
+          }),
+        } as unknown as DurableObjectNamespace,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_KDF_MUTATION_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.text()).resolves.toBe('')
+    expect(user).toMatchObject({
+      kdfAlgorithm: 'argon2id',
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      masterPasswordHash: 'synthetic-argon2-master-password-hash',
+      userKey: '2.synthetic-argon2-user-key',
+    })
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({ name: 'account.kdf.change' }),
+    ])
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'account_notification_session_invalidation_failed',
+      ),
+    )
   })
 
   it('changes the master-password generation and preserves encrypted vault data', async () => {

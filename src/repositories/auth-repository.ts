@@ -1,8 +1,6 @@
 import { accountCredentialKdfFromStoredGeneration } from '../domain/account-credentials'
-import type {
-  PreloginKdfContext,
-  PreloginKdfDistributionEntry,
-} from '../domain/prelogin'
+import type { PreloginKdfContext } from '../domain/prelogin'
+import { preloginKdfPolicy } from '../domain/prelogin'
 import { refreshTokenRetentionDays } from '../domain/tokens'
 
 export type AuthUserRecord = {
@@ -283,7 +281,12 @@ type AuthUserRow = {
   totpLastAcceptedStep: number | null
 }
 
-type PreloginKdfRow = PreloginKdfDistributionEntry & {
+type PreloginKdfRow = {
+  kdfAlgorithm: string | null
+  kdfIterations: number | null
+  kdfMemory: number | null
+  kdfParallelism: number | null
+  accountCount: number | null
   targetEmailNormalized: string | null
   targetKdfAlgorithm: string | null
   targetKdfIterations: number | null
@@ -370,6 +373,29 @@ export async function findPreloginKdfContext(
           WHERE email_normalized = ?
           LIMIT 1
         ),
+        valid_population AS (
+          SELECT
+            kdf_algorithm,
+            kdf_iterations,
+            kdf_memory,
+            kdf_parallelism
+          FROM users
+          WHERE (
+            kdf_algorithm = 'pbkdf2-sha256'
+            AND typeof(kdf_iterations) = 'integer'
+            AND kdf_iterations BETWEEN ? AND ?
+            AND kdf_memory IS NULL
+            AND kdf_parallelism IS NULL
+          ) OR (
+            kdf_algorithm = 'argon2id'
+            AND typeof(kdf_iterations) = 'integer'
+            AND kdf_iterations BETWEEN ? AND ?
+            AND typeof(kdf_memory) = 'integer'
+            AND kdf_memory BETWEEN ? AND ?
+            AND typeof(kdf_parallelism) = 'integer'
+            AND kdf_parallelism BETWEEN ? AND ?
+          )
+        ),
         distribution AS (
           SELECT
             kdf_algorithm,
@@ -377,12 +403,15 @@ export async function findPreloginKdfContext(
             kdf_memory,
             kdf_parallelism,
             COUNT(*) as accountCount
-          FROM users
+          FROM valid_population
           GROUP BY
             kdf_algorithm,
             kdf_iterations,
             kdf_memory,
             kdf_parallelism
+        ),
+        anchor AS (
+          SELECT 1 AS singleton
         )
         SELECT
           distribution.kdf_algorithm as kdfAlgorithm,
@@ -395,8 +424,9 @@ export async function findPreloginKdfContext(
           target.kdf_iterations as targetKdfIterations,
           target.kdf_memory as targetKdfMemory,
           target.kdf_parallelism as targetKdfParallelism
-        FROM distribution
+        FROM anchor
         LEFT JOIN target ON 1 = 1
+        LEFT JOIN distribution ON 1 = 1
         ORDER BY
           distribution.kdf_algorithm ASC,
           distribution.kdf_iterations ASC,
@@ -404,7 +434,17 @@ export async function findPreloginKdfContext(
           distribution.kdf_parallelism ASC
       `,
     )
-    .bind(emailNormalized)
+    .bind(
+      emailNormalized,
+      preloginKdfPolicy.pbkdf2Iterations.min,
+      preloginKdfPolicy.pbkdf2Iterations.max,
+      preloginKdfPolicy.argon2Iterations.min,
+      preloginKdfPolicy.argon2Iterations.max,
+      preloginKdfPolicy.argon2Memory.min,
+      preloginKdfPolicy.argon2Memory.max,
+      preloginKdfPolicy.argon2Parallelism.min,
+      preloginKdfPolicy.argon2Parallelism.max,
+    )
     .all<PreloginKdfRow>()
   const rows = result.results
   const first = rows[0]
@@ -420,13 +460,21 @@ export async function findPreloginKdfContext(
             kdfMemory: first.targetKdfMemory,
             kdfParallelism: first.targetKdfParallelism,
           },
-    distribution: rows.map((row) => ({
-      kdfAlgorithm: row.kdfAlgorithm,
-      kdfIterations: row.kdfIterations,
-      kdfMemory: row.kdfMemory,
-      kdfParallelism: row.kdfParallelism,
-      accountCount: row.accountCount,
-    })),
+    distribution: rows.flatMap((row) =>
+      row.kdfAlgorithm === null ||
+      row.kdfIterations === null ||
+      row.accountCount === null
+        ? []
+        : [
+            {
+              kdfAlgorithm: row.kdfAlgorithm,
+              kdfIterations: row.kdfIterations,
+              kdfMemory: row.kdfMemory,
+              kdfParallelism: row.kdfParallelism,
+              accountCount: row.accountCount,
+            },
+          ],
+    ),
   }
 }
 

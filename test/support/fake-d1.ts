@@ -1,4 +1,5 @@
 import { pendingAttachmentExpiresAt } from '../../src/domain/attachment'
+import { preloginKdfPolicy } from '../../src/domain/prelogin'
 
 const fakeMeta = {
   duration: 0,
@@ -3082,6 +3083,9 @@ function listPreloginKdfRows(
   >()
 
   for (const user of users) {
+    if (!hasClientReadablePreloginKdf(user)) {
+      continue
+    }
     const kdfAlgorithm = fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm')
     const kdfIterations = fakeColumn(user, 'kdfIterations', 'kdf_iterations')
     const kdfMemory = fakeColumn(user, 'kdfMemory', 'kdf_memory') ?? null
@@ -3130,9 +3134,57 @@ function listPreloginKdfRows(
         : (fakeColumn(target, 'kdfParallelism', 'kdf_parallelism') ?? null),
   }
 
-  return [...groups.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
+  const distributionRows = [...groups.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
     .map(([, row]) => ({ ...row, ...targetFields }))
+
+  return distributionRows.length > 0
+    ? distributionRows
+    : [
+        {
+          kdfAlgorithm: null,
+          kdfIterations: null,
+          kdfMemory: null,
+          kdfParallelism: null,
+          accountCount: null,
+          ...targetFields,
+        },
+      ]
+}
+
+function hasClientReadablePreloginKdf(user: Record<string, unknown>): boolean {
+  const algorithm = fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm')
+  const iterations = fakeColumn(user, 'kdfIterations', 'kdf_iterations')
+  const memory = fakeColumn(user, 'kdfMemory', 'kdf_memory') ?? null
+  const parallelism =
+    fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') ?? null
+
+  if (!Number.isSafeInteger(iterations)) {
+    return false
+  }
+  if (algorithm === 'pbkdf2-sha256') {
+    return (
+      inFakeRange(iterations as number, preloginKdfPolicy.pbkdf2Iterations) &&
+      memory === null &&
+      parallelism === null
+    )
+  }
+
+  return (
+    algorithm === 'argon2id' &&
+    inFakeRange(iterations as number, preloginKdfPolicy.argon2Iterations) &&
+    Number.isSafeInteger(memory) &&
+    inFakeRange(memory as number, preloginKdfPolicy.argon2Memory) &&
+    Number.isSafeInteger(parallelism) &&
+    inFakeRange(parallelism as number, preloginKdfPolicy.argon2Parallelism)
+  )
+}
+
+function inFakeRange(
+  value: number,
+  range: { min: number; max: number },
+): boolean {
+  return value >= range.min && value <= range.max
 }
 
 function findKnownDeviceRow(

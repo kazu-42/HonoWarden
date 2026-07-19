@@ -1,4 +1,5 @@
 import {
+  accountCredentialKdfPolicy,
   accountCredentialKdfFromStoredGeneration,
   type AccountCredentialGeneration,
   type AccountCredentialKdf,
@@ -62,6 +63,16 @@ const defaultAccountKdf = {
 
 const syntheticKdfDomain = 'honowarden:prelogin-kdf:v3:'
 
+export const preloginKdfPolicy = {
+  pbkdf2Iterations: {
+    min: 5_000,
+    max: accountCredentialKdfPolicy.pbkdf2Iterations.max,
+  },
+  argon2Iterations: accountCredentialKdfPolicy.argon2Iterations,
+  argon2Memory: accountCredentialKdfPolicy.argon2Memory,
+  argon2Parallelism: accountCredentialKdfPolicy.argon2Parallelism,
+} as const
+
 export function resolvePrelogin(
   requestBody: unknown,
   allowedEmailsValue: string | undefined,
@@ -111,11 +122,8 @@ export async function buildPreloginKdfResponse(
   }
 
   const distribution = normalizeStoredKdfDistribution(context.distribution)
-  if (!distribution) {
-    return null
-  }
   const targetKdf = context.target
-    ? accountCredentialKdfFromStoredGeneration(context.target)
+    ? clientReadablePreloginKdf(context.target)
     : null
   if (
     (context.target && !targetKdf) ||
@@ -182,12 +190,12 @@ type WeightedKdf = {
 
 function normalizeStoredKdfDistribution(
   entries: PreloginKdfDistributionEntry[],
-): WeightedKdf[] | null {
+): WeightedKdf[] {
   const byKdf = new Map<string, WeightedKdf>()
   let total = 0
 
   for (const entry of entries) {
-    const kdf = accountCredentialKdfFromStoredGeneration({
+    const kdf = clientReadablePreloginKdf({
       emailNormalized: 'distribution@invalid.example',
       kdfAlgorithm: entry.kdfAlgorithm,
       kdfIterations: entry.kdfIterations,
@@ -200,25 +208,55 @@ function normalizeStoredKdfDistribution(
       entry.accountCount < 1 ||
       !Number.isSafeInteger(total + entry.accountCount)
     ) {
-      return null
+      continue
     }
 
-    total += entry.accountCount
     const key = serializeKdf(kdf)
     const existing = byKdf.get(key)
     if (existing) {
       if (!Number.isSafeInteger(existing.accountCount + entry.accountCount)) {
-        return null
+        continue
       }
       existing.accountCount += entry.accountCount
     } else {
       byKdf.set(key, { kdf, accountCount: entry.accountCount })
     }
+    total += entry.accountCount
   }
 
   return [...byKdf.values()].sort((left, right) =>
     compareSerializedKdf(serializeKdf(left.kdf), serializeKdf(right.kdf)),
   )
+}
+
+function clientReadablePreloginKdf(
+  generation: AccountCredentialGeneration,
+): AccountCredentialKdf | null {
+  const kdf = accountCredentialKdfFromStoredGeneration(generation)
+  if (!kdf) {
+    return null
+  }
+
+  if (kdf.kdfType === 0) {
+    return withinRange(kdf.iterations, preloginKdfPolicy.pbkdf2Iterations)
+      ? kdf
+      : null
+  }
+
+  return withinRange(kdf.iterations, preloginKdfPolicy.argon2Iterations) &&
+    kdf.memory !== null &&
+    withinRange(kdf.memory, preloginKdfPolicy.argon2Memory) &&
+    kdf.parallelism !== null &&
+    withinRange(kdf.parallelism, preloginKdfPolicy.argon2Parallelism)
+    ? kdf
+    : null
+}
+
+function withinRange(
+  value: number,
+  range: { min: number; max: number },
+): boolean {
+  return value >= range.min && value <= range.max
 }
 
 function equalKdf(left: AccountCredentialKdf, right: AccountCredentialKdf) {

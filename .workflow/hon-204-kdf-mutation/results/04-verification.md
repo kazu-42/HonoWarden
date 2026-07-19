@@ -41,3 +41,24 @@ P2 distribution/legacy/resource-cost defects in the complete-range decoy. The
 stored-population remediation passes every check above. A clean exact-head
 standard review and the independent five-axis review remain pending and are not
 represented as passed here.
+
+## Fifth Remediation Rerun
+
+- focused TDD: five new failures, then 3 files and 314 tests passed
+- combined focused suite: 4 files and 315 tests passed in 11.84 seconds
+- standalone real local D1 lifecycle: all 18 checks passed
+- `pnpm check`
+- `pnpm lint`
+- `pnpm format`
+- `pnpm cf:typegen` with no generated diff
+- `pnpm test`: 86 files and 1,048 tests passed in 62.26 seconds
+- `pnpm compat:test`: 3 files and 101 tests passed
+- `pnpm release:gate`: overall ready, 11 pass, 0 manual, 0 block
+- `pnpm brand:scan`
+- `git diff --check`
+- workflow verifier
+
+The new regressions prove that notification transport failure cannot turn a
+committed KDF change into a client-visible failure, an invalid exact target still
+fails closed, and unrelated invalid population rows cannot cause a fleet-wide
+allowed-prelogin outage.

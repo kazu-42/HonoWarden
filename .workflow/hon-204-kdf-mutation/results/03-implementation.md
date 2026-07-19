@@ -1,8 +1,8 @@
 # Packets 02 and 03 result: implementation
 
 Implemented `POST /api/accounts/kdf` with the same credential-proof defense,
-notification preflight, generation guard, D1 transaction, and post-commit
-notification cleanup boundary as existing password change.
+notification preflight, generation guard, D1 transaction, and a post-commit
+notification cleanup boundary that preserves the official client's local state.
 
 Key invariants:
 
@@ -19,13 +19,16 @@ Key invariants:
   D1 generation
 - prelogin, password and refresh token responses, profile, and sync use one
   stored-KDF mapping; unknown stored algorithms fail before session mutation,
-  while one read-only D1 snapshot returns the exact target plus the complete
-  stored KDF population for prelogin; unknown allowed accounts receive an
-  email-stable, domain-separated HMAC selection from that population weighted
-  by account count, including readable legacy tuples and only resource profiles
-  that are already stored
-- an empty database uses the bootstrap PBKDF2 default; malformed distribution
-  rows or an exact target absent from its own snapshot fail closed
+  while one read-only D1 snapshot returns the exact target plus the
+  client-readable stored KDF population for prelogin; unknown allowed accounts
+  receive an email-stable, domain-separated HMAC selection from that population
+  weighted by account count, including readable legacy tuples and only resource
+  profiles that are already stored
+- unrelated malformed or client-unreadable population rows are excluded, an
+  invalid exact target fails closed, and an empty valid population uses the
+  bootstrap PBKDF2 default
+- after D1 commit, notification cleanup failure is logged while HTTP 200 is
+  preserved so the client persists the matching local KDF
 - allowed prelogin requires `HONOWARDEN_TOKEN_SECRET` before D1 access and logs
   only a non-secret configuration reason when the secret is absent
 - no plaintext password, unwrapped key, hash, wrapped key, token, or request body

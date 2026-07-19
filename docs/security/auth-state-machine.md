@@ -96,6 +96,8 @@ Success invariants:
 - every outward KDF projection reads the same committed generation
 - old access/refresh sessions and old-KDF authentication hashes fail
 - the new client-derived hash logs in with the new wrapped user key and KDF
+- after D1 commit, the client receives success even if notification socket
+  cleanup fails, so its local KDF cannot remain on the revoked generation
 
 Failure invariants:
 
@@ -104,7 +106,9 @@ Failure invariants:
 - a stale old generation returns `revision_conflict` without partial revocation
 - every failed D1 batch statement rolls back user, session, auth-request, and
   audit changes together
-- post-commit notification cleanup is forward-only and never restores an old KDF
+- a missing notification binding fails before mutation; post-commit transport
+  failure is logged, remains forward-only, and never changes the success response
+  or restores an old KDF
 
 ## TOTP Setup
 

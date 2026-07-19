@@ -8,7 +8,10 @@ Do: mirror existing credential proof defenses, notification preflight, session
 cleanup, and audit behavior; preserve enumeration resistance with an
 email-stable, secret-keyed selection from the actual stored KDF population,
 weighted by account count and including readable legacy tuples. Use the
-bootstrap PBKDF2 default only when the database has no accounts.
+bootstrap PBKDF2 default only when no client-readable population remains. Keep
+an exact invalid target fail-closed without letting unrelated invalid rows take
+down every allowed prelogin. Acknowledge an already committed KDF even if
+post-commit notification transport fails.
 
 Do not: silently map unknown stored algorithms to PBKDF2 or mutate before all
 preconditions pass.
