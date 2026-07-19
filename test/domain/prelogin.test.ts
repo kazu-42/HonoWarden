@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildPreloginKdfResponse,
   normalizeEmail,
   parseAllowedEmails,
   resolvePrelogin,
@@ -58,5 +59,57 @@ describe('prelogin domain', () => {
         message: 'A valid email is required.',
       },
     })
+  })
+
+  it('projects an exact known Argon2id generation in legacy and current shapes', () => {
+    expect(
+      buildPreloginKdfResponse('person@example.test', {
+        emailNormalized: 'person@example.test',
+        kdfAlgorithm: 'argon2id',
+        kdfIterations: 6,
+        kdfMemory: 32,
+        kdfParallelism: 4,
+      }),
+    ).toEqual({
+      kdf: 1,
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      kdfSettings: {
+        kdfType: 1,
+        iterations: 6,
+        memory: 32,
+        parallelism: 4,
+      },
+      salt: 'person@example.test',
+    })
+  })
+
+  it('uses a valid synthetic generation for an unknown allowed account', () => {
+    expect(buildPreloginKdfResponse('unknown@example.test', null)).toEqual({
+      kdf: 0,
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+      kdfSettings: {
+        kdfType: 0,
+        iterations: 600000,
+        memory: null,
+        parallelism: null,
+      },
+      salt: 'unknown@example.test',
+    })
+  })
+
+  it('refuses to project an invalid stored KDF generation', () => {
+    expect(
+      buildPreloginKdfResponse('person@example.test', {
+        emailNormalized: 'person@example.test',
+        kdfAlgorithm: 'unknown-kdf',
+        kdfIterations: 600000,
+        kdfMemory: null,
+        kdfParallelism: null,
+      }),
+    ).toBeNull()
   })
 })

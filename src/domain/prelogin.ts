@@ -1,8 +1,23 @@
+import {
+  accountCredentialKdfFromStoredGeneration,
+  type AccountCredentialGeneration,
+  type AccountCredentialKdf,
+} from './account-credentials'
+
 export type PreloginKdfResponse = {
   kdf: 0
   kdfIterations: number
   kdfMemory: null
   kdfParallelism: null
+}
+
+export type ProjectedPreloginKdfResponse = {
+  kdf: 0 | 1
+  kdfIterations: number
+  kdfMemory: number | null
+  kdfParallelism: number | null
+  kdfSettings: AccountCredentialKdf
+  salt: string
 }
 
 export type PreloginDecision =
@@ -58,6 +73,36 @@ export function resolvePrelogin(
   return {
     ok: true,
     response: { ...defaultKdfResponse },
+  }
+}
+
+export function buildPreloginKdfResponse(
+  emailNormalized: string,
+  generation: AccountCredentialGeneration | null,
+): ProjectedPreloginKdfResponse | null {
+  if (generation && generation.emailNormalized !== emailNormalized) {
+    return null
+  }
+
+  const kdf = generation
+    ? accountCredentialKdfFromStoredGeneration(generation)
+    : {
+        kdfType: defaultKdfResponse.kdf,
+        iterations: defaultKdfResponse.kdfIterations,
+        memory: defaultKdfResponse.kdfMemory,
+        parallelism: defaultKdfResponse.kdfParallelism,
+      }
+  if (!kdf) {
+    return null
+  }
+
+  return {
+    kdf: kdf.kdfType,
+    kdfIterations: kdf.iterations,
+    kdfMemory: kdf.memory,
+    kdfParallelism: kdf.parallelism,
+    kdfSettings: { ...kdf },
+    salt: emailNormalized,
   }
 }
 

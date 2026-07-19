@@ -1,0 +1,21 @@
+# Packet 01 result: pinned KDF contract
+
+Verified live through the GitHub content API on 2026-07-19.
+
+- Server revision: `a09c7edb03ae6d4fdece784f1250c67be73d5fe0`.
+- Client revision: `39f07436ca60e3f25eac47777671754f288a98f1`.
+- Request requires an old master-password authentication hash plus new
+  authentication and unlock data.
+- New authentication and unlock data require equal KDF settings and equal,
+  non-empty salts; mutation additionally validates that the salt is unchanged
+  for the account.
+- PBKDF2-SHA256 iterations are inclusive `600000..2000000`.
+- Argon2id iterations are inclusive `2..10`, memory `15..1024` MiB, and
+  parallelism `1..16`.
+- The client derives old proof and the complete new credential generation
+  locally; the service never needs the plaintext master password.
+- The server saves authentication data, unlock data, and KDF configuration as
+  one operation and logs out existing clients by default.
+
+Primary source paths are already catalogued in
+`.workflow/hon-160-account-credential-mutation/results/01-official-contract.md`.

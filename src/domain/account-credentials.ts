@@ -4,6 +4,13 @@ export const accountCredentialPolicy = {
   wrappedUserKeyMaxLength: 16_384,
 } as const
 
+export const accountCredentialKdfPolicy = {
+  pbkdf2Iterations: { min: 600_000, max: 2_000_000 },
+  argon2Iterations: { min: 2, max: 10 },
+  argon2Memory: { min: 15, max: 1024 },
+  argon2Parallelism: { min: 1, max: 16 },
+} as const
+
 export type AccountCredentialKdf = {
   kdfType: 0 | 1
   iterations: number
@@ -24,6 +31,19 @@ export type MasterPasswordChangeRequest = {
 
 export type MasterPasswordChangeParseResult =
   ({ ok: true } & MasterPasswordChangeRequest) | { ok: false }
+
+export type KdfChangeRequest = {
+  currentMasterPasswordHash: string
+  nextMasterPasswordHash: string
+  nextUserKey: string
+  credentialMetadata: {
+    salt: string
+    kdf: AccountCredentialKdf
+  }
+}
+
+export type KdfChangeParseResult =
+  ({ ok: true } & KdfChangeRequest) | { ok: false }
 
 export type AccountCredentialGeneration = {
   emailNormalized: string
@@ -156,6 +176,46 @@ export function parseMasterPasswordChangeBody(
   }
 }
 
+export function parseKdfChangeBody(body: unknown): KdfChangeParseResult {
+  const proof = parseCurrentPasswordProofBody(body)
+  if (!proof.ok || !isPlainObject(body)) {
+    return { ok: false }
+  }
+
+  const authenticationData = readAliasedValue(body, [
+    'authenticationData',
+    'AuthenticationData',
+  ])
+  const unlockData = readAliasedValue(body, ['unlockData', 'UnlockData'])
+  if (
+    !authenticationData.present ||
+    !authenticationData.valid ||
+    !unlockData.present ||
+    !unlockData.valid
+  ) {
+    return { ok: false }
+  }
+
+  const structured = parseStructuredPasswordChange(
+    authenticationData.value,
+    unlockData.value,
+  )
+  if (
+    !structured ||
+    !isKdfWithinMutationPolicy(structured.credentialMetadata.kdf)
+  ) {
+    return { ok: false }
+  }
+
+  return {
+    ok: true,
+    currentMasterPasswordHash: proof.masterPasswordHash,
+    nextMasterPasswordHash: structured.nextMasterPasswordHash,
+    nextUserKey: structured.nextUserKey,
+    credentialMetadata: structured.credentialMetadata,
+  }
+}
+
 export function matchesPasswordChangeCredentialGeneration(
   request: MasterPasswordChangeRequest,
   generation: AccountCredentialGeneration,
@@ -164,16 +224,60 @@ export function matchesPasswordChangeCredentialGeneration(
     return true
   }
 
-  const kdfType = kdfTypeForStoredAlgorithm(generation.kdfAlgorithm)
+  const storedKdf = accountCredentialKdfFromStoredGeneration(generation)
   const { kdf, salt } = request.credentialMetadata
   return (
-    kdfType !== null &&
+    storedKdf !== null &&
     salt === generation.emailNormalized &&
-    kdf.kdfType === kdfType &&
-    kdf.iterations === generation.kdfIterations &&
-    kdf.memory === generation.kdfMemory &&
-    kdf.parallelism === generation.kdfParallelism
+    equalKdf(kdf, storedKdf)
   )
+}
+
+export function matchesKdfChangeCredentialGeneration(
+  request: KdfChangeRequest,
+  generation: AccountCredentialGeneration,
+): boolean {
+  return (
+    request.credentialMetadata.salt === generation.emailNormalized &&
+    accountCredentialKdfFromStoredGeneration(generation) !== null
+  )
+}
+
+export function accountCredentialKdfFromStoredGeneration(
+  generation: AccountCredentialGeneration,
+): AccountCredentialKdf | null {
+  const kdfType = accountCredentialKdfTypeForStoredAlgorithm(
+    generation.kdfAlgorithm,
+  )
+  if (kdfType === null) {
+    return null
+  }
+  const kdf: AccountCredentialKdf = {
+    kdfType,
+    iterations: generation.kdfIterations,
+    memory: generation.kdfMemory,
+    parallelism: generation.kdfParallelism,
+  }
+
+  return isStructurallyValidKdf(kdf) ? kdf : null
+}
+
+export function accountCredentialKdfTypeForStoredAlgorithm(
+  algorithm: string,
+): 0 | 1 | null {
+  if (algorithm === 'pbkdf2-sha256') {
+    return 0
+  }
+  if (algorithm === 'argon2id') {
+    return 1
+  }
+  return null
+}
+
+export function accountCredentialKdfAlgorithmForType(
+  kdfType: AccountCredentialKdf['kdfType'],
+): 'pbkdf2-sha256' | 'argon2id' {
+  return kdfType === 0 ? 'pbkdf2-sha256' : 'argon2id'
 }
 
 export function nextCredentialRevisionDate(
@@ -336,27 +440,24 @@ function parseKdf(value: unknown): AccountCredentialKdf | null {
     'parallelism',
     'Parallelism',
   ])
+  if (kdfType !== 0 && kdfType !== 1) {
+    return null
+  }
   if (
-    (kdfType !== 0 && kdfType !== 1) ||
     iterations === null ||
-    iterations < 1 ||
     memory === undefined ||
     parallelism === undefined
   ) {
     return null
   }
-  if (
-    (kdfType === 0 && (memory !== null || parallelism !== null)) ||
-    (kdfType === 1 &&
-      (memory === null ||
-        memory < 1 ||
-        parallelism === null ||
-        parallelism < 1))
-  ) {
-    return null
-  }
 
-  return { kdfType, iterations, memory, parallelism }
+  const kdf: AccountCredentialKdf = {
+    kdfType,
+    iterations,
+    memory,
+    parallelism,
+  }
+  return isStructurallyValidKdf(kdf) ? kdf : null
 }
 
 function parseAliasedInteger(
@@ -392,14 +493,47 @@ function equalKdf(left: AccountCredentialKdf, right: AccountCredentialKdf) {
   )
 }
 
-function kdfTypeForStoredAlgorithm(algorithm: string): 0 | 1 | null {
-  if (algorithm === 'pbkdf2-sha256') {
-    return 0
+function isStructurallyValidKdf(kdf: AccountCredentialKdf): boolean {
+  if (!Number.isSafeInteger(kdf.iterations) || kdf.iterations < 1) {
+    return false
   }
-  if (algorithm === 'argon2id') {
-    return 1
+
+  if (kdf.kdfType === 0) {
+    return kdf.memory === null && kdf.parallelism === null
   }
-  return null
+
+  return (
+    kdf.memory !== null &&
+    Number.isSafeInteger(kdf.memory) &&
+    kdf.memory >= 1 &&
+    kdf.parallelism !== null &&
+    Number.isSafeInteger(kdf.parallelism) &&
+    kdf.parallelism >= 1
+  )
+}
+
+function isKdfWithinMutationPolicy(kdf: AccountCredentialKdf): boolean {
+  if (kdf.kdfType === 0) {
+    return insideRange(
+      kdf.iterations,
+      accountCredentialKdfPolicy.pbkdf2Iterations,
+    )
+  }
+
+  return (
+    kdf.memory !== null &&
+    kdf.parallelism !== null &&
+    insideRange(kdf.iterations, accountCredentialKdfPolicy.argon2Iterations) &&
+    insideRange(kdf.memory, accountCredentialKdfPolicy.argon2Memory) &&
+    insideRange(kdf.parallelism, accountCredentialKdfPolicy.argon2Parallelism)
+  )
+}
+
+function insideRange(
+  value: number,
+  range: { min: number; max: number },
+): boolean {
+  return value >= range.min && value <= range.max
 }
 
 function isControlCharacter(character: string): boolean {

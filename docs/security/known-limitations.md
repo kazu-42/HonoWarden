@@ -70,6 +70,10 @@ inputs, not minor documentation notes.
   by compatibility fixtures and a synthetic local Wrangler/D1 lifecycle. No
   official client UI or production password-change run is recorded. Non-empty
   password hints are rejected because hint persistence is not implemented.
+- existing-account PBKDF2/Argon2id KDF change is covered by focused tests and a
+  synthetic local Wrangler/D1 lifecycle. No official client UI or production
+  KDF-change run is recorded, and this local evidence does not promote a client
+  compatibility row.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation

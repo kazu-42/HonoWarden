@@ -6,7 +6,7 @@ This matrix records the exact client versions currently tracked by HonoWarden. I
 
 Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compat/fixture-flows.json). CI verifies that every `coveredFlows` value in the matrix maps to at least one fixture file. CI also route-replays every JSON fixture under `compat/fixtures` against the Hono app and compares that replay set with the fixture-flow manifest, so fixture assertions exercise real route behavior instead of only static JSON shape.
 
-## 2026-07-19 Password Change Source And Local Evidence
+## 2026-07-19 Credential Change Source And Local Evidence
 
 The `password_verify` and `password_change` fixture flows are pinned to the
 official upstream server `v2026.6.1` commit
@@ -20,6 +20,14 @@ credential lifecycle through local Wrangler and real local D1 migrations. That
 evidence proves server behavior but is not an official client binary or UI run,
 so it does not add a flow to any row's `liveEvidence` and does not promote a
 verification level.
+
+`POST /api/accounts/kdf` is pinned to the same revisions. Focused tests cover
+the complete PBKDF2-SHA256 and Argon2id bounds, and
+`pnpm account:kdf-change:lifecycle` proves a PBKDF2-to-Argon2id generation
+change through local Wrangler and real local D1. It verifies prelogin, password
+and refresh token responses, profile, sync, old-generation rejection, and D1
+readback. This remains local synthetic server evidence and likewise does not add
+official-client `liveEvidence` or promote a verification level.
 
 ## 2026-07-13 Premium Surface Boundary
 

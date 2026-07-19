@@ -1,3 +1,4 @@
+import { accountCredentialKdfFromStoredGeneration } from '../domain/account-credentials'
 import { refreshTokenRetentionDays } from '../domain/tokens'
 
 export type AuthUserRecord = {
@@ -918,6 +919,31 @@ export async function findRefreshTokenSessionByHash(
     return null
   }
 
+  const user = assertValidAuthUserCredentialGeneration({
+    id: row.userId,
+    email: row.email,
+    emailNormalized: row.emailNormalized,
+    displayName: row.displayName,
+    kdfAlgorithm: row.kdfAlgorithm,
+    kdfIterations: row.kdfIterations,
+    kdfMemory: row.kdfMemory,
+    kdfParallelism: row.kdfParallelism,
+    masterPasswordHash: row.masterPasswordHash,
+    userKey: row.userKey,
+    publicKey: row.publicKey,
+    privateKey: row.privateKey,
+    securityStamp: row.securityStamp,
+    revisionDate: row.revisionDate,
+    createdAt: row.createdAt,
+    disabledAt: row.disabledAt,
+    loginFailedCount: row.loginFailedCount,
+    loginFailedAt: row.loginFailedAt,
+    loginLockedUntil: row.loginLockedUntil,
+    totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
+    totpEncryptedSecret: row.totpEncryptedSecret ?? null,
+    totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
+  })
+
   return {
     tokenId: row.tokenId,
     userId: row.userId,
@@ -926,30 +952,7 @@ export async function findRefreshTokenSessionByHash(
     tokenExpiresAt: row.tokenExpiresAt,
     tokenRevokedAt: row.tokenRevokedAt,
     deviceRevokedAt: row.deviceRevokedAt,
-    user: {
-      id: row.userId,
-      email: row.email,
-      emailNormalized: row.emailNormalized,
-      displayName: row.displayName,
-      kdfAlgorithm: row.kdfAlgorithm,
-      kdfIterations: row.kdfIterations,
-      kdfMemory: row.kdfMemory,
-      kdfParallelism: row.kdfParallelism,
-      masterPasswordHash: row.masterPasswordHash,
-      userKey: row.userKey,
-      publicKey: row.publicKey,
-      privateKey: row.privateKey,
-      securityStamp: row.securityStamp,
-      revisionDate: row.revisionDate,
-      createdAt: row.createdAt,
-      disabledAt: row.disabledAt,
-      loginFailedCount: row.loginFailedCount,
-      loginFailedAt: row.loginFailedAt,
-      loginLockedUntil: row.loginLockedUntil,
-      totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
-      totpEncryptedSecret: row.totpEncryptedSecret ?? null,
-      totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
-    },
+    user,
   }
 }
 
@@ -1497,7 +1500,7 @@ export function buildDeviceId(
 }
 
 function authUserFromRow(row: AuthUserRow): AuthUserRecord {
-  return {
+  return assertValidAuthUserCredentialGeneration({
     id: row.id,
     email: row.email,
     emailNormalized: row.emailNormalized,
@@ -1520,7 +1523,17 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
     totpEncryptedSecret: row.totpEncryptedSecret ?? null,
     totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
+  })
+}
+
+function assertValidAuthUserCredentialGeneration(
+  user: AuthUserRecord,
+): AuthUserRecord {
+  if (!accountCredentialKdfFromStoredGeneration(user)) {
+    throw new Error('stored account KDF generation is invalid')
   }
+
+  return user
 }
 
 function deviceFromRow(row: DeviceRow): DeviceRecord {

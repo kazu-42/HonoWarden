@@ -1538,11 +1538,19 @@ function applyCredentialRotationBatch(
       /SET\s+master_password_hash = \?,\s+user_key = \?/.test(
         userStatement.__fakeQuery,
       )
-    const userIdIndex = passwordChange ? 5 : 3
+    const userSetClause = userStatement.__fakeQuery.slice(
+      0,
+      userStatement.__fakeQuery.indexOf('WHERE'),
+    )
+    const kdfChange =
+      passwordChange && userSetClause.includes('kdf_algorithm = ?')
+    const userIdIndex = kdfChange ? 9 : passwordChange ? 5 : 3
     const user = userRows.find((row) => row.id === userValues[userIdIndex])
-    const generationMatches = passwordChange
-      ? passwordChangeGenerationMatches(options, user, userValues)
-      : securityStampGenerationMatches(options, user, userValues)
+    const generationMatches = kdfChange
+      ? kdfChangeGenerationMatches(options, user, userValues)
+      : passwordChange
+        ? passwordChangeGenerationMatches(options, user, userValues)
+        : securityStampGenerationMatches(options, user, userValues)
     const results = new Map<FakePreparedStatement, D1Result>()
 
     if (generationMatches && user) {
@@ -1554,9 +1562,24 @@ function applyCredentialRotationBatch(
           userValues[0],
         )
         setFakeColumn(user, 'userKey', 'user_key', userValues[1])
-        setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[2])
-        setFakeColumn(user, 'revisionDate', 'revision_date', userValues[3])
-        setFakeColumn(user, 'updatedAt', 'updated_at', userValues[4])
+        if (kdfChange) {
+          setFakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm', userValues[2])
+          setFakeColumn(user, 'kdfIterations', 'kdf_iterations', userValues[3])
+          setFakeColumn(user, 'kdfMemory', 'kdf_memory', userValues[4])
+          setFakeColumn(
+            user,
+            'kdfParallelism',
+            'kdf_parallelism',
+            userValues[5],
+          )
+          setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[6])
+          setFakeColumn(user, 'revisionDate', 'revision_date', userValues[7])
+          setFakeColumn(user, 'updatedAt', 'updated_at', userValues[8])
+        } else {
+          setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[2])
+          setFakeColumn(user, 'revisionDate', 'revision_date', userValues[3])
+          setFakeColumn(user, 'updatedAt', 'updated_at', userValues[4])
+        }
       } else {
         setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[0])
         setFakeColumn(user, 'revisionDate', 'revision_date', userValues[1])
@@ -1672,6 +1695,27 @@ function passwordChangeGenerationMatches(
     fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') === values[11] &&
     fakeColumn(user, 'securityStamp', 'security_stamp') === values[12] &&
     fakeColumn(user, 'revisionDate', 'revision_date') === values[13]
+  )
+}
+
+function kdfChangeGenerationMatches(
+  options: FakeD1DatabaseOptions,
+  user: Record<string, unknown> | undefined,
+  values: unknown[],
+): boolean {
+  return (
+    !options.credentialRotationConflict &&
+    user != null &&
+    fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
+    fakeColumn(user, 'masterPasswordHash', 'master_password_hash') ===
+      values[10] &&
+    fakeColumn(user, 'emailNormalized', 'email_normalized') === values[11] &&
+    fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm') === values[12] &&
+    fakeColumn(user, 'kdfIterations', 'kdf_iterations') === values[13] &&
+    fakeColumn(user, 'kdfMemory', 'kdf_memory') === values[14] &&
+    fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') === values[15] &&
+    fakeColumn(user, 'securityStamp', 'security_stamp') === values[16] &&
+    fakeColumn(user, 'revisionDate', 'revision_date') === values[17]
   )
 }
 

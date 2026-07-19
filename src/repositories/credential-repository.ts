@@ -40,6 +40,17 @@ export type ChangeAccountMasterPasswordResult =
   | ({ status: 'changed' } & CredentialGenerationMutationResult)
   | { status: 'conflict' }
 
+export type ChangeAccountKdfInput = ChangeAccountMasterPasswordInput & {
+  nextKdfAlgorithm: 'pbkdf2-sha256' | 'argon2id'
+  nextKdfIterations: number
+  nextKdfMemory: number | null
+  nextKdfParallelism: number | null
+}
+
+export type ChangeAccountKdfResult =
+  | ({ status: 'changed' } & CredentialGenerationMutationResult)
+  | { status: 'conflict' }
+
 type CredentialGenerationMutationResult = {
   securityStamp: string
   revisionDate: string
@@ -47,6 +58,64 @@ type CredentialGenerationMutationResult = {
   revokedRefreshTokenCount: number
   invalidatedAuthRequestCount: number
   auditEventId: string
+}
+
+export async function changeAccountKdf(
+  database: CredentialRepositoryDatabase,
+  input: ChangeAccountKdfInput,
+): Promise<ChangeAccountKdfResult> {
+  const result = await commitCredentialGenerationMutation(
+    database,
+    input,
+    database
+      .prepare(
+        `
+          UPDATE users
+          SET
+            master_password_hash = ?,
+            user_key = ?,
+            kdf_algorithm = ?,
+            kdf_iterations = ?,
+            kdf_memory = ?,
+            kdf_parallelism = ?,
+            security_stamp = ?,
+            revision_date = ?,
+            updated_at = ?
+          WHERE id = ?
+            AND disabled_at IS NULL
+            AND master_password_hash = ?
+            AND email_normalized = ?
+            AND kdf_algorithm = ?
+            AND kdf_iterations = ?
+            AND kdf_memory IS ?
+            AND kdf_parallelism IS ?
+            AND security_stamp = ?
+            AND revision_date = ?
+        `,
+      )
+      .bind(
+        input.nextMasterPasswordHash,
+        input.nextUserKey,
+        input.nextKdfAlgorithm,
+        input.nextKdfIterations,
+        input.nextKdfMemory,
+        input.nextKdfParallelism,
+        input.nextSecurityStamp,
+        input.nextRevisionDate,
+        input.nextRevisionDate,
+        input.userId,
+        input.expectedMasterPasswordHash,
+        input.expectedEmailNormalized,
+        input.expectedKdfAlgorithm,
+        input.expectedKdfIterations,
+        input.expectedKdfMemory,
+        input.expectedKdfParallelism,
+        input.expectedSecurityStamp,
+        input.expectedRevisionDate,
+      ),
+  )
+
+  return result ? { status: 'changed', ...result } : { status: 'conflict' }
 }
 
 export async function changeAccountMasterPassword(

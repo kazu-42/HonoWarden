@@ -77,6 +77,33 @@ Failure invariants:
   `session_revocation_incomplete` while the new D1 credential generation stays
   authoritative
 
+## KDF Change
+
+```text
+authenticated bearer token at current security stamp
+  -> new authentication/unlock data agree on salt and KDF?
+  -> unchanged normalized-email salt and bounded PBKDF2/Argon2id settings?
+  -> credential-proof defense allows attempt and old hash matches?
+  -> guarded D1 batch changes hash + wrapped key + KDF + stamp + revision,
+     revokes all sessions/auth requests, and persists mandatory audit
+  -> invalidate Durable Object notification sessions
+```
+
+Success invariants:
+
+- account identity, normalized-email salt, and encrypted vault rows are unchanged
+- every outward KDF projection reads the same committed generation
+- old access/refresh sessions and old-KDF authentication hashes fail
+- the new client-derived hash logs in with the new wrapped user key and KDF
+
+Failure invariants:
+
+- out-of-range, missing, unknown, mixed, or salt-drifted data is state-free
+- a stale old generation returns `revision_conflict` without partial revocation
+- every failed D1 batch statement rolls back user, session, auth-request, and
+  audit changes together
+- post-commit notification cleanup is forward-only and never restores an old KDF
+
 ## TOTP Setup
 
 ```text

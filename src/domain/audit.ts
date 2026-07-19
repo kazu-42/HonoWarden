@@ -2,6 +2,7 @@ export type AuditEventName =
   | 'admin.bootstrap'
   | 'account.security_stamp.rotate'
   | 'account.password.change'
+  | 'account.kdf.change'
   | 'auth.password_grant'
   | 'auth.refresh_grant'
   | 'auth.refresh_reuse'

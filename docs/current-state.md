@@ -1136,6 +1136,32 @@ Not implemented:
 - password-hint persistence or migration; non-empty hints fail before mutation
 - official client UI or production password-change evidence
 
+## Week 26 Account KDF Change
+
+Implemented:
+
+- authenticated `POST /api/accounts/kdf` with current client-derived hash proof,
+  unchanged normalized-email salt, and matching authentication/unlock data
+- inclusive PBKDF2-SHA256 bounds `600000..2000000` and Argon2id bounds of
+  iterations `2..10`, memory `15..1024` MiB, and parallelism `1..16`
+- one generation-guarded D1 batch that replaces the authentication hash, opaque
+  wrapped user key, and KDF columns; rotates security stamp/revision; revokes
+  devices and refresh tokens; supersedes active auth requests; and persists the
+  required `account.kdf.change` audit event
+- exact stored KDF projection through known-account prelogin, password and
+  refresh token responses, account profile unlock metadata, and sync unlock
+  metadata; unknown allowed prelogin accounts receive a valid synthetic default
+- fail-closed stored-KDF validation at the auth repository boundary so unknown
+  algorithms cannot be silently projected as PBKDF2 after session mutation
+- `pnpm account:kdf-change:lifecycle` real local-D1 synthetic evidence for
+  PBKDF2-to-Argon2id change, old-generation rejection, new login/profile/sync,
+  session and audit state, and encrypted-vault preservation
+
+Not implemented:
+
+- official client UI or production KDF-change evidence; those remain aggregate
+  credential closeout work and do not promote compatibility rows
+
 ## Week 26 Account Lifecycle Operator CLI
 
 Implemented:

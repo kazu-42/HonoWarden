@@ -320,6 +320,13 @@ describe('HonoWarden app', () => {
   })
 
   it('returns prelogin KDF parameters for an allowed email', async () => {
+    const user = {
+      ...authUserRecord(),
+      kdfAlgorithm: 'argon2id',
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+    }
     const response = await app.request(
       '/identity/accounts/prelogin',
       {
@@ -333,6 +340,7 @@ describe('HonoWarden app', () => {
         }),
       },
       {
+        DB: new FakeD1Database(null, [], { authUser: user }),
         HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
       },
     )
@@ -340,10 +348,17 @@ describe('HonoWarden app', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('X-Request-Id')).toBe('prelogin-request')
     await expect(response.json()).resolves.toEqual({
-      kdf: 0,
-      kdfIterations: 600000,
-      kdfMemory: null,
-      kdfParallelism: null,
+      kdf: 1,
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      kdfSettings: {
+        kdfType: 1,
+        iterations: 6,
+        memory: 32,
+        parallelism: 4,
+      },
+      salt: 'person@example.test',
     })
   })
 
@@ -360,6 +375,7 @@ describe('HonoWarden app', () => {
         }),
       },
       {
+        DB: new FakeD1Database(null, [], { authUser: null }),
         HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
       },
     )
@@ -370,6 +386,35 @@ describe('HonoWarden app', () => {
       kdfIterations: 600000,
       kdfMemory: null,
       kdfParallelism: null,
+      kdfSettings: {
+        kdfType: 0,
+        iterations: 600000,
+        memory: null,
+        parallelism: null,
+      },
+      salt: 'person@example.test',
+    })
+  })
+
+  it('fails prelogin loudly for an invalid stored KDF instead of projecting PBKDF2', async () => {
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'person@example.test' }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: { ...authUserRecord(), kdfAlgorithm: 'unknown-kdf' },
+        }),
+        HONOWARDEN_ALLOWED_EMAILS: 'person@example.test',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'database_unavailable' },
     })
   })
 
@@ -3637,6 +3682,51 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it('projects stored Argon2id settings through refresh-token responses', async () => {
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: 'synthetic-refresh-token',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          refreshSession: {
+            ...refreshTokenSessionRecord(),
+            kdfAlgorithm: 'argon2id',
+            kdfIterations: 6,
+            kdfMemory: 32,
+            kdfParallelism: 4,
+          },
+          refreshRotationChanges: 1,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      Kdf: 1,
+      KdfIterations: 6,
+      KdfMemory: 32,
+      KdfParallelism: 4,
+      UserDecryptionOptions: {
+        MasterPasswordUnlock: {
+          Kdf: {
+            KdfType: 1,
+            Iterations: 6,
+            Memory: 32,
+            Parallelism: 4,
+          },
+        },
+      },
+    })
+  })
+
   it('signs refresh-grant access tokens with the configured active key id', async () => {
     const response = await app.request(
       '/identity/connect/token',
@@ -6854,6 +6944,347 @@ describe('HonoWarden app', () => {
         query.includes('INSERT INTO auth_attempts'),
       ),
     ).toBe(true)
+  })
+
+  it('changes PBKDF2 to Argon2id and projects the new generation everywhere', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const previousCipher = cipherRecord()
+    const devices = [
+      {
+        id: buildDevicePathId('fixture-device'),
+        userId: user.id,
+        identifier: 'fixture-device',
+      },
+      {
+        id: buildDevicePathId('other-device'),
+        userId: user.id,
+        identifier: 'other-device',
+      },
+    ]
+    const refreshTokens = [
+      { id: 'current-token', userId: user.id },
+      { id: 'other-token', userId: user.id },
+    ]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers: [previousCipher],
+      devices,
+      refreshTokens,
+    })
+    const oldAccessToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/kdf',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${oldAccessToken}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'kdf-change-request',
+        },
+        body: JSON.stringify(kdfChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.text()).resolves.toBe('')
+    expect(user).toMatchObject({
+      kdfAlgorithm: 'argon2id',
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      masterPasswordHash: 'synthetic-argon2-master-password-hash',
+      userKey: '2.synthetic-argon2-user-key',
+      securityStamp: expect.not.stringMatching(/^security-stamp$/),
+      revisionDate: expect.not.stringMatching(/^2026-07-06T00:00:00\.000Z$/),
+    })
+    expect(devices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(refreshTokens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+        expect.objectContaining({ revokedAt: expect.any(String) }),
+      ]),
+    )
+    expect(previousCipher).toEqual(cipherRecord())
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'account.kdf.change',
+        outcome: 'success',
+        requestId: 'kdf-change-request',
+        contextJson: JSON.stringify({
+          d1SessionsRevoked: true,
+          previousKdfType: 0,
+          nextKdfType: 1,
+        }),
+      }),
+    ])
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      'synthetic-argon2-master-password-hash',
+    )
+    expect(JSON.stringify(auditLog.mock.calls)).not.toContain(
+      '2.synthetic-argon2-user-key',
+    )
+
+    const preloginResponse = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.emailNormalized }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_ALLOWED_EMAILS: user.emailNormalized,
+      },
+    )
+    expect(preloginResponse.status).toBe(200)
+    await expect(preloginResponse.json()).resolves.toMatchObject({
+      kdf: 1,
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      kdfSettings: { kdfType: 1, iterations: 6, memory: 32, parallelism: 4 },
+      salt: user.emailNormalized,
+    })
+
+    const oldTokenResponse = await app.request(
+      '/api/sync',
+      { headers: { Authorization: `Bearer ${oldAccessToken}` } },
+      { DB: database, HONOWARDEN_TOKEN_SECRET: 'test-token-secret' },
+    )
+    expect(oldTokenResponse.status).toBe(401)
+
+    const oldKdfResponse = await passwordGrantRequest(
+      database,
+      'synthetic-master-password-hash',
+      'old-kdf-device',
+    )
+    expect(oldKdfResponse.status).toBe(400)
+
+    const newKdfResponse = await passwordGrantRequest(
+      database,
+      'synthetic-argon2-master-password-hash',
+      'new-kdf-device',
+    )
+    expect(newKdfResponse.status).toBe(200)
+    const newToken = (await newKdfResponse.json()) as {
+      access_token: string
+      Key: string
+      Kdf: number
+      KdfIterations: number
+      KdfMemory: number
+      KdfParallelism: number
+      UserDecryptionOptions: {
+        MasterPasswordUnlock: { Kdf: { KdfType: number } }
+      }
+    }
+    expect(newToken).toMatchObject({
+      Key: '2.synthetic-argon2-user-key',
+      Kdf: 1,
+      KdfIterations: 6,
+      KdfMemory: 32,
+      KdfParallelism: 4,
+      UserDecryptionOptions: {
+        MasterPasswordUnlock: { Kdf: { KdfType: 1 } },
+      },
+    })
+
+    const profileResponse = await app.request(
+      '/api/accounts/profile',
+      { headers: { Authorization: `Bearer ${newToken.access_token}` } },
+      { DB: database, HONOWARDEN_TOKEN_SECRET: 'test-token-secret' },
+    )
+    expect(profileResponse.status).toBe(200)
+    await expect(profileResponse.json()).resolves.toMatchObject({
+      userDecryptionOptions: {
+        masterPasswordUnlock: {
+          kdf: { kdfType: 1, iterations: 6, memory: 32, parallelism: 4 },
+        },
+      },
+    })
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: { Authorization: `Bearer ${newToken.access_token}` } },
+      { DB: database, HONOWARDEN_TOKEN_SECRET: 'test-token-secret' },
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      profile: { key: '2.synthetic-argon2-user-key' },
+      userDecryption: {
+        masterPasswordUnlock: {
+          kdf: { kdfType: 1, iterations: 6, memory: 32, parallelism: 4 },
+        },
+      },
+      ciphers: [expect.objectContaining({ id: previousCipher.id })],
+    })
+  })
+
+  it('keeps the complete KDF generation state-free on proof and D1 failure', async () => {
+    for (const failure of ['proof', 'audit'] as const) {
+      const user = authUserRecord()
+      const devices = [{ id: 'device-id', userId: user.id }]
+      const refreshTokens = [{ id: 'token-id', userId: user.id }]
+      const database = new FakeD1Database(null, [], {
+        authUser: user,
+        devices,
+        refreshTokens,
+        ...(failure === 'audit'
+          ? { credentialRotationFailureAt: 'audit' as const }
+          : {}),
+      })
+      const before = structuredClone({ user, devices, refreshTokens })
+      const body = kdfChangeBody(user)
+      const response = await app.request(
+        '/api/accounts/kdf',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${await accessTokenFor(user)}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...body,
+            masterPasswordHash:
+              failure === 'proof'
+                ? 'wrong-current-hash'
+                : body.masterPasswordHash,
+          }),
+        },
+        {
+          DB: database,
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(failure === 'proof' ? 400 : 503)
+      expect({ user, devices, refreshTokens }).toEqual(before)
+      expect(database.auditEventInserts).toEqual([])
+    }
+  })
+
+  it('changes Argon2id back to PBKDF2 as one guarded generation', async () => {
+    const user = {
+      ...authUserRecord(),
+      kdfAlgorithm: 'argon2id',
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      masterPasswordHash: 'synthetic-argon2-master-password-hash',
+      userKey: '2.synthetic-argon2-user-key',
+    }
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const response = await app.request(
+      '/api/accounts/kdf',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(
+          kdfChangeBody(user, {
+            kdf: {
+              kdfType: 0,
+              iterations: 600000,
+              memory: null,
+              parallelism: null,
+            },
+            nextMasterPasswordHash: 'synthetic-pbkdf2-master-password-hash',
+            nextUserKey: '2.synthetic-pbkdf2-user-key',
+          }),
+        ),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(user).toMatchObject({
+      kdfAlgorithm: 'pbkdf2-sha256',
+      kdfIterations: 600000,
+      kdfMemory: null,
+      kdfParallelism: null,
+      masterPasswordHash: 'synthetic-pbkdf2-master-password-hash',
+      userKey: '2.synthetic-pbkdf2-user-key',
+    })
+  })
+
+  it('returns conflict without partial KDF or session changes', async () => {
+    const user = authUserRecord()
+    const devices = [{ id: 'device-id', userId: user.id }]
+    const refreshTokens = [{ id: 'token-id', userId: user.id }]
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      devices,
+      refreshTokens,
+      credentialRotationConflict: true,
+    })
+    const before = structuredClone({ user, devices, refreshTokens })
+    const response = await app.request(
+      '/api/accounts/kdf',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(kdfChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'revision_conflict' },
+    })
+    expect({ user, devices, refreshTokens }).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
+  })
+
+  it('rejects KDF change before mutation when notification binding is missing', async () => {
+    const user = authUserRecord()
+    const database = new FakeD1Database(null, [], { authUser: user })
+    const before = structuredClone(user)
+    const response = await app.request(
+      '/api/accounts/kdf',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(kdfChangeBody(user)),
+      },
+      {
+        DB: database,
+        HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'server_misconfigured' },
+    })
+    expect(user).toEqual(before)
+    expect(database.auditEventInserts).toEqual([])
   })
 
   it('changes the master-password generation and preserves encrypted vault data', async () => {
@@ -12692,6 +13123,43 @@ function masterPasswordChangeBody(user: ReturnType<typeof authUserRecord>) {
     unlockData: {
       kdf,
       masterKeyWrappedUserKey: '2.synthetic-next-user-key',
+      salt: user.emailNormalized,
+    },
+  }
+}
+
+function kdfChangeBody(
+  user: { emailNormalized: string; masterPasswordHash: string },
+  overrides: {
+    kdf?: {
+      kdfType: number
+      iterations: number
+      memory: number | null
+      parallelism: number | null
+    }
+    nextMasterPasswordHash?: string
+    nextUserKey?: string
+  } = {},
+) {
+  const kdf = overrides.kdf ?? {
+    kdfType: 1,
+    iterations: 6,
+    memory: 32,
+    parallelism: 4,
+  }
+  const nextMasterPasswordHash =
+    overrides.nextMasterPasswordHash ?? 'synthetic-argon2-master-password-hash'
+  const nextUserKey = overrides.nextUserKey ?? '2.synthetic-argon2-user-key'
+  return {
+    masterPasswordHash: user.masterPasswordHash,
+    authenticationData: {
+      kdf,
+      masterPasswordAuthenticationHash: nextMasterPasswordHash,
+      salt: user.emailNormalized,
+    },
+    unlockData: {
+      kdf,
+      masterKeyWrappedUserKey: nextUserKey,
       salt: user.emailNormalized,
     },
   }
