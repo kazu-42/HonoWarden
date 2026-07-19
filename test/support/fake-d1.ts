@@ -1,4 +1,5 @@
 import { pendingAttachmentExpiresAt } from '../../src/domain/attachment'
+import { preloginKdfPolicy } from '../../src/domain/prelogin'
 
 const fakeMeta = {
   duration: 0,
@@ -427,6 +428,17 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (
+          query.includes('WITH target AS') &&
+          query.includes('FROM account_kdf_population')
+        ) {
+          return {
+            success: true,
+            results: listPreloginKdfRows(options, boundValues) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (
           query.includes('FROM organization_users membership') &&
           query.includes('INNER JOIN organizations organization') &&
@@ -1538,11 +1550,19 @@ function applyCredentialRotationBatch(
       /SET\s+master_password_hash = \?,\s+user_key = \?/.test(
         userStatement.__fakeQuery,
       )
-    const userIdIndex = passwordChange ? 5 : 3
+    const userSetClause = userStatement.__fakeQuery.slice(
+      0,
+      userStatement.__fakeQuery.indexOf('WHERE'),
+    )
+    const kdfChange =
+      passwordChange && userSetClause.includes('kdf_algorithm = ?')
+    const userIdIndex = kdfChange ? 9 : passwordChange ? 5 : 3
     const user = userRows.find((row) => row.id === userValues[userIdIndex])
-    const generationMatches = passwordChange
-      ? passwordChangeGenerationMatches(options, user, userValues)
-      : securityStampGenerationMatches(options, user, userValues)
+    const generationMatches = kdfChange
+      ? kdfChangeGenerationMatches(options, user, userValues)
+      : passwordChange
+        ? passwordChangeGenerationMatches(options, user, userValues)
+        : securityStampGenerationMatches(options, user, userValues)
     const results = new Map<FakePreparedStatement, D1Result>()
 
     if (generationMatches && user) {
@@ -1554,9 +1574,24 @@ function applyCredentialRotationBatch(
           userValues[0],
         )
         setFakeColumn(user, 'userKey', 'user_key', userValues[1])
-        setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[2])
-        setFakeColumn(user, 'revisionDate', 'revision_date', userValues[3])
-        setFakeColumn(user, 'updatedAt', 'updated_at', userValues[4])
+        if (kdfChange) {
+          setFakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm', userValues[2])
+          setFakeColumn(user, 'kdfIterations', 'kdf_iterations', userValues[3])
+          setFakeColumn(user, 'kdfMemory', 'kdf_memory', userValues[4])
+          setFakeColumn(
+            user,
+            'kdfParallelism',
+            'kdf_parallelism',
+            userValues[5],
+          )
+          setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[6])
+          setFakeColumn(user, 'revisionDate', 'revision_date', userValues[7])
+          setFakeColumn(user, 'updatedAt', 'updated_at', userValues[8])
+        } else {
+          setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[2])
+          setFakeColumn(user, 'revisionDate', 'revision_date', userValues[3])
+          setFakeColumn(user, 'updatedAt', 'updated_at', userValues[4])
+        }
       } else {
         setFakeColumn(user, 'securityStamp', 'security_stamp', userValues[0])
         setFakeColumn(user, 'revisionDate', 'revision_date', userValues[1])
@@ -1564,7 +1599,14 @@ function applyCredentialRotationBatch(
       }
     }
     failCredentialRotationAt(options, 'user')
-    results.set(userStatement, fakeResult(generationMatches ? 1 : 0))
+    results.set(userStatement, {
+      success: true,
+      results: generationMatches && user ? [{ id: user.id }] : [],
+      meta: {
+        ...fakeMeta,
+        changes: generationMatches ? (kdfChange ? 3 : 1) : 0,
+      },
+    })
 
     const deviceValues = deviceStatement.__fakeBoundValues
     const deviceChanges = generationMatches
@@ -1672,6 +1714,27 @@ function passwordChangeGenerationMatches(
     fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') === values[11] &&
     fakeColumn(user, 'securityStamp', 'security_stamp') === values[12] &&
     fakeColumn(user, 'revisionDate', 'revision_date') === values[13]
+  )
+}
+
+function kdfChangeGenerationMatches(
+  options: FakeD1DatabaseOptions,
+  user: Record<string, unknown> | undefined,
+  values: unknown[],
+): boolean {
+  return (
+    !options.credentialRotationConflict &&
+    user != null &&
+    fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
+    fakeColumn(user, 'masterPasswordHash', 'master_password_hash') ===
+      values[10] &&
+    fakeColumn(user, 'emailNormalized', 'email_normalized') === values[11] &&
+    fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm') === values[12] &&
+    fakeColumn(user, 'kdfIterations', 'kdf_iterations') === values[13] &&
+    fakeColumn(user, 'kdfMemory', 'kdf_memory') === values[14] &&
+    fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') === values[15] &&
+    fakeColumn(user, 'securityStamp', 'security_stamp') === values[16] &&
+    fakeColumn(user, 'revisionDate', 'revision_date') === values[17]
   )
 }
 
@@ -3003,6 +3066,134 @@ function findAuthUser(
   return options.authUsers[0] ?? null
 }
 
+function listPreloginKdfRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown>[] {
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  const targetEmailNormalized = String(boundValues[0] ?? '')
+  const target = users.find(
+    (user) =>
+      fakeColumn(user, 'emailNormalized', 'email_normalized') ===
+      targetEmailNormalized,
+  )
+  const groups = new Map<
+    string,
+    {
+      kdfAlgorithm: unknown
+      kdfIterations: unknown
+      kdfMemory: unknown
+      kdfParallelism: unknown
+      accountCount: number
+    }
+  >()
+
+  for (const user of users) {
+    if (!hasClientReadablePreloginKdf(user)) {
+      continue
+    }
+    const kdfAlgorithm = fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm')
+    const kdfIterations = fakeColumn(user, 'kdfIterations', 'kdf_iterations')
+    const kdfMemory = fakeColumn(user, 'kdfMemory', 'kdf_memory') ?? null
+    const kdfParallelism =
+      fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') ?? null
+    const key = JSON.stringify([
+      kdfAlgorithm,
+      kdfIterations,
+      kdfMemory,
+      kdfParallelism,
+    ])
+    const existing = groups.get(key)
+    if (existing) {
+      existing.accountCount += 1
+    } else {
+      groups.set(key, {
+        kdfAlgorithm,
+        kdfIterations,
+        kdfMemory,
+        kdfParallelism,
+        accountCount: 1,
+      })
+    }
+  }
+
+  const targetFields = {
+    targetEmailNormalized:
+      target == null
+        ? null
+        : fakeColumn(target, 'emailNormalized', 'email_normalized'),
+    targetKdfAlgorithm:
+      target == null
+        ? null
+        : fakeColumn(target, 'kdfAlgorithm', 'kdf_algorithm'),
+    targetKdfIterations:
+      target == null
+        ? null
+        : fakeColumn(target, 'kdfIterations', 'kdf_iterations'),
+    targetKdfMemory:
+      target == null
+        ? null
+        : (fakeColumn(target, 'kdfMemory', 'kdf_memory') ?? null),
+    targetKdfParallelism:
+      target == null
+        ? null
+        : (fakeColumn(target, 'kdfParallelism', 'kdf_parallelism') ?? null),
+  }
+
+  const distributionRows = [...groups.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([, row]) => ({ ...row, ...targetFields }))
+
+  return distributionRows.length > 0
+    ? distributionRows
+    : [
+        {
+          kdfAlgorithm: null,
+          kdfIterations: null,
+          kdfMemory: null,
+          kdfParallelism: null,
+          accountCount: null,
+          ...targetFields,
+        },
+      ]
+}
+
+function hasClientReadablePreloginKdf(user: Record<string, unknown>): boolean {
+  const algorithm = fakeColumn(user, 'kdfAlgorithm', 'kdf_algorithm')
+  const iterations = fakeColumn(user, 'kdfIterations', 'kdf_iterations')
+  const memory = fakeColumn(user, 'kdfMemory', 'kdf_memory') ?? null
+  const parallelism =
+    fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') ?? null
+
+  if (!Number.isSafeInteger(iterations)) {
+    return false
+  }
+  if (algorithm === 'pbkdf2-sha256') {
+    return (
+      inFakeRange(iterations as number, preloginKdfPolicy.pbkdf2Iterations) &&
+      memory === null &&
+      parallelism === null
+    )
+  }
+
+  return (
+    algorithm === 'argon2id' &&
+    inFakeRange(iterations as number, preloginKdfPolicy.argon2Iterations) &&
+    Number.isSafeInteger(memory) &&
+    inFakeRange(memory as number, preloginKdfPolicy.argon2Memory) &&
+    Number.isSafeInteger(parallelism) &&
+    inFakeRange(parallelism as number, preloginKdfPolicy.argon2Parallelism)
+  )
+}
+
+function inFakeRange(
+  value: number,
+  range: { min: number; max: number },
+): boolean {
+  return value >= range.min && value <= range.max
+}
+
 function findKnownDeviceRow(
   options: FakeD1DatabaseOptions,
   boundValues: unknown[],
@@ -3745,4 +3936,5 @@ export const requiredTables = [
   'collections',
   'collection_users',
   'collection_ciphers',
+  'account_kdf_population',
 ] as const

@@ -6,6 +6,7 @@ import {
   deleteExpiredRefreshTokens,
   countRecentFailedAuthAttempts,
   findAuthFailureBucket,
+  findPreloginKdfContext,
   findAuthUserByEmail,
   findAuthUserById,
   findDeviceByIdentifier,
@@ -122,6 +123,101 @@ describe('auth repository', () => {
       createdAt: '2026-07-06T00:00:00.000Z',
     })
     expect(database.boundValues).toContain('user-id')
+  })
+
+  it('reads the target and exact stored KDF population in one prelogin query', async () => {
+    const database = new RecordingPreloginD1Database([
+      {
+        kdfAlgorithm: 'pbkdf2-sha256',
+        kdfIterations: 100000,
+        kdfMemory: null,
+        kdfParallelism: null,
+        accountCount: 2,
+        targetEmailNormalized: 'person@example.test',
+        targetKdfAlgorithm: 'argon2id',
+        targetKdfIterations: 4,
+        targetKdfMemory: 64,
+        targetKdfParallelism: 4,
+      },
+      {
+        kdfAlgorithm: 'argon2id',
+        kdfIterations: 4,
+        kdfMemory: 64,
+        kdfParallelism: 4,
+        accountCount: 1,
+        targetEmailNormalized: 'person@example.test',
+        targetKdfAlgorithm: 'argon2id',
+        targetKdfIterations: 4,
+        targetKdfMemory: 64,
+        targetKdfParallelism: 4,
+      },
+    ])
+
+    await expect(
+      findPreloginKdfContext(database, 'person@example.test'),
+    ).resolves.toEqual({
+      target: {
+        emailNormalized: 'person@example.test',
+        kdfAlgorithm: 'argon2id',
+        kdfIterations: 4,
+        kdfMemory: 64,
+        kdfParallelism: 4,
+      },
+      distribution: [
+        {
+          kdfAlgorithm: 'pbkdf2-sha256',
+          kdfIterations: 100000,
+          kdfMemory: null,
+          kdfParallelism: null,
+          accountCount: 2,
+        },
+        {
+          kdfAlgorithm: 'argon2id',
+          kdfIterations: 4,
+          kdfMemory: 64,
+          kdfParallelism: 4,
+          accountCount: 1,
+        },
+      ],
+    })
+    expect(database.boundValues[0]).toBe('person@example.test')
+    expect(database.query).toContain('WITH target AS')
+    expect(database.query).toContain('FROM account_kdf_population')
+    expect(database.query).toContain('account_count as accountCount')
+    expect(database.query).not.toContain('COUNT(*)')
+    expect(database.query).not.toContain('GROUP BY')
+    expect(database.query).toContain('valid_population AS')
+    expect(database.query).toContain('anchor AS')
+  })
+
+  it('preserves an exact target when the valid stored population is empty', async () => {
+    const database = new RecordingPreloginD1Database([
+      {
+        kdfAlgorithm: null,
+        kdfIterations: null,
+        kdfMemory: null,
+        kdfParallelism: null,
+        accountCount: null,
+        targetEmailNormalized: 'person@example.test',
+        targetKdfAlgorithm: 'argon2id',
+        targetKdfIterations: 4,
+        targetKdfMemory: 64,
+        targetKdfParallelism: 4,
+      },
+    ])
+
+    await expect(
+      findPreloginKdfContext(database, 'person@example.test'),
+    ).resolves.toEqual({
+      target: {
+        emailNormalized: 'person@example.test',
+        kdfAlgorithm: 'argon2id',
+        kdfIterations: 4,
+        kdfMemory: 64,
+        kdfParallelism: 4,
+      },
+      distribution: [],
+    })
   })
 
   it('upserts a device and stores only the refresh token hash', async () => {
@@ -1155,6 +1251,37 @@ describe('auth repository', () => {
     expect(database.batchStatements).toHaveLength(2)
   })
 })
+
+class RecordingPreloginD1Database {
+  boundValues: unknown[] = []
+  query = ''
+
+  constructor(private readonly rows: unknown[]) {}
+
+  prepare(query: string): D1PreparedStatement {
+    this.query = query
+    const statement = {
+      bind: (...values: unknown[]) => {
+        this.boundValues = values
+        return statement
+      },
+      first: async <T = unknown>(): Promise<T | null> => null,
+      all: async <T = unknown>(): Promise<D1Result<T>> => ({
+        success: true,
+        results: this.rows as T[],
+        meta: fakeMeta,
+      }),
+      run: async <T = Record<string, unknown>>(): Promise<D1Result<T>> => ({
+        success: true,
+        results: [],
+        meta: fakeMeta,
+      }),
+      raw: async <T = unknown>(): Promise<T[]> => [],
+    } as D1PreparedStatement
+
+    return statement
+  }
+}
 
 class CleanupAwareAuthD1Database {
   boundValues: unknown[] = []

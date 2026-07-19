@@ -1,3 +1,6 @@
+import { accountCredentialKdfFromStoredGeneration } from '../domain/account-credentials'
+import type { PreloginKdfContext } from '../domain/prelogin'
+import { preloginKdfPolicy } from '../domain/prelogin'
 import { refreshTokenRetentionDays } from '../domain/tokens'
 
 export type AuthUserRecord = {
@@ -278,6 +281,19 @@ type AuthUserRow = {
   totpLastAcceptedStep: number | null
 }
 
+type PreloginKdfRow = {
+  kdfAlgorithm: string | null
+  kdfIterations: number | null
+  kdfMemory: number | null
+  kdfParallelism: number | null
+  accountCount: number | null
+  targetEmailNormalized: string | null
+  targetKdfAlgorithm: string | null
+  targetKdfIterations: number | null
+  targetKdfMemory: number | null
+  targetKdfParallelism: number | null
+}
+
 type RefreshTokenSessionRow = {
   tokenId: string
   userId: string
@@ -337,6 +353,133 @@ type DeviceRow = {
 
 type KnownDeviceRow = {
   found: number
+}
+
+export async function findPreloginKdfContext(
+  database: AuthLookupDatabase,
+  emailNormalized: string,
+): Promise<PreloginKdfContext> {
+  const result = await database
+    .prepare(
+      `
+        WITH target AS (
+          SELECT
+            email_normalized,
+            kdf_algorithm,
+            kdf_iterations,
+            kdf_memory,
+            kdf_parallelism
+          FROM users
+          WHERE email_normalized = ?
+          LIMIT 1
+        ),
+        valid_population AS (
+          SELECT
+            kdf_algorithm,
+            kdf_iterations,
+            CASE
+              WHEN kdf_memory_is_null = 1 THEN NULL
+              ELSE kdf_memory
+            END AS kdf_memory,
+            CASE
+              WHEN kdf_parallelism_is_null = 1 THEN NULL
+              ELSE kdf_parallelism
+            END AS kdf_parallelism,
+            account_count
+          FROM account_kdf_population
+          WHERE (
+            kdf_algorithm = 'pbkdf2-sha256'
+            AND typeof(kdf_iterations) = 'integer'
+            AND kdf_iterations BETWEEN ? AND ?
+            AND kdf_memory_is_null = 1
+            AND kdf_parallelism_is_null = 1
+          ) OR (
+            kdf_algorithm = 'argon2id'
+            AND typeof(kdf_iterations) = 'integer'
+            AND kdf_iterations BETWEEN ? AND ?
+            AND kdf_memory_is_null = 0
+            AND typeof(kdf_memory) = 'integer'
+            AND kdf_memory BETWEEN ? AND ?
+            AND kdf_parallelism_is_null = 0
+            AND typeof(kdf_parallelism) = 'integer'
+            AND kdf_parallelism BETWEEN ? AND ?
+          )
+        ),
+        distribution AS (
+          SELECT
+            kdf_algorithm,
+            kdf_iterations,
+            kdf_memory,
+            kdf_parallelism,
+            account_count as accountCount
+          FROM valid_population
+        ),
+        anchor AS (
+          SELECT 1 AS singleton
+        )
+        SELECT
+          distribution.kdf_algorithm as kdfAlgorithm,
+          distribution.kdf_iterations as kdfIterations,
+          distribution.kdf_memory as kdfMemory,
+          distribution.kdf_parallelism as kdfParallelism,
+          distribution.accountCount,
+          target.email_normalized as targetEmailNormalized,
+          target.kdf_algorithm as targetKdfAlgorithm,
+          target.kdf_iterations as targetKdfIterations,
+          target.kdf_memory as targetKdfMemory,
+          target.kdf_parallelism as targetKdfParallelism
+        FROM anchor
+        LEFT JOIN target ON 1 = 1
+        LEFT JOIN distribution ON 1 = 1
+        ORDER BY
+          distribution.kdf_algorithm ASC,
+          distribution.kdf_iterations ASC,
+          distribution.kdf_memory ASC,
+          distribution.kdf_parallelism ASC
+      `,
+    )
+    .bind(
+      emailNormalized,
+      preloginKdfPolicy.pbkdf2Iterations.min,
+      preloginKdfPolicy.pbkdf2Iterations.max,
+      preloginKdfPolicy.argon2Iterations.min,
+      preloginKdfPolicy.argon2Iterations.max,
+      preloginKdfPolicy.argon2Memory.min,
+      preloginKdfPolicy.argon2Memory.max,
+      preloginKdfPolicy.argon2Parallelism.min,
+      preloginKdfPolicy.argon2Parallelism.max,
+    )
+    .all<PreloginKdfRow>()
+  const rows = result.results
+  const first = rows[0]
+
+  return {
+    target:
+      first?.targetEmailNormalized == null
+        ? null
+        : {
+            emailNormalized: first.targetEmailNormalized,
+            kdfAlgorithm: first.targetKdfAlgorithm ?? '',
+            kdfIterations: first.targetKdfIterations ?? 0,
+            kdfMemory: first.targetKdfMemory,
+            kdfParallelism: first.targetKdfParallelism,
+          },
+    distribution: rows.flatMap((row) =>
+      row.kdfAlgorithm === null ||
+      row.kdfIterations === null ||
+      row.accountCount === null
+        ? []
+        : [
+            {
+              kdfAlgorithm: row.kdfAlgorithm,
+              kdfIterations: row.kdfIterations,
+              kdfMemory: row.kdfMemory,
+              kdfParallelism: row.kdfParallelism,
+              accountCount: row.accountCount,
+            },
+          ],
+    ),
+  }
 }
 
 export async function findAuthUserByEmail(
@@ -918,6 +1061,31 @@ export async function findRefreshTokenSessionByHash(
     return null
   }
 
+  const user = assertValidAuthUserCredentialGeneration({
+    id: row.userId,
+    email: row.email,
+    emailNormalized: row.emailNormalized,
+    displayName: row.displayName,
+    kdfAlgorithm: row.kdfAlgorithm,
+    kdfIterations: row.kdfIterations,
+    kdfMemory: row.kdfMemory,
+    kdfParallelism: row.kdfParallelism,
+    masterPasswordHash: row.masterPasswordHash,
+    userKey: row.userKey,
+    publicKey: row.publicKey,
+    privateKey: row.privateKey,
+    securityStamp: row.securityStamp,
+    revisionDate: row.revisionDate,
+    createdAt: row.createdAt,
+    disabledAt: row.disabledAt,
+    loginFailedCount: row.loginFailedCount,
+    loginFailedAt: row.loginFailedAt,
+    loginLockedUntil: row.loginLockedUntil,
+    totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
+    totpEncryptedSecret: row.totpEncryptedSecret ?? null,
+    totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
+  })
+
   return {
     tokenId: row.tokenId,
     userId: row.userId,
@@ -926,30 +1094,7 @@ export async function findRefreshTokenSessionByHash(
     tokenExpiresAt: row.tokenExpiresAt,
     tokenRevokedAt: row.tokenRevokedAt,
     deviceRevokedAt: row.deviceRevokedAt,
-    user: {
-      id: row.userId,
-      email: row.email,
-      emailNormalized: row.emailNormalized,
-      displayName: row.displayName,
-      kdfAlgorithm: row.kdfAlgorithm,
-      kdfIterations: row.kdfIterations,
-      kdfMemory: row.kdfMemory,
-      kdfParallelism: row.kdfParallelism,
-      masterPasswordHash: row.masterPasswordHash,
-      userKey: row.userKey,
-      publicKey: row.publicKey,
-      privateKey: row.privateKey,
-      securityStamp: row.securityStamp,
-      revisionDate: row.revisionDate,
-      createdAt: row.createdAt,
-      disabledAt: row.disabledAt,
-      loginFailedCount: row.loginFailedCount,
-      loginFailedAt: row.loginFailedAt,
-      loginLockedUntil: row.loginLockedUntil,
-      totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
-      totpEncryptedSecret: row.totpEncryptedSecret ?? null,
-      totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
-    },
+    user,
   }
 }
 
@@ -1497,7 +1642,7 @@ export function buildDeviceId(
 }
 
 function authUserFromRow(row: AuthUserRow): AuthUserRecord {
-  return {
+  return assertValidAuthUserCredentialGeneration({
     id: row.id,
     email: row.email,
     emailNormalized: row.emailNormalized,
@@ -1520,7 +1665,17 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
     totpEncryptedSecret: row.totpEncryptedSecret ?? null,
     totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
+  })
+}
+
+function assertValidAuthUserCredentialGeneration(
+  user: AuthUserRecord,
+): AuthUserRecord {
+  if (!accountCredentialKdfFromStoredGeneration(user)) {
+    throw new Error('stored account KDF generation is invalid')
   }
+
+  return user
 }
 
 function deviceFromRow(row: DeviceRow): DeviceRecord {

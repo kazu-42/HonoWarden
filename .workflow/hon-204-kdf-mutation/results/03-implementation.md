@@ -1,0 +1,46 @@
+# Packets 02 and 03 result: implementation
+
+Implemented `POST /api/accounts/kdf` with the same credential-proof defense,
+notification preflight, generation guard, D1 transaction, and a post-commit
+notification cleanup boundary that preserves the official client's local state.
+
+Key invariants:
+
+- the irreversible writer is default-off while PBKDF2/Argon2id readers remain
+  active, allowing a reader-capable release to precede later activation
+- request authentication/unlock data must have the same unchanged account salt
+  and exactly the same new KDF
+- PBKDF2-SHA256 and Argon2id bounds are inclusive and use the verified pinned
+  server/client intersection, rejecting the server-only 15 MiB Argon2 value
+- malformed, missing, unknown, mixed, drifted, stale, concurrent, and failed-D1
+  paths cannot partially mutate credential or session state
+- authentication hash, wrapped user key, KDF fields, security stamp, revision,
+  session revocation, auth-request invalidation, and required audit row form one
+  D1 generation; the user update returns its ID directly so materialization
+  trigger changes do not affect the exactly-one-user guard
+- forward-only migration `0014a_kdf_population.sql` backfills exact KDF tuple
+  counts and maintains them through transaction-local user insert, delete, and
+  KDF-update triggers; missing old counts abort the source mutation
+- prelogin, password and refresh token responses, profile, and sync use one
+  stored-KDF mapping; unknown stored algorithms fail before session mutation,
+  while one read-only D1 snapshot returns the exact target plus the materialized
+  client-readable stored KDF population for prelogin without grouping users on
+  each request; unknown allowed accounts
+  receive an email-stable, domain-separated HMAC selection from that population
+  weighted by account count, including readable legacy tuples and only resource
+  profiles that are already stored
+- unrelated malformed or client-unreadable population rows are excluded, an
+  invalid exact target fails closed, and an empty valid population uses the
+  bootstrap PBKDF2 default
+- after D1 commit, notification cleanup runs through `waitUntil`; neither
+  transport latency nor failure delays or changes HTTP 200, and failure remains
+  redacted and observable
+- allowed prelogin requires `HONOWARDEN_TOKEN_SECRET` before D1 access and logs
+  only a non-secret configuration reason when the secret is absent
+- no plaintext password, unwrapped key, hash, wrapped key, token, or request body
+  enters audit context or workflow evidence
+
+The implementation also adds a synthetic Wrangler/local-D1 lifecycle command,
+an ops regression test, conservative compatibility/current-state/security docs,
+and explicit evidence limitations. Every tracked Wrangler environment remains
+disabled; only the isolated local lifecycle passes an explicit flag override.

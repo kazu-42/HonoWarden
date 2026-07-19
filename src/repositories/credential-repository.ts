@@ -40,6 +40,17 @@ export type ChangeAccountMasterPasswordResult =
   | ({ status: 'changed' } & CredentialGenerationMutationResult)
   | { status: 'conflict' }
 
+export type ChangeAccountKdfInput = ChangeAccountMasterPasswordInput & {
+  nextKdfAlgorithm: 'pbkdf2-sha256' | 'argon2id'
+  nextKdfIterations: number
+  nextKdfMemory: number | null
+  nextKdfParallelism: number | null
+}
+
+export type ChangeAccountKdfResult =
+  | ({ status: 'changed' } & CredentialGenerationMutationResult)
+  | { status: 'conflict' }
+
 type CredentialGenerationMutationResult = {
   securityStamp: string
   revisionDate: string
@@ -47,6 +58,69 @@ type CredentialGenerationMutationResult = {
   revokedRefreshTokenCount: number
   invalidatedAuthRequestCount: number
   auditEventId: string
+}
+
+type UpdatedUserRow = {
+  id: string
+}
+
+export async function changeAccountKdf(
+  database: CredentialRepositoryDatabase,
+  input: ChangeAccountKdfInput,
+): Promise<ChangeAccountKdfResult> {
+  const result = await commitCredentialGenerationMutation(
+    database,
+    input,
+    database
+      .prepare(
+        `
+          UPDATE users
+          SET
+            master_password_hash = ?,
+            user_key = ?,
+            kdf_algorithm = ?,
+            kdf_iterations = ?,
+            kdf_memory = ?,
+            kdf_parallelism = ?,
+            security_stamp = ?,
+            revision_date = ?,
+            updated_at = ?
+          WHERE id = ?
+            AND disabled_at IS NULL
+            AND master_password_hash = ?
+            AND email_normalized = ?
+            AND kdf_algorithm = ?
+            AND kdf_iterations = ?
+            AND kdf_memory IS ?
+            AND kdf_parallelism IS ?
+            AND security_stamp = ?
+            AND revision_date = ?
+          RETURNING id
+        `,
+      )
+      .bind(
+        input.nextMasterPasswordHash,
+        input.nextUserKey,
+        input.nextKdfAlgorithm,
+        input.nextKdfIterations,
+        input.nextKdfMemory,
+        input.nextKdfParallelism,
+        input.nextSecurityStamp,
+        input.nextRevisionDate,
+        input.nextRevisionDate,
+        input.userId,
+        input.expectedMasterPasswordHash,
+        input.expectedEmailNormalized,
+        input.expectedKdfAlgorithm,
+        input.expectedKdfIterations,
+        input.expectedKdfMemory,
+        input.expectedKdfParallelism,
+        input.expectedSecurityStamp,
+        input.expectedRevisionDate,
+      ),
+  )
+
+  return result ? { status: 'changed', ...result } : { status: 'conflict' }
 }
 
 export async function changeAccountMasterPassword(
@@ -76,6 +150,7 @@ export async function changeAccountMasterPassword(
             AND kdf_parallelism IS ?
             AND security_stamp = ?
             AND revision_date = ?
+          RETURNING id
         `,
       )
       .bind(
@@ -119,6 +194,7 @@ export async function rotateAccountSecurityStamp(
             AND master_password_hash = ?
             AND security_stamp = ?
             AND revision_date = ?
+          RETURNING id
         `,
       )
       .bind(
@@ -272,7 +348,8 @@ async function commitCredentialGenerationMutation(
     authRequestResult,
     auditResult,
   ] = results
-  const userChanges = userResult?.meta.changes ?? 0
+  const updatedUsers = (userResult?.results ?? []) as UpdatedUserRow[]
+  const userChanges = updatedUsers.length
   const deviceChanges = deviceResult?.meta.changes ?? 0
   const refreshChanges = refreshResult?.meta.changes ?? 0
   const authRequestChanges = authRequestResult?.meta.changes ?? 0
@@ -289,7 +366,12 @@ async function commitCredentialGenerationMutation(
     }
     return null
   }
-  if (userChanges !== 1 || auditChanges !== 1) {
+  if (
+    !userResult?.success ||
+    userChanges !== 1 ||
+    updatedUsers[0]?.id !== input.userId ||
+    auditChanges !== 1
+  ) {
     throw new Error('credential rotation batch did not commit one generation')
   }
 

@@ -14,7 +14,15 @@ must remain stable for alpha.
 | temporarily locked | failed password attempts       | prelogin, eventual retry                               | password grant until lock expires                |
 | TOTP setup pending | authenticated setup            | setup verify                                           | login without valid challenge if TOTP is enabled |
 | TOTP enabled       | setup verify                   | password grant followed by TOTP challenge verification | token issuance without TOTP code                 |
-| disabled           | account lifecycle operator CLI | none for auth/session use                              | password grant, refresh grant, sync, vault CRUD  |
+| disabled           | account lifecycle operator CLI | prelogin metadata only                                 | password grant, refresh grant, sync, vault CRUD  |
+
+Prelogin metadata is not authentication or authorization. Account disable is a
+reversible operator state and does not alter the account salt or KDF generation.
+The exact KDF target and its contribution to the stored decoy population remain
+stable while disabled; replacing either with an unknown-account decoy would
+make the disable transition observable through this anonymous endpoint. Every
+grant and authenticated-session path still rejects the disabled account with
+the same generic boundary used for invalid credentials.
 
 ## Password Grant
 
@@ -76,6 +84,40 @@ Failure invariants:
 - Durable Object cleanup is post-commit; its failure returns
   `session_revocation_incomplete` while the new D1 credential generation stays
   authoritative
+
+## KDF Change
+
+```text
+explicit KDF writer rollout flag enabled
+  -> authenticated bearer token at current security stamp
+  -> new authentication/unlock data agree on salt and KDF?
+  -> unchanged normalized-email salt and bounded PBKDF2/Argon2id settings?
+  -> credential-proof defense allows attempt and old hash matches?
+  -> guarded D1 batch changes hash + wrapped key + KDF + stamp + revision,
+     revokes all sessions/auth requests, and persists mandatory audit
+  -> schedule Durable Object notification-session invalidation with waitUntil
+```
+
+Success invariants:
+
+- account identity, normalized-email salt, and encrypted vault rows are unchanged
+- every outward KDF projection reads the same committed generation
+- old access/refresh sessions and old-KDF authentication hashes fail
+- the new client-derived hash logs in with the new wrapped user key and KDF
+- after D1 commit, the client receives success without waiting for notification
+  socket cleanup, even if cleanup stalls or fails, so its local KDF cannot
+  remain on the revoked generation
+
+Failure invariants:
+
+- a disabled writer returns unsupported before authentication or D1 access
+- out-of-range, missing, unknown, mixed, or salt-drifted data is state-free
+- a stale old generation returns `revision_conflict` without partial revocation
+- every failed D1 batch statement rolls back user, session, auth-request, and
+  audit changes together
+- a missing notification binding fails before mutation; post-commit transport
+  latency cannot delay success, while failure is logged, remains forward-only,
+  and never changes the response or restores an old KDF
 
 ## TOTP Setup
 

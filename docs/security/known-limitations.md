@@ -70,6 +70,23 @@ inputs, not minor documentation notes.
   by compatibility fixtures and a synthetic local Wrangler/D1 lifecycle. No
   official client UI or production password-change run is recorded. Non-empty
   password hints are rejected because hint persistence is not implemented.
+- existing-account PBKDF2/Argon2id KDF change is covered by focused tests and a
+  synthetic local Wrangler/D1 lifecycle. No official client UI or production
+  KDF-change run is recorded, and this local evidence does not promote a client
+  compatibility row. The irreversible writer remains default-off in every
+  tracked environment until a reader-capable rollback target is deployed.
+  Unknown-account prelogin decoys match the current client-readable stored KDF
+  population by account count but are not a proof of cryptographic
+  indistinguishability; the email allowlist remains the primary boundary.
+  Unrelated invalid rows are excluded from that population while an invalid exact
+  target fails closed. Reversibly disabled accounts retain their KDF projection
+  and population weight so the anonymous endpoint does not expose disable/enable
+  transitions; disabled authentication and sessions remain rejected. Each
+  allowed prelogin reads the materialized distinct KDF tuples rather than
+  grouping all users. The tuple set can still grow with account-specific KDF
+  configurations and requires cardinality and latency monitoring before broader
+  exposure. Migration triggers abort a user insert/delete/KDF update if the old
+  tuple count is missing instead of allowing silent population drift.
 - AI inquiry inbox architecture is documented and metadata-only inbound Worker
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation

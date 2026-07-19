@@ -21,6 +21,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "account:lifecycle": "node scripts/honowarden-account-lifecycle.mjs",
+    "account:kdf-change:lifecycle": "node scripts/honowarden-kdf-change-lifecycle.mjs",
     "account:password-change:lifecycle": "node scripts/honowarden-password-change-lifecycle.mjs",
     "abuse:report": "node scripts/honowarden-abuse-report.mjs",
     "backup:export": "node scripts/honowarden-backup.mjs export",

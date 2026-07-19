@@ -175,6 +175,16 @@ describe('wrangler deployment environments', () => {
     expect(config.env.production.vars.HONOWARDEN_WEBAUTHN_ENABLED).toBe('false')
   })
 
+  it('keeps irreversible KDF mutation disabled in every tracked environment', () => {
+    expect(config.vars.HONOWARDEN_KDF_MUTATION_ENABLED).toBe('false')
+    expect(config.env.staging.vars.HONOWARDEN_KDF_MUTATION_ENABLED).toBe(
+      'false',
+    )
+    expect(config.env.production.vars.HONOWARDEN_KDF_MUTATION_ENABLED).toBe(
+      'false',
+    )
+  })
+
   it('enables premium features only in staging by default', () => {
     expect(config.vars.HONOWARDEN_PREMIUM_FEATURES_ENABLED).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_PREMIUM_FEATURES_ENABLED).toBe(

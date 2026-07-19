@@ -1,0 +1,31 @@
+{
+  "title": "HON-204 KDF mutation",
+  "slug": "hon-204-kdf-mutation",
+  "workflow": "hon-204-kdf-mutation",
+  "linearIssue": "HON-204",
+  "status": "in_progress",
+  "baseCommit": "f329b11595987f6754f60bc19f426e0d6fa09392",
+  "pinnedSources": {
+    "server": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+    "clients": "39f07436ca60e3f25eac47777671754f288a98f1"
+  },
+  "packets": {
+    "01-contract": "completed",
+    "02-domain-repository": "completed",
+    "03-route-projections": "completed",
+    "04-verification-review": "completed"
+  },
+  "approval": {
+    "localImplementation": true,
+    "adminMergeAfterCleanReviews": true,
+    "productionMutation": false,
+    "secretRotation": false
+  },
+  "verification": {
+    "focused": "passed_6_files_85_population_remediation_tests",
+    "localD1": "passed_38_checks_round_trip_with_revision_and_population_readback",
+    "full": "passed_87_files_1053_tests_after_wait_until_remediation",
+    "standardReview": "clean_5e65bd1",
+    "fiveAxisReview": "merge_ready_5e65bd1_no_p1_p2_p3"
+  }
+}

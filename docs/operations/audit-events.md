@@ -62,6 +62,14 @@ Fields:
   cleanup runs after the required audit row commits; cleanup failure is reported
   separately as `account_notification_session_invalidation_failed` and
   `session_revocation_incomplete`.
+- `account.kdf.change`: successful KDF, authentication-hash, and wrapped-user-key
+  generation change after the default-off writer is explicitly activated. Its
+  redacted context records only prior/next KDF type and D1 session revocation;
+  rollback keeps the committed generation and uses a reader-capable Worker.
+  Post-commit notification cleanup runs through `waitUntil`, so transport
+  latency cannot delay acknowledgement. Failure is logged separately as
+  `account_notification_session_invalidation_failed`; the client still receives
+  success and persists its corresponding local KDF.
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection

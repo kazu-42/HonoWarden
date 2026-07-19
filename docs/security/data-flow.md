@@ -91,6 +91,50 @@ Secret-handling invariants:
 - audit and logs exclude current/new hashes, wrapped user keys, access tokens,
   refresh tokens, request bodies, and encrypted vault payloads
 
+## KDF Change
+
+1. The default-off KDF writer gate must be explicitly enabled. Reader paths stay
+   active while disabled so existing Argon2id generations remain usable.
+2. An authenticated client derives a complete new authentication/unlock
+   generation locally and posts it to `POST /api/accounts/kdf` together with the
+   old client-derived authentication hash as proof.
+3. Worker requires matching authentication and unlock KDF settings, the same
+   unchanged normalized-email salt, and one supported KDF configuration within
+   the pinned server/client intersection. In particular, Argon2id memory starts
+   at 16 MiB because pinned clients reject the server-only 15 MiB boundary.
+4. The credential-proof defense and constant-time old-hash comparison run before
+   mutation. Unknown or structurally invalid stored KDF values fail at the auth
+   repository read boundary and cannot become a PBKDF2 fallback.
+5. One guarded D1 batch replaces authentication hash, opaque wrapped user key,
+   KDF algorithm and parameters, security stamp, and revision; revokes active
+   device and refresh sessions; supersedes active auth requests; and persists
+   `account.kdf.change`. Migration `0014a` maintains the materialized KDF tuple
+   count through a user-update trigger in that same transaction. The guarded
+   user statement returns its updated ID directly, keeping the exactly-one-user
+   check independent from trigger-side `meta.changes`.
+6. Prelogin, password and refresh token responses, profile, and sync all project
+   the same stored generation. One read-only D1 snapshot returns the exact
+   prelogin target plus the materialized client-readable stored KDF population,
+   avoiding a users-table aggregation on each request. A known account receives
+   its exact validated generation; an unknown allowed account receives a
+   domain-separated, email-stable HMAC selection from that population weighted
+   by account count. This includes readable legacy tuples and emits only valid
+   resource profiles already stored. Unrelated malformed or client-unreadable
+   rows are excluded so one corrupt account cannot fail every allowed prelogin;
+   an invalid exact target still fails closed. Reversibly disabled accounts
+   retain their exact target and population contribution so account-state
+   transitions do not change anonymous KDF metadata; password, refresh, and
+   authenticated-session paths still reject them. An empty valid population
+   falls back to bootstrap PBKDF2 `600000`. The HMAC is keyed by
+   `HONOWARDEN_TOKEN_SECRET`, and a missing secret fails before D1 rather than
+   hiding a token-signing infrastructure outage behind a weaker fallback.
+7. A missing Durable Object binding fails before mutation. Once D1 commits,
+   Durable Object cleanup is forward-only and scheduled through `waitUntil`:
+   transport latency cannot delay acknowledgement, and failure is logged as
+   `account_notification_session_invalidation_failed` without changing success,
+   so the official client persists the matching local KDF. Recovery never
+   restores the old KDF generation.
+
 ## Refresh Grant
 
 1. Client posts `grant_type=refresh_token`.

@@ -1136,6 +1136,52 @@ Not implemented:
 - password-hint persistence or migration; non-empty hints fail before mutation
 - official client UI or production password-change evidence
 
+## Week 26 Account KDF Change
+
+Implemented:
+
+- authenticated `POST /api/accounts/kdf` with current client-derived hash proof,
+  unchanged normalized-email salt, and matching authentication/unlock data;
+  the writer is default-off behind `HONOWARDEN_KDF_MUTATION_ENABLED`
+- inclusive PBKDF2-SHA256 bounds `600000..2000000` and client-safe Argon2id
+  bounds of iterations `2..10`, memory `16..1024` MiB, and parallelism
+  `1..16`; the pinned server accepts 15 MiB, but pinned clients reject it
+- one generation-guarded D1 batch that replaces the authentication hash, opaque
+  wrapped user key, and KDF columns; rotates security stamp/revision; revokes
+  devices and refresh tokens; supersedes active auth requests; and persists the
+  required `account.kdf.change` audit event; the guarded user statement uses
+  `RETURNING id` so trigger-side row changes cannot corrupt the exactly-one-user
+  commit check
+- forward-only migration `0014a_kdf_population.sql` backfills a materialized
+  count for every stored KDF tuple and maintains it with fail-loud user
+  insert/delete/KDF-update triggers in the same D1 transaction
+- exact stored KDF projection through known-account prelogin, password and
+  refresh token responses, account profile unlock metadata, and sync unlock
+  metadata; one prelogin D1 snapshot also returns the materialized
+  client-readable stored KDF population without grouping the users table, and
+  unknown allowed accounts receive an email-stable, secret-keyed selection from
+  that population weighted by account count,
+  including readable legacy tuples and only valid resource profiles already in
+  use; unrelated malformed rows are excluded, an invalid target fails closed,
+  and an empty valid population falls back to bootstrap PBKDF2 `600000`
+- post-commit notification cleanup runs through `waitUntil`; latency cannot
+  delay the 200 acknowledgement, and failure is logged without changing it, so
+  supported clients persist the already committed local KDF
+- fail-closed stored-KDF validation at the auth repository boundary so unknown
+  algorithms cannot be silently projected as PBKDF2 after session mutation
+- `pnpm account:kdf-change:lifecycle` real local-D1 synthetic evidence for
+  a PBKDF2-to-Argon2id-to-PBKDF2 round trip, rejection of both prior credential
+  and session generations, exact login/profile/sync projections, two direct
+  revision advances, transaction-local population changes, two audit rows, and
+  encrypted-vault preservation
+
+Not implemented:
+
+- official client UI or production KDF-change evidence; those remain aggregate
+  credential closeout work and do not promote compatibility rows
+- deployed writer activation; tracked development, staging, and production
+  configurations remain false until a reader-capable rollback version exists
+
 ## Week 26 Account Lifecycle Operator CLI
 
 Implemented:

@@ -27,6 +27,7 @@ Use these documents together when reviewing alpha readiness:
 - `pnpm test`
 - `pnpm compat:test`
 - `pnpm account:password-change:lifecycle`
+- `pnpm account:kdf-change:lifecycle`
 - `pnpm format`
 - repository brand scan
 - workflow verifier

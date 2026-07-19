@@ -29,9 +29,14 @@ import {
 } from './domain/audit'
 import type { AuditEventName, AuditEventOutcome } from './domain/audit'
 import {
+  accountCredentialKdfAlgorithmForType,
+  accountCredentialKdfFromStoredGeneration,
+  isKdfMutationEnabled,
+  matchesKdfChangeCredentialGeneration,
   matchesPasswordChangeCredentialGeneration,
   nextCredentialRevisionDate,
   parseCurrentPasswordProofBody,
+  parseKdfChangeBody,
   parseMasterPasswordChangeBody,
   parseSecurityStampRotationBody,
 } from './domain/account-credentials'
@@ -41,7 +46,11 @@ import {
   resolveBootstrapAccount,
   verifyBootstrapToken,
 } from './domain/bootstrap'
-import { normalizeEmail, resolvePrelogin } from './domain/prelogin'
+import {
+  buildPreloginKdfResponse,
+  normalizeEmail,
+  resolvePrelogin,
+} from './domain/prelogin'
 import { isPremiumFeaturesEnabled } from './domain/premium'
 import {
   buildAuthAttemptBucketKey,
@@ -101,6 +110,7 @@ import {
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
 import {
+  changeAccountKdf,
   changeAccountMasterPassword,
   rotateAccountSecurityStamp,
 } from './repositories/credential-repository'
@@ -172,6 +182,7 @@ import {
   buildDeviceId,
   createPasswordGrantSession,
   findAuthFailureBucket,
+  findPreloginKdfContext,
   findAuthUserByEmail,
   findAuthUserById,
   findDeviceByIdentifier,
@@ -293,6 +304,7 @@ const maxListPageSize = 500
 const maxBulkCipherIds = 1_000
 const maxR2DeleteKeysPerRequest = 1_000
 const signalRHeartbeatIntervalMs = 15_000
+const notificationSessionInvalidationDeadlineMs = 10_000
 const signalRRecordSeparator = '\u001e'
 
 const defaultCorsHeaders = [
@@ -797,7 +809,57 @@ async function handlePrelogin(c: AppContext) {
     )
   }
 
-  return c.json(decision.response)
+  const emailNormalized = normalizeEmail(
+    (body as { email: string }).email,
+  ) as string
+  const preloginKdfSecret = c.env?.HONOWARDEN_TOKEN_SECRET
+  if (!preloginKdfSecret?.trim()) {
+    console.error(
+      JSON.stringify({
+        event: 'account_prelogin_kdf_lookup_failed',
+        requestId: c.get('requestId'),
+        reason: 'token_secret_missing',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Prelogin KDF protection is not configured.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const kdfContext = await findPreloginKdfContext(c.env.DB, emailNormalized)
+    const response = await buildPreloginKdfResponse(
+      emailNormalized,
+      kdfContext,
+      preloginKdfSecret,
+    )
+    if (!response) {
+      throw new Error('stored account KDF generation is invalid')
+    }
+
+    return c.json(response)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_prelogin_kdf_lookup_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Prelogin KDF lookup failed.',
+      ),
+      503,
+    )
+  }
 }
 
 app.post('/identity/accounts/prelogin', handlePrelogin)
@@ -2543,6 +2605,156 @@ app.post('/api/accounts/password', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Password change failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/kdf', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!isKdfMutationEnabled(c.env?.HONOWARDEN_KDF_MUTATION_ENABLED)) {
+    return unsupportedFeatureResponse(
+      c,
+      'KDF mutation is not activated on this server.',
+      true,
+    )
+  }
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseKdfChangeBody(await readJsonBody(c.req.raw))
+  if (
+    !request.ok ||
+    !matchesKdfChangeCredentialGeneration(request, auth.user)
+  ) {
+    return invalidCredentialRequest(c)
+  }
+  if (
+    isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) &&
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidCredentialProofResponse(c, proofGate.rateLimited)
+    }
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.currentMasterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidCredentialProofResponse(c, rateLimited)
+    }
+
+    const previousKdf = accountCredentialKdfFromStoredGeneration(auth.user)
+    if (!previousKdf) {
+      return invalidCredentialRequest(c)
+    }
+    const nextKdf = request.credentialMetadata.kdf
+    const nextRevisionDate = nextCredentialRevisionDate(
+      auth.user.revisionDate,
+      new Date().toISOString(),
+    )
+    const nextSecurityStamp = crypto.randomUUID()
+    const auditEventId = crypto.randomUUID()
+    const auditEvent = buildAuditEvent({
+      name: 'account.kdf.change',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: nextRevisionDate,
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: {
+        type: 'account',
+        id: auth.user.id,
+      },
+      context: {
+        d1SessionsRevoked: true,
+        previousKdfType: previousKdf.kdfType,
+        nextKdfType: nextKdf.kdfType,
+      },
+    })
+    const result = await changeAccountKdf(c.env.DB, {
+      userId: auth.user.id,
+      expectedMasterPasswordHash: auth.user.masterPasswordHash,
+      expectedEmailNormalized: auth.user.emailNormalized,
+      expectedKdfAlgorithm: auth.user.kdfAlgorithm,
+      expectedKdfIterations: auth.user.kdfIterations,
+      expectedKdfMemory: auth.user.kdfMemory,
+      expectedKdfParallelism: auth.user.kdfParallelism,
+      expectedSecurityStamp: auth.user.securityStamp,
+      expectedRevisionDate: auth.user.revisionDate,
+      nextMasterPasswordHash: request.nextMasterPasswordHash,
+      nextUserKey: request.nextUserKey,
+      nextKdfAlgorithm: accountCredentialKdfAlgorithmForType(nextKdf.kdfType),
+      nextKdfIterations: nextKdf.iterations,
+      nextKdfMemory: nextKdf.memory,
+      nextKdfParallelism: nextKdf.parallelism,
+      nextSecurityStamp,
+      nextRevisionDate,
+      auditEventId,
+      auditEvent,
+    })
+    if (result.status === 'conflict') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'The account credential generation changed concurrently.',
+        ),
+        409,
+      )
+    }
+
+    // D1 is already authoritative, so notification latency must not delay the
+    // acknowledgement clients need to persist the matching local KDF.
+    scheduleDurableNotificationSessionInvalidation(c, auth.user.id, {
+      securityStamp: nextSecurityStamp,
+      revisionDate: nextRevisionDate,
+    })
+
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_kdf_change_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'KDF change failed.',
       ),
       503,
     )
@@ -4875,6 +5087,7 @@ function buildTokenResponse(
   accessToken: string,
   refreshToken: string,
 ) {
+  const kdf = requireAccountCredentialKdf(user)
   const accountKeys = buildAccountKeysResponse(user)
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const userDecryptionOptions = masterPasswordUnlock
@@ -4897,10 +5110,10 @@ function buildTokenResponse(
     expires_in: accessTokenTtlSeconds,
     Key: user.userKey,
     PrivateKey: user.privateKey,
-    Kdf: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
-    KdfIterations: user.kdfIterations,
-    KdfMemory: user.kdfMemory,
-    KdfParallelism: user.kdfParallelism,
+    Kdf: kdf.kdfType,
+    KdfIterations: kdf.iterations,
+    KdfMemory: kdf.memory,
+    KdfParallelism: kdf.parallelism,
     AccountKeys: accountKeys,
     ForcePasswordReset: false,
     TwoFactorToken: null,
@@ -4955,28 +5168,29 @@ function buildMasterPasswordUnlockResponse(user: AuthUserRecord) {
     return null
   }
 
+  const kdf = requireAccountCredentialKdf(user)
   return {
     Salt: user.emailNormalized,
     salt: user.emailNormalized,
     Kdf: {
-      KdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
-      kdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
-      Iterations: user.kdfIterations,
-      iterations: user.kdfIterations,
-      Memory: user.kdfMemory,
-      memory: user.kdfMemory,
-      Parallelism: user.kdfParallelism,
-      parallelism: user.kdfParallelism,
+      KdfType: kdf.kdfType,
+      kdfType: kdf.kdfType,
+      Iterations: kdf.iterations,
+      iterations: kdf.iterations,
+      Memory: kdf.memory,
+      memory: kdf.memory,
+      Parallelism: kdf.parallelism,
+      parallelism: kdf.parallelism,
     },
     kdf: {
-      KdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
-      kdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
-      Iterations: user.kdfIterations,
-      iterations: user.kdfIterations,
-      Memory: user.kdfMemory,
-      memory: user.kdfMemory,
-      Parallelism: user.kdfParallelism,
-      parallelism: user.kdfParallelism,
+      KdfType: kdf.kdfType,
+      kdfType: kdf.kdfType,
+      Iterations: kdf.iterations,
+      iterations: kdf.iterations,
+      Memory: kdf.memory,
+      memory: kdf.memory,
+      Parallelism: kdf.parallelism,
+      parallelism: kdf.parallelism,
     },
     MasterKeyEncryptedUserKey: user.userKey,
     masterKeyEncryptedUserKey: user.userKey,
@@ -5329,16 +5543,26 @@ function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
     return null
   }
 
+  const kdf = requireAccountCredentialKdf(user)
   return {
     salt: user.emailNormalized,
     kdf: {
-      kdfType: user.kdfAlgorithm === 'pbkdf2-sha256' ? 0 : 0,
-      iterations: user.kdfIterations,
-      memory: user.kdfMemory,
-      parallelism: user.kdfParallelism,
+      kdfType: kdf.kdfType,
+      iterations: kdf.iterations,
+      memory: kdf.memory,
+      parallelism: kdf.parallelism,
     },
     masterKeyEncryptedUserKey: user.userKey,
   }
+}
+
+function requireAccountCredentialKdf(user: AuthUserRecord) {
+  const kdf = accountCredentialKdfFromStoredGeneration(user)
+  if (!kdf) {
+    throw new Error('stored account KDF generation is invalid')
+  }
+
+  return kdf
 }
 
 function buildOrganizationResponse(organization: OrganizationRecord) {
@@ -7331,6 +7555,41 @@ function notifyAuthRequest(
   }
 }
 
+function scheduleDurableNotificationSessionInvalidation(
+  c: AppContext,
+  userId: string,
+  generation: { securityStamp: string; revisionDate: string },
+): void {
+  if (
+    !isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    )
+  ) {
+    return
+  }
+
+  const requestId = c.get('requestId')
+  const cleanup = invalidateDurableNotificationSessions(c, userId, generation)
+    .catch(() => false)
+    .then((success) => {
+      if (success) return
+
+      console.error(
+        JSON.stringify({
+          event: 'account_notification_session_invalidation_failed',
+          requestId,
+          reason: 'notification_hub_unavailable',
+        }),
+      )
+    })
+
+  try {
+    c.executionCtx.waitUntil(cleanup)
+  } catch {
+    void cleanup
+  }
+}
+
 async function invalidateDurableNotificationSessions(
   c: AppContext,
   userId: string,
@@ -7346,22 +7605,35 @@ async function invalidateDurableNotificationSessions(
 
   if (!c.env.NOTIFICATION_HUB) return false
 
+  const abortController = new AbortController()
+  let deadline: ReturnType<typeof setTimeout> | undefined
   try {
     const stub = c.env.NOTIFICATION_HUB.get(
       c.env.NOTIFICATION_HUB.idFromName(userId),
     )
-    const response = await stub.fetch(
-      new Request('https://notification-hub/invalidate', {
-        method: 'POST',
-        headers: {
-          [notificationSecurityStampHeader]: generation.securityStamp,
-          [notificationCredentialRevisionHeader]: generation.revisionDate,
-        },
+    const response = await Promise.race([
+      stub.fetch(
+        new Request('https://notification-hub/invalidate', {
+          method: 'POST',
+          headers: {
+            [notificationSecurityStampHeader]: generation.securityStamp,
+            [notificationCredentialRevisionHeader]: generation.revisionDate,
+          },
+          signal: abortController.signal,
+        }),
+      ),
+      new Promise<undefined>((resolve) => {
+        deadline = setTimeout(() => {
+          abortController.abort()
+          resolve(undefined)
+        }, notificationSessionInvalidationDeadlineMs)
       }),
-    )
-    return response.ok
+    ])
+    return response?.ok === true
   } catch {
     return false
+  } finally {
+    if (deadline !== undefined) clearTimeout(deadline)
   }
 }
 

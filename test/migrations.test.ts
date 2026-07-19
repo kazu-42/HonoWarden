@@ -15,6 +15,10 @@ const organizationsMigration = readFileSync(
   'migrations/0014_organizations.sql',
   'utf8',
 )
+const kdfPopulationMigration = readFileSync(
+  'migrations/0014a_kdf_population.sql',
+  'utf8',
+)
 const legacyInquiryMigration = readFileSync(
   'migrations/0009_inquiry_messages.sql',
   'utf8',
@@ -325,6 +329,32 @@ describe('initial D1 migration', () => {
       'ALTER COLUMN organization_id SET NOT NULL',
     )
   })
+
+  it('materializes the KDF population with transaction-local user triggers', () => {
+    expect(kdfPopulationMigration).toContain(
+      'CREATE TABLE account_kdf_population',
+    )
+    expect(kdfPopulationMigration).toContain('account_count INTEGER NOT NULL')
+    expect(kdfPopulationMigration).toContain(
+      'INSERT INTO account_kdf_population',
+    )
+    expect(kdfPopulationMigration).toContain('COUNT(*)')
+    expect(kdfPopulationMigration).toContain('GROUP BY')
+
+    for (const triggerName of [
+      'trg_users_kdf_population_insert',
+      'trg_users_kdf_population_delete',
+      'trg_users_kdf_population_update',
+    ]) {
+      expect(kdfPopulationMigration).toContain(`CREATE TRIGGER ${triggerName}`)
+    }
+
+    expect(kdfPopulationMigration).toContain(
+      'AFTER UPDATE OF kdf_algorithm, kdf_iterations, kdf_memory, kdf_parallelism',
+    )
+    expect(kdfPopulationMigration).toContain('ON CONFLICT')
+    expect(kdfPopulationMigration).toContain("VALUES ('0014a')")
+  })
 })
 
 const allMigrations = [
@@ -343,4 +373,5 @@ const allMigrations = [
   authRequestMigration,
   authRequestSupersedeMigration,
   organizationsMigration,
+  kdfPopulationMigration,
 ].join('\n')
