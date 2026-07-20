@@ -121,6 +121,10 @@ async function executeD1(
       ],
       {
         cwd: repoRoot,
+        env: {
+          ...process.env,
+          pnpm_config_verify_deps_before_run: 'false',
+        },
         timeout: 30_000,
         maxBuffer: 2 * 1024 * 1024,
       },

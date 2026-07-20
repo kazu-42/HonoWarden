@@ -18,9 +18,9 @@
   "packets": [
     {
       "id": "01-official-client-harness",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-219",
-      "result": null
+      "result": "results/01-official-client-harness.md"
     },
     {
       "id": "02-credential-lifecycle",
@@ -48,7 +48,18 @@
     }
   ],
   "verification": {
-    "status": "linear_subissues_synced",
+    "status": "official_client_harness_verified",
+    "results": {
+      "officialAssetProvenance": "passed_exact_size_and_sha256",
+      "officialCrypto": "passed_pbkdf2_and_argon2id",
+      "nativeCli": "passed_loopback_version_capture",
+      "focused": "passed_10_tests",
+      "fullSuite": "passed_1177_tests",
+      "legacyLifecycleProcessCleanup": "passed_7_tests_zero_residual_processes",
+      "qualityGates": "passed_typecheck_eslint_prettier_brand_scan",
+      "secretOutput": "passed_zero_crypto_stdout_stderr",
+      "processCleanup": "passed_timeout_group_termination"
+    },
     "checks": [
       "linear_plan_unit",
       "linear_plan_readback",

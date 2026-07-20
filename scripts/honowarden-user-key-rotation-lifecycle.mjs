@@ -1303,7 +1303,12 @@ function runCommand(command, args) {
 }
 
 function commandEnvironment() {
-  return { ...process.env, CI: 'true', NO_COLOR: '1' }
+  return {
+    ...process.env,
+    CI: 'true',
+    NO_COLOR: '1',
+    pnpm_config_verify_deps_before_run: 'false',
+  }
 }
 
 function findFreePort() {

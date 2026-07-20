@@ -1,0 +1,1243 @@
+#!/usr/bin/env node
+
+import { Buffer } from 'node:buffer'
+import { spawn } from 'node:child_process'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path'
+import process from 'node:process'
+import { clearTimeout, setTimeout } from 'node:timers'
+import { fileURLToPath } from 'node:url'
+
+const schemaVersion = 1
+const confirmation = 'official-client-harness'
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const fixtureRoot = join(repoRoot, 'test/.tmp')
+const defaultRoot = 'test/.tmp/hon-207-official-client'
+const supportedActions = new Set([
+  'plan',
+  'prepare',
+  'crypto-roundtrip',
+  'cli-run',
+  'status',
+  'cleanup',
+])
+const upstreamCliNpmAssetName = `${['bit', 'warden'].join('')}-cli-2026.6.0-npm-build.zip`
+const cliAppDataEnvironment = ['BIT', 'WARDENCLI_APPDATA_DIR'].join('')
+
+export const officialClientPins = Object.freeze({
+  server: Object.freeze({
+    repository: 'github:46755185',
+    tag: 'v2026.6.1',
+    commit: 'a09c7edb03ae6d4fdece784f1250c67be73d5fe0',
+  }),
+  web: Object.freeze({
+    repository: 'github:53538899',
+    tag: 'web-v2026.6.1',
+    commit: '39f07436ca60e3f25eac47777671754f288a98f1',
+  }),
+  browser: Object.freeze({
+    repository: 'github:53538899',
+    tag: 'browser-v2026.6.1',
+    commit: '723c075bf8b9f45c901e56195be8e94e43ed75a2',
+  }),
+  cli: Object.freeze({
+    repository: 'github:53538899',
+    tag: 'cli-v2026.6.0',
+    commit: 'e6293ff2bc85123e9baaa998cf1543030ec5d9f0',
+  }),
+})
+
+export const officialClientAssets = Object.freeze({
+  cliNpm: Object.freeze({
+    repository: 'github:53538899',
+    repositoryId: 53_538_899,
+    tag: 'cli-v2026.6.0',
+    publishedAt: '2026-06-25T18:32:52Z',
+    id: 457_887_277,
+    name: upstreamCliNpmAssetName,
+    size: 4_402_383,
+    sha256: '31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660',
+    url: 'https://api.github.com/repositories/53538899/releases/assets/457887277',
+  }),
+  cliMacArm64: Object.freeze({
+    repository: 'github:53538899',
+    repositoryId: 53_538_899,
+    tag: 'cli-v2026.6.0',
+    publishedAt: '2026-06-25T18:32:52Z',
+    id: 457_887_093,
+    name: 'bw-macos-arm64-2026.6.0.zip',
+    size: 41_121_808,
+    sha256: '57d1e60d7748c6efed96559833ce0423a5c825cbf1356d952970c87a497a64d4',
+    url: 'https://api.github.com/repositories/53538899/releases/assets/457887093',
+  }),
+  browserChrome: Object.freeze({
+    repository: 'github:53538899',
+    repositoryId: 53_538_899,
+    tag: 'browser-v2026.6.1',
+    publishedAt: '2026-06-30T17:07:46Z',
+    id: 462_351_736,
+    name: 'dist-chrome-2026.6.1.zip',
+    size: 21_593_500,
+    sha256: 'fcd29c5971d9b218ad9159717a19c38cca5150f2a0aa909ddf805bd7695d097e',
+    url: 'https://api.github.com/repositories/53538899/releases/assets/462351736',
+  }),
+})
+
+const webpackBootstrap = '/******/ (() => { // webpackBootstrap'
+const asyncWebpackBootstrap = '/******/ (async () => { // webpackBootstrap'
+const webpackExportBoundary = 'var __webpack_exports__ = {};'
+const cryptoBridgeEnvironment = 'HONOWARDEN_OFFICIAL_CRYPTO_BRIDGE'
+
+async function main(argv = process.argv.slice(2)) {
+  const normalized = argv[0] === '--' ? argv.slice(1) : argv
+  const [action, ...rest] = normalized
+  if (!action || !supportedActions.has(action)) {
+    throw new Error(
+      'action must be plan, prepare, crypto-roundtrip, cli-run, status, or cleanup',
+    )
+  }
+
+  const options = parseOptions(rest)
+  const root = resolveHarnessRoot(options.root ?? defaultRoot)
+  const packet = buildPacket(action, options, root)
+
+  if (options.execute) {
+    requireConfirmation(options)
+    await executeAction(packet, options, root)
+  }
+
+  process.stdout.write(`${JSON.stringify(packet, null, 2)}\n`)
+}
+
+function buildPacket(action, options, root) {
+  return {
+    schemaVersion,
+    action,
+    generatedAt: parseTimestamp(options.at),
+    executed: false,
+    status: 'planned',
+    root: root.relative,
+    pins: officialClientPins,
+    assets: officialClientAssets,
+    paths: {
+      npmAsset: join(root.relative, 'assets', officialClientAssets.cliNpm.name),
+      nativeAsset: join(
+        root.relative,
+        'assets',
+        officialClientAssets.cliMacArm64.name,
+      ),
+      bridge: join(root.relative, 'crypto', 'honowarden-bridge.cjs'),
+      bridgePackage: join(root.relative, 'crypto', 'package.json'),
+      nativeCli: join(root.relative, 'native', 'bw'),
+      profile: join(root.relative, 'profile'),
+      home: join(root.relative, 'home'),
+      temporary: join(root.relative, 'tmp'),
+      requests: join(root.relative, 'requests'),
+      responses: join(root.relative, 'responses'),
+      output: join(root.relative, 'output'),
+      state: join(root.relative, 'state.json'),
+    },
+    readback: null,
+    next: {
+      confirmation,
+      command: buildExecutionCommand(action, options, root),
+    },
+    safety: {
+      officialImplementation: true,
+      productionSupported: false,
+      realCredentialsAllowed: false,
+      printsSecrets: false,
+      ignoredStorageRequired: true,
+      isolatedProcessGroup: true,
+      downloadedAssetsTracked: false,
+    },
+  }
+}
+
+async function executeAction(packet, options, root) {
+  switch (packet.action) {
+    case 'plan':
+      packet.status = 'planned'
+      break
+    case 'prepare':
+      packet.readback = await prepareHarness(root, packet.generatedAt)
+      packet.status = 'prepared'
+      break
+    case 'crypto-roundtrip':
+      packet.readback = await runCryptoRoundtrip(root, options)
+      packet.status = 'verified'
+      break
+    case 'cli-run':
+      packet.readback = await runOfficialCli(root, options)
+      packet.status =
+        packet.readback.exitCode === 0 ? 'completed' : 'command_failed'
+      if (packet.readback.exitCode !== 0 || packet.readback.timedOut) {
+        throw new Error('official CLI command failed; inspect ignored output')
+      }
+      break
+    case 'status':
+      packet.readback = await readHarnessStatus(root)
+      packet.status = packet.readback.rootExists
+        ? packet.readback.valid
+          ? 'prepared'
+          : 'invalid'
+        : 'not_prepared'
+      break
+    case 'cleanup':
+      packet.readback = await cleanupHarness(root)
+      packet.status = packet.readback.rootExists ? 'not_clean' : 'clean'
+      break
+  }
+  packet.executed = true
+  delete packet.next.command
+}
+
+async function prepareHarness(root, preparedAt) {
+  requireSupportedNativePlatform()
+  await validateHarnessRoot(root)
+  if (await exists(root.absolute)) {
+    throw new Error('harness root already exists; run cleanup first')
+  }
+
+  let created = false
+  try {
+    await mkdir(root.absolute, { recursive: true, mode: 0o700 })
+    created = true
+    for (const directory of [
+      'assets',
+      'crypto',
+      'native',
+      'profile',
+      'home',
+      'tmp',
+      'requests',
+      'responses',
+      'output',
+    ]) {
+      await mkdir(join(root.absolute, directory), { mode: 0o700 })
+    }
+
+    const npmBytes = await downloadPinnedAsset(officialClientAssets.cliNpm)
+    const nativeBytes = await downloadPinnedAsset(
+      officialClientAssets.cliMacArm64,
+    )
+    const npmReadback = verifyPinnedAsset(npmBytes, officialClientAssets.cliNpm)
+    const nativeReadback = verifyPinnedAsset(
+      nativeBytes,
+      officialClientAssets.cliMacArm64,
+    )
+
+    const npmAssetPath = join(
+      root.absolute,
+      'assets',
+      officialClientAssets.cliNpm.name,
+    )
+    const nativeAssetPath = join(
+      root.absolute,
+      'assets',
+      officialClientAssets.cliMacArm64.name,
+    )
+    await writeFile(npmAssetPath, npmBytes, { mode: 0o600, flag: 'wx' })
+    await writeFile(nativeAssetPath, nativeBytes, {
+      mode: 0o600,
+      flag: 'wx',
+    })
+
+    const cryptoDirectory = join(root.absolute, 'crypto')
+    const nativeDirectory = join(root.absolute, 'native')
+    await extractPinnedArchive(npmAssetPath, cryptoDirectory)
+    await extractPinnedArchive(nativeAssetPath, nativeDirectory)
+    await validateExtractedFile(join(cryptoDirectory, 'bw.js'))
+    await validateExtractedFile(join(cryptoDirectory, '685.js'))
+    await validateExtractedFile(
+      join(cryptoDirectory, '869d87bc3b0a55e0e213.module.wasm'),
+    )
+    const nativeCli = join(nativeDirectory, 'bw')
+    await validateExtractedFile(nativeCli)
+    await chmod(nativeCli, 0o700)
+
+    const source = await readFile(join(cryptoDirectory, 'bw.js'), 'utf8')
+    const bridge = renderOfficialCryptoBridge(source)
+    const bridgePath = join(cryptoDirectory, 'honowarden-bridge.cjs')
+    await writeFile(
+      join(cryptoDirectory, 'package.json'),
+      '{"type":"commonjs"}\n',
+      { mode: 0o600, flag: 'wx' },
+    )
+    await writeFile(bridgePath, bridge, { mode: 0o700, flag: 'wx' })
+
+    const versionRun = await runCapturedProcess(nativeCli, ['--version'], {
+      cwd: root.absolute,
+      env: isolatedClientEnvironment(root),
+      outputDirectory: join(root.absolute, 'output'),
+      timeoutMs: 10_000,
+      label: 'native-version',
+    })
+    if (versionRun.exitCode !== 0 || versionRun.timedOut) {
+      throw new Error('official CLI version readback failed')
+    }
+    const nativeVersion = (
+      await readFile(
+        join(root.absolute, 'output', 'native-version.stdout.log'),
+        'utf8',
+      )
+    ).trim()
+    if (nativeVersion !== '2026.6.0') {
+      throw new Error('official CLI version did not match the pin')
+    }
+    await rm(join(root.absolute, 'profile'), {
+      recursive: true,
+      force: false,
+    })
+    await mkdir(join(root.absolute, 'profile'), { mode: 0o700 })
+
+    const state = {
+      schemaVersion,
+      preparedAt,
+      pins: officialClientPins,
+      assets: {
+        cliNpm: npmReadback,
+        cliMacArm64: nativeReadback,
+      },
+      bridge: {
+        sourceAssetSha256: officialClientAssets.cliNpm.sha256,
+        sha256: sha256(bridge),
+        environment: cryptoBridgeEnvironment,
+      },
+      nativeCli: {
+        version: nativeVersion,
+        assetSha256: officialClientAssets.cliMacArm64.sha256,
+      },
+      safety: {
+        syntheticOnly: true,
+        productionSupported: false,
+        normalBrowserProfileUsed: false,
+      },
+    }
+    await writeFile(
+      join(root.absolute, 'state.json'),
+      `${JSON.stringify(state, null, 2)}\n`,
+      { mode: 0o600, flag: 'wx' },
+    )
+
+    return {
+      rootExists: true,
+      valid: true,
+      rootMode: await readMode(root.absolute),
+      npmAsset: npmReadback,
+      nativeAsset: nativeReadback,
+      bridgeSha256: state.bridge.sha256,
+      nativeVersion,
+      profileEntries: 0,
+      officialCryptoExecuted: false,
+    }
+  } catch (error) {
+    if (created) {
+      await rm(root.absolute, { recursive: true, force: true })
+    }
+    throw error
+  }
+}
+
+async function runCryptoRoundtrip(root, options) {
+  const status = await readHarnessStatus(root)
+  if (!status.rootExists || !status.valid) {
+    throw new Error('prepare a valid harness before crypto-roundtrip')
+  }
+
+  const cases = [
+    {
+      id: 'pbkdf2',
+      kdf: { pBKDF2: { iterations: 600_000 } },
+    },
+    {
+      id: 'argon2id',
+      kdf: {
+        argon2id: { iterations: 3, memory: 64, parallelism: 4 },
+      },
+    },
+  ]
+  const readbacks = []
+  const runId = randomUUID()
+  for (const fixtureCase of cases) {
+    const requestPath = join(
+      root.absolute,
+      'requests',
+      `${fixtureCase.id}-${runId}.json`,
+    )
+    const responsePath = join(
+      root.absolute,
+      'responses',
+      `${fixtureCase.id}-${runId}.json`,
+    )
+    const request = {
+      schemaVersion,
+      operation: 'roundtrip',
+      fixture: {
+        email: `honowarden-${randomUUID()}@example.invalid`,
+        password: randomBytes(32).toString('base64url'),
+        plaintext: `honowarden-${randomBytes(32).toString('hex')}`,
+        kdf: fixtureCase.kdf,
+      },
+    }
+    await writeFile(requestPath, `${JSON.stringify(request)}\n`, {
+      mode: 0o600,
+      flag: 'wx',
+    })
+
+    const run = await runCapturedProcess(
+      process.execPath,
+      [
+        join(root.absolute, 'crypto', 'honowarden-bridge.cjs'),
+        requestPath,
+        responsePath,
+      ],
+      {
+        cwd: join(root.absolute, 'crypto'),
+        env: {
+          ...isolatedClientEnvironment(root),
+          [cryptoBridgeEnvironment]: '1',
+        },
+        outputDirectory: join(root.absolute, 'output'),
+        timeoutMs: parseTimeout(options.timeoutMs, 60_000),
+        label: `crypto-${fixtureCase.id}-${runId}`,
+      },
+    )
+    if (run.exitCode !== 0 || run.timedOut) {
+      throw new Error(
+        `official crypto ${fixtureCase.id} failed; inspect ignored output`,
+      )
+    }
+    if (run.stdout.bytes !== 0 || run.stderr.bytes !== 0) {
+      throw new Error('official crypto bridge emitted unexpected output')
+    }
+
+    const responseBytes = await readFile(responsePath)
+    const response = JSON.parse(responseBytes.toString('utf8'))
+    validateCryptoResponse(response, fixtureCase.id)
+    readbacks.push({
+      id: fixtureCase.id,
+      kdf: response.readback.kdf,
+      implementation: response.implementation,
+      userKeyBytes: response.readback.userKeyBytes,
+      wrappedUserKeyType: response.readback.wrappedUserKeyType,
+      encryptedItemType: response.readback.encryptedItemType,
+      privateKeyType: response.readback.privateKeyType,
+      responseBytes: responseBytes.length,
+      responseSha256: sha256(responseBytes),
+      stdout: run.stdout,
+      stderr: run.stderr,
+    })
+  }
+
+  return {
+    implementation: 'upstream-cli-sdk-wasm',
+    sourceAssetSha256: officialClientAssets.cliNpm.sha256,
+    bridgeSha256: status.bridgeSha256,
+    cases: readbacks,
+    secretsPrinted: false,
+    outputFilesMode: '0600',
+  }
+}
+
+async function runOfficialCli(root, options) {
+  requireSupportedNativePlatform()
+  const status = await readHarnessStatus(root)
+  if (!status.rootExists || !status.valid) {
+    throw new Error('prepare a valid harness before cli-run')
+  }
+  validateOfficialCliArgs(options.passthrough)
+  const origin = validateLoopbackOrigin(options.origin)
+
+  const environment = isolatedClientEnvironment(root)
+  const nativeCli = join(root.absolute, 'native', 'bw')
+  const configRun = await runCapturedProcess(
+    nativeCli,
+    ['config', 'server', origin],
+    {
+      cwd: root.absolute,
+      env: environment,
+      outputDirectory: join(root.absolute, 'output'),
+      timeoutMs: parseTimeout(options.timeoutMs, 30_000),
+      label: `cli-config-${randomUUID()}`,
+    },
+  )
+  if (configRun.exitCode !== 0 || configRun.timedOut) {
+    throw new Error('official CLI local-server configuration failed')
+  }
+
+  const commandRun = await runCapturedProcess(nativeCli, options.passthrough, {
+    cwd: root.absolute,
+    env: environment,
+    outputDirectory: join(root.absolute, 'output'),
+    timeoutMs: parseTimeout(options.timeoutMs, 60_000),
+    label: `cli-command-${randomUUID()}`,
+  })
+  return {
+    origin,
+    serverConfigured: true,
+    configuration: configRun,
+    ...commandRun,
+  }
+}
+
+async function readHarnessStatus(root) {
+  await validateHarnessRoot(root)
+  if (!(await exists(root.absolute))) {
+    return {
+      rootExists: false,
+      valid: false,
+    }
+  }
+  await rejectSymlink(root.absolute)
+  await validateHarnessDirectories(root)
+
+  const statePath = join(root.absolute, 'state.json')
+  await validateExtractedFile(statePath)
+  await requireMode(statePath, 0o600, 'harness state')
+  const npmAssetPath = join(
+    root.absolute,
+    'assets',
+    officialClientAssets.cliNpm.name,
+  )
+  const nativeAssetPath = join(
+    root.absolute,
+    'assets',
+    officialClientAssets.cliMacArm64.name,
+  )
+  await validateExtractedFile(npmAssetPath)
+  await validateExtractedFile(nativeAssetPath)
+  await requireMode(npmAssetPath, 0o600, 'CLI npm asset')
+  await requireMode(nativeAssetPath, 0o600, 'native CLI asset')
+  const state = JSON.parse(await readFile(statePath, 'utf8'))
+  const npmBytes = await readFile(npmAssetPath)
+  const nativeBytes = await readFile(nativeAssetPath)
+  const npmAsset = verifyPinnedAsset(npmBytes, officialClientAssets.cliNpm)
+  const nativeAsset = verifyPinnedAsset(
+    nativeBytes,
+    officialClientAssets.cliMacArm64,
+  )
+  const bridgePath = join(root.absolute, 'crypto', 'honowarden-bridge.cjs')
+  const bridgePackagePath = join(root.absolute, 'crypto', 'package.json')
+  await validateExtractedFile(bridgePath)
+  await validateExtractedFile(bridgePackagePath)
+  await requireMode(bridgePath, 0o700, 'official crypto bridge')
+  await requireMode(bridgePackagePath, 0o600, 'crypto module boundary')
+  if ((await readFile(bridgePackagePath, 'utf8')) !== '{"type":"commonjs"}\n') {
+    throw new Error('crypto module boundary did not match')
+  }
+  await validateExtractedFile(join(root.absolute, 'native', 'bw'))
+  await requireMode(join(root.absolute, 'native', 'bw'), 0o700, 'native CLI')
+  const bridgeSha256 = sha256(await readFile(bridgePath))
+  const rootMode = await readMode(root.absolute)
+  const valid =
+    state?.schemaVersion === schemaVersion &&
+    state?.pins?.server?.commit === officialClientPins.server.commit &&
+    state?.pins?.web?.commit === officialClientPins.web.commit &&
+    state?.pins?.browser?.commit === officialClientPins.browser.commit &&
+    state?.pins?.cli?.commit === officialClientPins.cli.commit &&
+    state?.bridge?.sourceAssetSha256 === officialClientAssets.cliNpm.sha256 &&
+    state?.bridge?.sha256 === bridgeSha256 &&
+    state?.nativeCli?.version === '2026.6.0' &&
+    state?.nativeCli?.assetSha256 === officialClientAssets.cliMacArm64.sha256 &&
+    rootMode === '0700'
+
+  return {
+    rootExists: true,
+    valid,
+    rootMode,
+    npmAsset,
+    nativeAsset,
+    bridgeSha256,
+    nativeVersion: state?.nativeCli?.version ?? null,
+    profileEntries: await countDirectoryEntries(join(root.absolute, 'profile')),
+  }
+}
+
+async function cleanupHarness(root) {
+  await validateHarnessRoot(root)
+  if (await exists(root.absolute)) {
+    await rejectSymlink(root.absolute)
+    await rm(root.absolute, { recursive: true, force: false })
+  }
+  await clearClipboard()
+  return {
+    rootExists: await exists(root.absolute),
+    clipboardCleared: true,
+  }
+}
+
+export function verifyPinnedAsset(bytes, metadata) {
+  if (!Buffer.isBuffer(bytes) && !(bytes instanceof Uint8Array)) {
+    throw new Error('asset bytes were invalid')
+  }
+  if (bytes.length !== metadata.size) {
+    throw new Error(`${metadata.name} asset size mismatch`)
+  }
+  const digest = sha256(bytes)
+  if (digest !== metadata.sha256) {
+    throw new Error(`${metadata.name} asset digest mismatch`)
+  }
+  return {
+    name: metadata.name,
+    size: bytes.length,
+    sha256: digest,
+  }
+}
+
+export function renderOfficialCryptoBridge(source) {
+  if (countOccurrences(source, webpackBootstrap) !== 1) {
+    throw new Error('webpack bootstrap boundary did not match exactly once')
+  }
+  if (countOccurrences(source, webpackExportBoundary) !== 1) {
+    throw new Error('webpack export boundary did not match exactly once')
+  }
+  const asyncSource = source.replace(webpackBootstrap, asyncWebpackBootstrap)
+  return asyncSource.replace(
+    webpackExportBoundary,
+    `${webpackExportBoundary}\n${officialCryptoBridgeSource()}`,
+  )
+}
+
+function officialCryptoBridgeSource() {
+  return String.raw`if (process.env.HONOWARDEN_OFFICIAL_CRYPTO_BRIDGE === "1") {
+  const fs = require("node:fs");
+  const crypto = require("node:crypto");
+  const requestPath = process.argv[2];
+  const responsePath = process.argv[3];
+  if (!requestPath || !responsePath) {
+    throw new Error("official crypto bridge requires request and response paths");
+  }
+  const request = JSON.parse(fs.readFileSync(requestPath, "utf8"));
+  const fixture = request?.fixture;
+  if (
+    request?.schemaVersion !== 1 ||
+    request?.operation !== "roundtrip" ||
+    typeof fixture?.email !== "string" ||
+    !fixture.email.endsWith("@example.invalid") ||
+    typeof fixture?.password !== "string" ||
+    fixture.password.length < 24 ||
+    typeof fixture?.plaintext !== "string" ||
+    fixture.plaintext.length < 24 ||
+    typeof fixture?.kdf !== "object" ||
+    fixture.kdf === null
+  ) {
+    throw new Error("official crypto bridge request was invalid");
+  }
+  const kdfKeys = Object.keys(fixture.kdf);
+  let kdfId;
+  if (
+    kdfKeys.length === 1 &&
+    kdfKeys[0] === "pBKDF2" &&
+    fixture.kdf.pBKDF2?.iterations === 600000
+  ) {
+    kdfId = "pbkdf2";
+  } else if (
+    kdfKeys.length === 1 &&
+    kdfKeys[0] === "argon2id" &&
+    fixture.kdf.argon2id?.iterations === 3 &&
+    fixture.kdf.argon2id?.memory === 64 &&
+    fixture.kdf.argon2id?.parallelism === 4
+  ) {
+    kdfId = "argon2id";
+  } else {
+    throw new Error("official crypto bridge KDF was invalid");
+  }
+
+  await __webpack_require__.e(685);
+  const sdk = __webpack_require__(431);
+  const wasm = await __webpack_require__(685);
+  sdk.lIU(wasm);
+  sdk.Geh(sdk.$bb.Error, sdk.$bb.Error, 0);
+
+  const userKey = sdk.IEs.make_user_key_aes256_cbc_hmac();
+  const wrappedUserKey = sdk.IEs.encrypt_user_key_with_master_password(
+    userKey,
+    fixture.password,
+    fixture.email,
+    fixture.kdf,
+  );
+  const decryptedUserKey = sdk.IEs.decrypt_user_key_with_master_password(
+    wrappedUserKey,
+    fixture.password,
+    fixture.email,
+    fixture.kdf,
+  );
+  const encryptedItem = sdk.IEs.symmetric_encrypt_string(
+    fixture.plaintext,
+    userKey,
+  );
+  const decryptedItem = sdk.IEs.symmetric_decrypt_string(
+    encryptedItem,
+    userKey,
+  );
+  const client = new sdk.cPU(
+    { get_access_token: async () => undefined },
+    null,
+  );
+  const cryptoClient = client.crypto();
+  const keyPair = cryptoClient.make_key_pair(
+    Buffer.from(userKey).toString("base64"),
+  );
+  const privateKey = sdk.IEs.unwrap_decapsulation_key(
+    keyPair.userKeyEncryptedPrivateKey,
+    userKey,
+  );
+
+  const userKeyRoundTrips =
+    Buffer.compare(Buffer.from(userKey), Buffer.from(decryptedUserKey)) === 0;
+  const itemRoundTrips = decryptedItem === fixture.plaintext;
+  const privateKeyRoundTrips =
+    privateKey instanceof Uint8Array && privateKey.length > 0;
+  const response = {
+    schemaVersion: 1,
+    implementation: "upstream-cli-sdk-wasm",
+    source: {
+      tag: "cli-v2026.6.0",
+      commit: "e6293ff2bc85123e9baaa998cf1543030ec5d9f0",
+      assetSha256:
+        "31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660",
+    },
+    material: {
+      userKey: Buffer.from(userKey).toString("base64"),
+      wrappedUserKey,
+      encryptedItem,
+      userPublicKey: keyPair.userPublicKey,
+      userKeyEncryptedPrivateKey: keyPair.userKeyEncryptedPrivateKey,
+    },
+    readback: {
+      kdf: kdfId,
+      userKeyBytes: userKey.length,
+      wrappedUserKeyType: wrappedUserKey.split(".")[0],
+      encryptedItemType: encryptedItem.split(".")[0],
+      privateKeyType: keyPair.userKeyEncryptedPrivateKey.split(".")[0],
+      userKeyRoundTrips,
+      itemRoundTrips,
+      privateKeyRoundTrips,
+    },
+    digests: {
+      userKey: crypto
+        .createHash("sha256")
+        .update(Buffer.from(userKey))
+        .digest("hex"),
+      encryptedItem: crypto
+        .createHash("sha256")
+        .update(encryptedItem)
+        .digest("hex"),
+      publicKey: crypto
+        .createHash("sha256")
+        .update(keyPair.userPublicKey)
+        .digest("hex"),
+    },
+  };
+  cryptoClient.free();
+  client.free();
+  fs.writeFileSync(responsePath, JSON.stringify(response), {
+    mode: 0o600,
+    flag: "wx",
+  });
+  return;
+}`
+}
+
+function validateCryptoResponse(response, id) {
+  const kdfId =
+    id === 'pbkdf2' ? 'pbkdf2' : id === 'argon2id' ? 'argon2id' : null
+  if (
+    !kdfId ||
+    response?.schemaVersion !== schemaVersion ||
+    response?.implementation !== 'upstream-cli-sdk-wasm' ||
+    response?.source?.tag !== officialClientPins.cli.tag ||
+    response?.source?.commit !== officialClientPins.cli.commit ||
+    response?.source?.assetSha256 !== officialClientAssets.cliNpm.sha256 ||
+    response?.readback?.kdf !== kdfId ||
+    response?.readback?.userKeyBytes !== 64 ||
+    response?.readback?.wrappedUserKeyType !== '2' ||
+    response?.readback?.encryptedItemType !== '2' ||
+    response?.readback?.privateKeyType !== '2' ||
+    response?.readback?.userKeyRoundTrips !== true ||
+    response?.readback?.itemRoundTrips !== true ||
+    response?.readback?.privateKeyRoundTrips !== true ||
+    !isSha256(response?.digests?.userKey) ||
+    !isSha256(response?.digests?.encryptedItem) ||
+    !isSha256(response?.digests?.publicKey)
+  ) {
+    throw new Error(`official crypto ${id} response was invalid`)
+  }
+  for (const value of Object.values(response.material ?? {})) {
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new Error(`official crypto ${id} material was invalid`)
+    }
+  }
+}
+
+export async function runCapturedProcess(
+  command,
+  args,
+  { cwd, env, outputDirectory, timeoutMs, label },
+) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 300_000) {
+    throw new Error('captured process timeout was invalid')
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(label)) {
+    throw new Error('captured process label was invalid')
+  }
+  await mkdir(outputDirectory, { recursive: true, mode: 0o700 })
+  const stdoutPath = join(outputDirectory, `${label}.stdout.log`)
+  const stderrPath = join(outputDirectory, `${label}.stderr.log`)
+  const stdoutHandle = await open(stdoutPath, 'wx', 0o600)
+  let stderrHandle
+  try {
+    stderrHandle = await open(stderrPath, 'wx', 0o600)
+  } catch (error) {
+    await stdoutHandle.close()
+    throw error
+  }
+
+  let timedOut = false
+  let forceKillTimer = null
+  let timeoutTimer = null
+  let result
+  try {
+    result = await new Promise((resolveRun, rejectRun) => {
+      const child = spawn(command, args, {
+        cwd,
+        env,
+        detached: true,
+        stdio: ['ignore', stdoutHandle.fd, stderrHandle.fd],
+      })
+      child.once('error', rejectRun)
+      child.once('close', (exitCode, signal) => {
+        if (timeoutTimer) clearTimeout(timeoutTimer)
+        if (forceKillTimer) clearTimeout(forceKillTimer)
+        resolveRun({ exitCode, signal, timedOut })
+      })
+      timeoutTimer = setTimeout(() => {
+        timedOut = true
+        signalProcessGroup(child.pid, 'SIGTERM')
+        forceKillTimer = setTimeout(() => {
+          signalProcessGroup(child.pid, 'SIGKILL')
+        }, 1_000)
+        forceKillTimer.unref()
+      }, timeoutMs)
+      timeoutTimer.unref()
+    })
+  } finally {
+    if (timeoutTimer) clearTimeout(timeoutTimer)
+    if (forceKillTimer) clearTimeout(forceKillTimer)
+    await Promise.all([stdoutHandle.close(), stderrHandle.close()])
+  }
+
+  return {
+    ...result,
+    stdout: await capturedFileSummary(stdoutPath),
+    stderr: await capturedFileSummary(stderrPath),
+  }
+}
+
+function signalProcessGroup(pid, signal) {
+  if (!Number.isInteger(pid) || pid <= 0) return
+  try {
+    process.kill(-pid, signal)
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error
+  }
+}
+
+async function capturedFileSummary(path) {
+  const bytes = await readFile(path)
+  return {
+    file: basename(path),
+    bytes: bytes.length,
+    sha256: sha256(bytes),
+  }
+}
+
+export function resolveHarnessRoot(value) {
+  const absolute = isAbsolute(value) ? resolve(value) : resolve(repoRoot, value)
+  const insideFixtureRoot = relative(fixtureRoot, absolute)
+  if (
+    insideFixtureRoot.length === 0 ||
+    insideFixtureRoot === '..' ||
+    insideFixtureRoot.startsWith(`..${sep}`) ||
+    isAbsolute(insideFixtureRoot)
+  ) {
+    throw new Error('root must be inside test/.tmp')
+  }
+  return {
+    absolute,
+    relative: relative(repoRoot, absolute),
+    insideFixtureRoot,
+  }
+}
+
+export async function validateHarnessRoot(root) {
+  await mkdir(fixtureRoot, { recursive: true, mode: 0o700 })
+  const [resolvedRepo, resolvedFixtureRoot] = await Promise.all([
+    realpath(repoRoot),
+    realpath(fixtureRoot),
+  ])
+  if (resolvedFixtureRoot !== join(resolvedRepo, 'test/.tmp')) {
+    throw new Error('test/.tmp must not be a symlink')
+  }
+
+  let current = resolvedFixtureRoot
+  for (const component of root.insideFixtureRoot.split(sep)) {
+    current = join(current, component)
+    if (!(await exists(current))) continue
+    await rejectSymlink(current, 'harness root must not contain symlinks')
+  }
+}
+
+export async function validateHarnessDirectories(root) {
+  const resolvedRoot = await realpath(root.absolute)
+  for (const directory of [
+    'assets',
+    'crypto',
+    'native',
+    'profile',
+    'home',
+    'tmp',
+    'requests',
+    'responses',
+    'output',
+  ]) {
+    const path = join(root.absolute, directory)
+    await rejectSymlink(
+      path,
+      `harness ${directory} directory must not be a symlink`,
+    )
+    const info = await lstat(path)
+    if (!info.isDirectory()) {
+      throw new Error(`harness ${directory} path must be a directory`)
+    }
+    if ((info.mode & 0o777) !== 0o700) {
+      throw new Error(`harness ${directory} directory permissions must be 0700`)
+    }
+    const resolvedPath = await realpath(path)
+    const pathFromRoot = relative(resolvedRoot, resolvedPath)
+    if (
+      pathFromRoot === '..' ||
+      pathFromRoot.startsWith(`..${sep}`) ||
+      isAbsolute(pathFromRoot)
+    ) {
+      throw new Error(`harness ${directory} directory escaped the root`)
+    }
+  }
+}
+
+async function downloadPinnedAsset(asset) {
+  let response
+  try {
+    response = await globalThis.fetch(asset.url, {
+      redirect: 'follow',
+      headers: {
+        Accept: 'application/octet-stream',
+        'User-Agent': 'HonoWarden-official-client-harness',
+      },
+      signal: globalThis.AbortSignal.timeout(120_000),
+    })
+  } catch {
+    throw new Error(`${asset.name} official asset download failed`)
+  }
+  if (!response.ok) {
+    throw new Error(`${asset.name} official asset download failed`)
+  }
+  return Buffer.from(await response.arrayBuffer())
+}
+
+async function extractPinnedArchive(archivePath, destination) {
+  const entries = await listArchiveEntries(archivePath)
+  if (entries.length === 0) throw new Error('official archive was empty')
+  for (const entry of entries) {
+    if (
+      entry.startsWith('/') ||
+      entry.includes('\\') ||
+      entry.split('/').some((component) => component === '..')
+    ) {
+      throw new Error('official archive contained an unsafe path')
+    }
+  }
+  const ditto = '/usr/bin/ditto'
+  if (await exists(ditto)) {
+    await runTextCommand(ditto, ['-x', '-k', archivePath, destination])
+    return
+  }
+  await runTextCommand('unzip', ['-q', archivePath, '-d', destination])
+}
+
+async function listArchiveEntries(archivePath) {
+  const result = await runTextCommand('unzip', ['-Z1', archivePath])
+  return result.stdout.split('\n').filter(Boolean)
+}
+
+function runTextCommand(command, args) {
+  return new Promise((resolveCommand, rejectCommand) => {
+    const child = spawn(command, args, {
+      cwd: repoRoot,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr.on('data', () => undefined)
+    child.once('error', rejectCommand)
+    child.once('close', (code) => {
+      if (code === 0) resolveCommand({ stdout })
+      else rejectCommand(new Error(`${basename(command)} failed`))
+    })
+  })
+}
+
+async function validateExtractedFile(path) {
+  await rejectSymlink(path, 'official asset entry must not be a symlink')
+  const info = await lstat(path)
+  if (!info.isFile()) throw new Error('official asset entry was not a file')
+}
+
+function requireSupportedNativePlatform() {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') {
+    throw new Error('the pinned native CLI runner requires macOS arm64')
+  }
+}
+
+function isolatedClientEnvironment(root) {
+  const environment = {}
+  for (const key of [
+    'LANG',
+    'LC_ALL',
+    'NODE_EXTRA_CA_CERTS',
+    'PATH',
+    'SSL_CERT_FILE',
+  ]) {
+    if (process.env[key] !== undefined) environment[key] = process.env[key]
+  }
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith('BW_') && value !== undefined) environment[key] = value
+  }
+  environment.HOME = join(root.absolute, 'home')
+  environment.TMPDIR = join(root.absolute, 'tmp')
+  environment[cliAppDataEnvironment] = join(root.absolute, 'profile')
+  return environment
+}
+
+export function validateOfficialCliArgs(args) {
+  if (!Array.isArray(args) || args.length === 0) {
+    throw new Error('cli-run requires arguments after --')
+  }
+  const allowedCommands = new Set([
+    '--version',
+    'get',
+    'list',
+    'lock',
+    'login',
+    'logout',
+    'status',
+    'sync',
+    'unlock',
+  ])
+  if (!allowedCommands.has(args[0])) {
+    throw new Error('official CLI command is not allowed by the harness')
+  }
+  const secretFlags = new Set([
+    '--apikey',
+    '--clientsecret',
+    '--password',
+    '--session',
+  ])
+  for (const arg of args) {
+    const flag = arg.split('=', 1)[0].toLowerCase()
+    if (secretFlags.has(flag)) {
+      throw new Error(
+        'pass official CLI secrets through BW_* environment variables',
+      )
+    }
+  }
+}
+
+export function validateLoopbackOrigin(value) {
+  if (!value) {
+    throw new Error('cli-run requires --origin with a loopback URL')
+  }
+  let origin
+  try {
+    origin = new globalThis.URL(value)
+  } catch {
+    throw new Error('--origin must be a valid loopback URL')
+  }
+  if (
+    !['http:', 'https:'].includes(origin.protocol) ||
+    !['127.0.0.1', '::1', '[::1]', 'localhost'].includes(origin.hostname) ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== '/' ||
+    origin.search ||
+    origin.hash
+  ) {
+    throw new Error('--origin must be an origin-only loopback URL')
+  }
+  return origin.origin
+}
+
+async function clearClipboard() {
+  if (process.platform !== 'darwin') return
+  await new Promise((resolveClipboard, rejectClipboard) => {
+    const child = spawn('pbcopy', [], {
+      stdio: ['pipe', 'ignore', 'ignore'],
+    })
+    child.once('error', rejectClipboard)
+    child.once('close', (code) => {
+      if (code === 0) resolveClipboard()
+      else rejectClipboard(new Error('clipboard cleanup failed'))
+    })
+    child.stdin.end()
+  })
+}
+
+function parseOptions(args) {
+  const options = { passthrough: [] }
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === '--') {
+      options.passthrough = args.slice(index + 1)
+      break
+    }
+    if (arg === '--execute') {
+      options.execute = true
+      continue
+    }
+    if (
+      arg === '--root' ||
+      arg === '--confirm' ||
+      arg === '--at' ||
+      arg === '--origin' ||
+      arg === '--timeout-ms'
+    ) {
+      const value = args[index + 1]
+      if (!value) throw new Error(`${arg} requires a value`)
+      const key = arg === '--timeout-ms' ? 'timeoutMs' : arg.slice(2)
+      options[key] = value
+      index += 1
+      continue
+    }
+    throw new Error(`Unknown option: ${arg}`)
+  }
+  return options
+}
+
+function buildExecutionCommand(action, options, root) {
+  const origin = options.origin ? ` --origin ${shellQuote(options.origin)}` : ''
+  const passthrough =
+    options.passthrough.length > 0
+      ? ` -- ${options.passthrough.map(shellQuote).join(' ')}`
+      : ''
+  return `pnpm client:official-harness -- ${action} --root ${shellQuote(root.relative)}${origin} --execute --confirm ${confirmation}${passthrough}`
+}
+
+function requireConfirmation(options) {
+  if (options.confirm !== confirmation) {
+    throw new Error(`--confirm ${confirmation} is required before --execute`)
+  }
+}
+
+function parseTimestamp(value) {
+  const date = value ? new Date(value) : new Date()
+  if (Number.isNaN(date.getTime())) throw new Error('--at must be ISO-8601')
+  return date.toISOString()
+}
+
+function parseTimeout(value, defaultValue) {
+  if (value === undefined) return defaultValue
+  if (!/^[0-9]+$/.test(value))
+    throw new Error('--timeout-ms must be an integer')
+  const parsed = Number(value)
+  if (parsed < 100 || parsed > 300_000) {
+    throw new Error('--timeout-ms must be between 100 and 300000')
+  }
+  return parsed
+}
+
+function shellQuote(value) {
+  return /^[A-Za-z0-9_./:=@+-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`
+}
+
+function countOccurrences(value, needle) {
+  return value.split(needle).length - 1
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function isSha256(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+}
+
+async function readMode(path) {
+  return ((await stat(path)).mode & 0o777).toString(8).padStart(4, '0')
+}
+
+async function requireMode(path, expected, label) {
+  const actual = (await stat(path)).mode & 0o777
+  if (actual !== expected) {
+    throw new Error(
+      `${label} permissions must be ${expected.toString(8).padStart(4, '0')}`,
+    )
+  }
+}
+
+async function countDirectoryEntries(path) {
+  const { readdir } = await import('node:fs/promises')
+  return (await readdir(path)).length
+}
+
+async function rejectSymlink(path, message = 'path must not be a symlink') {
+  const info = await lstat(path)
+  if (info.isSymbolicLink()) throw new Error(message)
+}
+
+async function exists(path) {
+  try {
+    await lstat(path)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+const isMain =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+
+if (isMain) {
+  main().catch((error) => {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : 'official client harness failed'}\n`,
+    )
+    process.exitCode = 1
+  })
+}

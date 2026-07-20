@@ -1,0 +1,413 @@
+import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import {
+  access,
+  chmod,
+  lstat,
+  mkdir,
+  readFile,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { promisify } from 'node:util'
+
+import { describe, expect, it } from 'vitest'
+
+const execFileAsync = promisify(execFile)
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
+const script = join(repoRoot, 'scripts/honowarden-official-client-harness.mjs')
+const confirmation = 'official-client-harness'
+
+const harnessModule = import(pathToFileURL(script).href)
+
+describe('pinned official-client harness', () => {
+  it('plans exact source and release pins without creating secret storage', async () => {
+    const root = ignoredRoot('plan')
+    const result = await run([
+      'plan',
+      '--root',
+      root,
+      '--at',
+      '2026-07-20T06:00:00.000Z',
+    ])
+    const packet = JSON.parse(result.stdout)
+
+    expect(packet).toMatchObject({
+      schemaVersion: 1,
+      action: 'plan',
+      generatedAt: '2026-07-20T06:00:00.000Z',
+      executed: false,
+      status: 'planned',
+      root,
+      pins: {
+        server: {
+          tag: 'v2026.6.1',
+          commit: 'a09c7edb03ae6d4fdece784f1250c67be73d5fe0',
+        },
+        web: {
+          tag: 'web-v2026.6.1',
+          commit: '39f07436ca60e3f25eac47777671754f288a98f1',
+        },
+        browser: {
+          tag: 'browser-v2026.6.1',
+          commit: '723c075bf8b9f45c901e56195be8e94e43ed75a2',
+        },
+        cli: {
+          tag: 'cli-v2026.6.0',
+          commit: 'e6293ff2bc85123e9baaa998cf1543030ec5d9f0',
+        },
+      },
+      assets: {
+        cliNpm: {
+          id: 457_887_277,
+          name: `${['bit', 'warden'].join('')}-cli-2026.6.0-npm-build.zip`,
+          size: 4_402_383,
+          sha256:
+            '31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660',
+        },
+        cliMacArm64: {
+          id: 457_887_093,
+          name: 'bw-macos-arm64-2026.6.0.zip',
+          size: 41_121_808,
+          sha256:
+            '57d1e60d7748c6efed96559833ce0423a5c825cbf1356d952970c87a497a64d4',
+        },
+        browserChrome: {
+          id: 462_351_736,
+          name: 'dist-chrome-2026.6.1.zip',
+          size: 21_593_500,
+          sha256:
+            'fcd29c5971d9b218ad9159717a19c38cca5150f2a0aa909ddf805bd7695d097e',
+        },
+      },
+      safety: {
+        officialImplementation: true,
+        productionSupported: false,
+        realCredentialsAllowed: false,
+        printsSecrets: false,
+        ignoredStorageRequired: true,
+        isolatedProcessGroup: true,
+      },
+    })
+    expect(packet.next.command).toContain(`--confirm ${confirmation}`)
+    await expect(access(join(repoRoot, root))).rejects.toThrow()
+  })
+
+  it('requires explicit confirmation before preparing or running clients', async () => {
+    await expect(
+      run(['prepare', '--root', ignoredRoot('confirm'), '--execute']),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        `--confirm ${confirmation} is required before --execute`,
+      ),
+    })
+
+    await expect(
+      run([
+        'cli-run',
+        '--root',
+        ignoredRoot('cli-confirm'),
+        '--execute',
+        '--',
+        'status',
+      ]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        `--confirm ${confirmation} is required before --execute`,
+      ),
+    })
+  })
+
+  it('keeps server configuration under the loopback-only wrapper', async () => {
+    const { validateLoopbackOrigin, validateOfficialCliArgs } =
+      await harnessModule
+
+    expect(() => validateOfficialCliArgs(['status'])).not.toThrow()
+    expect(() =>
+      validateOfficialCliArgs([
+        'login',
+        '--passwordenv',
+        'BW_PASSWORD',
+        'fixture@example.invalid',
+      ]),
+    ).not.toThrow()
+    expect(() =>
+      validateOfficialCliArgs([
+        'config',
+        'server',
+        'https://external.example.com',
+      ]),
+    ).toThrow('official CLI command is not allowed by the harness')
+    expect(() =>
+      validateOfficialCliArgs(['unlock', '--password', 'secret']),
+    ).toThrow('pass official CLI secrets through BW_* environment variables')
+    expect(validateLoopbackOrigin('http://127.0.0.1:8787')).toBe(
+      'http://127.0.0.1:8787',
+    )
+    expect(validateLoopbackOrigin('https://localhost:9443')).toBe(
+      'https://localhost:9443',
+    )
+    expect(validateLoopbackOrigin('http://[::1]:8787')).toBe(
+      'http://[::1]:8787',
+    )
+    expect(() =>
+      validateLoopbackOrigin('https://external.example.com'),
+    ).toThrow('--origin must be an origin-only loopback URL')
+    expect(() =>
+      validateLoopbackOrigin('http://user:secret@127.0.0.1:8787'),
+    ).toThrow('--origin must be an origin-only loopback URL')
+  })
+
+  it('rejects roots outside ignored storage and symlinked path components', async () => {
+    const { resolveHarnessRoot, validateHarnessRoot } = await harnessModule
+
+    expect(() => resolveHarnessRoot('/tmp/honowarden-official-client')).toThrow(
+      'root must be inside test/.tmp',
+    )
+
+    const target = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-target-${crypto.randomUUID()}`,
+    )
+    const link = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-link-${crypto.randomUUID()}`,
+    )
+    await mkdir(target, { recursive: true, mode: 0o700 })
+    await symlink(target, link)
+
+    await expect(validateHarnessRoot(resolveHarnessRoot(link))).rejects.toThrow(
+      'harness root must not contain symlinks',
+    )
+  })
+
+  it('rejects mutable harness directories replaced by symlinks', async () => {
+    const {
+      resolveHarnessRoot,
+      validateHarnessDirectories,
+      validateHarnessRoot,
+    } = await harnessModule
+    const rootPath = ignoredRoot('mutable-link')
+    const root = resolveHarnessRoot(rootPath)
+    const outside = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-outside-${crypto.randomUUID()}`,
+    )
+    await mkdir(root.absolute, { recursive: true, mode: 0o700 })
+    await mkdir(outside, { mode: 0o700 })
+    for (const directory of [
+      'assets',
+      'crypto',
+      'native',
+      'profile',
+      'home',
+      'tmp',
+      'responses',
+      'output',
+    ]) {
+      await mkdir(join(root.absolute, directory), { mode: 0o700 })
+    }
+    await symlink(outside, join(root.absolute, 'requests'))
+    await validateHarnessRoot(root)
+
+    await expect(validateHarnessDirectories(root)).rejects.toThrow(
+      'harness requests directory must not be a symlink',
+    )
+  })
+
+  it('fails closed on asset size and digest mismatches', async () => {
+    const { verifyPinnedAsset } = await harnessModule
+    const bytes = Buffer.from('verified-official-asset')
+    const metadata = {
+      name: 'fixture.zip',
+      size: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    }
+
+    expect(verifyPinnedAsset(bytes, metadata)).toEqual({
+      name: 'fixture.zip',
+      size: bytes.length,
+      sha256: metadata.sha256,
+    })
+    expect(() =>
+      verifyPinnedAsset(bytes, { ...metadata, size: bytes.length + 1 }),
+    ).toThrow('asset size mismatch')
+    expect(() =>
+      verifyPinnedAsset(bytes, { ...metadata, sha256: '0'.repeat(64) }),
+    ).toThrow('asset digest mismatch')
+  })
+
+  it('injects the crypto bridge at one exact webpack boundary', async () => {
+    const { renderOfficialCryptoBridge } = await harnessModule
+    const source = `#!/usr/bin/env node
+/******/ (() => { // webpackBootstrap
+var __webpack_exports__ = {};
+require("external-package");
+/******/ })()
+`
+    const rendered = renderOfficialCryptoBridge(source)
+
+    expect(rendered).toContain('/******/ (async () => { // webpackBootstrap')
+    expect(rendered).toContain('HONOWARDEN_OFFICIAL_CRYPTO_BRIDGE')
+    expect(rendered).toContain('await __webpack_require__.e(685)')
+    expect(rendered).toContain('sdk.lIU(wasm)')
+    expect(rendered).toContain('sdk.IEs.unwrap_decapsulation_key')
+    expect(rendered).toContain('kdfId')
+    expect(rendered.indexOf('HONOWARDEN_OFFICIAL_CRYPTO_BRIDGE')).toBeLessThan(
+      rendered.indexOf('require("external-package")'),
+    )
+
+    expect(() =>
+      renderOfficialCryptoBridge(source.replace('var __webpack_exports__', '')),
+    ).toThrow('webpack export boundary did not match exactly once')
+    expect(() =>
+      renderOfficialCryptoBridge(`${source}\nvar __webpack_exports__ = {};`),
+    ).toThrow('webpack export boundary did not match exactly once')
+  })
+
+  it('captures official CLI output without returning secret bytes', async () => {
+    const { runCapturedProcess } = await harnessModule
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-capture-${crypto.randomUUID()}`,
+    )
+    const output = join(root, 'output')
+    const fakeCli = join(root, 'fake-cli.mjs')
+    await mkdir(output, { recursive: true, mode: 0o700 })
+    await writeFile(
+      fakeCli,
+      [
+        "process.stdout.write('synthetic-secret-stdout')",
+        "process.stderr.write('synthetic-secret-stderr')",
+      ].join('\n'),
+      { mode: 0o700 },
+    )
+
+    const result = await runCapturedProcess(process.execPath, [fakeCli], {
+      cwd: root,
+      env: process.env,
+      outputDirectory: output,
+      timeoutMs: 5_000,
+      label: 'fake-cli',
+    })
+    const serialized = JSON.stringify(result)
+
+    expect(result).toMatchObject({
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      stdout: { bytes: 23 },
+      stderr: { bytes: 23 },
+    })
+    expect(result.stdout.sha256).toMatch(/^[a-f0-9]{64}$/)
+    expect(result.stderr.sha256).toMatch(/^[a-f0-9]{64}$/)
+    expect(serialized).not.toContain('synthetic-secret')
+    expect(await readFile(join(output, 'fake-cli.stdout.log'), 'utf8')).toBe(
+      'synthetic-secret-stdout',
+    )
+    expect(await readFile(join(output, 'fake-cli.stderr.log'), 'utf8')).toBe(
+      'synthetic-secret-stderr',
+    )
+    expect(
+      (await lstat(join(output, 'fake-cli.stdout.log'))).mode & 0o777,
+    ).toBe(0o600)
+  })
+
+  it('kills the isolated process group on timeout', async () => {
+    const { runCapturedProcess } = await harnessModule
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-timeout-${crypto.randomUUID()}`,
+    )
+    const output = join(root, 'output')
+    const childPidPath = join(root, 'child.pid')
+    const command = join(root, 'wait.sh')
+    await mkdir(output, { recursive: true, mode: 0o700 })
+    await writeFile(
+      command,
+      `#!/bin/sh
+sleep 30 &
+printf '%s' "$!" > ${shellQuote(childPidPath)}
+wait
+`,
+      { mode: 0o700 },
+    )
+    await chmod(command, 0o700)
+
+    const result = await runCapturedProcess(command, [], {
+      cwd: root,
+      env: process.env,
+      outputDirectory: output,
+      timeoutMs: 1_000,
+      label: 'timeout',
+    })
+    const childPid = Number(await readFile(childPidPath, 'utf8'))
+
+    expect(result).toMatchObject({
+      exitCode: null,
+      signal: 'SIGTERM',
+      timedOut: true,
+    })
+    await expectProcessGone(childPid)
+  })
+
+  it('documents the evidence levels, recovery boundary, and package command', () => {
+    const packageJson = readRepoFile('package.json')
+    const runbook = readRepoFile(
+      'docs/operations/official-client-credential-harness.md',
+    )
+
+    expect(packageJson).toContain('"client:official-harness"')
+    expect(runbook).toContain('cli-v2026.6.0')
+    expect(runbook).toContain('browser-v2026.6.1')
+    expect(runbook).toContain('upstream-cli-sdk-wasm')
+    expect(runbook).toContain('local_official_client')
+    expect(runbook).toContain('test/.tmp/hon-207-official-client')
+    expect(runbook).toContain('--confirm official-client-harness')
+    expect(runbook).toMatch(/stdout\s+and\s+stderr.*mode\s+0600/i)
+    expect(runbook).toMatch(/never\s+restores\s+an\s+older\s+credential/i)
+    expect(runbook).toMatch(/production.*not\s+supported/i)
+    expect(runbook).toContain('Chrome for Testing')
+    expect(runbook).toContain('pnpm client:official-harness')
+  })
+})
+
+function ignoredRoot(label: string): string {
+  return `test/.tmp/official-client-${label}-${crypto.randomUUID()}`
+}
+
+async function run(args: string[]) {
+  return execFileAsync(process.execPath, [script, ...args], {
+    cwd: repoRoot,
+    env: process.env,
+  })
+}
+
+async function expectProcessGone(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return
+      throw error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error(`timed out process ${pid} was still running`)
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+function readRepoFile(path: string): string {
+  return readFileSync(join(repoRoot, path), 'utf8')
+}

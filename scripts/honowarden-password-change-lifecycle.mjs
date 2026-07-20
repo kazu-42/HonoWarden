@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
-import { once } from 'node:events'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -417,6 +416,7 @@ function startWorker({ persistTo, port, inspectorPort }) {
     ],
     {
       cwd: repoRoot,
+      detached: true,
       env: commandEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -455,16 +455,48 @@ async function waitForHealth(baseUrl, worker) {
 }
 
 async function stopWorker(worker) {
-  if (worker.exitCode !== null) {
+  const processGroupId = worker.pid
+  if (!processGroupId) {
     return
   }
-  const exited = once(worker, 'exit').then(() => true)
-  worker.kill('SIGTERM')
-  const stopped = await Promise.race([exited, delay(5_000).then(() => false)])
-  if (!stopped && worker.exitCode === null) {
-    worker.kill('SIGKILL')
-    await Promise.race([exited, delay(2_000)])
+
+  signalProcessGroup(worker, processGroupId, 'SIGTERM')
+  let stopped = await waitForProcessGroupExit(processGroupId, 5_000)
+  if (!stopped) {
+    signalProcessGroup(worker, processGroupId, 'SIGKILL')
+    stopped = await waitForProcessGroupExit(processGroupId, 2_000)
   }
+  worker.stdout.destroy()
+  worker.stderr.destroy()
+  if (!stopped) {
+    throw new Error(`wrangler process group ${processGroupId} did not stop`)
+  }
+}
+
+function signalProcessGroup(worker, processGroupId, signal) {
+  try {
+    process.kill(-processGroupId, signal)
+  } catch (error) {
+    if (error?.code !== 'ESRCH') {
+      worker.kill(signal)
+    }
+  }
+}
+
+async function waitForProcessGroupExit(processGroupId, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds
+  while (Date.now() < deadline) {
+    try {
+      process.kill(-processGroupId, 0)
+    } catch (error) {
+      if (error?.code === 'ESRCH') {
+        return true
+      }
+      throw error
+    }
+    await delay(50)
+  }
+  return false
 }
 
 async function readDatabaseState(persistTo) {
@@ -554,7 +586,12 @@ function runCommand(command, args) {
 }
 
 function commandEnvironment() {
-  return { ...process.env, CI: 'true', NO_COLOR: '1' }
+  return {
+    ...process.env,
+    CI: 'true',
+    NO_COLOR: '1',
+    pnpm_config_verify_deps_before_run: 'false',
+  }
 }
 
 function findFreePort() {

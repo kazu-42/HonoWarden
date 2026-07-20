@@ -32,13 +32,13 @@ account-key, and user-key mutations.
 
 - HonoWarden base:
   `a68ec0ccf0c5379ce228dce93f4f8eef05f6d6f3`.
-- Bitwarden server:
+- Upstream server:
   `v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0`.
-- Bitwarden Web client:
+- Upstream Web client:
   `web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1`.
-- Bitwarden browser extension:
+- Upstream browser extension:
   `browser-v2026.6.1@723c075bf8b9f45c901e56195be8e94e43ed75a2`.
-- Bitwarden CLI:
+- Upstream CLI:
   `cli-v2026.6.0@e6293ff2bc85123e9baaa998cf1543030ec5d9f0`.
 - CLI npm-build asset SHA-256:
   `31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660`.

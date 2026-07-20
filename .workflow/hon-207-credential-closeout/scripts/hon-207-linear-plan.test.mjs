@@ -71,11 +71,11 @@ test('renders exact managed markers, dependencies, and safety boundaries', () =>
 })
 
 test('rejects unknown dependencies and cycles', () => {
-  const unknown = structuredClone(hon207LinearPlan)
+  const unknown = globalThis.structuredClone(hon207LinearPlan)
   unknown.issues[1].blockers = ['MISSING']
   assert.throws(() => validatePlan(unknown), /unknown blocker/)
 
-  const cyclic = structuredClone(hon207LinearPlan)
+  const cyclic = globalThis.structuredClone(hon207LinearPlan)
   cyclic.issues[0].blockers = ['CLOSE-1']
   assert.throws(() => validatePlan(cyclic), /dependency cycle/)
 })
