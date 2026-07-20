@@ -1,6 +1,7 @@
 # Official Client Credential Harness
 
-Status: local harness verified for HON-219 on 2026-07-20.
+Status: local harness verification passed for HON-219 on 2026-07-20;
+exact-head review is pending.
 
 ## Scope
 
@@ -93,13 +94,16 @@ The passthrough grammar is fail-closed:
 - `login` requires one `@example.invalid` address and
   `--passwordenv BW_PASSWORD`; only `--raw` and `--nointeraction` are optional.
 - `unlock` requires `--passwordenv BW_PASSWORD`, except for exact `--check`.
-- `get` accepts only `get item fixture-<id>`.
+- `get` accepts only `get item fixture-<id>` or a canonical item UUID.
 - `list` accepts only `list items`.
 - `sync` accepts no option, `--force`, or `--last`.
 
 Positional passwords, attachment export, password files, API keys, one-time
 codes, sessions, and all other option shapes are rejected before a command
 packet is built, so rejected values cannot appear in plan output.
+The generated execution command preserves the packet's canonical `--at` value
+and any explicit `--timeout-ms` value, so executing a reviewed packet cannot
+silently change its timestamp or timeout bound.
 
 Read status or remove all local material:
 
@@ -124,15 +128,24 @@ pnpm client:official-harness -- cleanup \
 - Synthetic passwords, plaintext, raw keys, wrapped keys, and CLI output remain
   in ignored files. The command packet emits only statuses, byte counts,
   versions, labels, and SHA-256 digests.
-- CLI arguments use the command-specific grammar above. Only `BW_PASSWORD` and
-  `BW_SESSION` pass from the caller environment; all other `BW_*` variables are
-  dropped and required values are never echoed.
+- CLI arguments use the command-specific grammar above. Ambient `BW_PASSWORD`
+  and `BW_SESSION` are always dropped. Explicit
+  `HONOWARDEN_SYNTHETIC_BW_PASSWORD` and
+  `HONOWARDEN_SYNTHETIC_BW_SESSION` inputs are mapped to the child-only
+  `BW_PASSWORD` and `BW_SESSION` names; the prefixed names and all other
+  `BW_*` variables are not forwarded. `BW_NOINTERACTION=true` is always set.
 - `HOME`, `TMPDIR`, and the official CLI app-data environment variable point
-  inside the isolated harness. The wrapper configures the official CLI to an
-  origin-only loopback URL and does not allow a passthrough `config` command.
+  inside the isolated harness. Before each command, the wrapper reads the
+  official CLI's current server. It skips the setter when the requested
+  loopback origin already matches, updates only when needed, and fails closed
+  if the official CLI refuses an update. A passthrough `config` command is not
+  allowed.
 - Each command gets its own process group. A timeout sends `SIGTERM` to that
   group and escalates to `SIGKILL` after the grace period even when the group
-  leader exits first; stdout and stderr stay captured.
+  leader exits first; stdout and stderr stay captured. Parent `SIGINT` and
+  `SIGTERM` follow the same bounded cleanup path before the original signal is
+  propagated. All four detached local credential lifecycle harnesses use the same
+  idempotent signal-cleanup contract for their detached Wrangler groups.
 - Browser evidence, when needed by a later packet, uses Chrome for Testing and
   `pnpm client:browser-profile`. Normal Brave, Chrome, and incognito profiles
   remain out of bounds.
@@ -170,6 +183,7 @@ The 2026-07-20 local run verified:
 - zero stdout and stderr bytes from both crypto runs;
 - native CLI `--version` exit 0 with captured output and zero stderr bytes;
 - timeout process-group cleanup, including a TERM-resistant descendant;
+- parent-signal process-group cleanup before signal propagation;
 - pre-plan secret rejection, nested symlink rejection, and runtime-tamper
   coverage.
 

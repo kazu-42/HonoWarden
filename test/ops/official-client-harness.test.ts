@@ -1,5 +1,6 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { once } from 'node:events'
 import { readFileSync } from 'node:fs'
 import {
   access,
@@ -33,6 +34,8 @@ describe('pinned official-client harness', () => {
       root,
       '--at',
       '2026-07-20T06:00:00.000Z',
+      '--timeout-ms',
+      '12345',
     ])
     const packet = JSON.parse(result.stdout)
 
@@ -94,6 +97,8 @@ describe('pinned official-client harness', () => {
       },
     })
     expect(packet.next.command).toContain(`--confirm ${confirmation}`)
+    expect(packet.next.command).toContain('--at 2026-07-20T06:00:00.000Z')
+    expect(packet.next.command).toContain('--timeout-ms 12345')
     await expect(access(join(repoRoot, root))).rejects.toThrow()
   })
 
@@ -144,7 +149,9 @@ describe('pinned official-client harness', () => {
     ).toThrow('official CLI command is not allowed by the harness')
     expect(() =>
       validateOfficialCliArgs(['unlock', '--password', 'secret']),
-    ).toThrow('pass official CLI secrets through BW_* environment variables')
+    ).toThrow(
+      'pass official CLI secrets through HONOWARDEN_SYNTHETIC_BW_* environment variables',
+    )
     for (const unsafeArgs of [
       ['login', 'fixture@example.invalid', 'synthetic-positional-password'],
       ['unlock', 'synthetic-positional-password'],
@@ -167,6 +174,13 @@ describe('pinned official-client harness', () => {
     expect(() =>
       validateOfficialCliArgs(['get', 'item', 'fixture-item-id']),
     ).not.toThrow()
+    expect(() =>
+      validateOfficialCliArgs([
+        'get',
+        'item',
+        '11111111-2222-4333-8444-555555555555',
+      ]),
+    ).not.toThrow()
     expect(validateLoopbackOrigin('http://127.0.0.1:8787')).toBe(
       'http://127.0.0.1:8787',
     )
@@ -182,6 +196,55 @@ describe('pinned official-client harness', () => {
     expect(() =>
       validateLoopbackOrigin('http://user:secret@127.0.0.1:8787'),
     ).toThrow('--origin must be an origin-only loopback URL')
+  })
+
+  it('reads the configured CLI server before deciding whether to update it', async () => {
+    const { requiresOfficialCliServerUpdate } = await harnessModule
+
+    expect(
+      requiresOfficialCliServerUpdate(
+        'http://127.0.0.1:8787\n',
+        'http://127.0.0.1:8787',
+      ),
+    ).toBe(false)
+    expect(
+      requiresOfficialCliServerUpdate(
+        'https://vault.example.test',
+        'http://127.0.0.1:8787',
+      ),
+    ).toBe(true)
+    expect(requiresOfficialCliServerUpdate('', 'http://127.0.0.1:8787')).toBe(
+      true,
+    )
+    expect(() =>
+      requiresOfficialCliServerUpdate(
+        'not-a-server-origin',
+        'http://127.0.0.1:8787',
+      ),
+    ).toThrow('official CLI returned an invalid server configuration')
+  })
+
+  it('maps only explicitly synthetic upstream credentials into the client', async () => {
+    const { isolatedClientEnvironment, resolveHarnessRoot } =
+      await harnessModule
+    const root = resolveHarnessRoot(ignoredRoot('environment'))
+    const environment = isolatedClientEnvironment(root, {
+      PATH: '/usr/bin:/bin',
+      BW_PASSWORD: 'ambient-real-password',
+      BW_SESSION: 'ambient-real-session',
+      HONOWARDEN_SYNTHETIC_BW_PASSWORD: 'synthetic-password',
+      HONOWARDEN_SYNTHETIC_BW_SESSION: 'synthetic-session',
+    })
+
+    expect(environment).toMatchObject({
+      PATH: '/usr/bin:/bin',
+      BW_NOINTERACTION: 'true',
+      BW_PASSWORD: 'synthetic-password',
+      BW_SESSION: 'synthetic-session',
+    })
+    expect(environment).not.toHaveProperty('HONOWARDEN_SYNTHETIC_BW_PASSWORD')
+    expect(environment).not.toHaveProperty('HONOWARDEN_SYNTHETIC_BW_SESSION')
+    expect(JSON.stringify(environment)).not.toContain('ambient-real')
   })
 
   it('rejects secret-bearing CLI plans without echoing the secret', async () => {
@@ -550,6 +613,104 @@ wait
     if (cleanupError) throw cleanupError
   })
 
+  it('reaps a detached child before propagating parent termination', async () => {
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-parent-signal-${crypto.randomUUID()}`,
+    )
+    const output = join(root, 'output')
+    const childPidPath = join(root, 'child.pid')
+    const command = join(root, 'wait.sh')
+    const parentScript = join(root, 'parent.mjs')
+    let parent: ReturnType<typeof spawn> | undefined
+    let childPid: number | undefined
+    await mkdir(output, { recursive: true, mode: 0o700 })
+    await writeFile(
+      command,
+      `#!/bin/sh
+printf '%s' "$$" > ${shellQuote(childPidPath)}
+trap '' TERM
+while :; do sleep 1; done
+`,
+      { mode: 0o700 },
+    )
+    await chmod(command, 0o700)
+    await writeFile(
+      parentScript,
+      `import { runCapturedProcess } from ${JSON.stringify(pathToFileURL(script).href)}
+await runCapturedProcess(${JSON.stringify(command)}, [], {
+  cwd: ${JSON.stringify(root)},
+  env: process.env,
+  outputDirectory: ${JSON.stringify(output)},
+  timeoutMs: 300000,
+  label: 'parent-signal',
+})
+`,
+      { mode: 0o600 },
+    )
+
+    let testError: unknown
+    let cleanupError: unknown
+    try {
+      parent = spawn(process.execPath, [parentScript], {
+        cwd: repoRoot,
+        stdio: 'ignore',
+      })
+      await waitForFile(childPidPath)
+      childPid = Number(await readFile(childPidPath, 'utf8'))
+      process.kill(parent.pid!, 'SIGTERM')
+      const [exitCode, signal] = (await once(parent, 'exit')) as [
+        number | null,
+        NodeJS.Signals | null,
+      ]
+
+      expect(exitCode).toBeNull()
+      expect(signal).toBe('SIGTERM')
+      await expectProcessGone(childPid)
+    } catch (error) {
+      testError = error
+    }
+    if (parent?.pid && parent.exitCode === null && parent.signalCode === null) {
+      try {
+        process.kill(parent.pid, 'SIGKILL')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+          cleanupError = error
+        }
+      }
+    }
+    if (childPid) {
+      try {
+        process.kill(-childPid, 'SIGKILL')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+          cleanupError = error
+        }
+      }
+    }
+    try {
+      await rm(root, { recursive: true, force: true })
+    } catch (error) {
+      cleanupError ??= error
+    }
+    if (testError) throw testError
+    if (cleanupError) throw cleanupError
+  }, 15_000)
+
+  it('installs bounded signal cleanup in detached lifecycle harnesses', () => {
+    for (const path of [
+      'scripts/honowarden-account-key-lifecycle.mjs',
+      'scripts/honowarden-kdf-change-lifecycle.mjs',
+      'scripts/honowarden-password-change-lifecycle.mjs',
+      'scripts/honowarden-user-key-rotation-lifecycle.mjs',
+    ]) {
+      const source = readRepoFile(path)
+      expect(source).toContain('createIdempotentCleanup')
+      expect(source).toContain('installSignalCleanup')
+    }
+  })
+
   it('documents the evidence levels, recovery boundary, and package command', () => {
     const packageJson = readRepoFile('package.json')
     const runbook = readRepoFile(
@@ -593,6 +754,18 @@ async function expectProcessGone(pid: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   throw new Error(`timed out process ${pid} was still running`)
+}
+
+async function waitForFile(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      await access(path)
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+  }
+  throw new Error(`timed out waiting for ${path}`)
 }
 
 function shellQuote(value: string): string {

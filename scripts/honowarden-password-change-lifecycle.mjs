@@ -8,6 +8,11 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
+import {
+  createIdempotentCleanup,
+  installSignalCleanup,
+} from './honowarden-signal-cleanup.mjs'
+
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
 const databaseName = 'honowarden'
 const email = 'hon203-lifecycle@example.test'
@@ -39,6 +44,17 @@ async function main(args = process.argv.slice(2)) {
     ? await ensureDirectory(options.persistTo)
     : await mkdtemp(join(tmpdir(), 'honowarden-hon203-'))
   let worker = null
+  const cleanup = createIdempotentCleanup(async () => {
+    const activeWorker = worker
+    worker = null
+    if (activeWorker) {
+      await stopWorker(activeWorker)
+    }
+    if (managedState && !options.keepState) {
+      await rm(persistTo, { recursive: true, force: true })
+    }
+  })
+  const removeSignalCleanup = installSignalCleanup(cleanup)
 
   try {
     await runWrangler([
@@ -241,12 +257,8 @@ async function main(args = process.argv.slice(2)) {
     }
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
   } finally {
-    if (worker) {
-      await stopWorker(worker)
-    }
-    if (managedState && !options.keepState) {
-      await rm(persistTo, { recursive: true, force: true })
-    }
+    removeSignalCleanup()
+    await cleanup()
   }
 }
 

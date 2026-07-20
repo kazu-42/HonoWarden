@@ -1,6 +1,6 @@
 # CLIENT-1: Pinned Official-Client Harness
 
-Status: passed
+Status: verification passed; exact-head review pending
 
 Linear issue: HON-219
 
@@ -21,10 +21,15 @@ Linear issue: HON-219
   loopback-only origin, command-specific synthetic-only argument grammar,
   pre-plan secret rejection, output capture, timeout, and process-group
   cleanup.
-- Applied the same process-group ownership invariant to the existing HON-203,
-  HON-204, and HON-205 local lifecycle harnesses. Nested pnpm invocations
+- Added read-before-write CLI server configuration. A matching origin skips the
+  setter so login, unlock, sync, get, lock, status, and logout can share one
+  logged-in profile.
+- Dropped ambient `BW_PASSWORD` and `BW_SESSION`; only explicit
+  `HONOWARDEN_SYNTHETIC_BW_*` inputs are mapped to child-only `BW_*` names.
+- Applied the same process-group ownership invariant to the existing HON-203
+  through HON-206 local lifecycle harnesses. Nested pnpm invocations
   cannot mutate dependencies, and Wrangler/workerd descendants are reaped
-  before a harness returns.
+  before a harness returns or propagates `SIGINT`/`SIGTERM`.
 - Added recursive mode, realpath, exact-file-set, and symlink enforcement for
   the ignored root, all runtime files, and all mutable trees.
 - Added the operator runbook at
@@ -78,11 +83,14 @@ The final redacted response digests were:
 
 ## Native CLI Readback
 
-The unmodified native CLI ran `--version` after the wrapper configured
-`http://127.0.0.1:8787`:
+The unmodified native CLI ran `--version` after the wrapper read and confirmed
+the existing `http://127.0.0.1:8787` configuration:
 
-- server configuration exit: 0
-- server configuration stderr: 0 bytes
+- server configuration read exit: 0
+- server configuration read stdout: 21 bytes, SHA-256
+  `b1a61bf29a38ff3642af0dad0785e1677a58232f2e9bb85db3f7a80d8bf1a387`
+- server configuration read stderr: 0 bytes
+- server configuration write: skipped because the exact origin matched
 - command exit: 0
 - command stdout: 9 bytes, SHA-256
   `83b9a79200e7f9fbfb630cd027974ee46c5ffa79b5ba1190f09d08f125ee716b`
@@ -115,11 +123,18 @@ Chrome for Testing, or incognito profile was attached.
    execution, validates CLI arguments before packet construction, recursively
    validates mutable trees, and keeps escalation alive until the entire process
    group exits.
+9. The second exact-commit review found three defects: unconditional server
+   writes blocked post-login commands, parent termination could orphan detached
+   groups, and replay commands dropped explicit timestamp/timeout values.
+10. Six failing checks reproduced those defects plus ambient credential
+    forwarding and canonical item-UUID rejection. Remediation added
+    read-before-write configuration, idempotent signal cleanup, deterministic
+    replay options, explicit synthetic credential mapping, and UUID support.
 
 ## Focused Verification
 
 ```text
-vitest test/ops/official-client-harness.test.ts: 14 passed
+vitest test/ops/official-client-harness.test.ts: 18 passed
 eslint focused files: passed
 prettier focused files: passed
 git diff --check: passed
@@ -129,7 +144,7 @@ official crypto Argon2id: passed
 native CLI loopback --version: passed
 harness status readback: valid
 legacy lifecycle cleanup: 7 passed, zero residual processes
-full suite: 97 files, 1181 passed, 0 failed, 0 skipped
+full suite: 97 files, 1185 passed, 0 failed, 0 skipped
 TypeScript: passed
 ESLint: passed
 Prettier: passed

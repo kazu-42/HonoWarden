@@ -28,6 +28,8 @@ import process from 'node:process'
 import { clearTimeout, setTimeout } from 'node:timers'
 import { fileURLToPath } from 'node:url'
 
+import { installSignalCleanup } from './honowarden-signal-cleanup.mjs'
+
 const schemaVersion = 1
 const confirmation = 'official-client-harness'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -218,10 +220,15 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 function buildPacket(action, options, root) {
+  const generatedAt = parseTimestamp(options.at)
+  const timeoutMs =
+    options.timeoutMs === undefined
+      ? undefined
+      : parseTimeout(options.timeoutMs, 60_000)
   return {
     schemaVersion,
     action,
-    generatedAt: parseTimestamp(options.at),
+    generatedAt,
     executed: false,
     status: 'planned',
     root: root.relative,
@@ -248,7 +255,13 @@ function buildPacket(action, options, root) {
     readback: null,
     next: {
       confirmation,
-      command: buildExecutionCommand(action, options, root),
+      command: buildExecutionCommand(
+        action,
+        options,
+        root,
+        generatedAt,
+        timeoutMs,
+      ),
     },
     safety: {
       officialImplementation: true,
@@ -569,19 +582,39 @@ async function runOfficialCli(root, options) {
 
   const environment = isolatedClientEnvironment(root)
   const nativeCli = join(root.absolute, 'native', 'bw')
-  const configRun = await runCapturedProcess(
-    nativeCli,
-    ['config', 'server', origin],
-    {
-      cwd: root.absolute,
-      env: environment,
-      outputDirectory: join(root.absolute, 'output'),
-      timeoutMs: parseTimeout(options.timeoutMs, 30_000),
-      label: `cli-config-${randomUUID()}`,
-    },
+  const outputDirectory = join(root.absolute, 'output')
+  const configRead = await runCapturedProcess(nativeCli, ['config', 'server'], {
+    cwd: root.absolute,
+    env: environment,
+    outputDirectory,
+    timeoutMs: parseTimeout(options.timeoutMs, 30_000),
+    label: `cli-config-read-${randomUUID()}`,
+  })
+  if (configRead.exitCode !== 0 || configRead.timedOut) {
+    throw new Error('official CLI server configuration read failed')
+  }
+  const configuredServer = await readCapturedFile(
+    outputDirectory,
+    configRead.stdout,
   )
-  if (configRun.exitCode !== 0 || configRun.timedOut) {
-    throw new Error('official CLI local-server configuration failed')
+  let configWrite = null
+  if (
+    requiresOfficialCliServerUpdate(configuredServer.toString('utf8'), origin)
+  ) {
+    configWrite = await runCapturedProcess(
+      nativeCli,
+      ['config', 'server', origin],
+      {
+        cwd: root.absolute,
+        env: environment,
+        outputDirectory,
+        timeoutMs: parseTimeout(options.timeoutMs, 30_000),
+        label: `cli-config-write-${randomUUID()}`,
+      },
+    )
+    if (configWrite.exitCode !== 0 || configWrite.timedOut) {
+      throw new Error('official CLI local-server configuration failed')
+    }
   }
 
   const commandStatus = await readHarnessStatus(root)
@@ -591,14 +624,18 @@ async function runOfficialCli(root, options) {
   const commandRun = await runCapturedProcess(nativeCli, options.passthrough, {
     cwd: root.absolute,
     env: environment,
-    outputDirectory: join(root.absolute, 'output'),
+    outputDirectory,
     timeoutMs: parseTimeout(options.timeoutMs, 60_000),
     label: `cli-command-${randomUUID()}`,
   })
   return {
     origin,
     serverConfigured: true,
-    configuration: configRun,
+    serverConfigurationChanged: configWrite !== null,
+    configuration: {
+      read: configRead,
+      write: configWrite,
+    },
     ...commandRun,
   }
 }
@@ -915,6 +952,7 @@ export async function runCapturedProcess(
   }
 
   let timeoutTimer = null
+  let removeSignalCleanup = () => undefined
   let result
   try {
     const child = spawn(command, args, {
@@ -928,6 +966,10 @@ export async function runCapturedProcess(
       child.once('close', (exitCode, signal) => {
         resolveRun({ exitCode, signal })
       })
+    })
+    removeSignalCleanup = installSignalCleanup(async () => {
+      await terminateProcessGroup(child.pid)
+      await closePromise.catch(() => undefined)
     })
     const timeoutPromise = new Promise((resolveTimeout) => {
       timeoutTimer = setTimeout(() => {
@@ -950,6 +992,7 @@ export async function runCapturedProcess(
       }
     }
   } finally {
+    removeSignalCleanup()
     if (timeoutTimer) clearTimeout(timeoutTimer)
     await Promise.all([stdoutHandle.close(), stderrHandle.close()])
   }
@@ -1014,6 +1057,14 @@ async function capturedFileSummary(path) {
     bytes: bytes.length,
     sha256: sha256(bytes),
   }
+}
+
+async function readCapturedFile(outputDirectory, summary) {
+  const bytes = await readFile(join(outputDirectory, summary.file))
+  if (bytes.length !== summary.bytes || sha256(bytes) !== summary.sha256) {
+    throw new Error('captured process output changed before readback')
+  }
+  return bytes
 }
 
 export function resolveHarnessRoot(value) {
@@ -1356,7 +1407,10 @@ function requireSupportedNativePlatform() {
   }
 }
 
-function isolatedClientEnvironment(root) {
+export function isolatedClientEnvironment(
+  root,
+  sourceEnvironment = process.env,
+) {
   const environment = {}
   for (const key of [
     'LANG',
@@ -1365,13 +1419,19 @@ function isolatedClientEnvironment(root) {
     'PATH',
     'SSL_CERT_FILE',
   ]) {
-    if (process.env[key] !== undefined) environment[key] = process.env[key]
-  }
-  for (const key of ['BW_PASSWORD', 'BW_SESSION']) {
-    if (process.env[key] !== undefined) {
-      environment[key] = process.env[key]
+    if (sourceEnvironment[key] !== undefined) {
+      environment[key] = sourceEnvironment[key]
     }
   }
+  for (const [source, target] of [
+    ['HONOWARDEN_SYNTHETIC_BW_PASSWORD', 'BW_PASSWORD'],
+    ['HONOWARDEN_SYNTHETIC_BW_SESSION', 'BW_SESSION'],
+  ]) {
+    if (sourceEnvironment[source] !== undefined) {
+      environment[target] = sourceEnvironment[source]
+    }
+  }
+  environment.BW_NOINTERACTION = 'true'
   environment.HOME = join(root.absolute, 'home')
   environment.TMPDIR = join(root.absolute, 'tmp')
   environment[cliAppDataEnvironment] = join(root.absolute, 'profile')
@@ -1421,7 +1481,7 @@ export function validateOfficialCliArgs(args) {
     const flag = arg.split('=', 1)[0].toLowerCase()
     if (secretFlags.has(flag)) {
       throw new Error(
-        'pass official CLI secrets through BW_* environment variables',
+        'pass official CLI secrets through HONOWARDEN_SYNTHETIC_BW_* environment variables',
       )
     }
   }
@@ -1447,7 +1507,10 @@ export function validateOfficialCliArgs(args) {
       valid =
         args.length === 3 &&
         args[1] === 'item' &&
-        /^fixture-[A-Za-z0-9._:-]{1,192}$/.test(args[2])
+        (/^fixture-[A-Za-z0-9._:-]{1,192}$/.test(args[2]) ||
+          /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
+            args[2],
+          ))
       break
     case 'list':
       valid = args.length === 2 && args[1] === 'items'
@@ -1521,6 +1584,30 @@ export function validateLoopbackOrigin(value) {
   return origin.origin
 }
 
+export function requiresOfficialCliServerUpdate(currentValue, requestedValue) {
+  const requestedOrigin = validateLoopbackOrigin(requestedValue)
+  const current = currentValue.trim()
+  if (!current) return true
+
+  let currentOrigin
+  try {
+    currentOrigin = new globalThis.URL(current)
+  } catch {
+    throw new Error('official CLI returned an invalid server configuration')
+  }
+  if (
+    !['http:', 'https:'].includes(currentOrigin.protocol) ||
+    currentOrigin.username ||
+    currentOrigin.password ||
+    currentOrigin.pathname !== '/' ||
+    currentOrigin.search ||
+    currentOrigin.hash
+  ) {
+    throw new Error('official CLI returned an invalid server configuration')
+  }
+  return currentOrigin.origin !== requestedOrigin
+}
+
 async function clearClipboard() {
   if (process.platform !== 'darwin') return
   await new Promise((resolveClipboard, rejectClipboard) => {
@@ -1567,13 +1654,16 @@ function parseOptions(args) {
   return options
 }
 
-function buildExecutionCommand(action, options, root) {
+function buildExecutionCommand(action, options, root, generatedAt, timeoutMs) {
+  const timestamp = ` --at ${shellQuote(generatedAt)}`
+  const timeout =
+    timeoutMs === undefined ? '' : ` --timeout-ms ${String(timeoutMs)}`
   const origin = options.origin ? ` --origin ${shellQuote(options.origin)}` : ''
   const passthrough =
     options.passthrough.length > 0
       ? ` -- ${options.passthrough.map(shellQuote).join(' ')}`
       : ''
-  return `pnpm client:official-harness -- ${action} --root ${shellQuote(root.relative)}${origin} --execute --confirm ${confirmation}${passthrough}`
+  return `pnpm client:official-harness -- ${action} --root ${shellQuote(root.relative)}${timestamp}${timeout}${origin} --execute --confirm ${confirmation}${passthrough}`
 }
 
 function requireConfirmation(options) {
