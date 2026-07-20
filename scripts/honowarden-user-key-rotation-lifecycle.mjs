@@ -514,8 +514,11 @@ async function main(args = process.argv.slice(2)) {
     }
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
   } finally {
-    removeSignalCleanup()
-    await cleanup()
+    try {
+      await cleanup()
+    } finally {
+      removeSignalCleanup()
+    }
   }
 }
 

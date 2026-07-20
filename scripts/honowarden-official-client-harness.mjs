@@ -45,6 +45,18 @@ const supportedActions = new Set([
 ])
 const upstreamCliNpmAssetName = `${['bit', 'warden'].join('')}-cli-2026.6.0-npm-build.zip`
 const cliAppDataEnvironment = ['BIT', 'WARDENCLI_APPDATA_DIR'].join('')
+const officialCliServiceOverrides = Object.freeze([
+  'api',
+  'identity',
+  'webVault',
+  'icons',
+  'notifications',
+  'events',
+  'keyConnector',
+  'send',
+])
+const officialCliProfileConfigurationError =
+  'official CLI profile server configuration violated the loopback-only contract'
 
 export const officialClientPins = Object.freeze({
   server: Object.freeze({
@@ -207,8 +219,13 @@ async function main(argv = process.argv.slice(2)) {
   if (action === 'cli-run') {
     validateOfficialCliArgs(options.passthrough)
     validateLoopbackOrigin(options.origin)
-  } else if (options.passthrough.length > 0) {
-    throw new Error('arguments after -- are only allowed for cli-run')
+  } else {
+    if (options.origin !== undefined) {
+      throw new Error('--origin is only allowed for cli-run')
+    }
+    if (options.passthrough.length > 0) {
+      throw new Error('arguments after -- are only allowed for cli-run')
+    }
   }
   const packet = buildPacket(action, options, root)
 
@@ -621,6 +638,10 @@ async function runOfficialCli(root, options) {
   if (!commandStatus.valid) {
     throw new Error('prepared harness changed before official CLI execution')
   }
+  const profileEnvironment = await readOfficialCliProfileEnvironment(
+    root,
+    origin,
+  )
   const commandRun = await runCapturedProcess(nativeCli, options.passthrough, {
     cwd: root.absolute,
     env: environment,
@@ -635,6 +656,7 @@ async function runOfficialCli(root, options) {
     configuration: {
       read: configRead,
       write: configWrite,
+      effectiveEnvironment: profileEnvironment,
     },
     ...commandRun,
   }
@@ -1606,6 +1628,44 @@ export function requiresOfficialCliServerUpdate(currentValue, requestedValue) {
     throw new Error('official CLI returned an invalid server configuration')
   }
   return currentOrigin.origin !== requestedOrigin
+}
+
+export function validateOfficialCliProfileEnvironment(profile, requestedValue) {
+  const requestedOrigin = validateLoopbackOrigin(requestedValue)
+  const urls = profile?.global_environment_environment?.urls
+  if (
+    !urls ||
+    Array.isArray(urls) ||
+    urls.base !== requestedOrigin ||
+    officialCliServiceOverrides.some((key) => urls[key] !== null)
+  ) {
+    throw new Error(officialCliProfileConfigurationError)
+  }
+  return {
+    baseMatches: true,
+    customEndpoints: false,
+  }
+}
+
+async function readOfficialCliProfileEnvironment(root, requestedOrigin) {
+  const profilePath = join(root.absolute, 'profile', 'data.json')
+  try {
+    await rejectSymlink(profilePath, officialCliProfileConfigurationError)
+    const info = await lstat(profilePath)
+    if (!info.isFile() || (info.mode & 0o777) !== 0o600) {
+      throw new Error(officialCliProfileConfigurationError)
+    }
+    const profile = JSON.parse(await readFile(profilePath, 'utf8'))
+    return validateOfficialCliProfileEnvironment(profile, requestedOrigin)
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === officialCliProfileConfigurationError
+    ) {
+      throw error
+    }
+    throw new Error(officialCliProfileConfigurationError, { cause: error })
+  }
 }
 
 async function clearClipboard() {

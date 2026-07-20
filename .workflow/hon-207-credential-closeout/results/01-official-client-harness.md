@@ -23,7 +23,9 @@ Linear issue: HON-219
   cleanup.
 - Added read-before-write CLI server configuration. A matching origin skips the
   setter so login, unlock, sync, get, lock, status, and logout can share one
-  logged-in profile.
+  logged-in profile. The pinned profile's effective URL map must also retain
+  the exact loopback base with every service override unset before passthrough
+  execution.
 - Dropped ambient `BW_PASSWORD` and `BW_SESSION`; only explicit
   `HONOWARDEN_SYNTHETIC_BW_*` inputs are mapped to child-only `BW_*` names.
 - Applied the same process-group ownership invariant to the existing HON-203
@@ -91,6 +93,9 @@ the existing `http://127.0.0.1:8787` configuration:
   `b1a61bf29a38ff3642af0dad0785e1677a58232f2e9bb85db3f7a80d8bf1a387`
 - server configuration read stderr: 0 bytes
 - server configuration write: skipped because the exact origin matched
+- effective profile base: exact match
+- custom API, identity, Web Vault, icons, notifications, events, Key
+  Connector, and Send endpoints: all unset
 - command exit: 0
 - command stdout: 9 bytes, SHA-256
   `83b9a79200e7f9fbfb630cd027974ee46c5ffa79b5ba1190f09d08f125ee716b`
@@ -130,11 +135,19 @@ Chrome for Testing, or incognito profile was attached.
     forwarding and canonical item-UUID rejection. Remediation added
     read-before-write configuration, idempotent signal cleanup, deterministic
     replay options, explicit synthetic credential mapping, and UUID support.
+11. The third exact-commit review found three boundary defects: custom service
+    endpoints could bypass the base-origin check, non-CLI `--origin` values
+    could reach packet output, and lifecycle signal listeners were removed
+    before cleanup settled.
+12. Three red tests reproduced the defects. Remediation validates the pinned
+    profile's complete effective URL map, rejects action-inapplicable origins
+    before packet construction, and keeps signal listeners installed through
+    idempotent cleanup completion.
 
 ## Focused Verification
 
 ```text
-vitest test/ops/official-client-harness.test.ts: 18 passed
+vitest test/ops/official-client-harness.test.ts: 20 passed
 eslint focused files: passed
 prettier focused files: passed
 git diff --check: passed
@@ -144,7 +157,7 @@ official crypto Argon2id: passed
 native CLI loopback --version: passed
 harness status readback: valid
 legacy lifecycle cleanup: 7 passed, zero residual processes
-full suite: 97 files, 1185 passed, 0 failed, 0 skipped
+full suite: 97 files, 1187 passed, 0 failed, 0 skipped
 TypeScript: passed
 ESLint: passed
 Prettier: passed

@@ -224,6 +224,66 @@ describe('pinned official-client harness', () => {
     ).toThrow('official CLI returned an invalid server configuration')
   })
 
+  it('rejects custom service endpoints in the pinned CLI profile', async () => {
+    const { validateOfficialCliProfileEnvironment } = await harnessModule
+    const origin = 'http://127.0.0.1:8787'
+    const profile = {
+      global_environment_environment: {
+        region: 'Self-hosted',
+        urls: {
+          base: origin,
+          api: null,
+          identity: null,
+          webVault: null,
+          icons: null,
+          notifications: null,
+          events: null,
+          keyConnector: null,
+          send: null,
+        },
+      },
+    }
+
+    expect(validateOfficialCliProfileEnvironment(profile, origin)).toEqual({
+      baseMatches: true,
+      customEndpoints: false,
+    })
+    expect(() =>
+      validateOfficialCliProfileEnvironment(
+        {
+          ...profile,
+          global_environment_environment: {
+            ...profile.global_environment_environment,
+            urls: {
+              ...profile.global_environment_environment.urls,
+              api: 'https://external.example.test/api',
+            },
+          },
+        },
+        origin,
+      ),
+    ).toThrow(
+      'official CLI profile server configuration violated the loopback-only contract',
+    )
+    expect(() =>
+      validateOfficialCliProfileEnvironment(
+        {
+          ...profile,
+          global_environment_environment: {
+            ...profile.global_environment_environment,
+            urls: {
+              ...profile.global_environment_environment.urls,
+              base: 'https://external.example.test',
+            },
+          },
+        },
+        origin,
+      ),
+    ).toThrow(
+      'official CLI profile server configuration violated the loopback-only contract',
+    )
+  })
+
   it('maps only explicitly synthetic upstream credentials into the client', async () => {
     const { isolatedClientEnvironment, resolveHarnessRoot } =
       await harnessModule
@@ -266,6 +326,26 @@ describe('pinned official-client harness', () => {
     }
 
     expect(rejected).toBeDefined()
+    expect(rejected?.stdout ?? '').not.toContain(secret)
+    expect(rejected?.stderr ?? '').not.toContain(secret)
+  })
+
+  it('rejects origins for non-CLI actions without echoing the origin', async () => {
+    const secret = 'synthetic-origin-secret-that-must-not-be-printed'
+    let rejected: (Error & { stdout?: string; stderr?: string }) | undefined
+
+    try {
+      await run([
+        'plan',
+        '--origin',
+        `http://user:${secret}@external.example.test/path?token=${secret}`,
+      ])
+    } catch (error) {
+      rejected = error as Error & { stdout?: string; stderr?: string }
+    }
+
+    expect(rejected).toBeDefined()
+    expect(rejected?.stderr).toContain('--origin is only allowed for cli-run')
     expect(rejected?.stdout ?? '').not.toContain(secret)
     expect(rejected?.stderr ?? '').not.toContain(secret)
   })
@@ -708,6 +788,9 @@ await runCapturedProcess(${JSON.stringify(command)}, [], {
       const source = readRepoFile(path)
       expect(source).toContain('createIdempotentCleanup')
       expect(source).toContain('installSignalCleanup')
+      expect(source).toMatch(
+        /} finally {\s+try {\s+await cleanup\(\)\s+} finally {\s+removeSignalCleanup\(\)/,
+      )
     }
   })
 

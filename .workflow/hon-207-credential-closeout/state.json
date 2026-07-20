@@ -53,14 +53,14 @@
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
       "officialCrypto": "passed_pbkdf2_and_argon2id",
-      "nativeCli": "passed_loopback_server_preflight_and_version_capture",
-      "focused": "passed_18_tests",
-      "fullSuite": "passed_1185_tests",
+      "nativeCli": "passed_effective_loopback_endpoint_preflight_and_version_capture",
+      "focused": "passed_20_tests",
+      "fullSuite": "passed_1187_tests",
       "legacyLifecycleProcessCleanup": "passed_7_tests_zero_residual_processes",
       "qualityGates": "passed_typecheck_eslint_prettier_brand_scan",
       "secretOutput": "passed_zero_crypto_stdout_stderr",
       "processCleanup": "passed_timeout_and_parent_signal_group_termination",
-      "reviewRemediation": "passed_11_review_and_boundary_reproductions"
+      "reviewRemediation": "passed_14_review_and_boundary_reproductions"
     },
     "checks": [
       "linear_plan_unit",

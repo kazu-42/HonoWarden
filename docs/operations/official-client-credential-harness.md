@@ -100,7 +100,9 @@ The passthrough grammar is fail-closed:
 
 Positional passwords, attachment export, password files, API keys, one-time
 codes, sessions, and all other option shapes are rejected before a command
-packet is built, so rejected values cannot appear in plan output.
+packet is built, so rejected values cannot appear in plan output. `--origin`
+is accepted only for `cli-run`; action-inapplicable origins are rejected before
+packet rendering.
 The generated execution command preserves the packet's canonical `--at` value
 and any explicit `--timeout-ms` value, so executing a reviewed packet cannot
 silently change its timestamp or timeout bound.
@@ -138,14 +140,18 @@ pnpm client:official-harness -- cleanup \
   inside the isolated harness. Before each command, the wrapper reads the
   official CLI's current server. It skips the setter when the requested
   loopback origin already matches, updates only when needed, and fails closed
-  if the official CLI refuses an update. A passthrough `config` command is not
-  allowed.
+  if the official CLI refuses an update. It then reads the pinned profile's
+  effective URL map and requires the exact loopback base plus unset API,
+  identity, Web Vault, icons, notifications, events, Key Connector, and Send
+  overrides before executing the passthrough command. A passthrough `config`
+  command is not allowed.
 - Each command gets its own process group. A timeout sends `SIGTERM` to that
   group and escalates to `SIGKILL` after the grace period even when the group
   leader exits first; stdout and stderr stay captured. Parent `SIGINT` and
   `SIGTERM` follow the same bounded cleanup path before the original signal is
   propagated. All four detached local credential lifecycle harnesses use the same
-  idempotent signal-cleanup contract for their detached Wrangler groups.
+  idempotent signal-cleanup contract for their detached Wrangler groups and
+  retain their signal listeners until cleanup settles.
 - Browser evidence, when needed by a later packet, uses Chrome for Testing and
   `pnpm client:browser-profile`. Normal Brave, Chrome, and incognito profiles
   remain out of bounds.
@@ -182,8 +188,10 @@ The 2026-07-20 local run verified:
 - official RSA keypair generation and private-key unwrap;
 - zero stdout and stderr bytes from both crypto runs;
 - native CLI `--version` exit 0 with captured output and zero stderr bytes;
+- exact loopback profile base with all custom service endpoints unset;
 - timeout process-group cleanup, including a TERM-resistant descendant;
 - parent-signal process-group cleanup before signal propagation;
+- lifecycle signal-listener retention through cleanup completion;
 - pre-plan secret rejection, nested symlink rejection, and runtime-tamper
   coverage.
 
