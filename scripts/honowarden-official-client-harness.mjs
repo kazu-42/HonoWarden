@@ -53,6 +53,7 @@ const officialCliServiceOverrides = Object.freeze([
   'notifications',
   'events',
   'keyConnector',
+  'scim',
   'send',
 ])
 const officialCliProfileConfigurationError =
@@ -1632,15 +1633,38 @@ export function requiresOfficialCliServerUpdate(currentValue, requestedValue) {
 
 export function validateOfficialCliProfileEnvironment(profile, requestedValue) {
   const requestedOrigin = validateLoopbackOrigin(requestedValue)
-  const urls = profile?.global_environment_environment?.urls
+  if (!isObjectRecord(profile)) {
+    throw new Error(officialCliProfileConfigurationError)
+  }
+
+  const environments = [
+    profile.global_environment_environment,
+    ...Object.entries(profile)
+      .filter(
+        ([key]) =>
+          key.startsWith('user_') && key.endsWith('_environment_environment'),
+      )
+      .map(([, environment]) => environment),
+  ]
   if (
-    !urls ||
-    Array.isArray(urls) ||
-    urls.base !== requestedOrigin ||
-    officialCliServiceOverrides.some((key) => urls[key] !== null)
+    environments.some((environment) => {
+      if (
+        !isObjectRecord(environment) ||
+        environment.region !== 'Self-hosted'
+      ) {
+        return true
+      }
+      const urls = environment.urls
+      return (
+        !isObjectRecord(urls) ||
+        urls.base !== requestedOrigin ||
+        officialCliServiceOverrides.some((key) => urls[key] != null)
+      )
+    })
   ) {
     throw new Error(officialCliProfileConfigurationError)
   }
+
   return {
     baseMatches: true,
     customEndpoints: false,
@@ -1709,7 +1733,7 @@ function parseOptions(args) {
       index += 1
       continue
     }
-    throw new Error(`Unknown option: ${arg}`)
+    throw new Error('unknown harness option')
   }
   return options
 }
@@ -1765,6 +1789,10 @@ function sha256(value) {
 
 function isSha256(value) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+}
+
+function isObjectRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 async function readMode(path) {

@@ -7,6 +7,7 @@ import {
   chmod,
   lstat,
   mkdir,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -16,7 +17,7 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
@@ -26,6 +27,21 @@ const confirmation = 'official-client-harness'
 const harnessModule = import(pathToFileURL(script).href)
 
 describe('pinned official-client harness', () => {
+  afterEach(async () => {
+    const fixtureDirectory = join(repoRoot, 'test/.tmp')
+    const entries = await readdir(fixtureDirectory)
+    await Promise.all(
+      entries
+        .filter((entry) => entry.startsWith('official-client-'))
+        .map((entry) =>
+          rm(join(fixtureDirectory, entry), {
+            recursive: true,
+            force: true,
+          }),
+        ),
+    )
+  })
+
   it('plans exact source and release pins without creating secret storage', async () => {
     const root = ignoredRoot('plan')
     const result = await run([
@@ -227,6 +243,8 @@ describe('pinned official-client harness', () => {
   it('rejects custom service endpoints in the pinned CLI profile', async () => {
     const { validateOfficialCliProfileEnvironment } = await harnessModule
     const origin = 'http://127.0.0.1:8787'
+    const userEnvironmentKey =
+      'user_11111111-2222-4333-8444-555555555555_environment_environment'
     const profile = {
       global_environment_environment: {
         region: 'Self-hosted',
@@ -239,6 +257,21 @@ describe('pinned official-client harness', () => {
           notifications: null,
           events: null,
           keyConnector: null,
+          send: null,
+        },
+      },
+      [userEnvironmentKey]: {
+        region: 'Self-hosted',
+        urls: {
+          base: origin,
+          api: null,
+          identity: null,
+          webVault: null,
+          icons: null,
+          notifications: null,
+          events: null,
+          keyConnector: null,
+          scim: null,
           send: null,
         },
       },
@@ -275,6 +308,37 @@ describe('pinned official-client harness', () => {
               ...profile.global_environment_environment.urls,
               base: 'https://external.example.test',
             },
+          },
+        },
+        origin,
+      ),
+    ).toThrow(
+      'official CLI profile server configuration violated the loopback-only contract',
+    )
+    expect(() =>
+      validateOfficialCliProfileEnvironment(
+        {
+          ...profile,
+          [userEnvironmentKey]: {
+            ...profile[userEnvironmentKey],
+            urls: {
+              ...profile[userEnvironmentKey].urls,
+              identity: 'https://external.example.test/identity',
+            },
+          },
+        },
+        origin,
+      ),
+    ).toThrow(
+      'official CLI profile server configuration violated the loopback-only contract',
+    )
+    expect(() =>
+      validateOfficialCliProfileEnvironment(
+        {
+          ...profile,
+          [userEnvironmentKey]: {
+            ...profile[userEnvironmentKey],
+            region: 'US',
           },
         },
         origin,
@@ -346,6 +410,22 @@ describe('pinned official-client harness', () => {
 
     expect(rejected).toBeDefined()
     expect(rejected?.stderr).toContain('--origin is only allowed for cli-run')
+    expect(rejected?.stdout ?? '').not.toContain(secret)
+    expect(rejected?.stderr ?? '').not.toContain(secret)
+  })
+
+  it('rejects unknown harness options without echoing their values', async () => {
+    const secret = 'synthetic-option-secret-that-must-not-be-printed'
+    let rejected: (Error & { stdout?: string; stderr?: string }) | undefined
+
+    try {
+      await run(['plan', `--password=${secret}`])
+    } catch (error) {
+      rejected = error as Error & { stdout?: string; stderr?: string }
+    }
+
+    expect(rejected).toBeDefined()
+    expect(rejected?.stderr).toContain('unknown harness option')
     expect(rejected?.stdout ?? '').not.toContain(secret)
     expect(rejected?.stderr ?? '').not.toContain(secret)
   })

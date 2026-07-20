@@ -6,6 +6,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import {
+  advanceLinearPlanVerificationStatus,
   canonicalMarker,
   executionCheckpointMarker,
   hon207LinearPlan,
@@ -14,6 +15,7 @@ import {
   summarizePlan,
   validatePlan,
 } from './hon-207-linear-plan.mjs'
+import { auditHon207BlockRelations } from './hon-207-relation-audit.mjs'
 
 const endpoint = 'https://api.linear.app/graphql'
 const mode = process.argv[2] ?? '--render'
@@ -497,49 +499,11 @@ async function verifyRelations(issueByKey) {
       relationsById.set(relation.id, relation)
     }
   }
-  const activeManagedBlocks = [...relationsById.values()].filter(
-    (relation) =>
-      relation.archivedAt === null &&
-      relation.type === 'blocks' &&
-      managedIds.has(relation.issue.id) &&
-      managedIds.has(relation.relatedIssue.id),
-  )
-  const expectedKeys = new Set(
-    expectedPairs.map((pair) => relationKey(pair.sourceId, pair.targetId)),
-  )
-  const rows = expectedPairs.map((pair) => {
-    const matches = activeManagedBlocks.filter(
-      (relation) =>
-        relation.issue.id === pair.sourceId &&
-        relation.relatedIssue.id === pair.targetId,
-    )
-    return { ...pair, count: matches.length, exact: matches.length === 1 }
+  return auditHon207BlockRelations({
+    expectedPairs,
+    relations: [...relationsById.values()],
+    managedIssueIds: managedIds,
   })
-  const unexpectedRows = activeManagedBlocks
-    .filter(
-      (relation) =>
-        !expectedKeys.has(
-          relationKey(relation.issue.id, relation.relatedIssue.id),
-        ),
-    )
-    .map((relation) => ({
-      id: relation.id,
-      blocker: relation.issue.identifier,
-      blocked: relation.relatedIssue.identifier,
-    }))
-  const errors = rows
-    .filter((row) => row.count !== 1)
-    .map((row) =>
-      row.count === 0
-        ? `${row.blocker} -> ${row.blocked}: relation missing`
-        : `${row.blocker} -> ${row.blocked}: duplicate relations`,
-    )
-  errors.push(
-    ...unexpectedRows.map(
-      (row) => `${row.blocker} -> ${row.blocked}: unexpected relation`,
-    ),
-  )
-  return { rows, unexpectedRows, errors }
 }
 
 function expectedRelationPairs(issueByKey) {
@@ -819,7 +783,9 @@ async function updateWorkflowState(issueRows) {
     }
     packet.linear = issue.identifier
   }
-  state.verification.status = 'linear_subissues_synced'
+  state.verification.status = advanceLinearPlanVerificationStatus(
+    state.verification.status,
+  )
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`)
 }
 
@@ -879,10 +845,6 @@ function requiredIssue(issueByKey, key) {
     throw new Error(`${key}: managed sub-issue is missing`)
   }
   return issue
-}
-
-function relationKey(sourceId, targetId) {
-  return `${sourceId}->${targetId}`
 }
 
 function summarizeInventory(issues) {

@@ -206,6 +206,12 @@ export function executionCheckpointMarker() {
   return parentCommentMarker
 }
 
+export function advanceLinearPlanVerificationStatus(currentStatus) {
+  return currentStatus === 'plan_authored'
+    ? 'linear_subissues_synced'
+    : currentStatus
+}
+
 export function validatePlan(plan = hon207LinearPlan) {
   const keys = new Set()
   const titles = new Set()

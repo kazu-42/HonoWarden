@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  advanceLinearPlanVerificationStatus,
   canonicalMarker,
   hon207LinearPlan,
   renderChildDescription,
@@ -9,6 +10,23 @@ import {
   summarizePlan,
   validatePlan,
 } from './hon-207-linear-plan.mjs'
+
+test('advances initial Linear sync status without downgrading later verification', () => {
+  assert.equal(
+    advanceLinearPlanVerificationStatus('plan_authored'),
+    'linear_subissues_synced',
+  )
+  assert.equal(
+    advanceLinearPlanVerificationStatus(
+      'official_client_harness_verification_passed_review_pending',
+    ),
+    'official_client_harness_verification_passed_review_pending',
+  )
+  assert.equal(
+    advanceLinearPlanVerificationStatus('future_closeout_status'),
+    'future_closeout_status',
+  )
+})
 
 test('defines five serialized packets with one active entry', () => {
   validatePlan()

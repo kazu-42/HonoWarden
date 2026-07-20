@@ -100,9 +100,10 @@ The passthrough grammar is fail-closed:
 
 Positional passwords, attachment export, password files, API keys, one-time
 codes, sessions, and all other option shapes are rejected before a command
-packet is built, so rejected values cannot appear in plan output. `--origin`
-is accepted only for `cli-run`; action-inapplicable origins are rejected before
-packet rendering.
+packet is built, so rejected values cannot appear in plan output. Unknown
+harness options use a constant error and never reflect the rejected option or
+its value. `--origin` is accepted only for `cli-run`; action-inapplicable
+origins are rejected before packet rendering.
 The generated execution command preserves the packet's canonical `--at` value
 and any explicit `--timeout-ms` value, so executing a reviewed packet cannot
 silently change its timestamp or timeout bound.
@@ -188,7 +189,8 @@ The 2026-07-20 local run verified:
 - official RSA keypair generation and private-key unwrap;
 - zero stdout and stderr bytes from both crypto runs;
 - native CLI `--version` exit 0 with captured output and zero stderr bytes;
-- exact loopback profile base with all custom service endpoints unset;
+- exact loopback profile base with all custom service endpoints unset across
+  the global and every persisted per-user environment;
 - timeout process-group cleanup, including a TERM-resistant descendant;
 - parent-signal process-group cleanup before signal propagation;
 - lifecycle signal-listener retention through cleanup completion;

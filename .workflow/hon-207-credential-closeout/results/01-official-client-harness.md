@@ -23,9 +23,9 @@ Linear issue: HON-219
   cleanup.
 - Added read-before-write CLI server configuration. A matching origin skips the
   setter so login, unlock, sync, get, lock, status, and logout can share one
-  logged-in profile. The pinned profile's effective URL map must also retain
-  the exact loopback base with every service override unset before passthrough
-  execution.
+  logged-in profile. The pinned profile's global and every persisted per-user
+  environment must remain Self-hosted, retain the exact loopback base, and
+  leave every service override unset before passthrough execution.
 - Dropped ambient `BW_PASSWORD` and `BW_SESSION`; only explicit
   `HONOWARDEN_SYNTHETIC_BW_*` inputs are mapped to child-only `BW_*` names.
 - Applied the same process-group ownership invariant to the existing HON-203
@@ -95,7 +95,7 @@ the existing `http://127.0.0.1:8787` configuration:
 - server configuration write: skipped because the exact origin matched
 - effective profile base: exact match
 - custom API, identity, Web Vault, icons, notifications, events, Key
-  Connector, and Send endpoints: all unset
+  Connector, SCIM, and Send endpoints: all unset
 - command exit: 0
 - command stdout: 9 bytes, SHA-256
   `83b9a79200e7f9fbfb630cd027974ee46c5ffa79b5ba1190f09d08f125ee716b`
@@ -143,11 +143,29 @@ Chrome for Testing, or incognito profile was attached.
     profile's complete effective URL map, rejects action-inapplicable origins
     before packet construction, and keeps signal listeners installed through
     idempotent cleanup completion.
+13. The fourth exact-commit review found three defects: a persisted per-user
+    environment could override the validated global loopback endpoint, an
+    unknown harness option could echo its complete value to stderr, and a
+    block relation crossing the managed Linear issue boundary was omitted from
+    exactness verification.
+14. Three red reproductions now require every persisted environment to remain
+    Self-hosted and loopback-only, use a constant unknown-option error, and
+    audit active block relations when either endpoint is managed.
+15. Live Linear verification then exposed a monotonicity defect: re-running
+    sync verification downgraded the workflow status after harness
+    verification. A red state-transition test now permits the initial
+    `plan_authored` advance while preserving all later and future statuses.
+16. An interrupted reviewer run left a temporary brand-scan probe that caused
+    one initial full-suite release-bundle failure. The focused file passed
+    4/4, temporary fixtures were cleared, and the final serial full-suite run
+    passed 1,188/1,188.
 
 ## Focused Verification
 
 ```text
-vitest test/ops/official-client-harness.test.ts: 20 passed
+vitest test/ops/official-client-harness.test.ts: 21 passed
+HON-207 Linear plan/relation/state Node tests: 7 passed
+live Linear relation readback: 4/4 exact, 0 unexpected
 eslint focused files: passed
 prettier focused files: passed
 git diff --check: passed
@@ -157,7 +175,8 @@ official crypto Argon2id: passed
 native CLI loopback --version: passed
 harness status readback: valid
 legacy lifecycle cleanup: 7 passed, zero residual processes
-full suite: 97 files, 1187 passed, 0 failed, 0 skipped
+full suite (maxWorkers=1): 97 files, 1188 passed, 0 failed, 0 skipped
+release evidence bundle focused rerun: 4 passed
 TypeScript: passed
 ESLint: passed
 Prettier: passed
