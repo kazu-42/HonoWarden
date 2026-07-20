@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-07-20T00:01:45.027Z",
+  "phase": "verify",
+  "status": "exact",
+  "sourcePins": {
+    "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+    "clients": "web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1",
+    "base": "955a9703dd74ae7a26221fe8ccd4ee875e09fd07"
+  },
+  "inventory": {
+    "total": 218,
+    "archived": 120,
+    "activeUnarchived": 96,
+    "completedUnarchived": 2
+  },
+  "parent": {
+    "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+    "identifier": "HON-206",
+    "title": "Account A2e: atomic user-key rotation across personal vault data",
+    "state": {
+      "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+      "name": "In Progress",
+      "type": "started"
+    },
+    "url": "https://linear.app/honowarden/issue/HON-206/account-a2e-atomic-user-key-rotation-across-personal-vault-data"
+  },
+  "expectedChildren": 4,
+  "verifiedChildren": 4,
+  "expectedBlockRelations": 3,
+  "verifiedBlockRelations": 3,
+  "unexpectedBlockRelations": 0,
+  "issues": [
+    {
+      "key": "ROT-1",
+      "packet": "01-contract-domain",
+      "identifier": "HON-215",
+      "id": "076df712-0804-4d09-a9ff-a3e10732aa42",
+      "url": "https://linear.app/honowarden/issue/HON-215/account-a2e1-strict-v1-rotation-contract-and-parser",
+      "title": "Account A2e.1: strict V1 rotation contract and parser",
+      "state": {
+        "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+        "name": "In Progress",
+        "type": "started"
+      },
+      "parent": {
+        "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+        "identifier": "HON-206"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1343,
+      "descriptionSha256": "e1f1ec45bf7da2d6b5b59d09e72cc1b8ae6fd4084317423e440d1f0595039aca",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "ROT-2",
+      "packet": "02-atomic-repository",
+      "identifier": "HON-216",
+      "id": "262a9403-a95d-4726-a7b3-b30903a0d899",
+      "url": "https://linear.app/honowarden/issue/HON-216/account-a2e2-atomic-personal-vault-rotation-transaction",
+      "title": "Account A2e.2: atomic personal-vault rotation transaction",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+        "identifier": "HON-206"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1309,
+      "descriptionSha256": "cde26c7c89aadd8c45b69bedb5839761d37cacccf97e044c11c46d6e5e615214",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "ROT-3",
+      "packet": "03-route-consistency",
+      "identifier": "HON-217",
+      "id": "719487c2-5a9d-4988-9080-18fbf3c740fe",
+      "url": "https://linear.app/honowarden/issue/HON-217/account-a2e3-default-off-api-and-generation-consistency",
+      "title": "Account A2e.3: default-off API and generation consistency",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+        "identifier": "HON-206"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1333,
+      "descriptionSha256": "1c24e174f44204c0c1629b729dc4a3f2fb61acdbc5738b5a87131f4b149a7a0c",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "ROT-4",
+      "packet": "04-evidence-publication",
+      "identifier": "HON-218",
+      "id": "1b5ca861-002b-497b-97d0-33a9451c7c91",
+      "url": "https://linear.app/honowarden/issue/HON-218/account-a2e4-lifecycle-evidence-review-and-closeout",
+      "title": "Account A2e.4: lifecycle evidence, review, and closeout",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+        "identifier": "HON-206"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1265,
+      "descriptionSha256": "5d743f7922d12d473a4ea931d9683a5c51ddb94a4689f8dbf25f59a010ca3d0f",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    }
+  ],
+  "relations": [
+    {
+      "blocker": "HON-215",
+      "blocked": "HON-216",
+      "sourceId": "076df712-0804-4d09-a9ff-a3e10732aa42",
+      "targetId": "262a9403-a95d-4726-a7b3-b30903a0d899",
+      "count": 1,
+      "exact": true
+    },
+    {
+      "blocker": "HON-216",
+      "blocked": "HON-217",
+      "sourceId": "262a9403-a95d-4726-a7b3-b30903a0d899",
+      "targetId": "719487c2-5a9d-4988-9080-18fbf3c740fe",
+      "count": 1,
+      "exact": true
+    },
+    {
+      "blocker": "HON-217",
+      "blocked": "HON-218",
+      "sourceId": "719487c2-5a9d-4988-9080-18fbf3c740fe",
+      "targetId": "1b5ca861-002b-497b-97d0-33a9451c7c91",
+      "count": 1,
+      "exact": true
+    }
+  ],
+  "unexpectedRelations": [],
+  "managedComment": {
+    "id": "75242de0-5860-42c2-ba95-47c42c36299c",
+    "updatedAt": "2026-07-19T23:57:38.174Z",
+    "bytes": 2102,
+    "sha256": "b981de8faef74ac298f82e6a661f61db6adca6efe9b8906452dee87bbbf5bff2",
+    "checks": {
+      "single": true,
+      "body": true,
+      "bytes": true,
+      "sha256": true
+    }
+  },
+  "errors": []
+}
