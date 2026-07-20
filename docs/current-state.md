@@ -1253,6 +1253,12 @@ Implemented:
   every result category, old access-token rejection, and new profile/sync/backup
   projection; populated, rollback, and concurrent repository behavior uses real
   local D1
+- `pnpm account:key-rotation:lifecycle` actual local Wrangler evidence with a
+  populated personal vault, required-audit trigger rollback, concurrent
+  one-winner behavior, persisted D1 restart, old access/refresh/password
+  rejection, new login/profile/sync/backup consistency, direct and HTTP R2
+  sentinel byte readback, and disabled-route state equality; its process-group
+  cleanup leaves no Wrangler/workerd descendants
 - a pinned V1 fixture-only request replay under the HON-206 workflow; it is not
   an official-client or compatibility-matrix promotion
 - false defaults in `.env.example` and every tracked Wrangler environment, with

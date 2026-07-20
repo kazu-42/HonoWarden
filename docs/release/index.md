@@ -20,6 +20,7 @@ Use this index as the feature-freeze entry point:
 - [Account Password Change Local Evidence](account-password-change-local-evidence.md)
 - [Account KDF Change Local Evidence](account-kdf-change-local-evidence.md)
 - [Account Key Initialization Local Evidence](account-key-initialization-local-evidence.md)
+- [User-Key Rotation Local Evidence](user-key-rotation-local-evidence.md)
 - [Auth Request Staging Evidence](auth-request-staging-evidence.md)
 - [Two-User Dogfood And Disabled-User Evidence](two-user-dogfood-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)

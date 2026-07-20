@@ -29,6 +29,7 @@ Use these documents together when reviewing alpha readiness:
 - `pnpm account:password-change:lifecycle`
 - `pnpm account:kdf-change:lifecycle`
 - `pnpm account:keys:lifecycle`
+- `pnpm account:key-rotation:lifecycle`
 - `pnpm format`
 - repository brand scan
 - workflow verifier

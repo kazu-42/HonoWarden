@@ -40,7 +40,17 @@
     }
   ],
   "verification": {
-    "status": "linear_subissues_synced",
+    "status": "local_passed_reviews_pending",
+    "results": {
+      "focused": "passed_7_files_68_tests",
+      "full": "passed_95_files_1153_tests",
+      "compatibility": "passed_3_files_105_tests",
+      "realLocalD1R2": "passed_9_checks",
+      "releaseGate": "ready_11_pass_0_manual_0_block",
+      "dependencyAudit": "passed_0_known_vulnerabilities",
+      "standardReview": "pending",
+      "fiveAxisReview": "pending"
+    },
     "checks": [
       "linear_plan_readback",
       "focused_domain",
