@@ -1227,6 +1227,46 @@ Not implemented:
   evidence; fixture and local evidence do not promote compatibility rows
 - deployed route activation; every tracked Wrangler environment remains false
 
+## Week 26 Atomic User-Key Rotation
+
+Implemented:
+
+- default-off pinned V1
+  `POST /api/accounts/key-management/rotate-user-account-keys` behind
+  `HONOWARDEN_USER_KEY_ROTATION_ENABLED`; disabled POST and Hono-derived HEAD
+  bypass the optional global request quota and return a D1-free 501
+- strict request parsing for one complete personal-vault generation, unchanged
+  email salt/KDF/public key, newly wrapped user/private keys, empty unsupported
+  product arrays, exact IDs, bounded encrypted values, and observable revisions
+- existing credential-proof defense for the old client-derived authentication
+  hash, generic/rate-limited proof failure, and notification-binding preflight
+- five bounded D1 snapshot queries plus nine transactional statements for the
+  guarded account generation, personal folders/ciphers/uploaded-attachment
+  metadata/trusted devices, all D1 session revocation, auth-request supersession,
+  and one redacted `account.keys.rotate` audit event
+- exact manifest and immutable-metadata checks, fixed 14-query budget, explicit
+  conflict/unsupported/over-budget/infrastructure taxonomy, and fail-loud batch
+  invariants; attachment R2 object identity and bytes are outside the writer
+- post-commit best-effort generation-aware Durable Object cleanup so transport
+  failure is incident-logged without returning a false failure after D1 success
+- route tests for default-off D1-free behavior, parser/proof/preflight ordering,
+  every result category, old access-token rejection, and new profile/sync/backup
+  projection; populated, rollback, and concurrent repository behavior uses real
+  local D1
+- a pinned V1 fixture-only request replay under the HON-206 workflow; it is not
+  an official-client or compatibility-matrix promotion
+- false defaults in `.env.example` and every tracked Wrangler environment, with
+  generated Worker bindings plus operator and forward-only rollback guidance
+
+Not implemented:
+
+- staging, production, remote D1, real-account, or official-client activation;
+  every tracked Wrangler environment remains false
+- V2 signature/security keys, organization-owned ciphertext, Sends, Emergency
+  Access, organization recovery, passkey unlock data, TDE, or Key Connector
+- a backward generation restore; recovery after commit is a newly authenticated
+  forward generation or separately reviewed account recovery
+
 ## Week 26 Account Lifecycle Operator CLI
 
 Implemented:

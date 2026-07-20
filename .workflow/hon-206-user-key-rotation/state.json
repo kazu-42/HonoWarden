@@ -28,19 +28,19 @@
     },
     {
       "id": "03-route-consistency",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-217",
       "result": "results/03-route-consistency.md"
     },
     {
       "id": "04-evidence-publication",
-      "status": "pending",
+      "status": "in_progress",
       "linear": "HON-218",
       "result": "results/04-evidence-publication.md"
     }
   ],
   "verification": {
-    "status": "linear_subissues_synced",
+    "status": "route_consistency_complete",
     "checks": [
       "linear_plan_readback",
       "focused_domain",

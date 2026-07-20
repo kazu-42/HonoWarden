@@ -96,6 +96,10 @@ const trustedDeviceFields = [
   'encryptedUserKey',
 ] as const
 
+export function isUserKeyRotationEnabled(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === 'true'
+}
+
 export function parseUserKeyRotationBody(
   body: unknown,
 ): UserKeyRotationParseResult {

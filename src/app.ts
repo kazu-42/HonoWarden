@@ -48,6 +48,11 @@ import {
   parseSecurityStampRotationBody,
 } from './domain/account-credentials'
 import {
+  isUserKeyRotationEnabled,
+  matchesUserKeyRotationCredentialGeneration,
+  parseUserKeyRotationBody,
+} from './domain/user-key-rotation'
+import {
   buildBootstrapUserRecord,
   isBootstrapEnabled,
   resolveBootstrapAccount,
@@ -211,6 +216,7 @@ import {
   updateTrustedDeviceKeys,
 } from './repositories/auth-repository'
 import { recordRequestQuotaHit } from './repositories/request-quota-repository'
+import { rotateUserKeyGeneration } from './repositories/user-key-rotation-repository'
 import type {
   AuthUserRecord,
   DeviceRecord,
@@ -495,6 +501,14 @@ function isRequestQuotaBypass(c: AppContext): boolean {
       c.req.method === 'HEAD' ||
       c.req.method === 'POST') &&
     !isAccountKeyInitializationEnabled(c.env?.HONOWARDEN_ACCOUNT_KEYS_ENABLED)
+  ) {
+    return true
+  }
+
+  if (
+    pathname === '/api/accounts/key-management/rotate-user-account-keys' &&
+    (c.req.method === 'POST' || c.req.method === 'HEAD') &&
+    !isUserKeyRotationEnabled(c.env?.HONOWARDEN_USER_KEY_ROTATION_ENABLED)
   ) {
     return true
   }
@@ -2688,6 +2702,190 @@ app.post('/api/accounts/keys', async (c) => {
     )
   }
 })
+
+app.get('/api/accounts/key-management/rotate-user-account-keys', (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!isUserKeyRotationEnabled(c.env?.HONOWARDEN_USER_KEY_ROTATION_ENABLED)) {
+    return unsupportedFeatureResponse(
+      c,
+      'User-key rotation is not activated on this server.',
+      true,
+    )
+  }
+
+  c.header('Allow', 'POST')
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'invalid_request',
+      'User-key rotation requires POST.',
+    ),
+    405,
+  )
+})
+
+app.on(
+  ['POST'],
+  '/api/accounts/key-management/rotate-user-account-keys',
+  async (c) => {
+    c.header('Cache-Control', 'no-store')
+    if (
+      !isUserKeyRotationEnabled(c.env?.HONOWARDEN_USER_KEY_ROTATION_ENABLED)
+    ) {
+      return unsupportedFeatureResponse(
+        c,
+        'User-key rotation is not activated on this server.',
+        true,
+      )
+    }
+
+    const auth = await authenticateVaultRequest(c)
+    if (!auth.ok) {
+      return auth.response
+    }
+
+    const request = parseUserKeyRotationBody(await readJsonBody(c.req.raw))
+    if (!request.ok) {
+      return userKeyRotationInvalidRequest(c)
+    }
+
+    const accountKeyState = classifyAccountKeyState(auth.user)
+    if (
+      !hasWrappedUserKey(auth.user) ||
+      accountKeyState.status === 'missing' ||
+      accountKeyState.status === 'invalid'
+    ) {
+      return userKeyRotationUnsupportedResponse(c)
+    }
+
+    if (
+      isDurableNotificationEnabled(
+        c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+      ) &&
+      !c.env.NOTIFICATION_HUB
+    ) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Notification hub is unavailable.',
+        ),
+        503,
+      )
+    }
+
+    try {
+      const proofGate = await checkCredentialProofDefense(c, auth.user)
+      if (!proofGate.allowed) {
+        return invalidCredentialProofResponse(c, proofGate.rateLimited)
+      }
+      if (
+        !verifyPresentedPasswordHash(
+          auth.user.masterPasswordHash,
+          request.oldMasterKeyAuthenticationHash,
+        )
+      ) {
+        const rateLimited = await recordCredentialProofFailure(
+          c,
+          auth.user,
+          proofGate.state,
+          true,
+        )
+        return invalidCredentialProofResponse(c, rateLimited)
+      }
+
+      if (!matchesUserKeyRotationCredentialGeneration(request, auth.user)) {
+        return userKeyRotationInvalidRequest(c)
+      }
+
+      const nextRevisionDate = nextCredentialRevisionDate(
+        auth.user.revisionDate,
+        new Date().toISOString(),
+      )
+      const nextSecurityStamp = crypto.randomUUID()
+      const auditEventId = crypto.randomUUID()
+      const auditEvent = buildAuditEvent({
+        name: 'account.keys.rotate',
+        outcome: 'success',
+        requestId: c.get('requestId'),
+        occurredAt: nextRevisionDate,
+        actor: {
+          userId: auth.user.id,
+          deviceIdentifier: auth.deviceIdentifier,
+        },
+        target: {
+          type: 'account',
+          id: auth.user.id,
+        },
+        context: {
+          accountEncryptionVersion: 1,
+          d1SessionsRevoked: true,
+          authRequestsSuperseded: true,
+          r2ObjectsUnchanged: true,
+        },
+      })
+      const result = await rotateUserKeyGeneration(c.env.DB, {
+        userId: auth.user.id,
+        expectedSecurityStamp: auth.user.securityStamp,
+        expectedRevisionDate: auth.user.revisionDate,
+        nextSecurityStamp,
+        nextRevisionDate,
+        request,
+        auditEventId,
+        auditEvent,
+      })
+
+      if (result.status === 'conflict' || result.status === 'not_found') {
+        return userKeyRotationConflictResponse(c)
+      }
+      if (result.status === 'unsupported_state') {
+        console.error(
+          JSON.stringify({
+            event: 'account_key_rotation_rejected',
+            requestId: c.get('requestId'),
+            reason: result.reason,
+          }),
+        )
+        return userKeyRotationUnsupportedResponse(c)
+      }
+      if (result.status === 'over_budget') {
+        console.error(
+          JSON.stringify({
+            event: 'account_key_rotation_over_budget',
+            requestId: c.get('requestId'),
+            reason: result.reason,
+          }),
+        )
+        return userKeyRotationOverBudgetResponse(c)
+      }
+
+      scheduleDurableNotificationSessionInvalidation(c, auth.user.id, {
+        securityStamp: result.securityStamp,
+        revisionDate: result.revisionDate,
+      })
+      if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+        console.info(serializeAuditEvent(auditEvent))
+      }
+      return c.body(null, 200)
+    } catch {
+      console.error(
+        JSON.stringify({
+          event: 'account_key_rotation_failed',
+          requestId: c.get('requestId'),
+          reason: 'database_error',
+        }),
+      )
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'database_unavailable',
+          'User-key rotation failed.',
+        ),
+        503,
+      )
+    }
+  },
+)
 
 app.post('/api/accounts/password', async (c) => {
   c.header('Cache-Control', 'no-store')
@@ -5442,6 +5640,50 @@ function accountKeyConflictResponse(c: AppContext) {
   )
 }
 
+function userKeyRotationInvalidRequest(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'invalid_request',
+      'The user-key rotation request is invalid.',
+    ),
+    400,
+  )
+}
+
+function userKeyRotationConflictResponse(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'user_key_rotation_conflict',
+      'User-key rotation could not commit the requested generation.',
+    ),
+    409,
+  )
+}
+
+function userKeyRotationUnsupportedResponse(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'user_key_rotation_unsupported',
+      'The current account state cannot be rotated by this endpoint.',
+    ),
+    409,
+  )
+}
+
+function userKeyRotationOverBudgetResponse(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'user_key_rotation_over_budget',
+      "The account exceeds this server's atomic rotation limit.",
+    ),
+    413,
+  )
+}
+
 function invalidAccountKeyStateResponse(c: AppContext) {
   return c.json(
     apiError(
@@ -6485,6 +6727,9 @@ function apiError(
     | 'session_revocation_incomplete'
     | 'server_misconfigured'
     | 'storage_unavailable'
+    | 'user_key_rotation_conflict'
+    | 'user_key_rotation_over_budget'
+    | 'user_key_rotation_unsupported'
     | 'websocket_required',
   message: string,
 ) {

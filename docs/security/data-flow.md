@@ -178,6 +178,41 @@ Secret-handling invariants:
 - true replacement and client data rewrap require a separate generation and
   session-invalidation contract
 
+## Atomic User-Key Rotation
+
+1. Disabled POST and Hono-derived HEAD return a D1-free 501 unless
+   `HONOWARDEN_USER_KEY_ROTATION_ENABLED=true`. This check also bypasses the
+   optional global request quota, preserving a reliable rollback response.
+2. The Worker authenticates the bearer, parses one bounded pinned V1 envelope,
+   verifies complete current account keys, preflights the optional notification
+   binding, and applies the existing credential-proof defense to the old
+   client-derived authentication hash. It never receives a plaintext password,
+   unwrapped user key, or decrypted vault value.
+3. The repository uses five snapshot queries: one bounded aggregate preflight
+   plus exact active personal folders, ciphers, uploaded attachments, and
+   complete trusted devices. Deleted records, pending uploads, partial device
+   keys, personal `cipher_key` columns, unsupported cipher metadata, foreign or
+   missing IDs, stale revisions, changed immutable metadata, and size/count
+   overflow fail before mutation.
+4. Nine transactional statements commit one generation: guarded user CAS,
+   folder/cipher/attachment/trusted-device updates, device and refresh-token
+   revocation, auth-request supersession, and one redacted
+   `account.keys.rotate` audit row. Every downstream write is gated by the new
+   security stamp and revision; a lost CAS changes zero downstream rows.
+5. Attachment updates change only encrypted file names/keys and revision
+   metadata. R2 object keys and bytes remain unchanged, and the route has no R2
+   binding. D1 batch failure propagates and rolls the complete transaction back.
+6. A committed generation returns 200 before best-effort Durable Object session
+   cleanup. Old access tokens fail on security-stamp mismatch and D1 refresh
+   sessions are revoked. New authentication, profile, sync, and backup readers
+   project the same complete wrapped-key generation.
+
+The fixed repository budget is 14 queries, below the reserved 50-query Worker
+limit. SQL, bound-parameter, bound-value, manifest, row-count, and snapshot-byte
+limits are checked before `batch()`. External errors disclose only request,
+conflict, unsupported-state, budget, or infrastructure categories; hashes,
+wrapped keys, encrypted payloads, account identity, and manifests are excluded.
+
 ## Refresh Grant
 
 1. Client posts `grant_type=refresh_token`.
@@ -292,6 +327,8 @@ persisted atomically with their mutation regardless of that optional setting.
 Current event coverage:
 
 - bootstrap success
+- one-time account-key initialization and atomic user-key/personal-vault
+  rotation, each with a required transaction-local D1 audit row
 - password change, account-wide token/device revocation, prior-stamp
   invalidation, and active auth-request supersession
 - security-stamp generation rotation, account-wide token/device revocation,

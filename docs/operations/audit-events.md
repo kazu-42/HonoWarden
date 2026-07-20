@@ -70,6 +70,19 @@ Fields:
   latency cannot delay acknowledgement. Failure is logged separately as
   `account_notification_session_invalidation_failed`; the client still receives
   success and persists its corresponding local KDF.
+- `account.keys.initialize`: successful one-time V1 account-key initialization.
+  The required D1 row commits with the guarded pair while security stamp and
+  existing sessions remain unchanged. Context contains only encryption version
+  and boolean session/stamp decisions.
+- `account.keys.rotate`: successful pinned V1 password/user-key generation and
+  supported personal-vault rewrap. The required D1 row commits in the same
+  batch as the guarded user/vault generation and D1 session invalidation.
+  Context contains only encryption version, D1 session/auth-request decisions,
+  and the fact that R2 objects are unchanged. Hashes, wrapped keys, manifests,
+  encrypted records, and object identifiers are excluded. Post-commit Durable
+  Object cleanup failure is logged separately as
+  `account_notification_session_invalidation_failed` and does not change the
+  successful response.
 - `auth.password_grant`: failed password-grant attempts after a request reaches
   credential validation
 - `auth.refresh_reuse`: refresh token reuse detection

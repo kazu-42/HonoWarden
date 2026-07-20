@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  isUserKeyRotationEnabled,
   matchesUserKeyRotationCredentialGeneration,
   parseUserKeyRotationBody,
   userKeyRotationPolicy,
@@ -14,6 +15,14 @@ const deviceId = '55555555-5555-4555-8555-555555555555'
 const revisionDate = '2026-07-20T00:00:00.000Z'
 
 describe('user-key rotation domain', () => {
+  it('keeps user-key rotation disabled unless the rollout flag is exact true', () => {
+    expect(isUserKeyRotationEnabled(undefined)).toBe(false)
+    expect(isUserKeyRotationEnabled('')).toBe(false)
+    expect(isUserKeyRotationEnabled(' TRUE ')).toBe(true)
+    expect(isUserKeyRotationEnabled('yes')).toBe(false)
+    expect(isUserKeyRotationEnabled('true')).toBe(true)
+  })
+
   it('parses the pinned V1 account, vault, attachment, and device envelope', () => {
     const body = rotationBody()
 
