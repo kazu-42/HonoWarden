@@ -22,14 +22,27 @@ import { afterEach, describe, expect, it } from 'vitest'
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const script = join(repoRoot, 'scripts/honowarden-official-client-harness.mjs')
+const signalCleanupScript = join(
+  repoRoot,
+  'scripts/honowarden-signal-cleanup.mjs',
+)
 const confirmation = 'official-client-harness'
 
 const harnessModule = import(pathToFileURL(script).href)
+const signalCleanupModule = import(pathToFileURL(signalCleanupScript).href)
 
 describe('pinned official-client harness', () => {
   afterEach(async () => {
     const fixtureDirectory = join(repoRoot, 'test/.tmp')
-    const entries = await readdir(fixtureDirectory)
+    let entries: string[]
+    try {
+      entries = await readdir(fixtureDirectory)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return
+      }
+      throw error
+    }
     await Promise.all(
       entries
         .filter((entry) => entry.startsWith('official-client-'))
@@ -871,6 +884,60 @@ await runCapturedProcess(${JSON.stringify(command)}, [], {
       expect(source).toMatch(
         /} finally {\s+try {\s+await cleanup\(\)\s+} finally {\s+removeSignalCleanup\(\)/,
       )
+    }
+  })
+
+  it('uses taskkill without POSIX group IDs for Windows process trees', async () => {
+    const { stopDetachedProcessTree } = await signalCleanupModule
+    const taskkillPids: number[] = []
+    const processKillCalls: Array<[number, number | NodeJS.Signals]> = []
+    const destroyedStreams: string[] = []
+
+    await stopDetachedProcessTree(
+      {
+        pid: 4242,
+        stdout: {
+          destroy: () => destroyedStreams.push('stdout'),
+        },
+        stderr: {
+          destroy: () => destroyedStreams.push('stderr'),
+        },
+      },
+      {
+        platform: 'win32',
+        runTaskkill: async (processId: number) => {
+          taskkillPids.push(processId)
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: '',
+            stderr: '',
+          }
+        },
+        processKill: (processId: number, signal: number | NodeJS.Signals) => {
+          processKillCalls.push([processId, signal])
+          const error = new Error('process exited') as NodeJS.ErrnoException
+          error.code = 'ESRCH'
+          throw error
+        },
+      },
+    )
+
+    expect(taskkillPids).toEqual([4242])
+    expect(processKillCalls).toEqual([[4242, 0]])
+    expect(destroyedStreams).toEqual(['stdout', 'stderr'])
+  })
+
+  it('routes detached lifecycle workers through portable tree cleanup', () => {
+    for (const path of [
+      'scripts/honowarden-account-key-lifecycle.mjs',
+      'scripts/honowarden-kdf-change-lifecycle.mjs',
+      'scripts/honowarden-password-change-lifecycle.mjs',
+      'scripts/honowarden-user-key-rotation-lifecycle.mjs',
+    ]) {
+      const source = readRepoFile(path)
+      expect(source).toContain('stopDetachedProcessTree')
+      expect(source).not.toContain('process.kill(-processGroupId')
     }
   })
 

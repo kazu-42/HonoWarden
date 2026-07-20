@@ -29,9 +29,11 @@ Linear issue: HON-219
 - Dropped ambient `BW_PASSWORD` and `BW_SESSION`; only explicit
   `HONOWARDEN_SYNTHETIC_BW_*` inputs are mapped to child-only `BW_*` names.
 - Applied the same process-group ownership invariant to the existing HON-203
-  through HON-206 local lifecycle harnesses. Nested pnpm invocations
-  cannot mutate dependencies, and Wrangler/workerd descendants are reaped
-  before a harness returns or propagates `SIGINT`/`SIGTERM`.
+  through HON-206 local lifecycle harnesses. Nested pnpm invocations cannot
+  mutate dependencies, and Wrangler/workerd descendants are reaped before a
+  harness returns or propagates `SIGINT`/`SIGTERM`. POSIX hosts use bounded
+  process-group signaling; Windows uses `taskkill /T /F` plus a positive-PID
+  exit check.
 - Added recursive mode, realpath, exact-file-set, and symlink enforcement for
   the ignored root, all runtime files, and all mutable trees.
 - Added the operator runbook at
@@ -159,11 +161,22 @@ Chrome for Testing, or incognito profile was attached.
     one initial full-suite release-bundle failure. The focused file passed
     4/4, temporary fixtures were cleared, and the final serial full-suite run
     passed 1,188/1,188.
+17. The fifth exact-commit review found two defects: the focused test cleanup
+    assumed the ignored `test/.tmp` directory existed in a clean checkout, and
+    detached lifecycle cleanup used POSIX negative process-group IDs on
+    Windows.
+18. A clean tracked-file copy reproduced the first defect with 9/21 failures.
+    Two additional red checks reproduced the missing Windows tree-kill helper
+    and direct lifecycle integration. Cleanup now treats a missing fixture
+    directory as empty, while a shared helper retains bounded POSIX signaling
+    and uses checked `taskkill /T /F` termination on Windows. The clean-copy
+    rerun passed 23/23.
 
 ## Focused Verification
 
 ```text
-vitest test/ops/official-client-harness.test.ts: 21 passed
+vitest test/ops/official-client-harness.test.ts: 23 passed
+clean tracked-file copy focused rerun: 23 passed
 HON-207 Linear plan/relation/state Node tests: 7 passed
 live Linear relation readback: 4/4 exact, 0 unexpected
 eslint focused files: passed
@@ -174,9 +187,10 @@ official crypto PBKDF2: passed
 official crypto Argon2id: passed
 native CLI loopback --version: passed
 harness status readback: valid
-legacy lifecycle cleanup: 7 passed, zero residual processes
-full suite (maxWorkers=1): 97 files, 1188 passed, 0 failed, 0 skipped
+legacy lifecycle cleanup: 4 real scripts passed, zero residual processes
+full suite (maxWorkers=1): 97 files, 1190 passed, 0 failed, 0 skipped
 release evidence bundle focused rerun: 4 passed
+release gate: ready, 11 passed, 0 manual, 0 blocked
 TypeScript: passed
 ESLint: passed
 Prettier: passed

@@ -54,14 +54,14 @@
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
       "officialCrypto": "passed_pbkdf2_and_argon2id",
       "nativeCli": "passed_effective_loopback_endpoint_preflight_and_version_capture",
-      "focused": "passed_21_tests",
+      "focused": "passed_23_tests_in_worktree_and_clean_tracked_copy",
       "linearPlanAudit": "passed_7_node_tests_and_live_4_of_4_exact_relations",
-      "fullSuite": "passed_1188_tests",
-      "legacyLifecycleProcessCleanup": "passed_7_tests_zero_residual_processes",
-      "qualityGates": "passed_typecheck_eslint_prettier_brand_scan",
+      "fullSuite": "passed_1190_tests",
+      "legacyLifecycleProcessCleanup": "passed_4_real_lifecycle_scripts_zero_residual_processes",
+      "qualityGates": "passed_typecheck_eslint_prettier_brand_scan_release_gate_11_of_11",
       "secretOutput": "passed_zero_crypto_stdout_stderr",
       "processCleanup": "passed_timeout_and_parent_signal_group_termination",
-      "reviewRemediation": "passed_17_review_and_boundary_reproductions"
+      "reviewRemediation": "passed_19_review_and_boundary_reproductions"
     },
     "checks": [
       "linear_plan_unit",

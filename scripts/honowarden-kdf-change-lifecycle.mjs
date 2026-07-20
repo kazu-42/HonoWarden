@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import {
   createIdempotentCleanup,
   installSignalCleanup,
+  stopDetachedProcessTree,
 } from './honowarden-signal-cleanup.mjs'
 
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
@@ -861,48 +862,7 @@ async function waitForHealth(baseUrl, worker) {
 }
 
 async function stopWorker(worker) {
-  const processGroupId = worker.pid
-  if (!processGroupId) {
-    return
-  }
-
-  signalProcessGroup(worker, processGroupId, 'SIGTERM')
-  let stopped = await waitForProcessGroupExit(processGroupId, 5_000)
-  if (!stopped) {
-    signalProcessGroup(worker, processGroupId, 'SIGKILL')
-    stopped = await waitForProcessGroupExit(processGroupId, 2_000)
-  }
-  worker.stdout.destroy()
-  worker.stderr.destroy()
-  if (!stopped) {
-    throw new Error(`wrangler process group ${processGroupId} did not stop`)
-  }
-}
-
-function signalProcessGroup(worker, processGroupId, signal) {
-  try {
-    process.kill(-processGroupId, signal)
-  } catch (error) {
-    if (error?.code !== 'ESRCH') {
-      worker.kill(signal)
-    }
-  }
-}
-
-async function waitForProcessGroupExit(processGroupId, timeoutMilliseconds) {
-  const deadline = Date.now() + timeoutMilliseconds
-  while (Date.now() < deadline) {
-    try {
-      process.kill(-processGroupId, 0)
-    } catch (error) {
-      if (error?.code === 'ESRCH') {
-        return true
-      }
-      throw error
-    }
-    await delay(50)
-  }
-  return false
+  await stopDetachedProcessTree(worker)
 }
 
 async function readDatabaseState(persistTo, expected) {
