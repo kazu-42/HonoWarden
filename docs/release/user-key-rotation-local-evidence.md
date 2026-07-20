@@ -33,7 +33,7 @@ Real secrets: none
 - official upstream server `v2026.6.1` at
   `a09c7edb03ae6d4fdece784f1250c67be73d5fe0`
 - official upstream web client `web-v2026.6.1` at
-  `39f07436ca60e3f25eac47777671754f288a98f1f`
+  `39f07436ca60e3f25eac47777671754f288a98f1`
 
 The source pin defines the request shape only. This run is fixture-only and does
 not promote any compatibility-matrix row. V2 signature/security data,

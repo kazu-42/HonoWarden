@@ -2869,6 +2869,9 @@ app.on(
         return userKeyRotationOverBudgetResponse(c)
       }
 
+      // D1 has already revoked every authorization path. A prompt 200 lets the
+      // client persist the matching password/user-key generation; notification
+      // socket cleanup remains forward-only and observable through waitUntil.
       scheduleDurableNotificationSessionInvalidation(c, auth.user.id, {
         securityStamp: result.securityStamp,
         revisionDate: result.revisionDate,

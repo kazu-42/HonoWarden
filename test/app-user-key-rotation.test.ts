@@ -337,7 +337,7 @@ describe('user-key rotation route', () => {
       serverTag: 'v2026.6.1',
       serverCommit: 'a09c7edb03ae6d4fdece784f1250c67be73d5fe0',
       webTag: 'web-v2026.6.1',
-      webCommit: '39f07436ca60e3f25eac47777671754f288a98f1f',
+      webCommit: '39f07436ca60e3f25eac47777671754f288a98f1',
     })
     const database = new RotationRouteD1Database('success')
 

@@ -449,7 +449,7 @@ async function main(args = process.argv.slice(2)) {
       mode: 'wrangler-local-d1-r2-synthetic',
       upstreamPins: {
         server: 'v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0',
-        client: 'web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1f',
+        client: 'web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1',
       },
       routes: {
         primaryOldLoginBefore: primaryOldLoginBefore.status,

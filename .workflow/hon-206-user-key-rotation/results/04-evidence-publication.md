@@ -82,6 +82,34 @@ group and 4.6 GiB of ignored root `test/.tmp` state were removed, available
 space recovered from 1.8 GiB to 6.1 GiB, and all source-integrity gates below
 were rerun. Dirty historical worktrees were preserved.
 
+## Independent five-axis review
+
+An exact-head `codex review --base main` attempt at `3b28d4c` stopped before
+source analysis because the Codex account had reached its usage limit. This is
+recorded as unavailable, not as a pass. A separate read-only Opus review then
+examined the complete exact-head diff across intent/contract fidelity,
+correctness/security, architecture/D1 integrity, repository consistency, and
+regression/operations/test evidence. Its overall result was MERGE READY with
+zero P1, zero P2, and two P3 findings:
+
+- The pinned web-client provenance accidentally contained a 41-character hash.
+  The official `web-v2026.6.1` tag resolves to the 40-character commit
+  `39f07436ca60e3f25eac47777671754f288a98f1`; fixture, lifecycle report,
+  evidence, and regression assertions now use that exact value.
+- Durable notification socket cleanup is scheduled after the D1 transaction
+  instead of delaying the 200 response. This is intentional and matches the
+  KDF-change contract: D1 has already revoked every authorization path
+  atomically, while a prompt acknowledgement lets the client persist the
+  matching local password/user-key generation. The best-effort transport
+  cleanup is forward-only, uses `waitUntil`, and logs failures. The rationale is
+  now explicit in code and the security data-flow documentation.
+
+The reviewer also called out future evidence improvements rather than merge
+blockers: apply production migrations directly in the real-D1 integration
+fixture, and reduce reliance on hand-written D1 fakes and lifecycle
+self-reporting. A final read-only exact-head review and all verification gates
+will be rerun after these P3 changes before merge.
+
 ## Verification
 
 - Route lifecycle acceptance: 1 file / 2 tests passed.

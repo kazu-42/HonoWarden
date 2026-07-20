@@ -214,9 +214,12 @@ Secret-handling invariants:
    and the route has no R2 binding. D1 batch failure propagates and rolls the
    complete transaction back.
 6. A committed generation returns 200 before best-effort Durable Object session
-   cleanup. Old access tokens fail on security-stamp mismatch and D1 refresh
-   sessions are revoked. New authentication, profile, sync, and backup readers
-   project the same complete wrapped-key generation.
+   cleanup. D1 has already revoked access, refresh, device, and auth-request
+   authorization paths; delaying acknowledgement on notification-socket
+   transport could instead leave the client on an old local wrapped generation
+   after a successful commit. Cleanup therefore runs through `waitUntil`, logs
+   failure, and remains forward-only. New authentication, profile, sync, and
+   backup readers project the same complete wrapped-key generation.
 
 The fixed repository budget is 15 queries, below the reserved 50-query Worker
 limit. SQL, bound-parameter, bound-value, manifest, row-count, and snapshot-byte
