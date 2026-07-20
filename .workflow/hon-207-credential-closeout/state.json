@@ -1,0 +1,73 @@
+{
+  "title": "HON-207 official-client credential closeout",
+  "slug": "hon-207-credential-closeout",
+  "created_at": "2026-07-20T04:50:00Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local source, official public asset download, Linear decomposition, reviewed PR/admin merge, Linear archive, and isolated cleanup were pre-authorized. Deployment, remote mutation, production activation, and real credentials remain excluded."
+  },
+  "pins": {
+    "base": "a68ec0ccf0c5379ce228dce93f4f8eef05f6d6f3",
+    "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+    "web": "web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1",
+    "browser": "browser-v2026.6.1@723c075bf8b9f45c901e56195be8e94e43ed75a2",
+    "cli": "cli-v2026.6.0@e6293ff2bc85123e9baaa998cf1543030ec5d9f0"
+  },
+  "packets": [
+    {
+      "id": "01-official-client-harness",
+      "status": "in_progress",
+      "linear": null,
+      "result": null
+    },
+    {
+      "id": "02-credential-lifecycle",
+      "status": "pending",
+      "linear": null,
+      "result": null
+    },
+    {
+      "id": "03-recovery-restore",
+      "status": "pending",
+      "linear": null,
+      "result": null
+    },
+    {
+      "id": "04-compatibility-evidence",
+      "status": "pending",
+      "linear": null,
+      "result": null
+    },
+    {
+      "id": "05-review-closeout",
+      "status": "pending",
+      "linear": null,
+      "result": null
+    }
+  ],
+  "verification": {
+    "status": "plan_authored",
+    "checks": [
+      "linear_plan_unit",
+      "linear_plan_readback",
+      "official_asset_provenance",
+      "official_crypto_roundtrip",
+      "single_account_lifecycle",
+      "backup_restore",
+      "disable_state_equality",
+      "forward_recovery",
+      "secret_scan",
+      "focused",
+      "full",
+      "compatibility",
+      "release_gate",
+      "standard_review",
+      "five_axis_review",
+      "head_ci",
+      "main_ci",
+      "linear_closeout"
+    ]
+  }
+}
