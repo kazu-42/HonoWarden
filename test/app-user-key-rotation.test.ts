@@ -428,6 +428,7 @@ class RotationRouteD1Database {
             attachmentBytes: 0,
             trustedDeviceCount: 0,
             incompleteTrustedDeviceCount: 0,
+            revokedDeviceKeyCount: 0,
             trustedDeviceBytes: 0,
           } as T
         }
@@ -553,7 +554,7 @@ class RotationRouteD1Database {
       session.tokenRevokedAt = String(userValues[8])
       session.deviceRevokedAt = String(userValues[8])
     }
-    this.auditValues = recorded[8]?.values ?? null
+    this.auditValues = recorded[9]?.values ?? null
 
     return recorded.map((_, index) => {
       if (index === 0) {
@@ -563,12 +564,15 @@ class RotationRouteD1Database {
         }
       }
       if (index === 5) {
-        return d1Result<T>(activeRefreshSessions.length > 0 ? 1 : 0)
+        return d1Result<T>(0)
       }
       if (index === 6) {
+        return d1Result<T>(activeRefreshSessions.length > 0 ? 1 : 0)
+      }
+      if (index === 7) {
         return d1Result<T>(activeRefreshSessions.length)
       }
-      return d1Result<T>(index === 8 ? 1 : 0)
+      return d1Result<T>(index === 9 ? 1 : 0)
     })
   }
 }

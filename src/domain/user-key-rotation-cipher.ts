@@ -134,7 +134,10 @@ export function classifyStoredUserKeyRotationCipherMetadata(
   const type = parseRequiredIntegerField(value, 'type')
   const folderId = parseNullableIdField(value, 'folderId')
   const organizationId = readAliasedValue(value, 'organizationId')
-  const favorite = parseRequiredBooleanField(value, 'favorite')
+  const favoriteValue = readAliasedValue(value, 'favorite')
+  const favorite = favoriteValue.present
+    ? parseRequiredBooleanField(value, 'favorite')
+    : false
   const repromptValue = readAliasedValue(value, 'reprompt')
   const reprompt = repromptValue.present
     ? parseRequiredIntegerField(value, 'reprompt')
@@ -157,7 +160,17 @@ export function classifyStoredUserKeyRotationCipherMetadata(
     return 'invalid'
   }
 
-  return encryptedJson !== cipher.encryptedJson &&
+  const rotatedEncryptedValues = parseCipherEncryptedValues(
+    cipher.encryptedJson,
+    cipher.type,
+  )
+  const currentEncryptedValues = buildCipherEncryptedValues(value, cipher.type)
+  return rotatedEncryptedValues !== null &&
+    currentEncryptedValues !== null &&
+    allEncryptedValuesRewrapped(
+      currentEncryptedValues,
+      rotatedEncryptedValues,
+    ) &&
     type === cipher.type &&
     folderId === cipher.folderId &&
     favorite === cipher.favorite &&
@@ -166,6 +179,134 @@ export function classifyStoredUserKeyRotationCipherMetadata(
     JSON.stringify(metadata) === JSON.stringify(cipher.metadata)
     ? 'matches'
     : 'mismatch'
+}
+
+function parseCipherEncryptedValues(
+  encryptedJson: string,
+  type: 1 | 2,
+): (string | null)[] | null {
+  let value: unknown
+  try {
+    value = JSON.parse(encryptedJson) as unknown
+  } catch {
+    return null
+  }
+  return isPlainObject(value) ? buildCipherEncryptedValues(value, type) : null
+}
+
+function buildCipherEncryptedValues(
+  value: Record<string, unknown>,
+  type: 1 | 2,
+): (string | null)[] | null {
+  const name = parseRequiredOpaqueField(
+    value,
+    'name',
+    userKeyRotationPolicy.cipherOpaqueValueMaxLength,
+  )
+  const values: (string | null)[] = []
+  if (
+    !name ||
+    !appendOptionalEncryptedValues(values, value, ['notes', 'key'])
+  ) {
+    return null
+  }
+  values.push(name)
+
+  if (type === 1) {
+    const login = readRequiredObject(value, 'login')
+    if (
+      !login ||
+      !appendOptionalEncryptedValues(values, login, [
+        'username',
+        'password',
+        'totp',
+      ])
+    ) {
+      return null
+    }
+
+    const uris = readOptionalArray(login, 'uris')
+    if (!uris.valid) return null
+    for (const uri of uris.value) {
+      if (
+        !isPlainObject(uri) ||
+        !appendOptionalEncryptedValues(values, uri, ['uri', 'uriChecksum'])
+      ) {
+        return null
+      }
+    }
+
+    const credentials = readOptionalArray(login, 'fido2Credentials')
+    if (!credentials.valid) return null
+    for (const credential of credentials.value) {
+      if (
+        !isPlainObject(credential) ||
+        !appendOptionalEncryptedValues(
+          values,
+          credential,
+          fido2CredentialFields.filter((field) => field !== 'creationDate'),
+        )
+      ) {
+        return null
+      }
+    }
+  }
+
+  const fields = readOptionalArray(value, 'fields')
+  if (!fields.valid) return null
+  for (const field of fields.value) {
+    if (
+      !isPlainObject(field) ||
+      !appendOptionalEncryptedValues(values, field, ['name', 'value'])
+    ) {
+      return null
+    }
+  }
+
+  const passwordHistory = readOptionalArray(value, 'passwordHistory')
+  if (!passwordHistory.valid) return null
+  for (const item of passwordHistory.value) {
+    if (
+      !isPlainObject(item) ||
+      !appendOptionalEncryptedValues(values, item, ['password'])
+    ) {
+      return null
+    }
+  }
+
+  return values
+}
+
+function appendOptionalEncryptedValues(
+  target: (string | null)[],
+  value: Record<string, unknown>,
+  fields: readonly string[],
+): boolean {
+  for (const field of fields) {
+    const parsed = parseOptionalOpaqueField(
+      value,
+      field,
+      userKeyRotationPolicy.cipherOpaqueValueMaxLength,
+    )
+    if (!parsed.valid) return false
+    target.push(parsed.value)
+  }
+  return true
+}
+
+function allEncryptedValuesRewrapped(
+  current: readonly (string | null)[],
+  rotated: readonly (string | null)[],
+): boolean {
+  return (
+    current.length === rotated.length &&
+    current.every((value, index) => {
+      const nextValue = rotated[index]
+      return value === null
+        ? nextValue === null
+        : typeof nextValue === 'string' && nextValue !== value
+    })
+  )
 }
 
 function parseCipher(value: unknown): UserKeyRotationCipher | null {

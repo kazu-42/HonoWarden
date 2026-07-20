@@ -189,25 +189,31 @@ Secret-handling invariants:
    client-derived authentication hash. It never receives a plaintext password,
    unwrapped user key, or decrypted vault value.
 3. The repository uses five snapshot queries: one bounded aggregate preflight
-   plus exact active personal folders, ciphers, uploaded attachments, and
-   complete trusted devices. Deleted records, pending uploads, partial device
-   keys, personal `cipher_key` columns, unsupported cipher metadata, foreign or
+   plus exact active personal folders, ciphers, uploaded attachments, complete
+   trusted devices, and revoked key-bearing devices. Deleted records, pending
+   uploads, partial active-device keys, personal `cipher_key` columns,
+   unsupported cipher metadata, foreign or
    missing IDs, stale revisions, changed immutable metadata, and size/count
    overflow fail before mutation.
-4. Nine transactional statements commit one generation: guarded user CAS,
-   folder/cipher/attachment/trusted-device updates, device and refresh-token
-   revocation, auth-request supersession, and one redacted
+4. Ten transactional statements commit one generation: guarded user CAS,
+   folder/cipher/attachment/trusted-device updates, old key removal from already
+   revoked devices, active device and refresh-token revocation, auth-request
+   supersession, and one redacted
    `account.keys.rotate` audit row. Every downstream write is gated by the new
    security stamp and revision; a lost CAS changes zero downstream rows.
-5. Attachment updates change only encrypted file names/keys and revision
-   metadata. R2 object keys and bytes remain unchanged, and the route has no R2
-   binding. D1 batch failure propagates and rolls the complete transaction back.
+5. Every supported cipher ciphertext must move away from its exact old value;
+   rotation-only JSON fields cannot satisfy this invariant. Attachment
+   staleness uses the client-observable parent cipher revision while the exact
+   attachment row revision remains in the transaction manifest. Attachment
+   updates change only encrypted file names/keys and revision metadata. R2
+   object keys and bytes remain unchanged, and the route has no R2 binding. D1
+   batch failure propagates and rolls the complete transaction back.
 6. A committed generation returns 200 before best-effort Durable Object session
    cleanup. Old access tokens fail on security-stamp mismatch and D1 refresh
    sessions are revoked. New authentication, profile, sync, and backup readers
    project the same complete wrapped-key generation.
 
-The fixed repository budget is 14 queries, below the reserved 50-query Worker
+The fixed repository budget is 15 queries, below the reserved 50-query Worker
 limit. SQL, bound-parameter, bound-value, manifest, row-count, and snapshot-byte
 limits are checked before `batch()`. External errors disclose only request,
 conflict, unsupported-state, budget, or infrastructure categories; hashes,

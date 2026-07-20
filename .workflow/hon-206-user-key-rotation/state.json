@@ -40,15 +40,15 @@
     }
   ],
   "verification": {
-    "status": "local_passed_reviews_pending",
+    "status": "linear_subissues_synced",
     "results": {
-      "focused": "passed_7_files_68_tests",
-      "full": "passed_95_files_1153_tests",
+      "focused": "passed_7_files_74_tests",
+      "full": "passed_95_files_1159_tests",
       "compatibility": "passed_3_files_105_tests",
       "realLocalD1R2": "passed_9_checks",
       "releaseGate": "ready_11_pass_0_manual_0_block",
       "dependencyAudit": "passed_0_known_vulnerabilities",
-      "standardReview": "pending",
+      "standardReview": "remediated_4_p1_1_p2_exact_head_rerun_pending",
       "fiveAxisReview": "pending"
     },
     "checks": [

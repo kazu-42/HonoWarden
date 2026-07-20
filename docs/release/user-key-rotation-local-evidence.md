@@ -96,6 +96,10 @@ The passing report asserts all of the following:
   carry that same revision
 - the trusted device has its new wrapped public/user keys, retains its immutable
   private key, and is revoked with every pre-rotation device/session
+- an already-revoked device retains its original revocation timestamp while all
+  three stale wrapped-key columns are cleared in the same D1 transaction; the
+  exact device manifest prevents a concurrent stale-key row from escaping that
+  cleanup
 - both active/approved auth requests are atomically superseded
 - exactly one redacted `account.keys.rotate` audit row exists for the primary
   account
@@ -134,3 +138,13 @@ activate development, staging, or production, authorize a remote D1/R2 write,
 promote official-client compatibility, or replace independent security review.
 Durable notification cleanup failure remains covered by focused route tests;
 this lifecycle runs with notifications disabled.
+
+## Independent Review Boundary
+
+The first standard review identified five correctness gaps: one unchanged
+ciphertext could pass through a JSON-level comparison, attachment staleness used
+the wrong revision surface, composite device IDs were rejected, revoked device
+keys could survive for later reactivation, and absent legacy `favorite` data did
+not default to false. All five were first captured by failing tests and then
+remediated. This document does not claim final approval until the standard and
+five-axis reviews are rerun against the exact publication head.

@@ -409,6 +409,25 @@ describe('user-key rotation domain', () => {
     }
   })
 
+  it('accepts HonoWarden composite trusted-device ids', () => {
+    const body = rotationBody()
+    const device = body.accountUnlockData.deviceKeyUnlockData[0]!
+    const compositeDeviceId = `${userId}:${deviceId}`
+
+    expect(
+      parseUserKeyRotationBody({
+        ...body,
+        accountUnlockData: {
+          ...body.accountUnlockData,
+          deviceKeyUnlockData: [{ ...device, deviceId: compositeDeviceId }],
+        },
+      }),
+    ).toMatchObject({
+      ok: true,
+      trustedDevices: [{ id: compositeDeviceId }],
+    })
+  })
+
   it('rejects organization-owned, unsupported-type, and unknown cipher data', () => {
     const body = rotationBody()
     const cipher = body.accountData.ciphers[0]!

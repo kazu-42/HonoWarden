@@ -82,17 +82,26 @@ export const snapshotSummarySql = `
           encrypted_public_key IS NOT NULL AND
           encrypted_private_key IS NOT NULL
         )) as incompleteTrustedDeviceCount,
+    (SELECT COUNT(*) FROM devices
+      WHERE user_id = users.id
+        AND revoked_at IS NOT NULL
+        AND (
+          encrypted_user_key IS NOT NULL OR
+          encrypted_public_key IS NOT NULL OR
+          encrypted_private_key IS NOT NULL
+        )) as revokedDeviceKeyCount,
     (SELECT COALESCE(SUM(
-        length(encrypted_user_key) +
-        length(encrypted_public_key) +
-        length(encrypted_private_key)
+        length(COALESCE(encrypted_user_key, '')) +
+        length(COALESCE(encrypted_public_key, '')) +
+        length(COALESCE(encrypted_private_key, ''))
       ), 0)
       FROM devices
       WHERE user_id = users.id
-        AND revoked_at IS NULL
-        AND encrypted_user_key IS NOT NULL
-        AND encrypted_public_key IS NOT NULL
-        AND encrypted_private_key IS NOT NULL) as trustedDeviceBytes
+        AND (
+          encrypted_user_key IS NOT NULL OR
+          encrypted_public_key IS NOT NULL OR
+          encrypted_private_key IS NOT NULL
+        )) as trustedDeviceBytes
   FROM users
   WHERE users.id = ?
   LIMIT 1
@@ -151,15 +160,27 @@ export const snapshotTrustedDevicesSql = `
   SELECT
     id,
     user_id as userId,
+    identifier,
+    revoked_at as revokedAt,
     encrypted_user_key as encryptedUserKey,
     encrypted_public_key as encryptedPublicKey,
     encrypted_private_key as encryptedPrivateKey
   FROM devices
   WHERE user_id = ?
-    AND revoked_at IS NULL
-    AND encrypted_user_key IS NOT NULL
-    AND encrypted_public_key IS NOT NULL
-    AND encrypted_private_key IS NOT NULL
+    AND (
+      (
+        revoked_at IS NULL AND
+        encrypted_user_key IS NOT NULL AND
+        encrypted_public_key IS NOT NULL AND
+        encrypted_private_key IS NOT NULL
+      ) OR (
+        revoked_at IS NOT NULL AND (
+          encrypted_user_key IS NOT NULL OR
+          encrypted_public_key IS NOT NULL OR
+          encrypted_private_key IS NOT NULL
+        )
+      )
+    )
   ORDER BY id ASC
 `
 
@@ -197,6 +218,8 @@ export const updateUserGenerationSql = `
     expected_devices AS (
       SELECT
         json_extract(value, '$.id') as id,
+        json_extract(value, '$.identifier') as identifier,
+        json_extract(value, '$.revokedAt') as revoked_at,
         json_extract(value, '$.encryptedUserKey') as encrypted_user_key,
         json_extract(value, '$.encryptedPublicKey') as encrypted_public_key,
         json_extract(value, '$.encryptedPrivateKey') as encrypted_private_key
@@ -288,29 +311,29 @@ export const updateUserGenerationSql = `
     )
     AND (SELECT COUNT(*) FROM devices
       WHERE user_id = users.id
-        AND revoked_at IS NULL
-        AND encrypted_user_key IS NOT NULL
-        AND encrypted_public_key IS NOT NULL
-        AND encrypted_private_key IS NOT NULL) =
+        AND (
+          encrypted_user_key IS NOT NULL OR
+          encrypted_public_key IS NOT NULL OR
+          encrypted_private_key IS NOT NULL
+        )) =
       (SELECT COUNT(*) FROM expected_devices)
     AND NOT EXISTS (
       SELECT 1
       FROM devices row
       LEFT JOIN expected_devices expected ON expected.id = row.id
       WHERE row.user_id = users.id
-        AND row.revoked_at IS NULL
         AND (
-          (
-            row.encrypted_user_key IS NOT NULL OR
-            row.encrypted_public_key IS NOT NULL OR
-            row.encrypted_private_key IS NOT NULL
-          )
-          AND (
+          row.encrypted_user_key IS NOT NULL OR
+          row.encrypted_public_key IS NOT NULL OR
+          row.encrypted_private_key IS NOT NULL
+        )
+        AND (
             expected.id IS NULL OR
+            expected.identifier IS NOT row.identifier OR
+            expected.revoked_at IS NOT row.revoked_at OR
             expected.encrypted_user_key IS NOT row.encrypted_user_key OR
             expected.encrypted_public_key IS NOT row.encrypted_public_key OR
             expected.encrypted_private_key IS NOT row.encrypted_private_key
-          )
         )
     )
   RETURNING id
@@ -409,6 +432,26 @@ export const updateTrustedDevicesSql = `
     AND encrypted_public_key IS NOT NULL
     AND encrypted_private_key IS NOT NULL
     AND id IN (SELECT id FROM rotated)
+    AND EXISTS (
+      SELECT 1 FROM users
+      WHERE id = ? AND security_stamp = ? AND revision_date = ?
+    )
+`
+
+export const clearRevokedDeviceKeysSql = `
+  UPDATE devices
+  SET
+    encrypted_user_key = NULL,
+    encrypted_public_key = NULL,
+    encrypted_private_key = NULL,
+    updated_at = ?
+  WHERE user_id = ?
+    AND revoked_at IS NOT NULL
+    AND (
+      encrypted_user_key IS NOT NULL OR
+      encrypted_public_key IS NOT NULL OR
+      encrypted_private_key IS NOT NULL
+    )
     AND EXISTS (
       SELECT 1 FROM users
       WHERE id = ? AND security_stamp = ? AND revision_date = ?

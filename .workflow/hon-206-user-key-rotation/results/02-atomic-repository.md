@@ -16,9 +16,10 @@ Worker, mutate remote D1/R2, rotate a real credential, or promote compatibility.
   columns, row-count overflow, and snapshot-byte overflow before large rows are
   read or `batch()` is entered.
 - Four bounded detail queries read exact active folders, personal ciphers,
-  uploaded personal attachments, and complete active trusted devices. The
-  request must contain the same unique owned IDs, folder links, observable
-  revisions, and immutable cipher metadata.
+  uploaded personal attachments, complete active trusted devices, and
+  key-bearing revoked devices in the same device snapshot. The request must
+  contain the same unique owned IDs, folder links, observable revisions, and
+  immutable cipher metadata.
 - Existing cipher JSON is parsed independently. Invalid stored metadata returns
   `unsupported_state`; a valid but changed immutable value returns `conflict`.
   An omitted legacy `reprompt` is the protocol default `0`.
@@ -32,11 +33,12 @@ Worker, mutate remote D1/R2, rotate a real credential, or promote compatibility.
   users CAS validates the exact folder, personal-cipher, uploaded-attachment,
   and trusted-device sets inside D1 with `json_each`, including old ciphertext,
   revisions, object identity, and nullable values.
-- Eight downstream statements are gated by the newly committed security stamp
-  and revision: folder, cipher, attachment, trusted-device updates; all-device
-  and all-refresh revocation; auth-request supersession; and one audit insert.
-- The fixed budget is five snapshot queries plus nine transactional statements,
-  14 total. Every statement is checked before preparation against 50 queries,
+- Nine downstream statements are gated by the newly committed security stamp
+  and revision: folder, cipher, attachment, and trusted-device updates;
+  revoked-device key clearing; all-device and all-refresh revocation;
+  auth-request supersession; and one audit insert.
+- The fixed budget is five snapshot queries plus ten transactional statements,
+  15 total. Every statement is checked before preparation against 50 queries,
   100 bound parameters, 100 KB SQL, and 2 MB bound-value limits. Each manifest
   is additionally capped at 1.8 MB.
 - A lost users CAS requires every downstream change count to be zero and returns
@@ -45,20 +47,31 @@ Worker, mutate remote D1/R2, rotate a real credential, or promote compatibility.
 - The attachment UPDATE changes only encrypted file name/key and revision/time.
   It never assigns `object_key`, `size`, or `content_type`, and no R2 binding is
   accepted by the repository.
+- Every supported key-dependent cipher value must differ from its stored
+  old-generation value. Raw JSON differences and rotation-only metadata cannot
+  satisfy this check, and a single stale encrypted value rejects the request.
+- Attachment staleness uses the parent cipher revision exposed by sync while
+  the attachment row's own revision remains guarded in the current D1 manifest.
+- Trusted-device references resolve owner-scoped stored IDs or identifiers.
+  Already-revoked key-bearing rows are included in the current manifest and
+  have all old-generation wrappers cleared atomically before they can be
+  reactivated by a later password login.
 
 ## TDD and verification
 
 - Red: the focused repository suite failed because
   `src/repositories/user-key-rotation-repository.ts` did not exist.
-- Fake D1: 18 tests cover exact success/counts, statement/bind budgets,
+- Fake D1: 23 tests cover exact success/counts, statement/bind budgets,
   unsupported state, foreign/missing/stale/metadata-changing manifests,
-  generation conflict, snapshot overflow, protocol defaults, lost-race zero
-  writes, guard violations, and statement failure propagation.
+  generation conflict, snapshot overflow, protocol defaults, every supported
+  key-dependent cipher value, identifier resolution, revoked-device cleanup,
+  lost-race zero writes, guard violations, and statement failure propagation.
 - Real local D1 (Miniflare/workerd): four tests cover empty manifests, populated
-  success/readback, R2 identity sentinel fields, duplicate final-audit rollback,
-  and concurrent one-winner/one-conflict serialization.
-- Focused repository plus integration: 2 files and 22 tests pass.
-- Full suite: 92 files and 1,135 tests pass.
+  success/readback, stale revoked-device key removal, R2 identity sentinel
+  fields, duplicate final-audit rollback, and concurrent
+  one-winner/one-conflict serialization.
+- Focused repository plus integration: 2 files and 27 tests pass.
+- Full suite: 95 files and 1,159 tests pass.
 - `pnpm check`, full `pnpm lint`, and full `pnpm format` pass.
 - `pnpm audit --audit-level low` reports no known vulnerabilities. The direct
   Miniflare test dependency and new lock hash are recorded in

@@ -41,12 +41,38 @@ after a deadline, closes pipes, and fails if any member remains. The initial
 run's own process group was removed, and two subsequent lifecycle executions
 completed with exit 0 and zero matching descendants.
 
+## Standard review remediation
+
+The first standard review of commit `34087c0` returned four P1 findings and one
+P2 finding. Each finding was reproduced as a failing repository, domain, or
+real-D1 test before source changes:
+
+- raw JSON inequality allowed a cipher to retain one old-generation encrypted
+  value
+- attachment staleness compared an internal attachment revision instead of the
+  parent cipher revision exposed by sync
+- UUID-only device parsing rejected HonoWarden's composite device IDs and did
+  not resolve the client identifier to its owner-scoped stored ID
+- already-revoked devices retained old wrapped keys that password login could
+  reactivate
+- legacy stored cipher JSON without `favorite` did not receive the same false
+  default as cipher creation
+
+The repository now compares every supported key-dependent cipher value,
+resolves unambiguous device ID/identifier references, uses the parent cipher
+revision for client staleness, defaults an absent stored `favorite` to false,
+and clears old keys from already-revoked devices in the same batch. Revoked
+key-bearing rows are part of the exact current device manifest, so a snapshot
+race loses the user CAS before any write instead of committing and then
+surfacing a false infrastructure failure from a post-commit count mismatch.
+Exact-head standard and five-axis reviews remain pending.
+
 ## Verification
 
 - Route lifecycle acceptance: 1 file / 2 tests passed.
-- Focused domain/repository/real-D1/route/config/policy/lifecycle: 7 files / 68
+- Focused domain/repository/real-D1/route/config/policy/lifecycle: 7 files / 74
   tests passed.
-- Full suite: 95 files / 1,153 tests passed.
+- Full suite: 95 files / 1,159 tests passed.
 - Compatibility: 3 files / 105 tests passed.
 - `pnpm check`, full `pnpm lint`, full `pnpm format`, and `git diff --check`
   passed.

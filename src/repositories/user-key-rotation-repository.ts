@@ -6,6 +6,7 @@ import {
 } from '../domain/user-key-rotation'
 import { classifyStoredUserKeyRotationCipherMetadata } from '../domain/user-key-rotation-cipher'
 import {
+  clearRevokedDeviceKeysSql,
   insertAuditEventSql,
   invalidateAuthRequestsSql,
   revokeDevicesSql,
@@ -26,7 +27,7 @@ type UserKeyRotationDatabase = Pick<D1Database, 'batch' | 'prepare'>
 
 export const userKeyRotationRepositoryPolicy = {
   snapshotQueries: 5,
-  mutationStatements: 9,
+  mutationStatements: 10,
   maxQueriesPerInvocation: 50,
   maxBoundParameters: 100,
   maxStatementLength: 100_000,
@@ -115,6 +116,7 @@ type SnapshotSummaryRow = {
   attachmentBytes: number
   trustedDeviceCount: number
   incompleteTrustedDeviceCount: number
+  revokedDeviceKeyCount: number
   trustedDeviceBytes: number
 }
 
@@ -150,6 +152,8 @@ type SnapshotAttachmentRow = {
 type SnapshotTrustedDeviceRow = {
   id: string
   userId: string
+  identifier: string
+  revokedAt: string | null
   encryptedUserKey: string
   encryptedPublicKey: string
   encryptedPrivateKey: string
@@ -161,6 +165,7 @@ type UserKeyRotationSnapshot = {
   ciphers: SnapshotCipherRow[]
   attachments: SnapshotAttachmentRow[]
   trustedDevices: SnapshotTrustedDeviceRow[]
+  revokedDeviceKeys: SnapshotTrustedDeviceRow[]
 }
 
 type SnapshotReadResult =
@@ -220,13 +225,14 @@ export async function rotateUserKeyGeneration(
     snapshotResult.snapshot,
     input,
   )
-  if (snapshotValidation) {
-    return snapshotValidation
+  if (snapshotValidation.status !== 'valid') {
+    return snapshotValidation.result
   }
 
   const manifests = buildRotationManifests(
     snapshotResult.snapshot,
     input.request,
+    snapshotValidation.trustedDevices,
   )
   if (!manifests) {
     return { status: 'over_budget', reason: 'manifest_bytes' }
@@ -239,7 +245,7 @@ export async function rotateUserKeyGeneration(
     manifests,
   )
   const results = await database.batch(statements)
-  return interpretMutationResults(results, input)
+  return interpretMutationResults(results, input, snapshotResult.snapshot)
 }
 
 async function readUserKeyRotationSnapshot(
@@ -321,7 +327,10 @@ async function readUserKeyRotationSnapshot(
     folders.results.length !== summary.activeFolderCount ||
     ciphers.results.length !== summary.activeCipherCount ||
     attachments.results.length !== summary.uploadedAttachmentCount ||
-    trustedDevices.results.length !== summary.trustedDeviceCount
+    trustedDevices.results.filter((device) => device.revokedAt === null)
+      .length !== summary.trustedDeviceCount ||
+    trustedDevices.results.filter((device) => device.revokedAt !== null)
+      .length !== summary.revokedDeviceKeyCount
   ) {
     return { status: 'conflict' }
   }
@@ -333,7 +342,12 @@ async function readUserKeyRotationSnapshot(
       folders: folders.results,
       ciphers: ciphers.results,
       attachments: attachments.results,
-      trustedDevices: trustedDevices.results,
+      trustedDevices: trustedDevices.results.filter(
+        (device) => device.revokedAt === null,
+      ),
+      revokedDeviceKeys: trustedDevices.results.filter(
+        (device) => device.revokedAt !== null,
+      ),
     },
   }
 }
@@ -341,7 +355,12 @@ async function readUserKeyRotationSnapshot(
 function validateSnapshotAgainstRequest(
   snapshot: UserKeyRotationSnapshot,
   input: RotateUserKeyGenerationInput,
-): RotateUserKeyGenerationResult | null {
+):
+  | {
+      status: 'valid'
+      trustedDevices: UserKeyRotationRequest['trustedDevices']
+    }
+  | { status: 'rejected'; result: RotateUserKeyGenerationResult } {
   const request = input.request
   if (
     !hasUniqueIds(request.folders) ||
@@ -350,9 +369,24 @@ function validateSnapshotAgainstRequest(
     !hasUniqueIds(snapshot.folders) ||
     !hasUniqueIds(snapshot.ciphers) ||
     !hasUniqueIds(snapshot.attachments) ||
-    !hasUniqueIds(snapshot.trustedDevices)
+    !hasUniqueIds(snapshot.trustedDevices) ||
+    !hasUniqueIds(snapshot.revokedDeviceKeys) ||
+    new Set(
+      [...snapshot.trustedDevices, ...snapshot.revokedDeviceKeys].map(
+        (device) => device.id,
+      ),
+    ).size !==
+      snapshot.trustedDevices.length + snapshot.revokedDeviceKeys.length
   ) {
-    return { status: 'conflict' }
+    return { status: 'rejected', result: { status: 'conflict' } }
+  }
+
+  const trustedDevices = resolveTrustedDevices(
+    snapshot.trustedDevices,
+    request.trustedDevices,
+  )
+  if (!trustedDevices) {
+    return { status: 'rejected', result: { status: 'conflict' } }
   }
 
   const currentFolders = new Map(
@@ -366,7 +400,7 @@ function validateSnapshotAgainstRequest(
       current.name === folder.name ||
       !isNonemptyString(current.revisionDate)
     ) {
-      return { status: 'conflict' }
+      return { status: 'rejected', result: { status: 'conflict' } }
     }
   }
 
@@ -387,17 +421,23 @@ function validateSnapshotAgainstRequest(
       Boolean(current.favorite) !== cipher.favorite ||
       current.revisionDate !== cipher.lastKnownRevisionDate
     ) {
-      return { status: 'conflict' }
+      return { status: 'rejected', result: { status: 'conflict' } }
     }
     const metadataStatus = classifyStoredUserKeyRotationCipherMetadata(
       cipher,
       current.encryptedJson,
     )
     if (metadataStatus === 'invalid') {
-      return { status: 'unsupported_state', reason: 'stored_cipher_invalid' }
+      return {
+        status: 'rejected',
+        result: {
+          status: 'unsupported_state',
+          reason: 'stored_cipher_invalid',
+        },
+      }
     }
     if (metadataStatus === 'mismatch') {
-      return { status: 'conflict' }
+      return { status: 'rejected', result: { status: 'conflict' } }
     }
   }
 
@@ -408,7 +448,7 @@ function validateSnapshotAgainstRequest(
     })),
   )
   if (!hasUniqueIds(requestedAttachments)) {
-    return { status: 'conflict' }
+    return { status: 'rejected', result: { status: 'conflict' } }
   }
   const currentAttachments = new Map(
     snapshot.attachments.map((attachment) => [attachment.id, attachment]),
@@ -419,21 +459,22 @@ function validateSnapshotAgainstRequest(
       !current ||
       current.userId !== input.userId ||
       current.cipherId !== attachment.cipherId ||
-      current.revisionDate !== attachment.lastKnownRevisionDate ||
+      currentCiphers.get(attachment.cipherId)?.revisionDate !==
+        attachment.lastKnownRevisionDate ||
       !isNonemptyString(current.objectKey) ||
       !isNonnegativeInteger(current.size) ||
       !isNonemptyString(current.contentType) ||
       current.fileName === attachment.fileName ||
       current.attachmentKey === attachment.attachmentKey
     ) {
-      return { status: 'conflict' }
+      return { status: 'rejected', result: { status: 'conflict' } }
     }
   }
 
   const currentTrustedDevices = new Map(
     snapshot.trustedDevices.map((device) => [device.id, device]),
   )
-  for (const device of request.trustedDevices) {
+  for (const device of trustedDevices) {
     const current = currentTrustedDevices.get(device.id)
     if (
       !current ||
@@ -442,16 +483,36 @@ function validateSnapshotAgainstRequest(
       current.encryptedPublicKey === device.encryptedPublicKey ||
       current.encryptedUserKey === device.encryptedUserKey
     ) {
-      return { status: 'conflict' }
+      return { status: 'rejected', result: { status: 'conflict' } }
     }
   }
 
-  return null
+  return { status: 'valid', trustedDevices }
+}
+
+function resolveTrustedDevices(
+  current: readonly SnapshotTrustedDeviceRow[],
+  requested: readonly UserKeyRotationRequest['trustedDevices'][number][],
+): UserKeyRotationRequest['trustedDevices'] | null {
+  const resolved: UserKeyRotationRequest['trustedDevices'] = []
+  const seenIds = new Set<string>()
+  for (const device of requested) {
+    const matches = current.filter(
+      (candidate) =>
+        candidate.id === device.id || candidate.identifier === device.id,
+    )
+    const match = matches.length === 1 ? matches[0] : undefined
+    if (!match || seenIds.has(match.id)) return null
+    seenIds.add(match.id)
+    resolved.push({ ...device, id: match.id })
+  }
+  return resolved
 }
 
 function buildRotationManifests(
   snapshot: UserKeyRotationSnapshot,
   request: UserKeyRotationRequest,
+  trustedDevices: UserKeyRotationRequest['trustedDevices'],
 ): RotationManifests | null {
   const currentFolders = serializeManifest(
     snapshot.folders.map((folder) => ({
@@ -483,12 +544,16 @@ function buildRotationManifests(
     })),
   )
   const currentTrustedDevices = serializeManifest(
-    snapshot.trustedDevices.map((device) => ({
-      id: device.id,
-      encryptedUserKey: device.encryptedUserKey,
-      encryptedPublicKey: device.encryptedPublicKey,
-      encryptedPrivateKey: device.encryptedPrivateKey,
-    })),
+    [...snapshot.trustedDevices, ...snapshot.revokedDeviceKeys].map(
+      (device) => ({
+        id: device.id,
+        identifier: device.identifier,
+        revokedAt: device.revokedAt,
+        encryptedUserKey: device.encryptedUserKey,
+        encryptedPublicKey: device.encryptedPublicKey,
+        encryptedPrivateKey: device.encryptedPrivateKey,
+      }),
+    ),
   )
   const nextFolders = serializeManifest(request.folders)
   const nextCiphers = serializeManifest(
@@ -506,7 +571,7 @@ function buildRotationManifests(
       })),
     ),
   )
-  const nextTrustedDevices = serializeManifest(request.trustedDevices)
+  const nextTrustedDevices = serializeManifest(trustedDevices)
   const values = {
     currentFolders,
     currentCiphers,
@@ -573,6 +638,16 @@ function buildMutationStatements(
       sql: updateTrustedDevicesSql,
       values: [
         manifests.nextTrustedDevices,
+        input.nextRevisionDate,
+        input.userId,
+        input.userId,
+        input.nextSecurityStamp,
+        input.nextRevisionDate,
+      ],
+    },
+    {
+      sql: clearRevokedDeviceKeysSql,
+      values: [
         input.nextRevisionDate,
         input.userId,
         input.userId,
@@ -658,6 +733,7 @@ function generationGatedValues(input: RotateUserKeyGenerationInput): unknown[] {
 function interpretMutationResults(
   results: D1Result[],
   input: RotateUserKeyGenerationInput,
+  snapshot: UserKeyRotationSnapshot,
 ): RotateUserKeyGenerationResult {
   if (results.length !== userKeyRotationRepositoryPolicy.mutationStatements) {
     throw new Error('user key rotation batch returned an invalid result count')
@@ -668,6 +744,7 @@ function interpretMutationResults(
     cipherResult,
     attachmentResult,
     trustedDeviceResult,
+    revokedDeviceKeyResult,
     deviceResult,
     refreshResult,
     authRequestResult,
@@ -679,6 +756,7 @@ function interpretMutationResults(
     !cipherResult ||
     !attachmentResult ||
     !trustedDeviceResult ||
+    !revokedDeviceKeyResult ||
     !deviceResult ||
     !refreshResult ||
     !authRequestResult ||
@@ -713,6 +791,8 @@ function interpretMutationResults(
     (attachmentResult?.meta.changes ?? 0) !== expectedAttachmentCount ||
     (trustedDeviceResult?.meta.changes ?? 0) !==
       input.request.trustedDevices.length ||
+    (revokedDeviceKeyResult?.meta.changes ?? 0) !==
+      snapshot.summary.revokedDeviceKeyCount ||
     (auditResult?.meta.changes ?? 0) !== 1
   ) {
     throw new Error(
@@ -788,7 +868,8 @@ function snapshotCountOverBudget(summary: SnapshotSummaryRow): boolean {
   return (
     summary.activeFolderCount > userKeyRotationPolicy.foldersMax ||
     summary.activeCipherCount > userKeyRotationPolicy.ciphersMax ||
-    summary.trustedDeviceCount > userKeyRotationPolicy.trustedDevicesMax ||
+    summary.trustedDeviceCount + summary.revokedDeviceKeyCount >
+      userKeyRotationPolicy.trustedDevicesMax ||
     summary.uploadedAttachmentCount >
       userKeyRotationPolicy.ciphersMax *
         userKeyRotationPolicy.attachmentsPerCipherMax
@@ -825,6 +906,7 @@ function assertSnapshotSummary(summary: SnapshotSummaryRow): void {
     summary.pendingAttachmentCount,
     summary.trustedDeviceCount,
     summary.incompleteTrustedDeviceCount,
+    summary.revokedDeviceKeyCount,
   ]
   const byteFields = [
     summary.folderBytes,

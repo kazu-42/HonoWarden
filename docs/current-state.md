@@ -1240,11 +1240,12 @@ Implemented:
   product arrays, exact IDs, bounded encrypted values, and observable revisions
 - existing credential-proof defense for the old client-derived authentication
   hash, generic/rate-limited proof failure, and notification-binding preflight
-- five bounded D1 snapshot queries plus nine transactional statements for the
+- five bounded D1 snapshot queries plus ten transactional statements for the
   guarded account generation, personal folders/ciphers/uploaded-attachment
-  metadata/trusted devices, all D1 session revocation, auth-request supersession,
-  and one redacted `account.keys.rotate` audit event
-- exact manifest and immutable-metadata checks, fixed 14-query budget, explicit
+  metadata/trusted devices, stale revoked-device key clearing, all D1 session
+  revocation, auth-request supersession, and one redacted `account.keys.rotate`
+  audit event
+- exact manifest and immutable-metadata checks, fixed 15-query budget, explicit
   conflict/unsupported/over-budget/infrastructure taxonomy, and fail-loud batch
   invariants; attachment R2 object identity and bytes are outside the writer
 - post-commit best-effort generation-aware Durable Object cleanup so transport

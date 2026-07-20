@@ -44,14 +44,14 @@ promote the fixture to official-client compatibility.
 
 - Red: the first session-lifecycle expansion exposed that the route-test D1
   double did not persist auth-failure buckets and then conflated refresh-session
-  invalidation with the nine-statement key-rotation batch. The double now models
+  invalidation with the ten-statement key-rotation batch. The double now models
   those contracts separately; production source was unchanged by that fix.
-- Focused domain/repository/real-D1/route/config/policy gate: 6 files and 66
+- Focused domain/repository/real-D1/route/config/policy/lifecycle gate: 7 files and 74
   tests pass.
 - Route suite: 12/12 tests pass, including disabled D1-free behavior, ordering,
   every result class, fixture replay, post-commit cleanup failure, old
   generation rejection, and new projection consistency.
-- Full suite: 94 files and 1,151 tests pass.
+- Full suite: 95 files and 1,159 tests pass.
 - `pnpm check`, full `pnpm lint`, full `pnpm format`, and `git diff --check`
   pass.
 

@@ -36,15 +36,15 @@ describe('user key rotation repository', () => {
       auditEventId: fixture.input.auditEventId,
       budget: {
         snapshotQueries: 5,
-        mutationStatements: 9,
-        totalQueries: 14,
+        mutationStatements: 10,
+        totalQueries: 15,
       },
     })
 
     expect(database.readQueries).toHaveLength(5)
     expect(database.batchCalls).toHaveLength(1)
     const statements = database.batchCalls[0] ?? []
-    expect(statements).toHaveLength(9)
+    expect(statements).toHaveLength(10)
     expect(statements[0]?.query).toContain('UPDATE users')
     expect(statements[0]?.query).toContain('json_each(?)')
     expect(statements.slice(1).every(hasCommittedGenerationGate)).toBe(true)
@@ -57,6 +57,12 @@ describe('user key rotation repository', () => {
     expect(attachmentUpdate?.query).not.toMatch(/SET[\s\S]*object_key\s*=/)
     expect(attachmentUpdate?.query).not.toMatch(/SET[\s\S]*size\s*=/)
     expect(attachmentUpdate?.query).not.toMatch(/SET[\s\S]*content_type\s*=/)
+
+    const revokedKeyClear = statements.find((statement) =>
+      statement.query.includes('encrypted_user_key = NULL'),
+    )
+    expect(revokedKeyClear?.query).toContain('revoked_at IS NOT NULL')
+    expect(revokedKeyClear?.query).toContain('security_stamp = ?')
 
     for (const statement of [...database.readQueries, ...statements]) {
       expect(statement.query.length).toBeLessThanOrEqual(
@@ -151,6 +157,107 @@ describe('user key rotation repository', () => {
     await expect(
       rotateUserKeyGeneration(database, fixture.input),
     ).resolves.toMatchObject({ status: 'rotated' })
+  })
+
+  it('uses the existing cipher default when stored favorite metadata is absent', async () => {
+    const fixture = rotationFixture()
+    const storedPayload = JSON.parse(
+      fixture.snapshot.ciphers[0]!.encryptedJson,
+    ) as Record<string, unknown>
+    delete storedPayload.favorite
+    fixture.snapshot.ciphers[0]!.favorite = 0
+    fixture.snapshot.ciphers[0]!.encryptedJson = JSON.stringify(storedPayload)
+
+    const nextPayload = JSON.parse(
+      fixture.request.ciphers[0]!.encryptedJson,
+    ) as Record<string, unknown>
+    nextPayload.favorite = false
+    fixture.request.ciphers[0]!.favorite = false
+    fixture.request.ciphers[0]!.encryptedJson = JSON.stringify(nextPayload)
+    const database = new RotationD1Database(fixture.snapshot)
+
+    await expect(
+      rotateUserKeyGeneration(database, fixture.input),
+    ).resolves.toMatchObject({ status: 'rotated' })
+  })
+
+  it('uses the parent cipher revision for attachment staleness', async () => {
+    const fixture = rotationFixture()
+    fixture.snapshot.attachments[0]!.revisionDate = '2026-07-20T00:00:00.500Z'
+    const database = new RotationD1Database(fixture.snapshot)
+
+    await expect(
+      rotateUserKeyGeneration(database, fixture.input),
+    ).resolves.toMatchObject({ status: 'rotated' })
+  })
+
+  it('resolves trusted-device identifiers to owner-scoped stored ids', async () => {
+    const fixture = rotationFixture()
+    fixture.snapshot.trustedDevices[0]!.id = `${userId}:trusted-device`
+    fixture.snapshot.trustedDevices[0]!.identifier = 'trusted-device'
+    fixture.request.trustedDevices[0]!.id = 'trusted-device'
+    const database = new RotationD1Database(fixture.snapshot)
+
+    await expect(
+      rotateUserKeyGeneration(database, fixture.input),
+    ).resolves.toMatchObject({ status: 'rotated' })
+
+    const deviceUpdate = database.batchCalls[0]?.find((statement) =>
+      statement.query.includes('encrypted_public_key ='),
+    )
+    expect(deviceUpdate?.values[0]).toContain(`${userId}:trusted-device`)
+  })
+
+  it('guards and clears already-revoked device keys in the same batch', async () => {
+    const fixture = rotationFixture()
+    fixture.snapshot.summary.revokedDeviceKeyCount = 1
+    fixture.snapshot.revokedDeviceKeys.push({
+      id: `${userId}:stale-device`,
+      identifier: 'stale-device',
+      userId,
+      revokedAt: '2026-07-19T00:00:00.000Z',
+      encryptedUserKey: '2.stale-user-key',
+      encryptedPublicKey: '2.stale-public-key',
+      encryptedPrivateKey: '2.stale-private-key',
+    })
+    const database = new RotationD1Database(fixture.snapshot)
+
+    await expect(
+      rotateUserKeyGeneration(database, fixture.input),
+    ).resolves.toMatchObject({ status: 'rotated' })
+
+    const currentDeviceManifest = JSON.parse(
+      String(database.batchCalls[0]?.[0]?.values[3]),
+    ) as { id: string; revokedAt: string | null }[]
+    expect(currentDeviceManifest).toContainEqual({
+      id: `${userId}:stale-device`,
+      identifier: 'stale-device',
+      revokedAt: '2026-07-19T00:00:00.000Z',
+      encryptedUserKey: '2.stale-user-key',
+      encryptedPublicKey: '2.stale-public-key',
+      encryptedPrivateKey: '2.stale-private-key',
+    })
+  })
+
+  it('rejects every unchanged key-dependent cipher value', async () => {
+    for (const path of keyDependentCipherPaths) {
+      const fixture = rotationFixture()
+      const currentPayload = cipherPayload('old')
+      const rotatedPayload = cipherPayload('next')
+      setPath(rotatedPayload, path, readPath(currentPayload, path))
+      Object.assign(rotatedPayload, {
+        id: cipherId,
+        encryptedFor: userId,
+        lastKnownRevisionDate: oldRevisionDate,
+      })
+      fixture.request.ciphers[0]!.encryptedJson = JSON.stringify(rotatedPayload)
+      const database = new RotationD1Database(fixture.snapshot)
+
+      await expect(
+        rotateUserKeyGeneration(database, fixture.input),
+      ).resolves.toEqual({ status: 'conflict' })
+      expect(database.batchCalls).toHaveLength(0)
+    }
   })
 
   it('rejects an oversized snapshot before reading row payloads or entering batch', async () => {
@@ -292,6 +399,7 @@ function rotationFixture() {
       attachmentBytes: 100,
       trustedDeviceCount: 1,
       incompleteTrustedDeviceCount: 0,
+      revokedDeviceKeyCount: 0,
       trustedDeviceBytes: 100,
     },
     folders: [
@@ -329,12 +437,23 @@ function rotationFixture() {
     trustedDevices: [
       {
         id: deviceId,
+        identifier: 'trusted-device',
         userId,
+        revokedAt: null,
         encryptedUserKey: '2.old-device-user-key',
         encryptedPublicKey: '2.old-device-public-key',
         encryptedPrivateKey: '2.device-private-key',
       },
     ],
+    revokedDeviceKeys: [] as Array<{
+      id: string
+      identifier: string
+      userId: string
+      revokedAt: string
+      encryptedUserKey: string
+      encryptedPublicKey: string
+      encryptedPrivateKey: string
+    }>,
   }
   const input = {
     userId,
@@ -376,19 +495,30 @@ function cipherPayload(generation: 'old' | 'next') {
     login: {
       username: `2.${generation}-username`,
       password: `2.${generation}-password`,
-      totp: null,
+      totp: `2.${generation}-totp`,
       passwordRevisionDate: '2026-07-01T00:00:00.000Z',
       autofillOnPageLoad: false,
       uris: [
         {
           uri: `2.${generation}-uri`,
           match: null,
-          uriChecksum: null,
+          uriChecksum: `2.${generation}-uri-checksum`,
         },
       ],
       fido2Credentials: [
         {
           credentialId: `2.${generation}-credential-id`,
+          keyType: `2.${generation}-key-type`,
+          keyAlgorithm: `2.${generation}-key-algorithm`,
+          keyCurve: `2.${generation}-key-curve`,
+          keyValue: `2.${generation}-key-value`,
+          rpId: `2.${generation}-rp-id`,
+          rpName: `2.${generation}-rp-name`,
+          counter: `2.${generation}-counter`,
+          userHandle: `2.${generation}-user-handle`,
+          userName: `2.${generation}-user-name`,
+          userDisplayName: `2.${generation}-user-display-name`,
+          discoverable: `2.${generation}-discoverable`,
           creationDate: null,
         },
       ],
@@ -415,6 +545,56 @@ function cipherPayload(generation: 'old' | 'next') {
       },
     ],
   }
+}
+
+const keyDependentCipherPaths: readonly (readonly (string | number)[])[] = [
+  ['name'],
+  ['notes'],
+  ['key'],
+  ['login', 'username'],
+  ['login', 'password'],
+  ['login', 'totp'],
+  ['login', 'uris', 0, 'uri'],
+  ['login', 'uris', 0, 'uriChecksum'],
+  ['login', 'fido2Credentials', 0, 'credentialId'],
+  ['login', 'fido2Credentials', 0, 'keyType'],
+  ['login', 'fido2Credentials', 0, 'keyAlgorithm'],
+  ['login', 'fido2Credentials', 0, 'keyCurve'],
+  ['login', 'fido2Credentials', 0, 'keyValue'],
+  ['login', 'fido2Credentials', 0, 'rpId'],
+  ['login', 'fido2Credentials', 0, 'rpName'],
+  ['login', 'fido2Credentials', 0, 'counter'],
+  ['login', 'fido2Credentials', 0, 'userHandle'],
+  ['login', 'fido2Credentials', 0, 'userName'],
+  ['login', 'fido2Credentials', 0, 'userDisplayName'],
+  ['login', 'fido2Credentials', 0, 'discoverable'],
+  ['fields', 0, 'name'],
+  ['fields', 0, 'value'],
+  ['passwordHistory', 0, 'password'],
+]
+
+function readPath(root: unknown, path: readonly (string | number)[]): unknown {
+  let current = root
+  for (const segment of path) {
+    if (current === null || typeof current !== 'object') {
+      throw new Error(`invalid cipher fixture path: ${path.join('.')}`)
+    }
+    current = (current as Record<string | number, unknown>)[segment]
+  }
+  return current
+}
+
+function setPath(
+  root: unknown,
+  path: readonly (string | number)[],
+  value: unknown,
+): void {
+  const parent = readPath(root, path.slice(0, -1))
+  const key = path.at(-1)
+  if (parent === null || typeof parent !== 'object' || key === undefined) {
+    throw new Error(`invalid cipher fixture path: ${path.join('.')}`)
+  }
+  ;(parent as Record<string | number, unknown>)[key] = value
 }
 
 function hasCommittedGenerationGate(statement: RecordedStatement): boolean {
@@ -500,7 +680,18 @@ class RotationD1Database {
       return results
     }
 
-    const changes = [1, 1, 1, 1, 1, 2, 2, 2, 1]
+    const changes = [
+      1,
+      1,
+      1,
+      1,
+      1,
+      this.snapshot.summary.revokedDeviceKeyCount,
+      2,
+      2,
+      2,
+      1,
+    ]
     const results = recorded.map((_, index) => {
       if (index === 0) {
         return {
@@ -525,7 +716,10 @@ class RotationD1Database {
       return this.snapshot.attachments
     }
     if (query.includes('FROM devices')) {
-      return this.snapshot.trustedDevices
+      return [
+        ...this.snapshot.trustedDevices,
+        ...this.snapshot.revokedDeviceKeys,
+      ]
     }
     return []
   }

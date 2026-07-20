@@ -408,7 +408,11 @@ function parseTrustedDevices(
     ) {
       return null
     }
-    const id = parseRequiredIdField(value, 'deviceId')
+    const id = parseRequiredOpaqueField(
+      value,
+      'deviceId',
+      userKeyRotationPolicy.trustedDeviceReferenceMaxLength,
+    )
     const encryptedPublicKey = parseRequiredOpaqueField(
       value,
       'encryptedPublicKey',

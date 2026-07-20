@@ -11,6 +11,7 @@ const cipherId = '33333333-3333-4333-8333-333333333333'
 const attachmentId = '44444444-4444-4444-8444-444444444444'
 const trustedDeviceId = '55555555-5555-4555-8555-555555555555'
 const regularDeviceId = '66666666-6666-4666-8666-666666666666'
+const staleRevokedDeviceId = '77777777-7777-4777-8777-777777777777'
 const oldRevisionDate = '2026-07-20T00:00:00.000Z'
 const nextRevisionDate = '2026-07-20T00:00:01.000Z'
 
@@ -46,7 +47,7 @@ describe('user key rotation on real local D1', () => {
   it('commits one generation and preserves attachment storage identity', async () => {
     const database = await createDatabase()
     const fixture = rotationFixture('next-security-stamp', 'rotation-audit-id')
-    await seedRotationState(database, fixture, false)
+    await seedRotationState(database, fixture, false, true)
 
     await expect(
       rotateUserKeyGeneration(database, fixture.input),
@@ -86,9 +87,11 @@ describe('user key rotation on real local D1', () => {
       size: 4096,
       contentType: 'application/octet-stream',
     })
-    expect(state.devices).toHaveLength(2)
+    expect(state.devices).toHaveLength(3)
     expect(
-      state.devices.every((device) => device.revokedAt === nextRevisionDate),
+      state.devices
+        .filter((device) => device.id !== staleRevokedDeviceId)
+        .every((device) => device.revokedAt === nextRevisionDate),
     ).toBe(true)
     expect(
       state.devices.find((device) => device.id === trustedDeviceId),
@@ -96,6 +99,14 @@ describe('user key rotation on real local D1', () => {
       encryptedUserKey: fixture.request.trustedDevices[0]!.encryptedUserKey,
       encryptedPublicKey: fixture.request.trustedDevices[0]!.encryptedPublicKey,
       encryptedPrivateKey: '2.immutable-device-private-key',
+    })
+    expect(
+      state.devices.find((device) => device.id === staleRevokedDeviceId),
+    ).toMatchObject({
+      revokedAt: oldRevisionDate,
+      encryptedUserKey: null,
+      encryptedPublicKey: null,
+      encryptedPrivateKey: null,
     })
     expect(
       state.refreshTokens.every(
@@ -291,6 +302,7 @@ async function seedRotationState(
   database: D1Database,
   fixture: ReturnType<typeof rotationFixture>,
   duplicateAudit: boolean,
+  includeStaleRevokedDevice = false,
 ): Promise<void> {
   const statements = [
     accountInsert(database, fixture),
@@ -357,6 +369,30 @@ async function seedRotationState(
     authRequestInsert(database, 'auth-request-pending', 'pending'),
     authRequestInsert(database, 'auth-request-approved', 'approved'),
   ]
+  if (includeStaleRevokedDevice) {
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO devices (
+            id, user_id, identifier, name, type, revoked_at, created_at,
+            updated_at, encrypted_user_key, encrypted_public_key,
+            encrypted_private_key
+          ) VALUES (?, ?, ?, ?, 8, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          staleRevokedDeviceId,
+          userId,
+          'stale-revoked-device',
+          'stale-revoked-device',
+          oldRevisionDate,
+          oldRevisionDate,
+          oldRevisionDate,
+          '2.stale-old-device-user-key',
+          '2.stale-old-device-public-key',
+          '2.stale-old-device-private-key',
+        ),
+    )
+  }
   if (duplicateAudit) {
     statements.push(
       database

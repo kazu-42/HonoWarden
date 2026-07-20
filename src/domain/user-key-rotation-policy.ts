@@ -8,6 +8,7 @@ export const userKeyRotationPolicy = {
   wrappedPrivateKeyMaxLength: accountKeyPolicy.wrappedPrivateKeyMaxLength,
   emailMaxLength: 256,
   idMaxLength: 36,
+  trustedDeviceReferenceMaxLength: 36 + 1 + 256,
   folderNameMaxLength: 1_000,
   cipherOpaqueValueMaxLength: 16_384,
   cipherJsonMaxLength: 500_000,
