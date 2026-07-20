@@ -1,0 +1,264 @@
+{
+  "generatedAt": "2026-07-20T09:59:17.758Z",
+  "phase": "verify",
+  "status": "exact",
+  "sourcePins": {
+    "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+    "web": "web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1",
+    "browser": "browser-v2026.6.1@723c075bf8b9f45c901e56195be8e94e43ed75a2",
+    "cli": "cli-v2026.6.0@e6293ff2bc85123e9baaa998cf1543030ec5d9f0",
+    "base": "a68ec0ccf0c5379ce228dce93f4f8eef05f6d6f3",
+    "assets": {
+      "cliNpm": "31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660",
+      "cliMacArm64": "57d1e60d7748c6efed96559833ce0423a5c825cbf1356d952970c87a497a64d4",
+      "browserChrome": "fcd29c5971d9b218ad9159717a19c38cca5150f2a0aa909ddf805bd7695d097e"
+    }
+  },
+  "inventory": {
+    "total": 223,
+    "archived": 125,
+    "activeUnarchived": 96,
+    "completedUnarchived": 2
+  },
+  "parent": {
+    "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+    "identifier": "HON-207",
+    "title": "Account A2f: official-client credential-mutation and rollback closeout",
+    "state": {
+      "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+      "name": "In Progress",
+      "type": "started"
+    },
+    "url": "https://linear.app/honowarden/issue/HON-207/account-a2f-official-client-credential-mutation-and-rollback-closeout"
+  },
+  "expectedChildren": 5,
+  "verifiedChildren": 5,
+  "expectedBlockRelations": 4,
+  "verifiedBlockRelations": 4,
+  "unexpectedBlockRelations": 0,
+  "issues": [
+    {
+      "key": "CLIENT-1",
+      "packet": "01-official-client-harness",
+      "identifier": "HON-219",
+      "id": "28f520af-b5f8-4d39-8690-9724178c6c2c",
+      "url": "https://linear.app/honowarden/issue/HON-219/account-a2f1-pinned-official-client-crypto-harness",
+      "title": "Account A2f.1: pinned official-client crypto harness",
+      "state": {
+        "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+        "name": "In Progress",
+        "type": "started"
+      },
+      "parent": {
+        "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+        "identifier": "HON-207"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1390,
+      "descriptionSha256": "78a7671ed2bc84283e597a92d0a2d67a181b2a1f020063ccc24f1e8df26250b8",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "CLIENT-2",
+      "packet": "02-credential-lifecycle",
+      "identifier": "HON-220",
+      "id": "a75389ff-5d34-4851-8ecb-d77df5be4b99",
+      "url": "https://linear.app/honowarden/issue/HON-220/account-a2f2-single-account-credential-generation-lifecycle",
+      "title": "Account A2f.2: single-account credential generation lifecycle",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+        "identifier": "HON-207"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1482,
+      "descriptionSha256": "d19508cbd194a39c6350c42789e0b897529ed073102146325c2ece2ca67f0191",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "RECOVERY-1",
+      "packet": "03-recovery-restore",
+      "identifier": "HON-221",
+      "id": "7f868193-8232-4d35-b905-f7c73515f889",
+      "url": "https://linear.app/honowarden/issue/HON-221/account-a2f3-backup-restore-disable-and-forward-recovery",
+      "title": "Account A2f.3: backup restore, disable, and forward recovery",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+        "identifier": "HON-207"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1359,
+      "descriptionSha256": "5bac99e8b0a996405f738383b39fae619084c4d6ab267b06fd1bbf49913c5efb",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "EVIDENCE-1",
+      "packet": "04-compatibility-evidence",
+      "identifier": "HON-222",
+      "id": "0879badf-b4b1-4c56-9da5-64d6fb71a994",
+      "url": "https://linear.app/honowarden/issue/HON-222/account-a2f4-compatibility-and-operations-evidence-reconciliation",
+      "title": "Account A2f.4: compatibility and operations evidence reconciliation",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+        "identifier": "HON-207"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1425,
+      "descriptionSha256": "8540609d6bddeecab7cbe74d5e89cf84fbd635a4dc436ffaac540f84619ff342",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    },
+    {
+      "key": "CLOSE-1",
+      "packet": "05-review-closeout",
+      "identifier": "HON-223",
+      "id": "a0ec81b7-56fa-4e52-83f7-af8e7500cb7a",
+      "url": "https://linear.app/honowarden/issue/HON-223/account-a2f5-review-publication-and-parent-closeout",
+      "title": "Account A2f.5: review, publication, and parent closeout",
+      "state": {
+        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
+        "name": "Todo",
+        "type": "unstarted"
+      },
+      "parent": {
+        "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+        "identifier": "HON-207"
+      },
+      "project": {
+        "id": "8a2a2aea-a64e-4528-b07b-0cd822b66482",
+        "name": "HonoWarden Post-Alpha Roadmap"
+      },
+      "priority": 0,
+      "archivedAt": null,
+      "descriptionBytes": 1382,
+      "descriptionSha256": "11a1d93637c0614751cbaf84c0ffe23e8982f78506be348dd82b8c1fac928d69",
+      "checks": {
+        "marker": true,
+        "title": true,
+        "description": true,
+        "parent": true,
+        "project": true,
+        "state": true,
+        "priority": true,
+        "nonArchived": true
+      }
+    }
+  ],
+  "relations": [
+    {
+      "blocker": "HON-219",
+      "blocked": "HON-220",
+      "sourceId": "28f520af-b5f8-4d39-8690-9724178c6c2c",
+      "targetId": "a75389ff-5d34-4851-8ecb-d77df5be4b99",
+      "count": 1,
+      "exact": true
+    },
+    {
+      "blocker": "HON-220",
+      "blocked": "HON-221",
+      "sourceId": "a75389ff-5d34-4851-8ecb-d77df5be4b99",
+      "targetId": "7f868193-8232-4d35-b905-f7c73515f889",
+      "count": 1,
+      "exact": true
+    },
+    {
+      "blocker": "HON-221",
+      "blocked": "HON-222",
+      "sourceId": "7f868193-8232-4d35-b905-f7c73515f889",
+      "targetId": "0879badf-b4b1-4c56-9da5-64d6fb71a994",
+      "count": 1,
+      "exact": true
+    },
+    {
+      "blocker": "HON-222",
+      "blocked": "HON-223",
+      "sourceId": "0879badf-b4b1-4c56-9da5-64d6fb71a994",
+      "targetId": "a0ec81b7-56fa-4e52-83f7-af8e7500cb7a",
+      "count": 1,
+      "exact": true
+    }
+  ],
+  "unexpectedRelations": [],
+  "managedComment": {
+    "id": "fcab1e0f-a29d-49a5-b0ee-f34c6f072082",
+    "updatedAt": "2026-07-20T05:02:44.498Z",
+    "bytes": 2279,
+    "sha256": "8f3616aa25770769ce162997848f7b9dd05cc0bfad4633f945d40880990fe435",
+    "checks": {
+      "single": true,
+      "body": true,
+      "bytes": true,
+      "sha256": true
+    }
+  },
+  "errors": []
+}

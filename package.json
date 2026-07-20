@@ -36,6 +36,7 @@
     "cloudflare:tokens": "node scripts/honowarden-cloudflare-token-remediation.mjs",
     "client:auth-fixture": "node scripts/honowarden-client-auth-fixture.mjs",
     "client:browser-profile": "node scripts/honowarden-browser-profile.mjs",
+    "client:official-harness": "node scripts/honowarden-official-client-harness.mjs",
     "db:migrate:local": "wrangler d1 migrations apply honowarden --local",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",

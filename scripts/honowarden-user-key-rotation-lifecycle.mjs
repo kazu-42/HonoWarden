@@ -10,6 +10,12 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
+import {
+  createIdempotentCleanup,
+  installSignalCleanup,
+  stopDetachedProcessTree,
+} from './honowarden-signal-cleanup.mjs'
+
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
 const databaseName = 'honowarden'
 const r2BucketName = 'honowarden-vault-objects'
@@ -53,6 +59,17 @@ async function main(args = process.argv.slice(2)) {
     ? await ensureDirectory(options.persistTo)
     : await mkdtemp(join(tmpdir(), 'honowarden-hon206-'))
   let worker = null
+  const cleanup = createIdempotentCleanup(async () => {
+    const activeWorker = worker
+    worker = null
+    if (activeWorker) {
+      await stopWorker(activeWorker)
+    }
+    if (managedState && !options.keepState) {
+      await rm(persistTo, { recursive: true, force: true })
+    }
+  })
+  const removeSignalCleanup = installSignalCleanup(cleanup)
 
   try {
     await runWrangler([
@@ -498,11 +515,10 @@ async function main(args = process.argv.slice(2)) {
     }
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
   } finally {
-    if (worker) {
-      await stopWorker(worker)
-    }
-    if (managedState && !options.keepState) {
-      await rm(persistTo, { recursive: true, force: true })
+    try {
+      await cleanup()
+    } finally {
+      removeSignalCleanup()
     }
   }
 }
@@ -940,48 +956,7 @@ async function waitForHealth(baseUrl, worker) {
 }
 
 async function stopWorker(worker) {
-  const processGroupId = worker.pid
-  if (!processGroupId) {
-    return
-  }
-
-  signalProcessGroup(worker, processGroupId, 'SIGTERM')
-  let stopped = await waitForProcessGroupExit(processGroupId, 5_000)
-  if (!stopped) {
-    signalProcessGroup(worker, processGroupId, 'SIGKILL')
-    stopped = await waitForProcessGroupExit(processGroupId, 2_000)
-  }
-  worker.stdout.destroy()
-  worker.stderr.destroy()
-  if (!stopped) {
-    throw new Error(`wrangler process group ${processGroupId} did not stop`)
-  }
-}
-
-function signalProcessGroup(worker, processGroupId, signal) {
-  try {
-    process.kill(-processGroupId, signal)
-  } catch (error) {
-    if (error?.code !== 'ESRCH') {
-      worker.kill(signal)
-    }
-  }
-}
-
-async function waitForProcessGroupExit(processGroupId, timeoutMilliseconds) {
-  const deadline = Date.now() + timeoutMilliseconds
-  while (Date.now() < deadline) {
-    try {
-      process.kill(-processGroupId, 0)
-    } catch (error) {
-      if (error?.code === 'ESRCH') {
-        return true
-      }
-      throw error
-    }
-    await delay(50)
-  }
-  return false
+  await stopDetachedProcessTree(worker)
 }
 
 async function putR2Sentinel(persistTo) {
@@ -1303,7 +1278,12 @@ function runCommand(command, args) {
 }
 
 function commandEnvironment() {
-  return { ...process.env, CI: 'true', NO_COLOR: '1' }
+  return {
+    ...process.env,
+    CI: 'true',
+    NO_COLOR: '1',
+    pnpm_config_verify_deps_before_run: 'false',
+  }
 }
 
 function findFreePort() {

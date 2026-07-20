@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
-import { once } from 'node:events'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+
+import {
+  createIdempotentCleanup,
+  installSignalCleanup,
+  stopDetachedProcessTree,
+} from './honowarden-signal-cleanup.mjs'
 
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
 const databaseName = 'honowarden'
@@ -60,6 +65,17 @@ async function main(args = process.argv.slice(2)) {
     ? await ensureDirectory(options.persistTo)
     : await mkdtemp(join(tmpdir(), 'honowarden-hon205-'))
   let worker = null
+  const cleanup = createIdempotentCleanup(async () => {
+    const activeWorker = worker
+    worker = null
+    if (activeWorker) {
+      await stopWorker(activeWorker)
+    }
+    if (managedState && !options.keepState) {
+      await rm(persistTo, { recursive: true, force: true })
+    }
+  })
+  const removeSignalCleanup = installSignalCleanup(cleanup)
 
   try {
     await runWrangler([
@@ -484,11 +500,10 @@ async function main(args = process.argv.slice(2)) {
     }
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
   } finally {
-    if (worker) {
-      await stopWorker(worker)
-    }
-    if (managedState && !options.keepState) {
-      await rm(persistTo, { recursive: true, force: true })
+    try {
+      await cleanup()
+    } finally {
+      removeSignalCleanup()
     }
   }
 }
@@ -662,6 +677,7 @@ function startWorker({ persistTo, port, inspectorPort, accountKeysEnabled }) {
     ],
     {
       cwd: repoRoot,
+      detached: true,
       env: commandEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -700,16 +716,7 @@ async function waitForHealth(baseUrl, worker) {
 }
 
 async function stopWorker(worker) {
-  if (worker.exitCode !== null) {
-    return
-  }
-  const exited = once(worker, 'exit').then(() => true)
-  worker.kill('SIGTERM')
-  const stopped = await Promise.race([exited, delay(5_000).then(() => false)])
-  if (!stopped && worker.exitCode === null) {
-    worker.kill('SIGKILL')
-    await Promise.race([exited, delay(2_000)])
-  }
+  await stopDetachedProcessTree(worker)
 }
 
 async function readDatabaseState(persistTo) {
@@ -880,7 +887,12 @@ function runCommand(command, args) {
 }
 
 function commandEnvironment() {
-  return { ...process.env, CI: 'true', NO_COLOR: '1' }
+  return {
+    ...process.env,
+    CI: 'true',
+    NO_COLOR: '1',
+    pnpm_config_verify_deps_before_run: 'false',
+  }
 }
 
 function findFreePort() {
