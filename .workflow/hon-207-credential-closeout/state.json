@@ -19,36 +19,36 @@
     {
       "id": "01-official-client-harness",
       "status": "in_progress",
-      "linear": null,
+      "linear": "HON-219",
       "result": null
     },
     {
       "id": "02-credential-lifecycle",
       "status": "pending",
-      "linear": null,
+      "linear": "HON-220",
       "result": null
     },
     {
       "id": "03-recovery-restore",
       "status": "pending",
-      "linear": null,
+      "linear": "HON-221",
       "result": null
     },
     {
       "id": "04-compatibility-evidence",
       "status": "pending",
-      "linear": null,
+      "linear": "HON-222",
       "result": null
     },
     {
       "id": "05-review-closeout",
       "status": "pending",
-      "linear": null,
+      "linear": "HON-223",
       "result": null
     }
   ],
   "verification": {
-    "status": "plan_authored",
+    "status": "linear_subissues_synced",
     "checks": [
       "linear_plan_unit",
       "linear_plan_readback",
