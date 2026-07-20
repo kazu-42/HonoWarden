@@ -40,7 +40,7 @@
     }
   ],
   "verification": {
-    "status": "contract_domain_complete",
+    "status": "linear_subissues_synced",
     "checks": [
       "linear_plan_readback",
       "focused_domain",
