@@ -2,6 +2,7 @@ import {
   accountCredentialKdfPolicy,
   type AccountCredentialKdf,
 } from './account-credentials'
+import { normalizeEmail } from './prelogin'
 import { userKeyRotationPolicy } from './user-key-rotation-policy'
 
 export type AliasedValue =
@@ -253,9 +254,7 @@ export function parseId(value: unknown): string | null {
 }
 
 export function isEmailSalt(value: string): boolean {
-  return (
-    value === value.toLowerCase() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)
-  )
+  return normalizeEmail(value) === value
 }
 
 export function isKdfWithinPolicy(kdf: AccountCredentialKdf): boolean {

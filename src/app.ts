@@ -51,6 +51,7 @@ import {
   isUserKeyRotationEnabled,
   matchesUserKeyRotationCredentialGeneration,
   parseUserKeyRotationBody,
+  userKeyRotationPolicy,
 } from './domain/user-key-rotation'
 import {
   buildBootstrapUserRecord,
@@ -101,6 +102,7 @@ import type { AuthRequestGrantRequest } from './domain/tokens'
 import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
 import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
+import { readBoundedJsonBody } from './infra/bounded-json'
 import { resolveRuntimeEnvironment } from './infra/environment'
 import {
   authRequestNotificationTypes,
@@ -2744,7 +2746,15 @@ app.on(
       return auth.response
     }
 
-    const request = parseUserKeyRotationBody(await readJsonBody(c.req.raw))
+    const body = await readBoundedJsonBody(
+      c.req.raw,
+      userKeyRotationPolicy.requestJsonMaxLength,
+    )
+    if (!body.ok) {
+      return userKeyRotationInvalidRequest(c)
+    }
+
+    const request = parseUserKeyRotationBody(body.value)
     if (!request.ok) {
       return userKeyRotationInvalidRequest(c)
     }

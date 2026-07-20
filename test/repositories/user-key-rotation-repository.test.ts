@@ -260,6 +260,102 @@ describe('user key rotation repository', () => {
     }
   })
 
+  it('rejects old ciphertext reused anywhere in the next snapshot', async () => {
+    const variants: Array<
+      [string, (fixture: ReturnType<typeof rotationFixture>) => void]
+    > = [
+      [
+        'account wrapper in a folder',
+        (fixture) => {
+          fixture.request.folders[0]!.name = fixture.snapshot.summary.userKey!
+        },
+      ],
+      [
+        'cipher value in a folder',
+        (fixture) => {
+          fixture.request.folders[0]!.name = String(
+            (
+              JSON.parse(fixture.snapshot.ciphers[0]!.encryptedJson) as {
+                name: string
+              }
+            ).name,
+          )
+        },
+      ],
+      [
+        'cipher values exchanged between fields',
+        (fixture) => {
+          const current = JSON.parse(
+            fixture.snapshot.ciphers[0]!.encryptedJson,
+          ) as { name: string; notes: string }
+          const next = JSON.parse(
+            fixture.request.ciphers[0]!.encryptedJson,
+          ) as { name: string; notes: string }
+          ;[next.name, next.notes] = [current.notes, current.name]
+          fixture.request.ciphers[0]!.encryptedJson = JSON.stringify(next)
+        },
+      ],
+      [
+        'attachment values exchanged between fields',
+        (fixture) => {
+          const attachment = fixture.request.ciphers[0]!.attachments[0]!
+          attachment.fileName = fixture.snapshot.attachments[0]!.attachmentKey
+          attachment.attachmentKey = fixture.snapshot.attachments[0]!.fileName
+        },
+      ],
+      [
+        'trusted-device wrappers exchanged between fields',
+        (fixture) => {
+          const device = fixture.request.trustedDevices[0]!
+          device.encryptedPublicKey =
+            fixture.snapshot.trustedDevices[0]!.encryptedUserKey
+          device.encryptedUserKey =
+            fixture.snapshot.trustedDevices[0]!.encryptedPublicKey
+        },
+      ],
+      [
+        'revoked-device wrapper in a folder',
+        (fixture) => {
+          fixture.snapshot.summary.revokedDeviceKeyCount = 1
+          fixture.snapshot.revokedDeviceKeys.push({
+            id: `${userId}:stale-device`,
+            identifier: 'stale-device',
+            userId,
+            revokedAt: '2026-07-19T00:00:00.000Z',
+            encryptedUserKey: '2.stale-user-key',
+            encryptedPublicKey: '2.stale-public-key',
+            encryptedPrivateKey: '2.stale-private-key',
+          })
+          fixture.request.folders[0]!.name = '2.stale-user-key'
+        },
+      ],
+    ]
+
+    for (const [variant, mutate] of variants) {
+      const fixture = rotationFixture()
+      mutate(fixture)
+      const database = new RotationD1Database(fixture.snapshot)
+
+      await expect(
+        rotateUserKeyGeneration(database, fixture.input),
+        variant,
+      ).resolves.toEqual({ status: 'conflict' })
+      expect(database.batchCalls, variant).toHaveLength(0)
+    }
+  })
+
+  it('rejects duplicate ciphertexts inside the submitted generation', async () => {
+    const fixture = rotationFixture()
+    fixture.request.folders[0]!.name =
+      fixture.request.ciphers[0]!.attachments[0]!.fileName
+    const database = new RotationD1Database(fixture.snapshot)
+
+    await expect(
+      rotateUserKeyGeneration(database, fixture.input),
+    ).resolves.toEqual({ status: 'conflict' })
+    expect(database.batchCalls).toHaveLength(0)
+  })
+
   it('rejects an oversized snapshot before reading row payloads or entering batch', async () => {
     const fixture = rotationFixture()
     fixture.snapshot.summary.cipherBytes =

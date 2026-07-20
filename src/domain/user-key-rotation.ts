@@ -167,10 +167,21 @@ export function matchesUserKeyRotationCredentialGeneration(
       request.accountKeys.publicKey,
       accountKeyState.keyPair.publicKey,
     ) &&
-    !constantTimeEqual(request.nextUserKey, currentUserKey) &&
-    !constantTimeEqual(
-      request.accountKeys.wrappedPrivateKey,
-      accountKeyState.keyPair.wrappedPrivateKey,
+    wrappersFormFreshGeneration(
+      [currentUserKey, accountKeyState.keyPair.wrappedPrivateKey],
+      [request.nextUserKey, request.accountKeys.wrappedPrivateKey],
+    )
+  )
+}
+
+function wrappersFormFreshGeneration(
+  current: readonly [string, string],
+  rotated: readonly [string, string],
+): boolean {
+  return (
+    !constantTimeEqual(rotated[0], rotated[1]) &&
+    rotated.every((value) =>
+      current.every((oldValue) => !constantTimeEqual(value, oldValue)),
     )
   )
 }

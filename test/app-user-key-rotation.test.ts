@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import app from '../src/app'
 import { signAccessToken } from '../src/domain/tokens'
+import { userKeyRotationPolicy } from '../src/domain/user-key-rotation'
 import { userKeyRotationRepositoryPolicy } from '../src/repositories/user-key-rotation-repository'
 import { FakeD1Database } from './support/fake-d1'
 
@@ -69,6 +70,33 @@ describe('user-key rotation route', () => {
   it('rejects malformed input before proof-defense or rotation queries', async () => {
     const database = new RotationRouteD1Database('success')
     const response = await rotateRequest(database, {})
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'invalid_request' },
+    })
+    expect(
+      database.queries.some((query) => query.includes('auth_failure_buckets')),
+    ).toBe(false)
+    expect(database.batchCalls).toBe(0)
+  })
+
+  it('rejects an oversized raw JSON body before proof-defense or rotation queries', async () => {
+    const database = new RotationRouteD1Database('success')
+    const response = await app.request(
+      route,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await accessTokenFor(database.user)}`,
+          'Content-Type': 'application/json',
+        },
+        body: `${' '.repeat(
+          userKeyRotationPolicy.requestJsonMaxLength + 1,
+        )}${JSON.stringify(rotationBody())}`,
+      },
+      enabledEnvironment(database),
+    )
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toMatchObject({

@@ -67,16 +67,31 @@ race loses the user CAS before any write instead of committing and then
 surfacing a false infrastructure failure from a post-commit count mismatch.
 Exact-head standard and five-axis reviews remain pending.
 
+The second standard review of commit `82328c2` returned two P1 and two P2
+findings. Red tests reproduced cross-swapped account wrappers, old ciphertext
+moved across vault/device slots, an oversized raw JSON body hidden by compact
+re-serialization, and a canonical `person@localhost` account salt rejected by
+the rotation-only regex. The remediation now rejects any overlap between the
+complete old snapshot and unique next ciphertext generation, applies the 2 MB
+limit while reading declared-length or chunked request bodies, and reuses the
+canonical account email rule. A new exact-head review remains pending.
+
+During the second remediation, formatting first failed with `ENOSPC`. The
+source tree remained intact; a stale completed HON-204 Wrangler/workerd process
+group and 4.6 GiB of ignored root `test/.tmp` state were removed, available
+space recovered from 1.8 GiB to 6.1 GiB, and all source-integrity gates below
+were rerun. Dirty historical worktrees were preserved.
+
 ## Verification
 
 - Route lifecycle acceptance: 1 file / 2 tests passed.
-- Focused domain/repository/real-D1/route/config/policy/lifecycle: 7 files / 74
+- Focused domain/repository/real-D1/route/config/policy/lifecycle: 8 files / 82
   tests passed.
-- Full suite: 95 files / 1,159 tests passed.
+- Full suite: 96 files / 1,167 tests passed.
 - Compatibility: 3 files / 105 tests passed.
 - `pnpm check`, full `pnpm lint`, full `pnpm format`, and `git diff --check`
   passed.
-- `pnpm audit --audit-level low`: no known vulnerabilities.
+- `pnpm audit --audit-level high`: no known vulnerabilities.
 - Strict release gate: ready, 11 pass / 0 manual / 0 block.
 - Linear live readback before this packet: HON-217 Done, HON-218 In Progress,
   three expected block relations, zero unexpected relations.

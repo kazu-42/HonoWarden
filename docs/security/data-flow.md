@@ -183,11 +183,13 @@ Secret-handling invariants:
 1. Disabled POST and Hono-derived HEAD return a D1-free 501 unless
    `HONOWARDEN_USER_KEY_ROTATION_ENABLED=true`. This check also bypasses the
    optional global request quota, preserving a reliable rollback response.
-2. The Worker authenticates the bearer, parses one bounded pinned V1 envelope,
-   verifies complete current account keys, preflights the optional notification
-   binding, and applies the existing credential-proof defense to the old
-   client-derived authentication hash. It never receives a plaintext password,
-   unwrapped user key, or decrypted vault value.
+2. The Worker authenticates the bearer, enforces the 2 MB request limit while
+   streaming the raw body (including requests without `Content-Length`), then
+   parses one bounded pinned V1 envelope. It verifies complete current account
+   keys, preflights the optional notification binding, and applies the existing
+   credential-proof defense to the old client-derived authentication hash. It
+   never receives a plaintext password, unwrapped user key, or decrypted vault
+   value.
 3. The repository uses five snapshot queries: one bounded aggregate preflight
    plus exact active personal folders, ciphers, uploaded attachments, complete
    trusted devices, and revoked key-bearing devices. Deleted records, pending
@@ -201,13 +203,16 @@ Secret-handling invariants:
    supersession, and one redacted
    `account.keys.rotate` audit row. Every downstream write is gated by the new
    security stamp and revision; a lost CAS changes zero downstream rows.
-5. Every supported cipher ciphertext must move away from its exact old value;
-   rotation-only JSON fields cannot satisfy this invariant. Attachment
-   staleness uses the client-observable parent cipher revision while the exact
-   attachment row revision remains in the transaction manifest. Attachment
-   updates change only encrypted file names/keys and revision metadata. R2
-   object keys and bytes remain unchanged, and the route has no R2 binding. D1
-   batch failure propagates and rolls the complete transaction back.
+5. The complete submitted ciphertext generation is unique and disjoint from
+   every old account wrapper, folder/cipher value, attachment name/key, and
+   active or revoked trusted-device wrapper in the snapshot. Moving an old
+   ciphertext to another record or field and rotation-only JSON changes cannot
+   satisfy this invariant. Attachment staleness uses the client-observable
+   parent cipher revision while the exact attachment row revision remains in
+   the transaction manifest. Attachment updates change only encrypted file
+   names/keys and revision metadata. R2 object keys and bytes remain unchanged,
+   and the route has no R2 binding. D1 batch failure propagates and rolls the
+   complete transaction back.
 6. A committed generation returns 200 before best-effort Durable Object session
    cleanup. Old access tokens fail on security-stamp mismatch and D1 refresh
    sessions are revoked. New authentication, profile, sync, and backup readers

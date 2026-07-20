@@ -194,6 +194,14 @@ function parseCipherEncryptedValues(
   return isPlainObject(value) ? buildCipherEncryptedValues(value, type) : null
 }
 
+export function readUserKeyRotationCiphertextValues(
+  encryptedJson: string,
+  type: 1 | 2,
+): string[] | null {
+  const values = parseCipherEncryptedValues(encryptedJson, type)
+  return values?.filter((value): value is string => value !== null) ?? null
+}
+
 function buildCipherEncryptedValues(
   value: Record<string, unknown>,
   type: 1 | 2,
@@ -298,15 +306,25 @@ function allEncryptedValuesRewrapped(
   current: readonly (string | null)[],
   rotated: readonly (string | null)[],
 ): boolean {
-  return (
-    current.length === rotated.length &&
-    current.every((value, index) => {
-      const nextValue = rotated[index]
-      return value === null
-        ? nextValue === null
-        : typeof nextValue === 'string' && nextValue !== value
-    })
+  if (current.length !== rotated.length) return false
+
+  const oldValues = new Set(
+    current.filter((value): value is string => value !== null),
   )
+  const nextValues = new Set<string>()
+  return current.every((value, index) => {
+    const nextValue = rotated[index]
+    if (value === null) return nextValue === null
+    if (
+      typeof nextValue !== 'string' ||
+      oldValues.has(nextValue) ||
+      nextValues.has(nextValue)
+    ) {
+      return false
+    }
+    nextValues.add(nextValue)
+    return true
+  })
 }
 
 function parseCipher(value: unknown): UserKeyRotationCipher | null {

@@ -47,9 +47,10 @@ Worker, mutate remote D1/R2, rotate a real credential, or promote compatibility.
 - The attachment UPDATE changes only encrypted file name/key and revision/time.
   It never assigns `object_key`, `size`, or `content_type`, and no R2 binding is
   accepted by the repository.
-- Every supported key-dependent cipher value must differ from its stored
-  old-generation value. Raw JSON differences and rotation-only metadata cannot
-  satisfy this check, and a single stale encrypted value rejects the request.
+- The unique next ciphertext generation must be snapshot-wide disjoint from
+  old account wrappers, folder/cipher values, attachment names/keys, and active
+  or revoked trusted-device wrappers. Cross-record and cross-field swaps, raw
+  JSON differences, and rotation-only metadata cannot satisfy this check.
 - Attachment staleness uses the parent cipher revision exposed by sync while
   the attachment row's own revision remains guarded in the current D1 manifest.
 - Trusted-device references resolve owner-scoped stored IDs or identifiers.
@@ -61,7 +62,7 @@ Worker, mutate remote D1/R2, rotate a real credential, or promote compatibility.
 
 - Red: the focused repository suite failed because
   `src/repositories/user-key-rotation-repository.ts` did not exist.
-- Fake D1: 23 tests cover exact success/counts, statement/bind budgets,
+- Fake D1: 25 tests cover exact success/counts, statement/bind budgets,
   unsupported state, foreign/missing/stale/metadata-changing manifests,
   generation conflict, snapshot overflow, protocol defaults, every supported
   key-dependent cipher value, identifier resolution, revoked-device cleanup,
@@ -70,10 +71,10 @@ Worker, mutate remote D1/R2, rotate a real credential, or promote compatibility.
   success/readback, stale revoked-device key removal, R2 identity sentinel
   fields, duplicate final-audit rollback, and concurrent
   one-winner/one-conflict serialization.
-- Focused repository plus integration: 2 files and 27 tests pass.
-- Full suite: 95 files and 1,159 tests pass.
+- Focused repository plus integration: 2 files and 29 tests pass.
+- Full suite: 96 files and 1,167 tests pass.
 - `pnpm check`, full `pnpm lint`, and full `pnpm format` pass.
-- `pnpm audit --audit-level low` reports no known vulnerabilities. The direct
+- `pnpm audit --audit-level high` reports no known vulnerabilities. The direct
   Miniflare test dependency and new lock hash are recorded in
   `docs/security/dependency-audit.md`.
 - Strict release gate reports 11 pass, 0 manual, 0 block.

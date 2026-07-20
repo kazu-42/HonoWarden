@@ -1220,9 +1220,8 @@ Implemented:
 
 Not implemented:
 
-- true key replacement, re-encryption/rewrap orchestration, V2 signature keys,
-  signed public keys, security state, TDE, or Key Connector integration; these
-  remain HON-206 or later work
+- V2 signature keys, signed public keys, security state, TDE, or Key Connector
+  integration; pinned V1 key replacement is implemented separately below
 - official client UI, staging, production, or real-account initialization
   evidence; fixture and local evidence do not promote compatibility rows
 - deployed route activation; every tracked Wrangler environment remains false
@@ -1238,6 +1237,9 @@ Implemented:
 - strict request parsing for one complete personal-vault generation, unchanged
   email salt/KDF/public key, newly wrapped user/private keys, empty unsupported
   product arrays, exact IDs, bounded encrypted values, and observable revisions
+- a raw 2 MB request-byte cap enforced during streaming before JSON parsing,
+  including chunked bodies and an early `Content-Length` rejection; salt
+  validation reuses the same canonical email rule as bootstrap/authentication
 - existing credential-proof defense for the old client-derived authentication
   hash, generic/rate-limited proof failure, and notification-binding preflight
 - five bounded D1 snapshot queries plus ten transactional statements for the
@@ -1248,6 +1250,9 @@ Implemented:
 - exact manifest and immutable-metadata checks, fixed 15-query budget, explicit
   conflict/unsupported/over-budget/infrastructure taxonomy, and fail-loud batch
   invariants; attachment R2 object identity and bytes are outside the writer
+- snapshot-wide old/new ciphertext separation across account wrappers,
+  folders, cipher fields, attachment names/keys, and active/revoked trusted
+  devices, plus next-generation uniqueness so cross-slot swaps cannot commit
 - post-commit best-effort generation-aware Durable Object cleanup so transport
   failure is incident-logged without returning a false failure after D1 success
 - route tests for default-off D1-free behavior, parser/proof/preflight ordering,

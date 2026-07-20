@@ -4,7 +4,10 @@ import {
   userKeyRotationPolicy,
   type UserKeyRotationRequest,
 } from '../domain/user-key-rotation'
-import { classifyStoredUserKeyRotationCipherMetadata } from '../domain/user-key-rotation-cipher'
+import {
+  classifyStoredUserKeyRotationCipherMetadata,
+  readUserKeyRotationCiphertextValues,
+} from '../domain/user-key-rotation-cipher'
 import {
   clearRevokedDeviceKeysSql,
   insertAuditEventSql,
@@ -487,7 +490,96 @@ function validateSnapshotAgainstRequest(
     }
   }
 
+  const ciphertextGeneration = validateSnapshotCiphertextGeneration(
+    snapshot,
+    request,
+    trustedDevices,
+  )
+  if (ciphertextGeneration === 'stored_invalid') {
+    return {
+      status: 'rejected',
+      result: {
+        status: 'unsupported_state',
+        reason: 'stored_cipher_invalid',
+      },
+    }
+  }
+  if (ciphertextGeneration === 'conflict') {
+    return { status: 'rejected', result: { status: 'conflict' } }
+  }
+
   return { status: 'valid', trustedDevices }
+}
+
+function validateSnapshotCiphertextGeneration(
+  snapshot: UserKeyRotationSnapshot,
+  request: UserKeyRotationRequest,
+  trustedDevices: UserKeyRotationRequest['trustedDevices'],
+): 'valid' | 'stored_invalid' | 'conflict' {
+  const currentCipherValues: string[] = []
+  for (const cipher of snapshot.ciphers) {
+    if (cipher.type !== 1 && cipher.type !== 2) return 'stored_invalid'
+    const values = readUserKeyRotationCiphertextValues(
+      cipher.encryptedJson,
+      cipher.type,
+    )
+    if (!values) return 'stored_invalid'
+    currentCipherValues.push(...values)
+  }
+
+  const nextCipherValues: string[] = []
+  for (const cipher of request.ciphers) {
+    const values = readUserKeyRotationCiphertextValues(
+      cipher.encryptedJson,
+      cipher.type,
+    )
+    if (!values) return 'conflict'
+    nextCipherValues.push(...values)
+  }
+
+  const currentValues = [
+    snapshot.summary.userKey,
+    snapshot.summary.privateKey,
+    ...snapshot.folders.map((folder) => folder.name),
+    ...currentCipherValues,
+    ...snapshot.attachments.flatMap((attachment) => [
+      attachment.fileName,
+      attachment.attachmentKey,
+    ]),
+    ...[...snapshot.trustedDevices, ...snapshot.revokedDeviceKeys].flatMap(
+      (device) => [
+        device.encryptedUserKey,
+        device.encryptedPublicKey,
+        device.encryptedPrivateKey,
+      ],
+    ),
+  ].filter(isNonemptyString)
+  const nextValues = [
+    request.nextUserKey,
+    request.accountKeys.wrappedPrivateKey,
+    ...request.folders.map((folder) => folder.name),
+    ...nextCipherValues,
+    ...request.ciphers.flatMap((cipher) =>
+      cipher.attachments.flatMap((attachment) => [
+        attachment.fileName,
+        attachment.attachmentKey,
+      ]),
+    ),
+    ...trustedDevices.flatMap((device) => [
+      device.encryptedUserKey,
+      device.encryptedPublicKey,
+    ]),
+  ]
+
+  const oldGeneration = new Set(currentValues)
+  const nextGeneration = new Set<string>()
+  for (const value of nextValues) {
+    if (oldGeneration.has(value) || nextGeneration.has(value)) {
+      return 'conflict'
+    }
+    nextGeneration.add(value)
+  }
+  return 'valid'
 }
 
 function resolveTrustedDevices(

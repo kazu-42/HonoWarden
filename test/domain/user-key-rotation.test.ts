@@ -236,6 +236,39 @@ describe('user-key rotation domain', () => {
     }
   })
 
+  it('accepts the same canonical email salts as bootstrap and authentication', () => {
+    const body = rotationBody()
+    const master = body.accountUnlockData.masterPasswordUnlockData
+    const parsed = parseUserKeyRotationBody({
+      ...body,
+      accountUnlockData: {
+        ...body.accountUnlockData,
+        masterPasswordUnlockData: {
+          ...master,
+          email: 'person@localhost',
+        },
+      },
+    })
+
+    expect(parsed).toMatchObject({
+      ok: true,
+      credentialMetadata: { salt: 'person@localhost' },
+    })
+    expect(
+      parsed.ok &&
+        matchesUserKeyRotationCredentialGeneration(parsed, {
+          emailNormalized: 'person@localhost',
+          kdfAlgorithm: 'pbkdf2-sha256',
+          kdfIterations: 600000,
+          kdfMemory: null,
+          kdfParallelism: null,
+          userKey: '2.synthetic-current-wrapped-user-key',
+          publicKey: 'synthetic-account-public-key',
+          privateKey: '2.synthetic-current-wrapped-private-key',
+        }),
+    ).toBe(true)
+  })
+
   it('accepts a bounded Argon2id generation and an empty personal vault', () => {
     const body = rotationBody()
     const master = body.accountUnlockData.masterPasswordUnlockData
@@ -359,6 +392,28 @@ describe('user-key rotation domain', () => {
         ...generation,
         privateKey: null,
       }),
+    ).toBe(false)
+    expect(
+      matchesUserKeyRotationCredentialGeneration(
+        {
+          ...parsed,
+          nextUserKey: generation.privateKey,
+          accountKeys: {
+            ...parsed.accountKeys,
+            wrappedPrivateKey: generation.userKey,
+          },
+        },
+        generation,
+      ),
+    ).toBe(false)
+    expect(
+      matchesUserKeyRotationCredentialGeneration(
+        {
+          ...parsed,
+          nextUserKey: parsed.accountKeys.wrappedPrivateKey,
+        },
+        generation,
+      ),
     ).toBe(false)
   })
 

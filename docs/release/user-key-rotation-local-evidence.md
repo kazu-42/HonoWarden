@@ -148,3 +148,14 @@ keys could survive for later reactivation, and absent legacy `favorite` data did
 not default to false. All five were first captured by failing tests and then
 remediated. This document does not claim final approval until the standard and
 five-axis reviews are rerun against the exact publication head.
+
+The second standard review of commit `82328c2` identified four more gaps: the
+two account wrappers could exchange their old values, vault ciphertext could
+move to another record or field, the 2 MB limit was applied only after JSON
+materialization, and rotation used a stricter email regex than the existing
+canonical account path. Each was reproduced before remediation. The repository
+now requires a unique next ciphertext generation that is snapshot-wide
+disjoint from every old account/vault/device ciphertext, the route limits raw
+bytes while reading both declared-length and chunked bodies, and salt parsing
+reuses canonical email normalization. Exact-head review of the remediated
+publication commit remains pending.

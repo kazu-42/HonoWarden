@@ -16,6 +16,9 @@ promote the fixture to official-client compatibility.
   the existing credential-proof defense to the old client-derived hash before
   any snapshot or mutation query. Malformed input and known configuration
   failure do not consume password-failure state.
+- The route rejects an oversized `Content-Length` immediately and enforces the
+  same 2 MB limit while reading chunked raw bytes, before JSON parsing or
+  credential-proof state is touched.
 - The route verifies unchanged KDF/email salt/public key generation data and
   invokes `rotateUserKeyGeneration` exactly once. It maps malformed/proof,
   stale/conflict, unsupported-state, fixed-budget, and infrastructure results
@@ -46,12 +49,12 @@ promote the fixture to official-client compatibility.
   double did not persist auth-failure buckets and then conflated refresh-session
   invalidation with the ten-statement key-rotation batch. The double now models
   those contracts separately; production source was unchanged by that fix.
-- Focused domain/repository/real-D1/route/config/policy/lifecycle gate: 7 files and 74
-  tests pass.
-- Route suite: 12/12 tests pass, including disabled D1-free behavior, ordering,
+- Focused domain/repository/real-D1/route/config/policy/lifecycle gate: 8 files
+  and 82 tests pass.
+- Route suite: 13/13 tests pass, including disabled D1-free behavior, ordering,
   every result class, fixture replay, post-commit cleanup failure, old
   generation rejection, and new projection consistency.
-- Full suite: 95 files and 1,159 tests pass.
+- Full suite: 96 files and 1,167 tests pass.
 - `pnpm check`, full `pnpm lint`, full `pnpm format`, and `git diff --check`
   pass.
 
