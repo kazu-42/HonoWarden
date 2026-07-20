@@ -8,6 +8,10 @@ export async function readBoundedJsonBody(
     return { ok: false }
   }
 
+  if (!request.body) {
+    return { ok: false }
+  }
+
   const contentLength = parseContentLength(
     request.headers.get('Content-Length'),
   )
@@ -15,10 +19,7 @@ export async function readBoundedJsonBody(
     contentLength === 'invalid' ||
     (contentLength !== null && contentLength > maxBytes)
   ) {
-    return { ok: false }
-  }
-
-  if (!request.body) {
+    await cancelBody(request.body)
     return { ok: false }
   }
 
@@ -66,6 +67,14 @@ async function cancelReader(
 ): Promise<void> {
   try {
     await reader.cancel()
+  } catch {
+    // The request is already failed; cancellation is best-effort cleanup.
+  }
+}
+
+async function cancelBody(body: ReadableStream<Uint8Array>): Promise<void> {
+  try {
+    await body.cancel()
   } catch {
     // The request is already failed; cancellation is best-effort cleanup.
   }

@@ -35,9 +35,12 @@ describe('bounded JSON reader', () => {
   })
 
   it('rejects an oversized Content-Length before reading the body', async () => {
+    let canceled = false
     const request = chunkedRequest(
       [new TextEncoder().encode('{}')],
-      undefined,
+      () => {
+        canceled = true
+      },
       {
         'Content-Length': '13',
       },
@@ -46,6 +49,7 @@ describe('bounded JSON reader', () => {
     await expect(readBoundedJsonBody(request, 12)).resolves.toEqual({
       ok: false,
     })
+    expect(canceled).toBe(true)
   })
 
   it('rejects invalid JSON inside the limit', async () => {
