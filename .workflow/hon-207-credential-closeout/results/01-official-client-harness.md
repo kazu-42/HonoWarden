@@ -11,20 +11,22 @@ Linear issue: HON-219
 - Pinned exact server, Web, browser, and CLI source commits.
 - Pinned exact CLI npm, CLI macOS arm64, and Chrome-extension GitHub release
   asset IDs, byte sizes, and SHA-256 values.
-- Added exact-size/digest validation before extraction and execution.
+- Added exact-size/digest validation plus an exact ZIP-entry and ten-file
+  runtime manifest before extraction and every execution.
 - Added a deterministic bridge generator around the pinned upstream CLI
   SDK/WASM bundle. The generated wrapper uses official key generation,
   password wrapping, symmetric encryption, RSA keypair generation, and
   decapsulation-key unwrapping.
 - Added an unmodified native CLI runner with an isolated profile, HOME, TMPDIR,
-  loopback-only origin, secret-flag rejection, output capture, timeout, and
-  process-group cleanup.
+  loopback-only origin, command-specific synthetic-only argument grammar,
+  pre-plan secret rejection, output capture, timeout, and process-group
+  cleanup.
 - Applied the same process-group ownership invariant to the existing HON-203,
   HON-204, and HON-205 local lifecycle harnesses. Nested pnpm invocations
   cannot mutate dependencies, and Wrangler/workerd descendants are reaped
   before a harness returns.
-- Added mode and realpath enforcement for the ignored root and all mutable
-  directories and files.
+- Added recursive mode, realpath, exact-file-set, and symlink enforcement for
+  the ignored root, all runtime files, and all mutable trees.
 - Added the operator runbook at
   `docs/operations/official-client-credential-harness.md`.
 
@@ -33,17 +35,18 @@ compatibility row, real account, or normal browser profile changed.
 
 ## Provenance Readback
 
-| Item                  | Readback                                                                   |
-| --------------------- | -------------------------------------------------------------------------- |
-| Server source         | `v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0`                       |
-| Web source            | `web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1`                   |
-| Browser source        | `browser-v2026.6.1@723c075bf8b9f45c901e56195be8e94e43ed75a2`               |
-| CLI source            | `cli-v2026.6.0@e6293ff2bc85123e9baaa998cf1543030ec5d9f0`                   |
-| CLI npm asset         | ID `457887277`, 4,402,383 bytes, SHA-256 `31765936...c0660`                |
-| CLI macOS arm64 asset | ID `457887093`, 41,121,808 bytes, SHA-256 `57d1e60d...64d4`                |
-| Chrome asset metadata | ID `462351736`, 21,593,500 bytes, SHA-256 `fcd29c59...097e`                |
-| Generated bridge      | SHA-256 `bceddb20258bd62c85a9e8912b4b616ab5005dbe9cea55208ac3535d1481ff05` |
-| Native CLI            | `2026.6.0`                                                                 |
+| Item                  | Readback                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| Server source         | `v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0`                                 |
+| Web source            | `web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1`                             |
+| Browser source        | `browser-v2026.6.1@723c075bf8b9f45c901e56195be8e94e43ed75a2`                         |
+| CLI source            | `cli-v2026.6.0@e6293ff2bc85123e9baaa998cf1543030ec5d9f0`                             |
+| CLI npm asset         | ID `457887277`, 4,402,383 bytes, SHA-256 `31765936...c0660`                          |
+| CLI macOS arm64 asset | ID `457887093`, 41,121,808 bytes, SHA-256 `57d1e60d...64d4`                          |
+| Chrome asset metadata | ID `462351736`, 21,593,500 bytes, SHA-256 `fcd29c59...097e`                          |
+| Generated bridge      | SHA-256 `bceddb20258bd62c85a9e8912b4b616ab5005dbe9cea55208ac3535d1481ff05`           |
+| Runtime manifest      | 10 files, SHA-256 `c9cc960b26639049d2a87cd723a85796c9d836dee1c66562fdb2096a207b7099` |
+| Native CLI            | `2026.6.0`                                                                           |
 
 The three release asset records and all four tag-to-commit mappings were read
 from official GitHub repositories. The npm and native assets were downloaded
@@ -69,9 +72,9 @@ Both cases verified:
 The final redacted response digests were:
 
 - PBKDF2:
-  `e4e1933a5674e6eac069ba7f6a105ca26a4626a4f78e9e5b28525e13b9a05226`
+  `dcb5a779e2ce4ec73457a77fef69ba232a25031a1133bba5774bfa7e4ab0f8f8`
 - Argon2id:
-  `edb1b15ac32dbc51976a98f101648a2fb8ff67a0c4adc79b8af76c3e97e9b1a2`
+  `ff72f5178aa0ba0c32a39054e755c0ab145735e70be0eb4eff6434b6de84d0f6`
 
 ## Native CLI Readback
 
@@ -104,11 +107,19 @@ Chrome for Testing, or incognito profile was attached.
 6. Mutable-directory symlink replacement, external origin, credential-bearing
    URL, direct secret flags, digest/size tampering, secret output capture, and
    process-group timeout all have fail-closed tests.
+7. The first exact-commit review found five gaps: runtime replacement,
+   secret-bearing plan output, permissive command arguments, a descendant
+   surviving leader exit, and nested profile symlinks. Five red tests
+   reproduced those failures before implementation.
+8. Remediation binds every runtime file to the code-owned manifest before each
+   execution, validates CLI arguments before packet construction, recursively
+   validates mutable trees, and keeps escalation alive until the entire process
+   group exits.
 
 ## Focused Verification
 
 ```text
-vitest test/ops/official-client-harness.test.ts: 10 passed
+vitest test/ops/official-client-harness.test.ts: 14 passed
 eslint focused files: passed
 prettier focused files: passed
 git diff --check: passed
@@ -118,7 +129,7 @@ official crypto Argon2id: passed
 native CLI loopback --version: passed
 harness status readback: valid
 legacy lifecycle cleanup: 7 passed, zero residual processes
-full suite: 196 suites, 1177 passed, 0 failed, 0 skipped
+full suite: 97 files, 1181 passed, 0 failed, 0 skipped
 TypeScript: passed
 ESLint: passed
 Prettier: passed

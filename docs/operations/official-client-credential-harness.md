@@ -46,7 +46,12 @@ credential mutation, staging, or production compatibility.
 | Chrome extension | `browser-v2026.6.1` | `fcd29c5971d9b218ad9159717a19c38cca5150f2a0aa909ddf805bd7695d097e` |
 
 The script also pins each GitHub release asset ID and byte size. Download,
-size, or digest mismatch fails before extraction or execution.
+size, or digest mismatch fails before extraction or execution. It additionally
+pins the exact ZIP entry set and a ten-file runtime manifest covering every
+extracted CLI JavaScript chunk, source map, locale, WASM module, generated
+bridge, module boundary, and native executable. Status and every client
+execution recompute those file sizes, modes, and SHA-256 values; `state.json`
+is evidence metadata, not an integrity trust root.
 
 ## Commands
 
@@ -82,6 +87,20 @@ pnpm client:official-harness -- cli-run \
   -- --version
 ```
 
+The passthrough grammar is fail-closed:
+
+- `--version`, `status`, `lock`, and `logout` accept no additional arguments.
+- `login` requires one `@example.invalid` address and
+  `--passwordenv BW_PASSWORD`; only `--raw` and `--nointeraction` are optional.
+- `unlock` requires `--passwordenv BW_PASSWORD`, except for exact `--check`.
+- `get` accepts only `get item fixture-<id>`.
+- `list` accepts only `list items`.
+- `sync` accepts no option, `--force`, or `--last`.
+
+Positional passwords, attachment export, password files, API keys, one-time
+codes, sessions, and all other option shapes are rejected before a command
+packet is built, so rejected values cannot appear in plan output.
+
 Read status or remove all local material:
 
 ```sh
@@ -97,21 +116,23 @@ pnpm client:official-harness -- cleanup \
 ## Isolation And Secret Handling
 
 - The root and every mutable subdirectory must be inside ignored `test/.tmp`,
-  must resolve inside the harness root, must not be a symlink, and must have
-  mode 0700.
+  must resolve inside the harness root, must not contain a symlink at any
+  depth, and must have mode 0700 for directories and 0600 for files.
 - Requests, responses, state, and downloaded assets use mode 0600.
 - Stdout and stderr logs use mode 0600. Generated bridge and native CLI files
   use mode 0700.
 - Synthetic passwords, plaintext, raw keys, wrapped keys, and CLI output remain
   in ignored files. The command packet emits only statuses, byte counts,
   versions, labels, and SHA-256 digests.
-- CLI arguments reject direct password, session, API key, and client-secret
-  flags. Required values use `BW_*` environment variables and are never echoed.
+- CLI arguments use the command-specific grammar above. Only `BW_PASSWORD` and
+  `BW_SESSION` pass from the caller environment; all other `BW_*` variables are
+  dropped and required values are never echoed.
 - `HOME`, `TMPDIR`, and the official CLI app-data environment variable point
   inside the isolated harness. The wrapper configures the official CLI to an
   origin-only loopback URL and does not allow a passthrough `config` command.
 - Each command gets its own process group. A timeout sends `SIGTERM` to that
-  group and escalates to `SIGKILL`; stdout and stderr stay captured.
+  group and escalates to `SIGKILL` after the grace period even when the group
+  leader exits first; stdout and stderr stay captured.
 - Browser evidence, when needed by a later packet, uses Chrome for Testing and
   `pnpm client:browser-profile`. Normal Brave, Chrome, and incognito profiles
   remain out of bounds.
@@ -141,12 +162,16 @@ The 2026-07-20 local run verified:
 - npm and native asset byte sizes and SHA-256 values above;
 - generated bridge SHA-256
   `bceddb20258bd62c85a9e8912b4b616ab5005dbe9cea55208ac3535d1481ff05`;
+- ten-file runtime manifest SHA-256
+  `c9cc960b26639049d2a87cd723a85796c9d836dee1c66562fdb2096a207b7099`;
 - PBKDF2 and Argon2id 64-byte user-key round trips;
 - type-2 wrapped user key, encrypted item, and wrapped private key;
 - official RSA keypair generation and private-key unwrap;
 - zero stdout and stderr bytes from both crypto runs;
 - native CLI `--version` exit 0 with captured output and zero stderr bytes;
-- timeout process-group cleanup and secret-redaction unit coverage.
+- timeout process-group cleanup, including a TERM-resistant descendant;
+- pre-plan secret rejection, nested symlink rejection, and runtime-tamper
+  coverage.
 
 The readback is local evidence, not a claim that HonoWarden currently completes
 the aggregate credential lifecycle through an official client.

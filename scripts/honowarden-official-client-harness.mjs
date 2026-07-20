@@ -9,6 +9,7 @@ import {
   mkdir,
   open,
   readFile,
+  readdir,
   realpath,
   rm,
   stat,
@@ -106,6 +107,86 @@ const webpackBootstrap = '/******/ (() => { // webpackBootstrap'
 const asyncWebpackBootstrap = '/******/ (async () => { // webpackBootstrap'
 const webpackExportBoundary = 'var __webpack_exports__ = {};'
 const cryptoBridgeEnvironment = 'HONOWARDEN_OFFICIAL_CRYPTO_BRIDGE'
+const mutableHarnessDirectories = Object.freeze([
+  'profile',
+  'home',
+  'tmp',
+  'requests',
+  'responses',
+  'output',
+])
+const officialRuntimeFileManifest = Object.freeze({
+  'crypto/locales/en/messages.json': Object.freeze({
+    archive: 'cliNpm',
+    entry: 'locales/en/messages.json',
+    bytes: 8_110,
+    sha256: '243dc5c464ea90be277067577e7959a7f9b14f77cfae9fe2e970804802e16d98',
+    mode: 0o600,
+  }),
+  'crypto/344.js': Object.freeze({
+    archive: 'cliNpm',
+    entry: '344.js',
+    bytes: 20_295,
+    sha256: '1c3f0190ae329a496dcc23a9715830180a0e9c00ed7c1bcba04ac38cb32403bf',
+    mode: 0o600,
+  }),
+  'crypto/344.js.map': Object.freeze({
+    archive: 'cliNpm',
+    entry: '344.js.map',
+    bytes: 23_563,
+    sha256: '31e2c81e8ee0a8baa2cf87300b9ca5f920326845eaf8b1da274cf09f19274e3a',
+    mode: 0o600,
+  }),
+  'crypto/685.js': Object.freeze({
+    archive: 'cliNpm',
+    entry: '685.js',
+    bytes: 31_808,
+    sha256: 'dbf8794437fd9ededa7292539b1bd637db853556b291bcdd6f93cebad27fa699',
+    mode: 0o600,
+  }),
+  'crypto/869d87bc3b0a55e0e213.module.wasm': Object.freeze({
+    archive: 'cliNpm',
+    entry: '869d87bc3b0a55e0e213.module.wasm',
+    bytes: 7_120_361,
+    sha256: '3c4db255dafaaac228fd4e8e8fff75ce561a5abd1c0cb8f1fd30fe5cdd82a6fb',
+    mode: 0o600,
+  }),
+  'crypto/bw.js': Object.freeze({
+    archive: 'cliNpm',
+    entry: 'bw.js',
+    bytes: 3_719_029,
+    sha256: '3e2628815b22b70adf74cd4a936af98b4da772777c8e966e60687f36dd4be1e3',
+    mode: 0o600,
+  }),
+  'crypto/bw.js.map': Object.freeze({
+    archive: 'cliNpm',
+    entry: 'bw.js.map',
+    bytes: 5_972_605,
+    sha256: '08e6c0f2ebf874f4fd6db996795749158ab531c99b2e9484a6de99ab728c9e42',
+    mode: 0o600,
+  }),
+  'crypto/honowarden-bridge.cjs': Object.freeze({
+    archive: null,
+    entry: null,
+    bytes: 3_723_210,
+    sha256: 'bceddb20258bd62c85a9e8912b4b616ab5005dbe9cea55208ac3535d1481ff05',
+    mode: 0o700,
+  }),
+  'crypto/package.json': Object.freeze({
+    archive: null,
+    entry: null,
+    bytes: 20,
+    sha256: 'dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc',
+    mode: 0o600,
+  }),
+  'native/bw': Object.freeze({
+    archive: 'cliMacArm64',
+    entry: 'bw',
+    bytes: 130_181_616,
+    sha256: '379916ab23114a3a04be6987aadb4570983b31d8982a0c1e6f931effedf8063e',
+    mode: 0o700,
+  }),
+})
 
 async function main(argv = process.argv.slice(2)) {
   const normalized = argv[0] === '--' ? argv.slice(1) : argv
@@ -118,10 +199,18 @@ async function main(argv = process.argv.slice(2)) {
 
   const options = parseOptions(rest)
   const root = resolveHarnessRoot(options.root ?? defaultRoot)
+  if (options.execute) {
+    requireConfirmation(options)
+  }
+  if (action === 'cli-run') {
+    validateOfficialCliArgs(options.passthrough)
+    validateLoopbackOrigin(options.origin)
+  } else if (options.passthrough.length > 0) {
+    throw new Error('arguments after -- are only allowed for cli-run')
+  }
   const packet = buildPacket(action, options, root)
 
   if (options.execute) {
-    requireConfirmation(options)
     await executeAction(packet, options, root)
   }
 
@@ -264,16 +353,13 @@ async function prepareHarness(root, preparedAt) {
 
     const cryptoDirectory = join(root.absolute, 'crypto')
     const nativeDirectory = join(root.absolute, 'native')
+    await validatePinnedArchiveEntries(npmAssetPath, 'cliNpm')
+    await validatePinnedArchiveEntries(nativeAssetPath, 'cliMacArm64')
     await extractPinnedArchive(npmAssetPath, cryptoDirectory)
     await extractPinnedArchive(nativeAssetPath, nativeDirectory)
     await validateExtractedFile(join(cryptoDirectory, 'bw.js'))
-    await validateExtractedFile(join(cryptoDirectory, '685.js'))
-    await validateExtractedFile(
-      join(cryptoDirectory, '869d87bc3b0a55e0e213.module.wasm'),
-    )
     const nativeCli = join(nativeDirectory, 'bw')
     await validateExtractedFile(nativeCli)
-    await chmod(nativeCli, 0o700)
 
     const source = await readFile(join(cryptoDirectory, 'bw.js'), 'utf8')
     const bridge = renderOfficialCryptoBridge(source)
@@ -284,6 +370,11 @@ async function prepareHarness(root, preparedAt) {
       { mode: 0o600, flag: 'wx' },
     )
     await writeFile(bridgePath, bridge, { mode: 0o700, flag: 'wx' })
+    await normalizeRuntimeFileModes(root.absolute, officialRuntimeFileManifest)
+    const runtimeIntegrity = await validateRuntimeFileManifest(
+      root.absolute,
+      officialRuntimeFileManifest,
+    )
 
     const versionRun = await runCapturedProcess(nativeCli, ['--version'], {
       cwd: root.absolute,
@@ -327,6 +418,7 @@ async function prepareHarness(root, preparedAt) {
         version: nativeVersion,
         assetSha256: officialClientAssets.cliMacArm64.sha256,
       },
+      runtimeManifestSha256: runtimeIntegrity.manifestSha256,
       safety: {
         syntheticOnly: true,
         productionSupported: false,
@@ -346,6 +438,7 @@ async function prepareHarness(root, preparedAt) {
       npmAsset: npmReadback,
       nativeAsset: nativeReadback,
       bridgeSha256: state.bridge.sha256,
+      runtimeManifestSha256: runtimeIntegrity.manifestSha256,
       nativeVersion,
       profileEntries: 0,
       officialCryptoExecuted: false,
@@ -359,7 +452,7 @@ async function prepareHarness(root, preparedAt) {
 }
 
 async function runCryptoRoundtrip(root, options) {
-  const status = await readHarnessStatus(root)
+  let status = await readHarnessStatus(root)
   if (!status.rootExists || !status.valid) {
     throw new Error('prepare a valid harness before crypto-roundtrip')
   }
@@ -404,6 +497,12 @@ async function runCryptoRoundtrip(root, options) {
       flag: 'wx',
     })
 
+    status = await readHarnessStatus(root)
+    if (!status.valid) {
+      throw new Error(
+        'prepared harness changed before official crypto execution',
+      )
+    }
     const run = await runCapturedProcess(
       process.execPath,
       [
@@ -485,6 +584,10 @@ async function runOfficialCli(root, options) {
     throw new Error('official CLI local-server configuration failed')
   }
 
+  const commandStatus = await readHarnessStatus(root)
+  if (!commandStatus.valid) {
+    throw new Error('prepared harness changed before official CLI execution')
+  }
   const commandRun = await runCapturedProcess(nativeCli, options.passthrough, {
     cwd: root.absolute,
     env: environment,
@@ -536,18 +639,14 @@ async function readHarnessStatus(root) {
     nativeBytes,
     officialClientAssets.cliMacArm64,
   )
-  const bridgePath = join(root.absolute, 'crypto', 'honowarden-bridge.cjs')
-  const bridgePackagePath = join(root.absolute, 'crypto', 'package.json')
-  await validateExtractedFile(bridgePath)
-  await validateExtractedFile(bridgePackagePath)
-  await requireMode(bridgePath, 0o700, 'official crypto bridge')
-  await requireMode(bridgePackagePath, 0o600, 'crypto module boundary')
-  if ((await readFile(bridgePackagePath, 'utf8')) !== '{"type":"commonjs"}\n') {
-    throw new Error('crypto module boundary did not match')
-  }
-  await validateExtractedFile(join(root.absolute, 'native', 'bw'))
-  await requireMode(join(root.absolute, 'native', 'bw'), 0o700, 'native CLI')
-  const bridgeSha256 = sha256(await readFile(bridgePath))
+  await validatePinnedArchiveEntries(npmAssetPath, 'cliNpm')
+  await validatePinnedArchiveEntries(nativeAssetPath, 'cliMacArm64')
+  const runtimeIntegrity = await validateRuntimeFileManifest(
+    root.absolute,
+    officialRuntimeFileManifest,
+  )
+  const bridgeSha256 =
+    officialRuntimeFileManifest['crypto/honowarden-bridge.cjs'].sha256
   const rootMode = await readMode(root.absolute)
   const valid =
     state?.schemaVersion === schemaVersion &&
@@ -559,6 +658,7 @@ async function readHarnessStatus(root) {
     state?.bridge?.sha256 === bridgeSha256 &&
     state?.nativeCli?.version === '2026.6.0' &&
     state?.nativeCli?.assetSha256 === officialClientAssets.cliMacArm64.sha256 &&
+    state?.runtimeManifestSha256 === runtimeIntegrity.manifestSha256 &&
     rootMode === '0700'
 
   return {
@@ -568,6 +668,7 @@ async function readHarnessStatus(root) {
     npmAsset,
     nativeAsset,
     bridgeSha256,
+    runtimeManifestSha256: runtimeIntegrity.manifestSha256,
     nativeVersion: state?.nativeCli?.version ?? null,
     profileEntries: await countDirectoryEntries(join(root.absolute, 'profile')),
   }
@@ -813,37 +914,43 @@ export async function runCapturedProcess(
     throw error
   }
 
-  let timedOut = false
-  let forceKillTimer = null
   let timeoutTimer = null
   let result
   try {
-    result = await new Promise((resolveRun, rejectRun) => {
-      const child = spawn(command, args, {
-        cwd,
-        env,
-        detached: true,
-        stdio: ['ignore', stdoutHandle.fd, stderrHandle.fd],
-      })
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      detached: true,
+      stdio: ['ignore', stdoutHandle.fd, stderrHandle.fd],
+    })
+    const closePromise = new Promise((resolveRun, rejectRun) => {
       child.once('error', rejectRun)
       child.once('close', (exitCode, signal) => {
-        if (timeoutTimer) clearTimeout(timeoutTimer)
-        if (forceKillTimer) clearTimeout(forceKillTimer)
-        resolveRun({ exitCode, signal, timedOut })
+        resolveRun({ exitCode, signal })
       })
+    })
+    const timeoutPromise = new Promise((resolveTimeout) => {
       timeoutTimer = setTimeout(() => {
-        timedOut = true
-        signalProcessGroup(child.pid, 'SIGTERM')
-        forceKillTimer = setTimeout(() => {
-          signalProcessGroup(child.pid, 'SIGKILL')
-        }, 1_000)
-        forceKillTimer.unref()
+        resolveTimeout({ timedOut: true })
       }, timeoutMs)
       timeoutTimer.unref()
     })
+    const first = await Promise.race([
+      closePromise.then((closed) => ({ closed })),
+      timeoutPromise,
+    ])
+    if ('timedOut' in first) {
+      await terminateProcessGroup(child.pid)
+      const closed = await closePromise
+      result = { ...closed, timedOut: true }
+    } else {
+      result = { ...first.closed, timedOut: false }
+      if (await processGroupExists(child.pid)) {
+        await terminateProcessGroup(child.pid)
+      }
+    }
   } finally {
     if (timeoutTimer) clearTimeout(timeoutTimer)
-    if (forceKillTimer) clearTimeout(forceKillTimer)
     await Promise.all([stdoutHandle.close(), stderrHandle.close()])
   }
 
@@ -854,13 +961,50 @@ export async function runCapturedProcess(
   }
 }
 
+async function terminateProcessGroup(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return
+  signalProcessGroup(pid, 'SIGTERM')
+  if (await waitForProcessGroupExit(pid, 1_000)) return
+  signalProcessGroup(pid, 'SIGKILL')
+  if (!(await waitForProcessGroupExit(pid, 2_000))) {
+    throw new Error('captured process group did not terminate')
+  }
+}
+
+async function waitForProcessGroupExit(pid, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!(await processGroupExists(pid))) return true
+    await delay(50)
+  }
+  return !(await processGroupExists(pid))
+}
+
+async function processGroupExists(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch (error) {
+    if (error?.code === 'ESRCH') return false
+    if (error?.code === 'EPERM') return true
+    throw error
+  }
+}
+
 function signalProcessGroup(pid, signal) {
   if (!Number.isInteger(pid) || pid <= 0) return
   try {
     process.kill(-pid, signal)
   } catch (error) {
-    if (error?.code !== 'ESRCH') throw error
+    if (!['EPERM', 'ESRCH'].includes(error?.code)) throw error
   }
+}
+
+function delay(milliseconds) {
+  return new Promise((resolveDelay) => {
+    setTimeout(resolveDelay, milliseconds)
+  })
 }
 
 async function capturedFileSummary(path) {
@@ -942,6 +1086,34 @@ export async function validateHarnessDirectories(root) {
     ) {
       throw new Error(`harness ${directory} directory escaped the root`)
     }
+    if (mutableHarnessDirectories.includes(directory)) {
+      await validateMutableHarnessTree(path, directory)
+    }
+  }
+}
+
+async function validateMutableHarnessTree(directory, name) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name)
+    const info = await lstat(path)
+    if (info.isSymbolicLink()) {
+      throw new Error(`harness ${name} tree must not contain symlinks`)
+    }
+    if (info.isDirectory()) {
+      if ((info.mode & 0o777) !== 0o700) {
+        throw new Error(
+          `harness ${name} nested directory permissions must be 0700`,
+        )
+      }
+      await validateMutableHarnessTree(path, name)
+      continue
+    }
+    if (!info.isFile()) {
+      throw new Error(`harness ${name} tree contained a special file`)
+    }
+    if ((info.mode & 0o777) !== 0o600) {
+      throw new Error(`harness ${name} file permissions must be 0600`)
+    }
   }
 }
 
@@ -963,6 +1135,23 @@ async function downloadPinnedAsset(asset) {
     throw new Error(`${asset.name} official asset download failed`)
   }
   return Buffer.from(await response.arrayBuffer())
+}
+
+async function validatePinnedArchiveEntries(archivePath, archiveKey) {
+  const expected = Object.values(officialRuntimeFileManifest)
+    .filter((metadata) => metadata.archive === archiveKey)
+    .map((metadata) => metadata.entry)
+    .sort()
+  const actual = (await listArchiveEntries(archivePath)).sort()
+  if (
+    expected.length === 0 ||
+    actual.length !== expected.length ||
+    actual.some((entry, index) => entry !== expected[index])
+  ) {
+    throw new Error(
+      'official archive entries did not match the pinned manifest',
+    )
+  }
 }
 
 async function extractPinnedArchive(archivePath, destination) {
@@ -988,6 +1177,151 @@ async function extractPinnedArchive(archivePath, destination) {
 async function listArchiveEntries(archivePath) {
   const result = await runTextCommand('unzip', ['-Z1', archivePath])
   return result.stdout.split('\n').filter(Boolean)
+}
+
+async function normalizeRuntimeFileModes(rootAbsolute, manifest) {
+  for (const [relativePath, metadata] of Object.entries(manifest)) {
+    const components = validateManifestPath(relativePath)
+    let parent = rootAbsolute
+    for (const component of components.slice(0, -1)) {
+      parent = join(parent, component)
+      await rejectSymlink(
+        parent,
+        'prepared runtime directory must not be a symlink',
+      )
+      const info = await lstat(parent)
+      if (!info.isDirectory()) {
+        throw new Error('prepared runtime parent was not a directory')
+      }
+      await chmod(parent, 0o700)
+    }
+    const path = join(rootAbsolute, ...components)
+    await validateExtractedFile(path)
+    await chmod(path, metadata.mode)
+  }
+}
+
+export async function validateRuntimeFileManifest(rootAbsolute, manifest) {
+  const expectedEntries = Object.entries(manifest)
+    .map(([relativePath, metadata]) => {
+      validateManifestPath(relativePath)
+      if (
+        !Number.isInteger(metadata?.bytes) ||
+        metadata.bytes < 0 ||
+        !isSha256(metadata?.sha256) ||
+        ![0o600, 0o700].includes(metadata?.mode)
+      ) {
+        throw new Error('prepared runtime manifest was invalid')
+      }
+      return [relativePath, metadata]
+    })
+    .sort(([left], [right]) => left.localeCompare(right))
+  if (expectedEntries.length === 0) {
+    throw new Error('prepared runtime manifest was empty')
+  }
+
+  const expectedPaths = new Set(expectedEntries.map(([path]) => path))
+  const roots = [
+    ...new Set(expectedEntries.map(([path]) => path.split('/')[0])),
+  ].sort()
+  const actualPaths = []
+  for (const rootName of roots) {
+    await collectRuntimeFiles(
+      rootAbsolute,
+      rootName,
+      join(rootAbsolute, rootName),
+      actualPaths,
+    )
+  }
+  actualPaths.sort()
+  if (
+    actualPaths.length !== expectedPaths.size ||
+    actualPaths.some((path) => !expectedPaths.has(path))
+  ) {
+    throw new Error('prepared runtime file set did not match its manifest')
+  }
+
+  const canonicalEntries = []
+  for (const [relativePath, metadata] of expectedEntries) {
+    const path = join(rootAbsolute, ...relativePath.split('/'))
+    await rejectSymlink(path, 'prepared runtime file must not be a symlink')
+    const info = await lstat(path)
+    const bytes = await readFile(path)
+    const mode = info.mode & 0o777
+    const digest = sha256(bytes)
+    if (
+      !info.isFile() ||
+      info.size !== metadata.bytes ||
+      bytes.length !== metadata.bytes ||
+      digest !== metadata.sha256 ||
+      mode !== metadata.mode
+    ) {
+      throw new Error('prepared runtime file did not match its pinned archive')
+    }
+    canonicalEntries.push({
+      path: relativePath,
+      bytes: metadata.bytes,
+      sha256: metadata.sha256,
+      mode: metadata.mode,
+    })
+  }
+
+  return {
+    files: canonicalEntries.length,
+    manifestSha256: sha256(JSON.stringify(canonicalEntries)),
+  }
+}
+
+function validateManifestPath(relativePath) {
+  if (
+    typeof relativePath !== 'string' ||
+    relativePath.length === 0 ||
+    isAbsolute(relativePath)
+  ) {
+    throw new Error('prepared runtime manifest path was invalid')
+  }
+  const components = relativePath.split('/')
+  if (
+    components.length < 2 ||
+    components.some(
+      (component) =>
+        component.length === 0 || component === '.' || component === '..',
+    )
+  ) {
+    throw new Error('prepared runtime manifest path was invalid')
+  }
+  return components
+}
+
+async function collectRuntimeFiles(rootAbsolute, rootName, directory, paths) {
+  await rejectSymlink(
+    directory,
+    'prepared runtime directory must not be a symlink',
+  )
+  const directoryInfo = await lstat(directory)
+  if (!directoryInfo.isDirectory() || (directoryInfo.mode & 0o777) !== 0o700) {
+    throw new Error('prepared runtime directory permissions must be 0700')
+  }
+
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name)
+    const info = await lstat(path)
+    if (info.isSymbolicLink()) {
+      throw new Error('prepared runtime tree must not contain symlinks')
+    }
+    if (info.isDirectory()) {
+      await collectRuntimeFiles(rootAbsolute, rootName, path, paths)
+      continue
+    }
+    if (!info.isFile()) {
+      throw new Error('prepared runtime tree contained a special file')
+    }
+    const relativePath = relative(rootAbsolute, path).split(sep).join('/')
+    if (!relativePath.startsWith(`${rootName}/`)) {
+      throw new Error('prepared runtime file escaped its root')
+    }
+    paths.push(relativePath)
+  }
 }
 
 function runTextCommand(command, args) {
@@ -1033,8 +1367,10 @@ function isolatedClientEnvironment(root) {
   ]) {
     if (process.env[key] !== undefined) environment[key] = process.env[key]
   }
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith('BW_') && value !== undefined) environment[key] = value
+  for (const key of ['BW_PASSWORD', 'BW_SESSION']) {
+    if (process.env[key] !== undefined) {
+      environment[key] = process.env[key]
+    }
   }
   environment.HOME = join(root.absolute, 'home')
   environment.TMPDIR = join(root.absolute, 'tmp')
@@ -1045,6 +1381,21 @@ function isolatedClientEnvironment(root) {
 export function validateOfficialCliArgs(args) {
   if (!Array.isArray(args) || args.length === 0) {
     throw new Error('cli-run requires arguments after --')
+  }
+  if (
+    args.some(
+      (arg) =>
+        typeof arg !== 'string' ||
+        arg.length === 0 ||
+        [...arg].some((character) => {
+          const codePoint = character.codePointAt(0)
+          return codePoint <= 0x1f || codePoint === 0x7f
+        }),
+    )
+  ) {
+    throw new Error(
+      'official CLI arguments violate the synthetic-only harness contract',
+    )
   }
   const allowedCommands = new Set([
     '--version',
@@ -1074,6 +1425,76 @@ export function validateOfficialCliArgs(args) {
       )
     }
   }
+
+  const command = args[0]
+  let valid = false
+  switch (command) {
+    case '--version':
+    case 'lock':
+    case 'logout':
+    case 'status':
+      valid = args.length === 1
+      break
+    case 'login':
+      valid = validatePasswordEnvironmentArgs(args.slice(1), true)
+      break
+    case 'unlock':
+      valid =
+        (args.length === 2 && args[1] === '--check') ||
+        validatePasswordEnvironmentArgs(args.slice(1), false)
+      break
+    case 'get':
+      valid =
+        args.length === 3 &&
+        args[1] === 'item' &&
+        /^fixture-[A-Za-z0-9._:-]{1,192}$/.test(args[2])
+      break
+    case 'list':
+      valid = args.length === 2 && args[1] === 'items'
+      break
+    case 'sync':
+      valid =
+        args.length === 1 ||
+        (args.length === 2 && ['--force', '--last'].includes(args[1]))
+      break
+  }
+  if (!valid) {
+    throw new Error(
+      'official CLI arguments violate the synthetic-only harness contract',
+    )
+  }
+}
+
+function validatePasswordEnvironmentArgs(args, requiresEmail) {
+  let emailSeen = false
+  let passwordEnvironmentSeen = false
+  const switches = new Set()
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === '--passwordenv') {
+      if (passwordEnvironmentSeen || args[index + 1] !== 'BW_PASSWORD') {
+        return false
+      }
+      passwordEnvironmentSeen = true
+      index += 1
+      continue
+    }
+    if (arg === '--raw' || arg === '--nointeraction') {
+      if (switches.has(arg)) return false
+      switches.add(arg)
+      continue
+    }
+    if (
+      requiresEmail &&
+      !emailSeen &&
+      /^[^@\s]+@example\.invalid$/i.test(arg)
+    ) {
+      emailSeen = true
+      continue
+    }
+    return false
+  }
+  return passwordEnvironmentSeen && (!requiresEmail || emailSeen)
 }
 
 export function validateLoopbackOrigin(value) {

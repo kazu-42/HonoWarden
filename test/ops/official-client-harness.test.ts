@@ -7,6 +7,7 @@ import {
   lstat,
   mkdir,
   readFile,
+  rm,
   symlink,
   writeFile,
 } from 'node:fs/promises'
@@ -144,6 +145,28 @@ describe('pinned official-client harness', () => {
     expect(() =>
       validateOfficialCliArgs(['unlock', '--password', 'secret']),
     ).toThrow('pass official CLI secrets through BW_* environment variables')
+    for (const unsafeArgs of [
+      ['login', 'fixture@example.invalid', 'synthetic-positional-password'],
+      ['unlock', 'synthetic-positional-password'],
+      ['login', '--passwordfile', '/tmp/real-password'],
+      ['login', '--code', '123456', 'fixture@example.invalid'],
+      ['get', 'attachment', 'fixture-id', '--output', '/tmp/decrypted'],
+    ]) {
+      expect(() => validateOfficialCliArgs(unsafeArgs)).toThrow(
+        'official CLI arguments violate the synthetic-only harness contract',
+      )
+    }
+    expect(() =>
+      validateOfficialCliArgs([
+        'unlock',
+        '--passwordenv',
+        'BW_PASSWORD',
+        '--raw',
+      ]),
+    ).not.toThrow()
+    expect(() =>
+      validateOfficialCliArgs(['get', 'item', 'fixture-item-id']),
+    ).not.toThrow()
     expect(validateLoopbackOrigin('http://127.0.0.1:8787')).toBe(
       'http://127.0.0.1:8787',
     )
@@ -159,6 +182,29 @@ describe('pinned official-client harness', () => {
     expect(() =>
       validateLoopbackOrigin('http://user:secret@127.0.0.1:8787'),
     ).toThrow('--origin must be an origin-only loopback URL')
+  })
+
+  it('rejects secret-bearing CLI plans without echoing the secret', async () => {
+    const secret = 'synthetic-plan-secret-that-must-not-be-printed'
+    let rejected: (Error & { stdout?: string; stderr?: string }) | undefined
+
+    try {
+      await run([
+        'cli-run',
+        '--origin',
+        'http://127.0.0.1:8787',
+        '--',
+        'login',
+        'fixture@example.invalid',
+        secret,
+      ])
+    } catch (error) {
+      rejected = error as Error & { stdout?: string; stderr?: string }
+    }
+
+    expect(rejected).toBeDefined()
+    expect(rejected?.stdout ?? '').not.toContain(secret)
+    expect(rejected?.stderr ?? '').not.toContain(secret)
   })
 
   it('rejects roots outside ignored storage and symlinked path components', async () => {
@@ -219,6 +265,89 @@ describe('pinned official-client harness', () => {
     await expect(validateHarnessDirectories(root)).rejects.toThrow(
       'harness requests directory must not be a symlink',
     )
+  })
+
+  it('rejects symlinks nested inside mutable profile storage', async () => {
+    const {
+      resolveHarnessRoot,
+      validateHarnessDirectories,
+      validateHarnessRoot,
+    } = await harnessModule
+    const root = resolveHarnessRoot(ignoredRoot('profile-link'))
+    const outside = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-profile-outside-${crypto.randomUUID()}.json`,
+    )
+    await mkdir(root.absolute, { recursive: true, mode: 0o700 })
+    for (const directory of [
+      'assets',
+      'crypto',
+      'native',
+      'profile',
+      'home',
+      'tmp',
+      'requests',
+      'responses',
+      'output',
+    ]) {
+      await mkdir(join(root.absolute, directory), { mode: 0o700 })
+    }
+    await writeFile(outside, '{}\n', { mode: 0o600 })
+    await symlink(outside, join(root.absolute, 'profile', 'data.json'))
+
+    try {
+      await validateHarnessRoot(root)
+      await expect(validateHarnessDirectories(root)).rejects.toThrow(
+        'harness profile tree must not contain symlinks',
+      )
+    } finally {
+      await rm(root.absolute, { recursive: true, force: true })
+      await rm(outside, { force: true })
+    }
+  })
+
+  it('rejects prepared runtime files that no longer match their manifest', async () => {
+    const { validateRuntimeFileManifest } = await harnessModule
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-runtime-${crypto.randomUUID()}`,
+    )
+    const cryptoDirectory = join(root, 'crypto')
+    const nativeDirectory = join(root, 'native')
+    const bridgePath = join(cryptoDirectory, 'bridge.cjs')
+    const nativePath = join(nativeDirectory, 'client')
+    const bridge = Buffer.from('trusted bridge')
+    const native = Buffer.from('trusted native')
+    await mkdir(cryptoDirectory, { recursive: true, mode: 0o700 })
+    await mkdir(nativeDirectory, { mode: 0o700 })
+    await writeFile(bridgePath, bridge, { mode: 0o700 })
+    await writeFile(nativePath, native, { mode: 0o700 })
+    const manifest = {
+      'crypto/bridge.cjs': {
+        bytes: bridge.length,
+        sha256: createHash('sha256').update(bridge).digest('hex'),
+        mode: 0o700,
+      },
+      'native/client': {
+        bytes: native.length,
+        sha256: createHash('sha256').update(native).digest('hex'),
+        mode: 0o700,
+      },
+    }
+
+    try {
+      await expect(
+        validateRuntimeFileManifest(root, manifest),
+      ).resolves.toBeDefined()
+      await writeFile(nativePath, 'tampered native', { mode: 0o700 })
+      await expect(validateRuntimeFileManifest(root, manifest)).rejects.toThrow(
+        'prepared runtime file did not match its pinned archive',
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('fails closed on asset size and digest mismatches', async () => {
@@ -357,6 +486,68 @@ wait
       timedOut: true,
     })
     await expectProcessGone(childPid)
+  })
+
+  it('kills descendants that outlive a terminating group leader', async () => {
+    const { runCapturedProcess } = await harnessModule
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-stubborn-${crypto.randomUUID()}`,
+    )
+    const output = join(root, 'output')
+    const parentPidPath = join(root, 'parent.pid')
+    const childPidPath = join(root, 'child.pid')
+    const command = join(root, 'wait.sh')
+    let parentPid: number | undefined
+    await mkdir(output, { recursive: true, mode: 0o700 })
+    await writeFile(
+      command,
+      `#!/bin/sh
+printf '%s' "$$" > ${shellQuote(parentPidPath)}
+sh -c 'trap "" TERM; while :; do sleep 1; done' &
+printf '%s' "$!" > ${shellQuote(childPidPath)}
+trap 'exit 0' TERM
+wait
+`,
+      { mode: 0o700 },
+    )
+    await chmod(command, 0o700)
+
+    let testError: unknown
+    let cleanupError: unknown
+    try {
+      const result = await runCapturedProcess(command, [], {
+        cwd: root,
+        env: process.env,
+        outputDirectory: output,
+        timeoutMs: 1_000,
+        label: 'stubborn',
+      })
+      parentPid = Number(await readFile(parentPidPath, 'utf8'))
+      const childPid = Number(await readFile(childPidPath, 'utf8'))
+
+      expect(result.timedOut).toBe(true)
+      await expectProcessGone(childPid)
+    } catch (error) {
+      testError = error
+    }
+    if (parentPid) {
+      try {
+        process.kill(-parentPid, 'SIGKILL')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+          cleanupError = error
+        }
+      }
+    }
+    try {
+      await rm(root, { recursive: true, force: true })
+    } catch (error) {
+      cleanupError ??= error
+    }
+    if (testError) throw testError
+    if (cleanupError) throw cleanupError
   })
 
   it('documents the evidence levels, recovery boundary, and package command', () => {
