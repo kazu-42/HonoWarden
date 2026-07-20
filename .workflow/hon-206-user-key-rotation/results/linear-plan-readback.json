@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-20T00:31:39.574Z",
+  "generatedAt": "2026-07-20T00:59:23.385Z",
   "phase": "verify",
   "status": "exact",
   "sourcePins": {
@@ -10,8 +10,8 @@
   "inventory": {
     "total": 218,
     "archived": 120,
-    "activeUnarchived": 95,
-    "completedUnarchived": 3
+    "activeUnarchived": 94,
+    "completedUnarchived": 4
   },
   "parent": {
     "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
@@ -73,9 +73,9 @@
       "url": "https://linear.app/honowarden/issue/HON-216/account-a2e2-atomic-personal-vault-rotation-transaction",
       "title": "Account A2e.2: atomic personal-vault rotation transaction",
       "state": {
-        "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
-        "name": "In Progress",
-        "type": "started"
+        "id": "64a2ae05-d774-4806-abb5-b9d93ab7afef",
+        "name": "Done",
+        "type": "completed"
       },
       "parent": {
         "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
@@ -108,9 +108,9 @@
       "url": "https://linear.app/honowarden/issue/HON-217/account-a2e3-default-off-api-and-generation-consistency",
       "title": "Account A2e.3: default-off API and generation consistency",
       "state": {
-        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
-        "name": "Todo",
-        "type": "unstarted"
+        "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+        "name": "In Progress",
+        "type": "started"
       },
       "parent": {
         "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
@@ -200,9 +200,9 @@
   "unexpectedRelations": [],
   "managedComment": {
     "id": "75242de0-5860-42c2-ba95-47c42c36299c",
-    "updatedAt": "2026-07-20T00:31:25.838Z",
+    "updatedAt": "2026-07-20T00:59:04.581Z",
     "bytes": 2102,
-    "sha256": "39248097eb2ccdee38a0bd440a19040b2096b3b6e8dcb13957d93673e1b5b9ba",
+    "sha256": "c27114138fdd761874e90940ff601ea7988db1d983e679554d09b156105cffc7",
     "checks": {
       "single": true,
       "body": true,
