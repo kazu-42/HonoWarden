@@ -1,6 +1,6 @@
 # CLIENT-1: Pinned Official-Client Harness
 
-Status: verification passed; exact-head review pending
+Status: verification and independent reviews passed; PR/head CI pending
 
 Linear issue: HON-219
 
@@ -196,6 +196,32 @@ ESLint: passed
 Prettier: passed
 brand scan: passed
 ```
+
+## Review Gate
+
+The final code commit reviewed was
+`eb254d8b15db2b7a064ebe491c05854c1cf38eec`.
+
+- The native `codex review --base main` rerun was unavailable before analysis
+  because the local Codex account reached its usage limit. This was treated as
+  tool availability, not as review success.
+- An independent read-only Claude Opus exact-diff review returned `CLEAN` with
+  zero actionable P0-P2 findings. It explicitly rechecked the clean-checkout
+  fixture behavior and Windows positive-PID `taskkill /T /F` path.
+- A separate read-only Claude Sonnet five-axis review passed Correctness,
+  Security, Reliability and Operations, Maintainability, and Test Quality,
+  with zero blocking findings.
+- The five-axis review recorded three non-blocking P3 observations: duplicate
+  POSIX group cleanup between the purpose-built official harness and the
+  lifecycle helper, repeated pnpm environment literals, and the test helper
+  not asserting against Node's caller-side `execFile` error message. These do
+  not alter harness output, runtime safety, or the verified cleanup contract.
+  Consolidating the two process owners would increase the reviewed blast
+  radius, so it is deferred until a shared process-runner change is planned.
+
+The review tools were denied their own subprocess reruns by their read-only
+sandboxes. Their static conclusions are therefore paired with the host-run
+focused, clean-copy, lifecycle, full-suite, and quality-gate evidence above.
 
 ## Remaining Boundary
 

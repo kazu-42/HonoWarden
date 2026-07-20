@@ -48,7 +48,7 @@
     }
   ],
   "verification": {
-    "status": "official_client_harness_verification_passed_review_pending",
+    "status": "official_client_harness_reviews_passed_pr_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -61,7 +61,9 @@
       "qualityGates": "passed_typecheck_eslint_prettier_brand_scan_release_gate_11_of_11",
       "secretOutput": "passed_zero_crypto_stdout_stderr",
       "processCleanup": "passed_timeout_and_parent_signal_group_termination",
-      "reviewRemediation": "passed_19_review_and_boundary_reproductions"
+      "reviewRemediation": "passed_19_review_and_boundary_reproductions",
+      "standardReview": "passed_independent_opus_exact_diff_0_actionable_p0_p1_p2_codex_unavailable_usage_limit",
+      "fiveAxisReview": "passed_all_5_axes_0_blocking_3_nonblocking_p3"
     },
     "checks": [
       "linear_plan_unit",
