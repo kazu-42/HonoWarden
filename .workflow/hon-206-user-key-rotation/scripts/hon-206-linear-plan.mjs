@@ -33,7 +33,7 @@ export const hon206LinearPlan = {
       key: 'ROT-2',
       packet: '02-atomic-repository',
       title: 'Account A2e.2: atomic personal-vault rotation transaction',
-      stateType: 'started',
+      stateType: 'completed',
       blockers: ['ROT-1'],
       goal: 'Commit one complete supported user-key generation or no state under D1 limits.',
       scope: [
@@ -51,7 +51,7 @@ export const hon206LinearPlan = {
       key: 'ROT-3',
       packet: '03-route-consistency',
       title: 'Account A2e.3: default-off API and generation consistency',
-      stateType: 'unstarted',
+      stateType: 'started',
       blockers: ['ROT-2'],
       goal: 'Expose the pinned route behind an exact-true default-off gate with safe acknowledgement ordering.',
       scope: [

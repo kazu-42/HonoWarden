@@ -110,6 +110,64 @@ export function parseUserKeyRotationCiphers(
   return ciphers
 }
 
+export type StoredUserKeyRotationCipherMetadataStatus =
+  'matches' | 'mismatch' | 'invalid'
+
+export function classifyStoredUserKeyRotationCipherMetadata(
+  cipher: UserKeyRotationCipher,
+  encryptedJson: string,
+): StoredUserKeyRotationCipherMetadataStatus {
+  if (encryptedJson.length > userKeyRotationPolicy.cipherJsonMaxLength) {
+    return 'invalid'
+  }
+
+  let value: unknown
+  try {
+    value = JSON.parse(encryptedJson) as unknown
+  } catch {
+    return 'invalid'
+  }
+  if (!isPlainObject(value)) {
+    return 'invalid'
+  }
+
+  const type = parseRequiredIntegerField(value, 'type')
+  const folderId = parseNullableIdField(value, 'folderId')
+  const organizationId = readAliasedValue(value, 'organizationId')
+  const favorite = parseRequiredBooleanField(value, 'favorite')
+  const repromptValue = readAliasedValue(value, 'reprompt')
+  const reprompt = repromptValue.present
+    ? parseRequiredIntegerField(value, 'reprompt')
+    : 0
+  const archivedDate = parseNullableDateField(value, 'archivedDate')
+  const metadata = buildCipherMetadata(value, cipher.type)
+  if (
+    type === null ||
+    folderId === undefined ||
+    !organizationId.valid ||
+    (organizationId.present &&
+      organizationId.value !== null &&
+      organizationId.value !== '') ||
+    favorite === null ||
+    reprompt === null ||
+    archivedDate === undefined ||
+    !metadata ||
+    !validateCipherStructuredData(value, cipher.type)
+  ) {
+    return 'invalid'
+  }
+
+  return encryptedJson !== cipher.encryptedJson &&
+    type === cipher.type &&
+    folderId === cipher.folderId &&
+    favorite === cipher.favorite &&
+    reprompt === cipher.reprompt &&
+    archivedDate === cipher.archivedDate &&
+    JSON.stringify(metadata) === JSON.stringify(cipher.metadata)
+    ? 'matches'
+    : 'mismatch'
+}
+
 function parseCipher(value: unknown): UserKeyRotationCipher | null {
   if (
     !isPlainObject(value) ||

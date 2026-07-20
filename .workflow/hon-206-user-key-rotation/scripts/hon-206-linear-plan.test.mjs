@@ -24,10 +24,9 @@ test('defines four serialized packets with unique managed markers', () => {
   ])
   assert.equal(new Set(summary.issues.map((issue) => issue.marker)).size, 4)
   assert.equal(summary.issues[0].stateType, 'completed')
-  assert.equal(summary.issues[1].stateType, 'started')
-  assert.ok(
-    summary.issues.slice(2).every((issue) => issue.stateType === 'unstarted'),
-  )
+  assert.equal(summary.issues[1].stateType, 'completed')
+  assert.equal(summary.issues[2].stateType, 'started')
+  assert.equal(summary.issues[3].stateType, 'unstarted')
 })
 
 test('renders exact child and parent managed markers once', () => {
@@ -51,16 +50,17 @@ test('renders exact child and parent managed markers once', () => {
   }
   assert.match(checkpoint, /folder envelope does not/)
   assert.match(checkpoint, /HON-301 .*Done/)
-  assert.match(checkpoint, /HON-302 .*In Progress/)
+  assert.match(checkpoint, /HON-302 .*Done/)
+  assert.match(checkpoint, /HON-303 .*In Progress/)
   assert.match(checkpoint, /trash false/)
 })
 
 test('rejects unknown dependencies and cycles', () => {
-  const unknown = structuredClone(hon206LinearPlan)
+  const unknown = globalThis.structuredClone(hon206LinearPlan)
   unknown.issues[1].blockers = ['ROT-X']
   assert.throws(() => validatePlan(unknown), /unknown blocker/)
 
-  const cyclic = structuredClone(hon206LinearPlan)
+  const cyclic = globalThis.structuredClone(hon206LinearPlan)
   cyclic.issues[0].blockers = ['ROT-4']
   assert.throws(() => validatePlan(cyclic), /dependency cycle/)
 })

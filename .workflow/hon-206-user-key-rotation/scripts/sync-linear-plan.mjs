@@ -705,7 +705,7 @@ async function updateIssue(id, input) {
 }
 
 async function request(query, variables) {
-  const response = await fetch(endpoint, {
+  const response = await globalThis.fetch(endpoint, {
     method: 'POST',
     headers: {
       Authorization: apiKey,

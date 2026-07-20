@@ -22,13 +22,13 @@
     },
     {
       "id": "02-atomic-repository",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-216",
       "result": "results/02-atomic-repository.md"
     },
     {
       "id": "03-route-consistency",
-      "status": "pending",
+      "status": "in_progress",
       "linear": "HON-217",
       "result": "results/03-route-consistency.md"
     },
@@ -40,7 +40,7 @@
     }
   ],
   "verification": {
-    "status": "linear_subissues_synced",
+    "status": "atomic_repository_complete",
     "checks": [
       "linear_plan_readback",
       "focused_domain",
