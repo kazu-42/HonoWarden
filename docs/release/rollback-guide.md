@@ -83,6 +83,30 @@ A partial or different pair is an incident boundary: disable the route,
 preserve the row and logs, and use a separately reviewed recovery plan. Never
 use HON-205 POST as replacement or data-rewrap.
 
+## User-Key Rotation Rollback
+
+Deploy the complete post-rotation readers with
+`HONOWARDEN_USER_KEY_ROTATION_ENABLED=false` and preserve that exact release as
+the reader-capable rollback target. Enabling the flag starts new writes;
+disabling it is the immediate route rollback and does not alter any generation
+that already committed.
+
+The client and D1 move as one generation, but a response can still be lost after
+commit. Before retrying a 503 or disconnected request, read the account security
+stamp/revision and the required `account.keys.rotate` audit row. If the new
+generation exists, treat the server write as committed and complete recovery by
+reauthenticating with that generation. If it does not exist, the transactional
+batch rolled back and a fresh authenticated retry may proceed after the
+infrastructure failure is fixed.
+
+Never restore an old password hash, wrapped user key, wrapped private key,
+security stamp, encrypted vault snapshot, device session, or refresh token.
+That can combine incompatible ciphertext generations or resurrect revoked
+sessions. Recovery from a committed but unusable generation requires a
+separately authenticated forward generation or a separately reviewed account-
+recovery procedure. Keep R2 object keys and bytes untouched; this flow changes
+only their D1 encrypted metadata.
+
 ## Data Rollback
 
 There are no down migrations for alpha. Use fresh-target restore:

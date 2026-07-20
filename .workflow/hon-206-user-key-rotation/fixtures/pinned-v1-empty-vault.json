@@ -1,0 +1,49 @@
+{
+  "source": {
+    "serverTag": "v2026.6.1",
+    "serverCommit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+    "webTag": "web-v2026.6.1",
+    "webCommit": "39f07436ca60e3f25eac47777671754f288a98f1"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/api/accounts/key-management/rotate-user-account-keys",
+    "body": {
+      "oldMasterKeyAuthenticationHash": "synthetic-current-auth-hash",
+      "accountUnlockData": {
+        "masterPasswordUnlockData": {
+          "kdfType": 0,
+          "kdfIterations": 600000,
+          "email": "person@example.test",
+          "masterKeyAuthenticationHash": "synthetic-next-auth-hash",
+          "masterKeyEncryptedUserKey": "2.synthetic-next-wrapped-user-key"
+        },
+        "emergencyAccessUnlockData": [],
+        "organizationAccountRecoveryUnlockData": [],
+        "passkeyUnlockData": [],
+        "deviceKeyUnlockData": []
+      },
+      "accountKeys": {
+        "userKeyEncryptedAccountPrivateKey": "2.synthetic-next-wrapped-private-key",
+        "accountPublicKey": "synthetic-account-public-key",
+        "publicKeyEncryptionKeyPair": {
+          "wrappedPrivateKey": "2.synthetic-next-wrapped-private-key",
+          "publicKey": "synthetic-account-public-key",
+          "signedPublicKey": null
+        },
+        "signatureKeyPair": null,
+        "securityState": null
+      },
+      "accountData": {
+        "ciphers": [],
+        "folders": [],
+        "sends": []
+      }
+    }
+  },
+  "expected": {
+    "status": 200,
+    "body": null,
+    "compatibilityLevel": "fixture_only"
+  }
+}

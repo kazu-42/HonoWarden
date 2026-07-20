@@ -178,6 +178,55 @@ Secret-handling invariants:
 - true replacement and client data rewrap require a separate generation and
   session-invalidation contract
 
+## Atomic User-Key Rotation
+
+1. Disabled POST and Hono-derived HEAD return a D1-free 501 unless
+   `HONOWARDEN_USER_KEY_ROTATION_ENABLED=true`. This check also bypasses the
+   optional global request quota, preserving a reliable rollback response.
+2. The Worker authenticates the bearer, enforces the 2 MB request limit while
+   streaming the raw body (including requests without `Content-Length`), then
+   parses one bounded pinned V1 envelope. It verifies complete current account
+   keys, preflights the optional notification binding, and applies the existing
+   credential-proof defense to the old client-derived authentication hash. It
+   never receives a plaintext password, unwrapped user key, or decrypted vault
+   value.
+3. The repository uses five snapshot queries: one bounded aggregate preflight
+   plus exact active personal folders, ciphers, uploaded attachments, complete
+   trusted devices, and revoked key-bearing devices. Deleted records, pending
+   uploads, partial active-device keys, personal `cipher_key` columns,
+   unsupported cipher metadata, foreign or
+   missing IDs, stale revisions, changed immutable metadata, and size/count
+   overflow fail before mutation.
+4. Ten transactional statements commit one generation: guarded user CAS,
+   folder/cipher/attachment/trusted-device updates, old key removal from already
+   revoked devices, active device and refresh-token revocation, auth-request
+   supersession, and one redacted
+   `account.keys.rotate` audit row. Every downstream write is gated by the new
+   security stamp and revision; a lost CAS changes zero downstream rows.
+5. The complete submitted ciphertext generation is unique and disjoint from
+   every old account wrapper, folder/cipher value, attachment name/key, and
+   active or revoked trusted-device wrapper in the snapshot. Moving an old
+   ciphertext to another record or field and rotation-only JSON changes cannot
+   satisfy this invariant. Attachment staleness uses the client-observable
+   parent cipher revision while the exact attachment row revision remains in
+   the transaction manifest. Attachment updates change only encrypted file
+   names/keys and revision metadata. R2 object keys and bytes remain unchanged,
+   and the route has no R2 binding. D1 batch failure propagates and rolls the
+   complete transaction back.
+6. A committed generation returns 200 before best-effort Durable Object session
+   cleanup. D1 has already revoked access, refresh, device, and auth-request
+   authorization paths; delaying acknowledgement on notification-socket
+   transport could instead leave the client on an old local wrapped generation
+   after a successful commit. Cleanup therefore runs through `waitUntil`, logs
+   failure, and remains forward-only. New authentication, profile, sync, and
+   backup readers project the same complete wrapped-key generation.
+
+The fixed repository budget is 15 queries, below the reserved 50-query Worker
+limit. SQL, bound-parameter, bound-value, manifest, row-count, and snapshot-byte
+limits are checked before `batch()`. External errors disclose only request,
+conflict, unsupported-state, budget, or infrastructure categories; hashes,
+wrapped keys, encrypted payloads, account identity, and manifests are excluded.
+
 ## Refresh Grant
 
 1. Client posts `grant_type=refresh_token`.
@@ -292,6 +341,8 @@ persisted atomically with their mutation regardless of that optional setting.
 Current event coverage:
 
 - bootstrap success
+- one-time account-key initialization and atomic user-key/personal-vault
+  rotation, each with a required transaction-local D1 audit row
 - password change, account-wide token/device revocation, prior-stamp
   invalidation, and active auth-request supersession
 - security-stamp generation rotation, account-wide token/device revocation,

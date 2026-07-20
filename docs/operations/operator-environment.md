@@ -293,6 +293,49 @@ the immediate route rollback. Already initialized keypairs remain available
 through the established token, profile, sync, and backup projections; the
 dedicated account-key routes stay unavailable until the flag is re-enabled.
 
+## User-Key Rotation Rollout
+
+`HONOWARDEN_USER_KEY_ROTATION_ENABLED` is the non-secret, default-off gate for
+`POST /api/accounts/key-management/rotate-user-account-keys`. Only `true` after
+trimming and case normalization enables the writer. Missing, blank, false, or
+any other value makes disabled POST and Hono-derived HEAD return a
+D1-free `501 unsupported_feature` before authentication. The disabled path bypasses
+`HONOWARDEN_GLOBAL_REQUEST_QUOTA`, so a quota write or outage cannot hide the
+rollback response.
+
+The writer accepts only the pinned V1 envelope and a complete supported
+personal-vault snapshot. It verifies the old client-derived authentication hash
+through the normal credential-proof defense, then commits the new password
+hash, wrapped user/private keys, encrypted folder/cipher/attachment metadata,
+trusted-device wrapped keys, security stamp, account revision, D1 session
+revocation, auth-request supersession, and redacted audit event in one guarded
+D1 batch. It never receives plaintext key material and never changes an R2
+object key or body.
+
+Operational responses are intentionally bounded and secret-free:
+
+| Condition                                      | Status and code                     |
+| ---------------------------------------------- | ----------------------------------- |
+| disabled route                                 | `501 unsupported_feature`           |
+| malformed generation or invalid password proof | `400 invalid_request`               |
+| stale or concurrent generation                 | `409 user_key_rotation_conflict`    |
+| unsupported retained account state             | `409 user_key_rotation_unsupported` |
+| D1 atomic query or snapshot limit exceeded     | `413 user_key_rotation_over_budget` |
+| D1/invariant failure before acknowledgement    | `503 database_unavailable`          |
+
+An enabled deployment must have the notification Durable Object binding before
+mutation when durable notifications are enabled. After D1 commits, generation-
+aware Durable Object cleanup is scheduled best-effort so transport failure does
+not turn a committed generation into a false client-visible failure. A cleanup
+failure emits `account_notification_session_invalidation_failed`; investigate
+that signal, but do not restore the old generation.
+
+Top-level development, staging, and production values remain false. Source
+merge, fixture replay, and local D1 evidence are not activation approval. Keep
+the first deployed reader-capable version recorded before a later separately
+approved enablement. See the user-key rotation section in the rollback guide;
+all recovery after a committed generation is forward-only.
+
 ## WebAuthn Runtime Policy
 
 HON-208 defines the configuration contract only. It does not add a WebAuthn

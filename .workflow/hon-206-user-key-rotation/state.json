@@ -1,0 +1,71 @@
+{
+  "title": "HON-206 atomic user-key rotation",
+  "slug": "hon-206-user-key-rotation",
+  "created_at": "2026-07-19T23:50:20Z",
+  "status": "in_progress",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local source, Linear decomposition, reviewed PR/admin merge, Linear archive, and isolated cleanup were pre-authorized. Production activation and real-account rotation remain excluded."
+  },
+  "pins": {
+    "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+    "clients": "web-v2026.6.1@39f07436ca60e3f25eac47777671754f288a98f1",
+    "base": "955a9703dd74ae7a26221fe8ccd4ee875e09fd07"
+  },
+  "packets": [
+    {
+      "id": "01-contract-domain",
+      "status": "completed",
+      "linear": "HON-215",
+      "result": "results/01-contract-domain.md"
+    },
+    {
+      "id": "02-atomic-repository",
+      "status": "completed",
+      "linear": "HON-216",
+      "result": "results/02-atomic-repository.md"
+    },
+    {
+      "id": "03-route-consistency",
+      "status": "completed",
+      "linear": "HON-217",
+      "result": "results/03-route-consistency.md"
+    },
+    {
+      "id": "04-evidence-publication",
+      "status": "in_progress",
+      "linear": "HON-218",
+      "result": "results/04-evidence-publication.md"
+    }
+  ],
+  "verification": {
+    "status": "linear_subissues_synced",
+    "results": {
+      "focused": "passed_8_files_82_tests",
+      "full": "passed_96_files_1167_tests",
+      "compatibility": "passed_3_files_105_tests",
+      "realLocalD1R2": "passed_9_checks",
+      "releaseGate": "ready_11_pass_0_manual_0_block",
+      "dependencyAudit": "passed_0_known_vulnerabilities",
+      "standardReview": "remediated_first_4_p1_1_p2_second_2_p1_2_p2_codex_exact_head_unavailable_usage_limit",
+      "fiveAxisReview": "merge_ready_0_p1_0_p2_2_p3_remediated_exact_head_rerun_pending"
+    },
+    "checks": [
+      "linear_plan_readback",
+      "focused_domain",
+      "focused_repository",
+      "focused_route",
+      "real_local_d1",
+      "r2_sentinel",
+      "full",
+      "compatibility",
+      "release_gate",
+      "standard_review",
+      "five_axis_review",
+      "head_ci",
+      "main_ci",
+      "linear_closeout"
+    ]
+  }
+}
