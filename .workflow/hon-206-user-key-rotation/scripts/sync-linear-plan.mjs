@@ -392,13 +392,21 @@ function selectWorkflowStates(states) {
   const inProgress = states.filter(
     (state) => state.type === 'started' && state.name === 'In Progress',
   )
-  if (todo.length !== 1 || inProgress.length !== 1) {
-    throw new Error('exactly named Todo and In Progress states are required')
+  const done = states.filter(
+    (state) => state.type === 'completed' && state.name === 'Done',
+  )
+  if (todo.length !== 1 || inProgress.length !== 1 || done.length !== 1) {
+    throw new Error(
+      'exactly named Todo, In Progress, and Done states are required',
+    )
   }
-  return { todo: todo[0], inProgress: inProgress[0] }
+  return { todo: todo[0], inProgress: inProgress[0], done: done[0] }
 }
 
 function expectedState(definition, workflowStates) {
+  if (definition.stateType === 'completed') {
+    return workflowStates.done
+  }
   return definition.stateType === 'started'
     ? workflowStates.inProgress
     : workflowStates.todo
@@ -412,13 +420,19 @@ function assertExistingChildrenMutable(issueByKey, parent, workflowStates) {
     }
     const failures = []
     if (issue.archivedAt !== null) failures.push('archived')
-    if (!['unstarted', 'started'].includes(issue.state.type)) {
+    const expected = expectedState(definition, workflowStates)
+    if (!['unstarted', 'started', 'completed'].includes(issue.state.type)) {
+      failures.push(`terminal state ${issue.state.type}`)
+    } else if (
+      issue.state.type === 'completed' &&
+      expected?.type !== 'completed'
+    ) {
       failures.push(`terminal state ${issue.state.type}`)
     }
     if (issue.parent?.id !== parent.id) failures.push('parent')
     if (issue.project?.id !== parent.project.id) failures.push('project')
     if (issue.priority !== hon206LinearPlan.priority) failures.push('priority')
-    if (!expectedState(definition, workflowStates)?.id) {
+    if (!expected?.id) {
       failures.push('workflow state')
     }
     if (failures.length > 0) {

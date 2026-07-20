@@ -23,9 +23,10 @@ test('defines four serialized packets with unique managed markers', () => {
     { blocker: 'ROT-3', blocked: 'ROT-4' },
   ])
   assert.equal(new Set(summary.issues.map((issue) => issue.marker)).size, 4)
-  assert.equal(summary.issues[0].stateType, 'started')
+  assert.equal(summary.issues[0].stateType, 'completed')
+  assert.equal(summary.issues[1].stateType, 'started')
   assert.ok(
-    summary.issues.slice(1).every((issue) => issue.stateType === 'unstarted'),
+    summary.issues.slice(2).every((issue) => issue.stateType === 'unstarted'),
   )
 })
 
@@ -49,6 +50,8 @@ test('renders exact child and parent managed markers once', () => {
     assert.match(checkpoint, new RegExp(identifier))
   }
   assert.match(checkpoint, /folder envelope does not/)
+  assert.match(checkpoint, /HON-301 .*Done/)
+  assert.match(checkpoint, /HON-302 .*In Progress/)
   assert.match(checkpoint, /trash false/)
 })
 

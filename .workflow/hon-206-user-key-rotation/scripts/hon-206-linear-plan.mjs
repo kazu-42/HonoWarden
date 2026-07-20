@@ -15,7 +15,7 @@ export const hon206LinearPlan = {
       key: 'ROT-1',
       packet: '01-contract-domain',
       title: 'Account A2e.1: strict V1 rotation contract and parser',
-      stateType: 'started',
+      stateType: 'completed',
       blockers: [],
       goal: 'Pin and parse the complete V1 user-key rotation envelope without adding a route or database mutation.',
       scope: [
@@ -33,7 +33,7 @@ export const hon206LinearPlan = {
       key: 'ROT-2',
       packet: '02-atomic-repository',
       title: 'Account A2e.2: atomic personal-vault rotation transaction',
-      stateType: 'unstarted',
+      stateType: 'started',
       blockers: ['ROT-1'],
       goal: 'Commit one complete supported user-key generation or no state under D1 limits.',
       scope: [
@@ -138,7 +138,7 @@ export function renderExecutionCheckpoint(identifiers) {
     const blockers = definition.blockers
       .map((key) => identifiers[key] ?? key)
       .join(', ')
-    return `- ${identifier} (${definition.key}): ${definition.title}; ${definition.stateType === 'started' ? 'In Progress' : 'Todo'}; blockers: ${blockers || 'none'}.`
+    return `- ${identifier} (${definition.key}): ${definition.title}; ${stateLabel(definition.stateType)}; blockers: ${blockers || 'none'}.`
   })
 
   return [
@@ -190,7 +190,7 @@ export function validatePlan(plan = hon206LinearPlan) {
     if (packets.has(issue.packet)) {
       throw new Error(`duplicate workflow packet: ${issue.packet}`)
     }
-    if (!['started', 'unstarted'].includes(issue.stateType)) {
+    if (!['completed', 'started', 'unstarted'].includes(issue.stateType)) {
       throw new Error(`invalid state type for ${issue.key}`)
     }
     keys.add(issue.key)
@@ -229,6 +229,13 @@ export function validatePlan(plan = hon206LinearPlan) {
   for (const key of keys) {
     visit(key)
   }
+}
+
+function stateLabel(stateType) {
+  if (stateType === 'completed') {
+    return 'Done'
+  }
+  return stateType === 'started' ? 'In Progress' : 'Todo'
 }
 
 export function summarizePlan(plan = hon206LinearPlan) {

@@ -16,13 +16,13 @@
   "packets": [
     {
       "id": "01-contract-domain",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-215",
       "result": "results/01-contract-domain.md"
     },
     {
       "id": "02-atomic-repository",
-      "status": "pending",
+      "status": "in_progress",
       "linear": "HON-216",
       "result": "results/02-atomic-repository.md"
     },
@@ -40,7 +40,7 @@
     }
   ],
   "verification": {
-    "status": "linear_subissues_synced",
+    "status": "contract_domain_complete",
     "checks": [
       "linear_plan_readback",
       "focused_domain",
