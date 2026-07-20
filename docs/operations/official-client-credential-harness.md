@@ -1,7 +1,7 @@
 # Official Client Credential Harness
 
-Status: local harness verification passed for HON-219 on 2026-07-20;
-exact-head review is pending.
+Status: HON-219 baseline merged; HON-220 same-account CLI/browser lifecycle
+passed locally and is pending final repository gates and exact-head review.
 
 ## Scope
 
@@ -30,9 +30,10 @@ Use these labels without promotion:
 | `staging`               | Approved remote staging evidence                                       |
 | `production`            | Separately approved production evidence                                |
 
-HON-219 establishes `local_official_client` only for the crypto bridge and
-native CLI runner. It does not establish login, unlock, sync, item read,
-credential mutation, staging, or production compatibility.
+HON-219 establishes the crypto bridge and native CLI runner. HON-220 raises the
+same local-only evidence level through login, lock, unlock, sync, item read,
+credential mutation, restart, rollback, and fresh browser-extension readback.
+Neither packet establishes staging or production compatibility.
 
 ## Exact Pins
 
@@ -120,11 +121,47 @@ pnpm client:official-harness -- cleanup \
   --confirm official-client-harness
 ```
 
+Plan the aggregate same-account lifecycle without creating local state:
+
+```sh
+pnpm account:credential-lifecycle -- plan
+```
+
+Run the CLI-only lifecycle with temporary managed state:
+
+```sh
+pnpm account:credential-lifecycle -- run \
+  --execute \
+  --confirm credential-lifecycle
+```
+
+Add a pinned official browser-extension readback and retain ignored D1/R2
+evidence for local inspection:
+
+```sh
+pnpm account:credential-lifecycle -- run \
+  --persist-to test/.tmp/hon220-local-evidence \
+  --keep-state \
+  --browser-executable "$CHROME_FOR_TESTING" \
+  --execute \
+  --confirm credential-lifecycle
+```
+
+An explicit `--persist-to` path must remain under ignored `test/.tmp`, resolve
+inside that root, be new or empty, contain no symlink escape, and use mode 0700. The runner writes a private ownership marker before mutation. Without
+`--keep-state`, cleanup validates that marker and removes the directory even
+when `--persist-to` was explicit. `--keep-state` is rejected without an
+explicit path.
+
 ## Isolation And Secret Handling
 
 - The root and every mutable subdirectory must be inside ignored `test/.tmp`,
   must resolve inside the harness root, must not contain a symlink at any
   depth, and must have mode 0700 for directories and 0600 for files.
+- Global and named CLI profile directories, each profile's HOME, and each TMP
+  directory are independently resolved and mode-checked before any profile
+  document is written. Symlinked named profiles cannot redirect writes outside
+  the ignored harness.
 - Requests, responses, state, and downloaded assets use mode 0600.
 - Stdout and stderr logs use mode 0600. Generated bridge and native CLI files
   use mode 0700.
@@ -138,24 +175,36 @@ pnpm client:official-harness -- cleanup \
   `BW_PASSWORD` and `BW_SESSION` names; the prefixed names and all other
   `BW_*` variables are not forwarded. `BW_NOINTERACTION=true` is always set.
 - `HOME`, `TMPDIR`, and the official CLI app-data environment variable point
-  inside the isolated harness. Before each command, the wrapper reads the
-  official CLI's current server. It skips the setter when the requested
-  loopback origin already matches, updates only when needed, and fails closed
-  if the official CLI refuses an update. It then reads the pinned profile's
-  effective URL map and requires the exact loopback base plus unset API,
-  identity, Web Vault, icons, notifications, events, Key Connector, and Send
-  overrides before executing the passthrough command. A passthrough `config`
-  command is not allowed.
+  inside the isolated harness. A fresh profile starts with a wrapper-owned
+  mode-0600 empty JSON document so the pinned CLI does not emit its
+  first-access initialization notice; an existing document is never
+  overwritten. Before each command, the wrapper reads the official CLI's
+  current server. It skips the setter when the requested loopback origin
+  already matches, updates only when needed, and fails closed if either config
+  command fails, times out, or writes stderr. It then reads the pinned
+  profile's effective URL map and requires the exact loopback base plus unset
+  API, identity, Web Vault, icons, notifications, events, Key Connector, and
+  Send overrides before executing the passthrough command. A passthrough
+  `config` command is not allowed.
 - Each command gets its own process group. A timeout sends `SIGTERM` to that
   group and escalates to `SIGKILL` after the grace period even when the group
   leader exits first; stdout and stderr stay captured. Parent `SIGINT` and
   `SIGTERM` follow the same bounded cleanup path before the original signal is
-  propagated. All four detached local credential lifecycle harnesses use the same
-  idempotent signal-cleanup contract for their detached Wrangler groups and
-  retain their signal listeners until cleanup settles.
-- Browser evidence, when needed by a later packet, uses Chrome for Testing and
+  propagated. All four detached local credential lifecycle harnesses use the
+  same idempotent signal-cleanup contract for their detached Wrangler groups
+  and retain their signal listeners until cleanup settles. Lifecycle helper
+  commands use the same bounded, output-limited process-group runner; aggregate
+  cleanup attempts every browser, helper, TLS proxy, Worker, and managed-state
+  step before reporting combined failures.
+- HON-220 uses ten one-use official CLI profiles so a rejected profile is never
+  reused as later evidence. Worker restarts retain the exact loopback HTTPS
+  origin because the official CLI binds login state to that server.
+- Browser evidence uses Chrome for Testing and
   `pnpm client:browser-profile`. Normal Brave, Chrome, and incognito profiles
-  remain out of bounds.
+  remain out of bounds. Browser bootstrap blocks external network through a
+  dead loopback proxy, separates replayed CDP Runtime/Log events by wall-clock
+  phase, and rejects every unmatched console, loading, response, WebSocket, or
+  runtime diagnostic.
 
 Do not paste ignored output into an issue, PR, test snapshot, or tracked
 evidence file. Record only the redacted packet fields.
@@ -171,31 +220,61 @@ touch a Worker, D1, R2, browser profile, or real account. Re-running `prepare`
 is the rollback for harness corruption.
 
 Credential recovery is forward-only: it never restores an older credential
-generation. Backup/restore generation binding belongs to HON-221 and must use
-an exact approved post-generation manifest.
+generation. Migration `0016_user_key_rotation_wrapper_history.sql` retains only
+per-user SHA-256 fingerprints for current and prior wrapped user/private keys,
+with one digest namespace across both roles. Password, KDF, and complete
+user-key mutations append history in the same D1 batch that replaces a wrapper;
+account-key initialization records its current user and new private wrappers in
+the initialization batch. The history is not retroactive: a wrapper superseded
+before `0016` cannot be reconstructed safely. Rollout must drain credential
+mutations across the migration/Worker activation window, and rollback must
+preserve this table unless an explicit recovery procedure proves that replay
+defense can be rebuilt. Backup/restore generation binding belongs to HON-221 and
+must use an exact approved post-generation manifest.
 
 ## Verified Readback
 
-The 2026-07-20 local run verified:
+The 2026-07-21 local run verified:
 
 - native CLI version `2026.6.0`;
 - npm and native asset byte sizes and SHA-256 values above;
 - generated bridge SHA-256
-  `bceddb20258bd62c85a9e8912b4b616ab5005dbe9cea55208ac3535d1481ff05`;
+  `1a38398906d268c61ad40b79310d4810125f25d056052404fb0b8dfc23cd6601`;
 - ten-file runtime manifest SHA-256
-  `c9cc960b26639049d2a87cd723a85796c9d836dee1c66562fdb2096a207b7099`;
+  `2f7ee0a87f78bb69366c6780ea57f8a8940a7f7d268f18854ceff96a3111d71b`;
 - PBKDF2 and Argon2id 64-byte user-key round trips;
 - type-2 wrapped user key, encrypted item, and wrapped private key;
 - official RSA keypair generation and private-key unwrap;
 - zero stdout and stderr bytes from both crypto runs;
 - native CLI `--version` exit 0 with captured output and zero stderr bytes;
+- fresh profile initialization followed by zero stderr from every successful
+  lifecycle command and its nested server configuration read/write;
 - exact loopback profile base with all custom service endpoints unset across
   the global and every persisted per-user environment;
 - timeout process-group cleanup, including a TERM-resistant descendant;
 - parent-signal process-group cleanup before signal propagation;
 - lifecycle signal-listener retention through cleanup completion;
 - pre-plan secret rejection, nested symlink rejection, and runtime-tamper
-  coverage.
+  coverage;
+- seven same-account checkpoints through PBKDF2, Argon2id, PBKDF2 return,
+  user-key generation 2, and stable-origin Worker restart;
+- ten isolated official CLI profiles and four old password/access/refresh/
+  profile rejections both before and after final restart;
+- required-audit HTTP 503 rollback, concurrent HTTP 200/401 single-commit
+  behavior, and stale-wrapper HTTP 400 before/after restart with unchanged D1
+  and R2;
+- generation manifest SHA-256
+  `a1541502029ce0f810d08cfba3b6bc7e604c3858289029086a6efdf18f08cb21`;
+- final cross-role wrapper history of seven unique SHA-256 fingerprints, with
+  account-key initialization, password, KDF, and complete user-key writes
+  covered atomically;
+- fresh Chrome for Testing `149.0.7827.55`, five required HTTP 200 routes, six
+  decrypted fields, two blocked bootstrap requests, zero external responses,
+  zero unexpected diagnostics, run-owned ephemeral CDP validation, and
+  complete browser/profile/clipboard cleanup;
+- latest fixture secret scan: 40 values checked against 1,680
+  tracked/untracked files with zero matches.
 
-The readback is local evidence, not a claim that HonoWarden currently completes
-the aggregate credential lifecycle through an official client.
+The readback proves the local synthetic aggregate lifecycle only. It is not
+staging, production, backup/restore, disable-state, or forward-recovery
+evidence.

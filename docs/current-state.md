@@ -1197,9 +1197,11 @@ Implemented:
 - both-null initialization guarded by active user id, a non-empty wrapped user
   key, expected security stamp, and expected revision, with no replacement path
   for a complete or partial stored pair
-- required redacted `account.keys.initialize` audit reservation and guarded
-  user update in one transactional D1 batch; exact replay is a no-op and
-  concurrent exact initialization commits one generation and one audit row
+- required redacted `account.keys.initialize` audit reservation, guarded user
+  update, and cross-role SHA-256 wrapper-history insertion in one transactional
+  D1 batch; exact replay is a no-op, a recorded user/private wrapper cannot be
+  reused for the new private key, and concurrent exact initialization commits
+  one generation, one wrapper set, and one audit row
 - account revision advancement with unchanged security stamp, devices, refresh
   tokens, auth requests, master-password hash, KDF, and wrapped user key
 - one complete-state projection shared by password and refresh token responses,
@@ -1242,17 +1244,28 @@ Implemented:
   validation reuses the same canonical email rule as bootstrap/authentication
 - existing credential-proof defense for the old client-derived authentication
   hash, generic/rate-limited proof failure, and notification-binding preflight
-- five bounded D1 snapshot queries plus ten transactional statements for the
+- six bounded D1 snapshot queries plus eleven transactional statements for the
   guarded account generation, personal folders/ciphers/uploaded-attachment
   metadata/trusted devices, stale revoked-device key clearing, all D1 session
   revocation, auth-request supersession, and one redacted `account.keys.rotate`
   audit event
-- exact manifest and immutable-metadata checks, fixed 15-query budget, explicit
+- exact manifest and immutable-metadata checks, fixed 17-query budget, explicit
   conflict/unsupported/over-budget/infrastructure taxonomy, and fail-loud batch
   invariants; attachment R2 object identity and bytes are outside the writer
 - snapshot-wide old/new ciphertext separation across account wrappers,
   folders, cipher fields, attachment names/keys, and active/revoked trusted
   devices, plus next-generation uniqueness so cross-slot swaps cannot commit
+- forward-only migration `0016_user_key_rotation_wrapper_history.sql` stores
+  only per-user SHA-256 fingerprints for wrapped user/private keys, with
+  uniqueness enforced across wrapper roles; account-key initialization,
+  password, KDF, and complete user-key mutations atomically record current and
+  next wrappers in the same guarded D1 batch, so a recorded wrapper cannot be
+  replayed or mixed into a later generation
+- wrapper history is forward-looking: wrappers superseded before migration
+  `0016` cannot be reconstructed without retaining forbidden ciphertext.
+  Rollout must drain credential mutations while applying `0016` and activating
+  the reader/writer, after which the first mutation lazily fingerprints its
+  current wrappers before replacing them
 - post-commit best-effort generation-aware Durable Object cleanup so transport
   failure is incident-logged without returning a false failure after D1 success
 - route tests for default-off D1-free behavior, parser/proof/preflight ordering,

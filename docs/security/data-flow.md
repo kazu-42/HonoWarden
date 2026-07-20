@@ -153,12 +153,17 @@ Secret-handling invariants:
    existing response without a write; a missing wrapped user key, any different
    complete pair, or partial stored state fails without returning key material.
 4. One D1 batch reserves a redacted `account.keys.initialize` audit row from the
-   exact active, non-empty-user-key, both-null security-stamp/revision generation
-   and then updates that same generation with the opaque pair and next account
-   revision.
+   exact active, non-empty-user-key, both-null security-stamp/revision generation,
+   updates that same generation with the opaque pair and next account revision,
+   and records SHA-256 fingerprints for the unchanged wrapped user key and new
+   wrapped private key. The update rejects a private-wrapper fingerprint already
+   present under either role, while the history insert is gated by the exact
+   committed user/public/private values so a losing same-revision request cannot
+   record its wrapper.
 5. Security stamp, authentication hash, KDF, wrapped user key, devices, refresh
-   tokens, auth requests, ciphers, and attachments are outside the batch and
-   remain unchanged.
+   tokens, auth requests, ciphers, and attachments remain unchanged. Migration
+   `0016_user_key_rotation_wrapper_history.sql` must be present before deploying
+   this writer.
 6. Token, refresh-token, profile, sync, backup, and account-key responses use
    one complete-state projection. Password/TOTP, auth-request, and refresh-token
    flows validate that projection before challenge consumption, session
@@ -190,14 +195,15 @@ Secret-handling invariants:
    credential-proof defense to the old client-derived authentication hash. It
    never receives a plaintext password, unwrapped user key, or decrypted vault
    value.
-3. The repository uses five snapshot queries: one bounded aggregate preflight
-   plus exact active personal folders, ciphers, uploaded attachments, complete
-   trusted devices, and revoked key-bearing devices. Deleted records, pending
-   uploads, partial active-device keys, personal `cipher_key` columns,
-   unsupported cipher metadata, foreign or
-   missing IDs, stale revisions, changed immutable metadata, and size/count
+3. The repository uses six snapshot queries: one bounded aggregate preflight,
+   one cross-role wrapper-history probe, plus exact active personal folders,
+   ciphers, uploaded attachments, and active or revoked key-bearing device rows.
+   Deleted records, pending uploads, partial active-device keys, personal
+   `cipher_key` columns, unsupported cipher metadata, foreign or missing IDs,
+   stale revisions, changed immutable metadata, wrapper reuse, and size/count
    overflow fail before mutation.
-4. Ten transactional statements commit one generation: guarded user CAS,
+4. Eleven transactional statements commit one generation: guarded user CAS,
+   cross-role wrapper-history insertion,
    folder/cipher/attachment/trusted-device updates, old key removal from already
    revoked devices, active device and refresh-token revocation, auth-request
    supersession, and one redacted
@@ -221,7 +227,7 @@ Secret-handling invariants:
    failure, and remains forward-only. New authentication, profile, sync, and
    backup readers project the same complete wrapped-key generation.
 
-The fixed repository budget is 15 queries, below the reserved 50-query Worker
+The fixed repository budget is 17 queries, below the reserved 50-query Worker
 limit. SQL, bound-parameter, bound-value, manifest, row-count, and snapshot-byte
 limits are checked before `batch()`. External errors disclose only request,
 conflict, unsupported-state, budget, or infrastructure categories; hashes,

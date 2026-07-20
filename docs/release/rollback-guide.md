@@ -65,10 +65,14 @@ Enabling the flag activates both authenticated GET and one-time V1 POST;
 disabling it is the immediate route rollback and must not delete or null an
 already initialized pair.
 
-The initializer is migration-free and cannot replace data. After any account
-initializes, roll back only to a version whose token, profile, sync, and backup
-projections understand a complete pair and reject partial state. A pre-reader
-version may silently omit or partially expose account-key fields and is not an
+The initializer cannot replace data, but the current writer depends on retained
+migration `0016_user_key_rotation_wrapper_history.sql` to reject cross-role
+wrapper replay and atomically record the initial wrapper generation. Apply
+`0016` before this Worker and do not remove its table during rollback. After any
+account initializes, roll back only to a version whose token, profile, sync,
+and backup projections understand a complete pair, reject partial state, and
+preserve wrapper-history enforcement. A pre-reader or pre-history writer may
+silently omit account-key fields or accept a recorded wrapper and is not an
 acceptable rollback target.
 
 If initialization returns 503, read back the account row and required audit
@@ -98,6 +102,16 @@ generation exists, treat the server write as committed and complete recovery by
 reauthenticating with that generation. If it does not exist, the transactional
 batch rolled back and a fresh authenticated retry may proceed after the
 infrastructure failure is fixed.
+
+Migration `0016` is forward-only. Keep
+`user_key_rotation_wrapper_history` in place during Worker rollback; older
+reader-capable code can ignore it, while deleting it would remove the durable
+replay-defense boundary for a later roll-forward. Disable
+`HONOWARDEN_KDF_MUTATION_ENABLED` and
+`HONOWARDEN_USER_KEY_ROTATION_ENABLED`, drain password-change requests, and do
+not deploy a pre-reader Worker after any post-`0016` credential mutation.
+History is forward-looking; wrappers superseded before `0016` were never
+recorded and cannot be treated as replay-protected.
 
 Never restore an old password hash, wrapped user key, wrapped private key,
 security stamp, encrypted vault snapshot, device session, or refresh token.

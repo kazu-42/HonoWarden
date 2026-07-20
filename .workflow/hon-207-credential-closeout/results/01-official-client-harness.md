@@ -1,6 +1,6 @@
 # CLIENT-1: Pinned Official-Client Harness
 
-Status: verification and independent reviews passed; PR/head CI pending
+Status: completed and merged
 
 Linear issue: HON-219
 
@@ -222,6 +222,19 @@ The final code commit reviewed was
 The review tools were denied their own subprocess reruns by their read-only
 sandboxes. Their static conclusions are therefore paired with the host-run
 focused, clean-copy, lifecycle, full-suite, and quality-gate evidence above.
+
+## Merge Closeout
+
+- PR: `https://github.com/kazu-42/HonoWarden/pull/107`
+- reviewed head: `65ac026059a6df6e7ec7c26064184428ea8b4764`
+- squash merge: `1b7258da9a995648354cf2ca453210026ceada98`
+- branch and merge tree: identical
+  `cc1ba760af79beead2b19fd4eb326551dc145261`
+- head CI: passed
+- merged-main CI: run `29733825954`, passed
+- unresolved review threads: 0
+- Linear HON-219: Done and archived with one PR attachment and one completion
+  comment
 
 ## Remaining Boundary
 

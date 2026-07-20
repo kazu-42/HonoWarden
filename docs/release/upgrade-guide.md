@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-06.
+Last updated: 2026-07-20.
 
 This guide covers upgrading an existing alpha environment. HonoWarden is
 pre-alpha, so operators should assume upgrades can require maintenance windows
@@ -57,6 +57,16 @@ pnpm backup:export -- \
 - `0014a_kdf_population.sql` must be applied before deploying a Worker commit
   that serves materialized KDF prelogin reads. Keep KDF mutation disabled while
   migration and reader behavior are verified.
+- `0016_user_key_rotation_wrapper_history.sql` must be applied before deploying
+  the Worker commit that records account-key initialization, password, KDF, and
+  user-key wrapper history.
+  Drain credential mutation requests across the migration/Worker activation
+  window because password change has no independent feature switch. Keep
+  `HONOWARDEN_ACCOUNT_KEYS_ENABLED=false`,
+  `HONOWARDEN_KDF_MUTATION_ENABLED=false` and
+  `HONOWARDEN_USER_KEY_ROTATION_ENABLED=false` until `/health/db` reports the
+  table and a reader-capable rollback Worker has been verified. The migration
+  cannot reconstruct wrappers superseded before `0016`.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.
 - Update `docs/release/migration-freeze.md` in the same change when migrations

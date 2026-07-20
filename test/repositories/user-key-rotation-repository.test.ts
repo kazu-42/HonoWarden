@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { fingerprintCredentialWrapper } from '../../src/domain/account-credentials'
 import { buildAuditEvent } from '../../src/domain/audit'
-import type { UserKeyRotationRequest } from '../../src/domain/user-key-rotation'
+import { type UserKeyRotationRequest } from '../../src/domain/user-key-rotation'
 import {
   rotateUserKeyGeneration,
   userKeyRotationRepositoryPolicy,
@@ -35,19 +36,35 @@ describe('user key rotation repository', () => {
       invalidatedAuthRequestCount: 2,
       auditEventId: fixture.input.auditEventId,
       budget: {
-        snapshotQueries: 5,
-        mutationStatements: 10,
-        totalQueries: 15,
+        snapshotQueries: 6,
+        mutationStatements: 11,
+        totalQueries: 17,
       },
     })
 
-    expect(database.readQueries).toHaveLength(5)
+    expect(database.readQueries).toHaveLength(6)
     expect(database.batchCalls).toHaveLength(1)
     const statements = database.batchCalls[0] ?? []
-    expect(statements).toHaveLength(10)
+    expect(statements).toHaveLength(11)
     expect(statements[0]?.query).toContain('UPDATE users')
     expect(statements[0]?.query).toContain('json_each(?)')
+    expect(statements[0]?.query).toContain('user_key_rotation_wrapper_history')
     expect(statements.slice(1).every(hasCommittedGenerationGate)).toBe(true)
+
+    const historyInsert = statements.find((statement) =>
+      statement.query.includes(
+        'INSERT OR IGNORE INTO user_key_rotation_wrapper_history',
+      ),
+    )
+    expect(historyInsert?.query).toContain('json_each(?)')
+    for (const wrapper of [
+      '2.old-wrapped-user-key',
+      '2.old-wrapped-private-key',
+      '2.next-wrapped-user-key',
+      '2.next-wrapped-private-key',
+    ]) {
+      expect(JSON.stringify(historyInsert?.values)).not.toContain(wrapper)
+    }
 
     const attachmentUpdate = statements.find((statement) =>
       statement.query.includes('UPDATE cipher_attachments'),
@@ -144,6 +161,33 @@ describe('user key rotation repository', () => {
     ).resolves.toEqual({ status: 'conflict' })
     expect(database.batchCalls).toHaveLength(0)
   })
+
+  it.each([
+    ['user_key', 'user_key'],
+    ['private_key', 'private_key'],
+    ['private_key', 'user_key'],
+    ['user_key', 'private_key'],
+  ] as const)(
+    'rejects a historical %s wrapper reused as %s before entering the mutation batch',
+    async (historicalKind, nextKind) => {
+      const fixture = rotationFixture()
+      const value =
+        nextKind === 'user_key'
+          ? fixture.request.nextUserKey
+          : fixture.request.accountKeys.wrappedPrivateKey
+      fixture.snapshot.wrapperHistory.push({
+        wrapperKind: historicalKind,
+        wrapperSha256: await fingerprintCredentialWrapper(value),
+      })
+      const database = new RotationD1Database(fixture.snapshot)
+
+      await expect(
+        rotateUserKeyGeneration(database, fixture.input),
+      ).resolves.toEqual({ status: 'replayed_generation' })
+      expect(database.readQueries).toHaveLength(2)
+      expect(database.batchCalls).toHaveLength(0)
+    },
+  )
 
   it('uses the protocol default when stored reprompt metadata is absent', async () => {
     const fixture = rotationFixture()
@@ -550,6 +594,10 @@ function rotationFixture() {
       encryptedPublicKey: string
       encryptedPrivateKey: string
     }>,
+    wrapperHistory: [] as Array<{
+      wrapperKind: 'user_key' | 'private_key'
+      wrapperSha256: string
+    }>,
   }
   const input = {
     userId,
@@ -778,6 +826,7 @@ class RotationD1Database {
 
     const changes = [
       1,
+      4,
       1,
       1,
       1,
@@ -795,6 +844,26 @@ class RotationD1Database {
           results: [{ id: userId }] as T[],
         }
       }
+      if (index === 1) {
+        const existingDigests = new Set(
+          this.snapshot.wrapperHistory.map((row) => row.wrapperSha256),
+        )
+        const inserted = (
+          JSON.parse(String(recorded[index]!.values[0])) as Array<{
+            kind: 'user_key' | 'private_key'
+            sha256: string
+          }>
+        )
+          .filter((entry) => !existingDigests.has(entry.sha256))
+          .map((entry) => ({
+            wrapperKind: entry.kind,
+            wrapperSha256: entry.sha256,
+          }))
+        return {
+          ...result<T>(inserted.length),
+          results: inserted as T[],
+        }
+      }
       return result<T>(changes[index] ?? 0)
     })
     this.committed = true
@@ -802,6 +871,9 @@ class RotationD1Database {
   }
 
   private rowsFor(query: string): Record<string, unknown>[] {
+    if (query.includes('FROM user_key_rotation_wrapper_history')) {
+      return this.snapshot.wrapperHistory
+    }
     if (query.includes('FROM folders')) {
       return this.snapshot.folders
     }

@@ -53,8 +53,11 @@ The CLI never starts a browser. Choose exactly one supported host while
 preparing the profile, then copy only `launch.executable` and the ordered, fixed
 `launch.args` from the emitted JSON packet into a dedicated terminal. This
 CLI-emitted per-host launch contract is authoritative; do not append or replace
-launch arguments. Both contracts keep CDP on `127.0.0.1` with the fixed
-`--remote-debugging-port=9224` argument.
+launch arguments. Both contracts keep CDP on `127.0.0.1` with
+`--remote-debugging-port=0`. Chromium chooses an ephemeral port and writes the
+owned browser path and port to the disposable profile's `DevToolsActivePort`
+file. Readback must reject symlinks, non-private profiles, malformed values,
+and a `/json/version` WebSocket URL that differs from that owned endpoint.
 
 ### Brave Browser (default)
 
@@ -87,9 +90,15 @@ never be used with a daily browser profile.
 Secret-safe startup readback:
 
 ```sh
-curl -fsS http://127.0.0.1:9224/json/list | jq \
+profile=test/.tmp/hon-94-browser-profile/profile
+port="$(sed -n '1p' "$profile/DevToolsActivePort")"
+curl -fsS "http://127.0.0.1:${port}/json/list" | jq \
   '[.[] | select(.url | startswith("chrome-extension://")) | {type, url}]'
 ```
+
+The automated HON-220 readback additionally checks that `/json/version`
+returns the exact `webSocketDebuggerUrl` recorded in `DevToolsActivePort`
+before it calls any target or browser-close endpoint.
 
 Record the selected host name and version, extension release/digest, extension
 target type, and manifest version. Do not record account identifiers, tokens,
@@ -168,8 +177,8 @@ The pinned prepare/launch/status/cleanup sequence completed on 2026-07-11:
   `containsCredentials: null`, intentionally making no storage claim;
 - the dedicated Brave process exited before cleanup;
 - cleanup reported `rootExists: false` and `clipboardCleared: true`;
-- independent readback found the root absent, clipboard size `0`, and CDP port
-  `9224` closed.
+- independent readback found the root absent, clipboard size `0`, and the
+  run-owned ephemeral CDP endpoint closed.
 
 After switching download to the numeric GitHub asset API, a second
 prepare/hash/manifest/cleanup pass returned the same pinned extension and found

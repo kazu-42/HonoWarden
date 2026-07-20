@@ -184,6 +184,16 @@ export const snapshotTrustedDevicesSql = `
   ORDER BY id ASC
 `
 
+export const snapshotWrapperHistorySql = `
+  SELECT
+    wrapper_kind as wrapperKind,
+    wrapper_sha256 as wrapperSha256
+  FROM user_key_rotation_wrapper_history
+  WHERE user_id = ?
+    AND wrapper_sha256 IN (?, ?, ?, ?)
+  ORDER BY wrapper_kind, wrapper_sha256
+`
+
 export const updateUserGenerationSql = `
   WITH
     expected_folders AS (
@@ -335,6 +345,12 @@ export const updateUserGenerationSql = `
             expected.encrypted_public_key IS NOT row.encrypted_public_key OR
             expected.encrypted_private_key IS NOT row.encrypted_private_key
         )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM user_key_rotation_wrapper_history history
+      WHERE history.user_id = users.id
+        AND history.wrapper_sha256 IN (?, ?)
     )
   RETURNING id
 `

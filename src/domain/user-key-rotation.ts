@@ -179,6 +179,7 @@ function wrappersFormFreshGeneration(
   rotated: readonly [string, string],
 ): boolean {
   return (
+    !constantTimeEqual(current[0], current[1]) &&
     !constantTimeEqual(rotated[0], rotated[1]) &&
     rotated.every((value) =>
       current.every((oldValue) => !constantTimeEqual(value, oldValue)),

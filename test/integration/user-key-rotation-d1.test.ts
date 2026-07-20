@@ -1,8 +1,16 @@
 import { Miniflare } from 'miniflare'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { fingerprintCredentialWrapper } from '../../src/domain/account-credentials'
 import { buildAuditEvent } from '../../src/domain/audit'
 import type { UserKeyRotationRequest } from '../../src/domain/user-key-rotation'
+import {
+  changeAccountKdf,
+  changeAccountMasterPassword,
+  initializeAccountKeyPair,
+  type ChangeAccountKdfInput,
+  type ChangeAccountMasterPasswordInput,
+} from '../../src/repositories/credential-repository'
 import { rotateUserKeyGeneration } from '../../src/repositories/user-key-rotation-repository'
 
 const userId = '11111111-1111-4111-8111-111111111111'
@@ -124,6 +132,363 @@ describe('user key rotation on real local D1', () => {
     expect(state.auditEvents).toEqual([
       { id: fixture.input.auditEventId, name: 'account.keys.rotate' },
     ])
+    expect(state.wrapperHistory).toHaveLength(4)
+    expect(
+      state.wrapperHistory.every(
+        (entry) =>
+          ['private_key', 'user_key'].includes(String(entry.wrapperKind)) &&
+          /^[a-f0-9]{64}$/.test(String(entry.wrapperSha256)),
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(state.wrapperHistory)).not.toContain(
+      'wrapped-user-key',
+    )
+    expect(JSON.stringify(state.wrapperHistory)).not.toContain(
+      'wrapped-private-key',
+    )
+  })
+
+  it('rejects an older persisted wrapper generation after a successful rotation', async () => {
+    const database = await createDatabase()
+    const first = rotationFixture('first-security-stamp', 'first-audit-id')
+    first.request.folders = []
+    first.request.ciphers = []
+    first.request.trustedDevices = []
+    await seedAccount(database, first)
+
+    await expect(
+      rotateUserKeyGeneration(database, first.input),
+    ).resolves.toMatchObject({ status: 'rotated' })
+
+    const replayAt = '2026-07-20T00:00:02.000Z'
+    const replay = rotationFixture('replay-security-stamp', 'replay-audit-id')
+    replay.request.oldMasterKeyAuthenticationHash =
+      first.request.nextMasterKeyAuthenticationHash
+    replay.request.nextMasterKeyAuthenticationHash =
+      first.request.oldMasterKeyAuthenticationHash
+    replay.request.nextUserKey = '2.old-wrapped-user-key'
+    replay.request.accountKeys.wrappedPrivateKey = '2.old-wrapped-private-key'
+    replay.request.folders = []
+    replay.request.ciphers = []
+    replay.request.trustedDevices = []
+    Object.assign(replay.input, {
+      expectedSecurityStamp: first.input.nextSecurityStamp,
+      expectedRevisionDate: first.input.nextRevisionDate,
+      nextRevisionDate: replayAt,
+      auditEvent: buildAuditEvent({
+        name: 'account.keys.rotate',
+        outcome: 'success',
+        requestId: 'replay-audit-request',
+        occurredAt: replayAt,
+        actor: { userId, deviceIdentifier: 'fixture-device' },
+        target: { type: 'account', id: userId },
+        context: {
+          accountEncryptionVersion: 1,
+          allSessionsRevoked: true,
+          r2ObjectsUnchanged: true,
+        },
+      }),
+    })
+
+    await expect(
+      rotateUserKeyGeneration(database, replay.input),
+    ).resolves.toEqual({ status: 'replayed_generation' })
+    const state = await readRotationState(database)
+    expect(state.account).toMatchObject({
+      userKey: first.request.nextUserKey,
+      privateKey: first.request.accountKeys.wrappedPrivateKey,
+      securityStamp: first.input.nextSecurityStamp,
+      revisionDate: first.input.nextRevisionDate,
+    })
+    expect(state.wrapperHistory).toHaveLength(4)
+    expect(state.auditEvents).toEqual([
+      { id: first.input.auditEventId, name: 'account.keys.rotate' },
+    ])
+  })
+
+  it.each([
+    [
+      'private-key history reused as a user key',
+      '2.old-wrapped-private-key',
+      '2.fresh-cross-role-private-key',
+    ],
+    [
+      'user-key history reused as a private key',
+      '2.fresh-cross-role-user-key',
+      '2.old-wrapped-user-key',
+    ],
+  ])('rejects %s', async (_label, nextUserKey, nextPrivateKey) => {
+    const database = await createDatabase()
+    const first = rotationFixture('first-security-stamp', 'first-audit-id')
+    first.request.folders = []
+    first.request.ciphers = []
+    first.request.trustedDevices = []
+    await seedAccount(database, first)
+
+    await expect(
+      rotateUserKeyGeneration(database, first.input),
+    ).resolves.toMatchObject({ status: 'rotated' })
+
+    const replayAt = '2026-07-20T00:00:02.000Z'
+    const replay = rotationFixture(
+      'cross-role-security-stamp',
+      'cross-role-audit-id',
+    )
+    replay.request.oldMasterKeyAuthenticationHash =
+      first.request.nextMasterKeyAuthenticationHash
+    replay.request.nextMasterKeyAuthenticationHash =
+      'cross-role-next-authentication-hash'
+    replay.request.nextUserKey = nextUserKey
+    replay.request.accountKeys.wrappedPrivateKey = nextPrivateKey
+    replay.request.folders = []
+    replay.request.ciphers = []
+    replay.request.trustedDevices = []
+    Object.assign(replay.input, {
+      expectedSecurityStamp: first.input.nextSecurityStamp,
+      expectedRevisionDate: first.input.nextRevisionDate,
+      nextRevisionDate: replayAt,
+      auditEvent: buildAuditEvent({
+        name: 'account.keys.rotate',
+        outcome: 'success',
+        requestId: 'cross-role-audit-request',
+        occurredAt: replayAt,
+        actor: { userId, deviceIdentifier: 'fixture-device' },
+        target: { type: 'account', id: userId },
+        context: {
+          accountEncryptionVersion: 1,
+          allSessionsRevoked: true,
+          r2ObjectsUnchanged: true,
+        },
+      }),
+    })
+
+    await expect(
+      rotateUserKeyGeneration(database, replay.input),
+    ).resolves.toEqual({ status: 'replayed_generation' })
+
+    const state = await readRotationState(database)
+    expect(state.account).toMatchObject({
+      userKey: first.request.nextUserKey,
+      privateKey: first.request.accountKeys.wrappedPrivateKey,
+      securityStamp: first.input.nextSecurityStamp,
+      revisionDate: first.input.nextRevisionDate,
+    })
+    expect(state.wrapperHistory).toHaveLength(4)
+    expect(state.auditEvents).toEqual([
+      { id: first.input.auditEventId, name: 'account.keys.rotate' },
+    ])
+  })
+
+  it.each(['password', 'KDF'] as const)(
+    'rejects a %s change that reuses a wrapper recorded under another role',
+    async (kind) => {
+      const database = await createDatabase()
+      const fixture = rotationFixture(
+        'credential-replay-security-stamp',
+        'credential-replay-audit-id',
+      )
+      await seedAccount(database, fixture)
+      const replayedWrapper = '2.replayed-cross-role-wrapper'
+      await database
+        .prepare(
+          `INSERT INTO user_key_rotation_wrapper_history (
+            user_id, wrapper_kind, wrapper_sha256, recorded_at
+          ) VALUES (?, 'private_key', ?, ?)`,
+        )
+        .bind(
+          userId,
+          await fingerprintCredentialWrapper(replayedWrapper),
+          oldRevisionDate,
+        )
+        .run()
+      const before = await readRotationState(database)
+
+      await expect(
+        mutateCredentialGeneration(database, kind, {
+          nextUserKey: replayedWrapper,
+        }),
+      ).resolves.toEqual({ status: 'conflict' })
+
+      expect(await readRotationState(database)).toEqual(before)
+    },
+  )
+
+  it.each(['password', 'KDF'] as const)(
+    'establishes a first wrapped user key during a %s change with null CAS values',
+    async (kind) => {
+      const database = await createDatabase()
+      const fixture = rotationFixture(
+        'keyless-bootstrap-security-stamp',
+        'keyless-bootstrap-audit-id',
+      )
+      await seedAccount(database, fixture)
+      await database
+        .prepare(
+          `UPDATE users
+          SET user_key = NULL, private_key = NULL
+          WHERE id = ?`,
+        )
+        .bind(userId)
+        .run()
+      const nextUserKey = `2.${kind.toLowerCase()}-bootstrap-user-key`
+
+      await expect(
+        mutateCredentialGeneration(database, kind, {
+          expectedUserKey: null,
+          expectedPrivateKey: null,
+          nextUserKey,
+        }),
+      ).resolves.toMatchObject({ status: 'changed' })
+
+      const state = await readRotationState(database)
+      expect(state.account).toMatchObject({
+        userKey: nextUserKey,
+        securityStamp: `${kind.toLowerCase()}-next-security-stamp`,
+        revisionDate: nextRevisionDate,
+      })
+      expect(state.wrapperHistory).toEqual([
+        {
+          wrapperKind: 'user_key',
+          wrapperSha256: await fingerprintCredentialWrapper(nextUserKey),
+        },
+      ])
+      expect(state.auditEvents).toEqual([
+        {
+          id: `${kind.toLowerCase()}-change-audit-id`,
+          name:
+            kind === 'password'
+              ? 'account.password.change'
+              : 'account.kdf.change',
+        },
+      ])
+    },
+  )
+
+  it('rejects a historical user wrapper during account-key initialization', async () => {
+    const database = await createDatabase()
+    const fixture = rotationFixture(
+      'account-key-bootstrap-security-stamp',
+      'account-key-bootstrap-audit-id',
+    )
+    await seedAccount(database, fixture)
+    await database
+      .prepare(
+        `UPDATE users
+        SET public_key = NULL, private_key = NULL
+        WHERE id = ?`,
+      )
+      .bind(userId)
+      .run()
+
+    await expect(
+      changeAccountMasterPassword(
+        database,
+        passwordChangeFixture({ expectedPrivateKey: null }),
+      ),
+    ).resolves.toMatchObject({ status: 'changed' })
+    const before = await readRotationState(database)
+
+    await expect(
+      initializeAccountKeyPair(database, {
+        userId,
+        expectedUserKey: '2.password-next-wrapped-user-key',
+        expectedSecurityStamp: 'password-next-security-stamp',
+        expectedRevisionDate: nextRevisionDate,
+        publicKey: 'account-key-initialization-public-key',
+        wrappedPrivateKey: '2.old-wrapped-user-key',
+        nextRevisionDate: '2026-07-20T00:00:02.000Z',
+        auditEventId: 'account-key-initialization-audit-id',
+        auditEvent: buildAuditEvent({
+          name: 'account.keys.initialize',
+          outcome: 'success',
+          requestId: 'account-key-initialization-request',
+          occurredAt: '2026-07-20T00:00:02.000Z',
+          actor: { userId, deviceIdentifier: 'fixture-device' },
+          target: { type: 'account', id: userId },
+          context: {
+            accountEncryptionVersion: 1,
+            securityStampChanged: false,
+            sessionsRevoked: false,
+          },
+        }),
+      }),
+    ).resolves.toEqual({ status: 'conflict' })
+
+    expect(await readRotationState(database)).toEqual(before)
+  })
+
+  it('records only the winning wrappers for concurrent account-key initialization', async () => {
+    const database = await createDatabase()
+    const fixture = rotationFixture(
+      'concurrent-account-key-security-stamp',
+      'concurrent-account-key-audit-id',
+    )
+    await seedAccount(database, fixture)
+    await database
+      .prepare(
+        `UPDATE users
+        SET public_key = NULL, private_key = NULL
+        WHERE id = ?`,
+      )
+      .bind(userId)
+      .run()
+    const sharedInput = {
+      userId,
+      expectedUserKey: '2.old-wrapped-user-key',
+      expectedSecurityStamp: 'old-security-stamp',
+      expectedRevisionDate: oldRevisionDate,
+      nextRevisionDate,
+    }
+    const initialize = (
+      suffix: string,
+    ): ReturnType<typeof initializeAccountKeyPair> =>
+      initializeAccountKeyPair(database, {
+        ...sharedInput,
+        publicKey: `${suffix}-public-key`,
+        wrappedPrivateKey: `2.${suffix}-wrapped-private-key`,
+        auditEventId: `${suffix}-account-key-audit-id`,
+        auditEvent: buildAuditEvent({
+          name: 'account.keys.initialize',
+          outcome: 'success',
+          requestId: `${suffix}-account-key-request`,
+          occurredAt: nextRevisionDate,
+          actor: { userId, deviceIdentifier: 'fixture-device' },
+          target: { type: 'account', id: userId },
+          context: {
+            accountEncryptionVersion: 1,
+            securityStampChanged: false,
+            sessionsRevoked: false,
+          },
+        }),
+      })
+
+    const results = await Promise.all([
+      initialize('first'),
+      initialize('second'),
+    ])
+    expect(results.map((result) => result.status).sort()).toEqual([
+      'conflict',
+      'initialized',
+    ])
+
+    const state = await readRotationState(database)
+    const winningPrivateKey = String(state.account?.privateKey)
+    expect(state.wrapperHistory).toEqual(
+      expect.arrayContaining([
+        {
+          wrapperKind: 'user_key',
+          wrapperSha256: await fingerprintCredentialWrapper(
+            '2.old-wrapped-user-key',
+          ),
+        },
+        {
+          wrapperKind: 'private_key',
+          wrapperSha256: await fingerprintCredentialWrapper(winningPrivateKey),
+        },
+      ]),
+    )
+    expect(state.wrapperHistory).toHaveLength(2)
+    expect(state.auditEvents).toHaveLength(1)
   })
 
   it('rolls every mutation back when the final audit statement fails', async () => {
@@ -169,6 +534,7 @@ describe('user key rotation on real local D1', () => {
       'approved',
       'pending',
     ])
+    expect(state.wrapperHistory).toEqual([])
   })
 
   it('serializes concurrent generations so exactly one wins', async () => {
@@ -296,6 +662,82 @@ function rotationFixture(nextSecurityStamp: string, auditEventId: string) {
     }),
   }
   return { input, request }
+}
+
+function passwordChangeFixture(
+  overrides: Partial<ChangeAccountMasterPasswordInput> = {},
+): ChangeAccountMasterPasswordInput {
+  return {
+    userId,
+    expectedMasterPasswordHash: 'old-authentication-hash',
+    expectedEmailNormalized: 'person@example.test',
+    expectedKdfAlgorithm: 'pbkdf2-sha256',
+    expectedKdfIterations: 600_000,
+    expectedKdfMemory: null,
+    expectedKdfParallelism: null,
+    expectedUserKey: '2.old-wrapped-user-key',
+    expectedPrivateKey: '2.old-wrapped-private-key',
+    expectedSecurityStamp: 'old-security-stamp',
+    expectedRevisionDate: oldRevisionDate,
+    nextMasterPasswordHash: 'password-next-authentication-hash',
+    nextUserKey: '2.password-next-wrapped-user-key',
+    nextSecurityStamp: 'password-next-security-stamp',
+    nextRevisionDate,
+    auditEventId: 'password-change-audit-id',
+    auditEvent: buildAuditEvent({
+      name: 'account.password.change',
+      outcome: 'success',
+      requestId: 'password-change-request',
+      occurredAt: nextRevisionDate,
+      actor: { userId, deviceIdentifier: 'fixture-device' },
+      target: { type: 'account', id: userId },
+      context: {
+        d1SessionsRevoked: true,
+        kdfUnchanged: true,
+      },
+    }),
+    ...overrides,
+  }
+}
+
+function kdfChangeFixture(
+  overrides: Partial<ChangeAccountKdfInput> = {},
+): ChangeAccountKdfInput {
+  return {
+    ...passwordChangeFixture(),
+    nextMasterPasswordHash: 'kdf-next-authentication-hash',
+    nextUserKey: '2.kdf-next-wrapped-user-key',
+    nextSecurityStamp: 'kdf-next-security-stamp',
+    nextKdfAlgorithm: 'argon2id',
+    nextKdfIterations: 6,
+    nextKdfMemory: 32,
+    nextKdfParallelism: 4,
+    auditEventId: 'kdf-change-audit-id',
+    auditEvent: buildAuditEvent({
+      name: 'account.kdf.change',
+      outcome: 'success',
+      requestId: 'kdf-change-request',
+      occurredAt: nextRevisionDate,
+      actor: { userId, deviceIdentifier: 'fixture-device' },
+      target: { type: 'account', id: userId },
+      context: {
+        d1SessionsRevoked: true,
+        previousKdfType: 0,
+        nextKdfType: 1,
+      },
+    }),
+    ...overrides,
+  }
+}
+
+function mutateCredentialGeneration(
+  database: D1Database,
+  kind: 'password' | 'KDF',
+  overrides: Partial<ChangeAccountKdfInput>,
+) {
+  return kind === 'password'
+    ? changeAccountMasterPassword(database, passwordChangeFixture(overrides))
+    : changeAccountKdf(database, kdfChangeFixture(overrides))
 }
 
 async function seedRotationState(
@@ -537,6 +979,7 @@ async function readRotationState(database: D1Database) {
     refreshTokens,
     authRequests,
     auditEvents,
+    wrapperHistory,
   ] = await Promise.all([
     database
       .prepare(
@@ -616,6 +1059,17 @@ async function readRotationState(database: D1Database) {
       )
       .bind(userId, 'rotation-audit-id', 'first-audit-id', 'second-audit-id')
       .all<Record<string, unknown>>(),
+    database
+      .prepare(
+        `SELECT
+          wrapper_kind as wrapperKind,
+          wrapper_sha256 as wrapperSha256
+        FROM user_key_rotation_wrapper_history
+        WHERE user_id = ?
+        ORDER BY wrapper_kind, wrapper_sha256`,
+      )
+      .bind(userId)
+      .all<Record<string, unknown>>(),
   ])
 
   return {
@@ -627,6 +1081,7 @@ async function readRotationState(database: D1Database) {
     refreshTokens: refreshTokens.results,
     authRequests: authRequests.results,
     auditEvents: auditEvents.results,
+    wrapperHistory: wrapperHistory.results,
   }
 }
 
@@ -804,4 +1259,17 @@ const testSchemaStatements = [
     context_json TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
+  `CREATE TABLE user_key_rotation_wrapper_history (
+    user_id TEXT NOT NULL,
+    wrapper_kind TEXT NOT NULL
+      CHECK (wrapper_kind IN ('user_key', 'private_key')),
+    wrapper_sha256 TEXT NOT NULL
+      CHECK (
+        length(wrapper_sha256) = 64 AND
+        wrapper_sha256 NOT GLOB '*[^0-9a-f]*'
+      ),
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, wrapper_sha256),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) WITHOUT ROWID`,
 ] as const

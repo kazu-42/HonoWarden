@@ -4,10 +4,12 @@ import {
   userKeyRotationPolicy,
   type UserKeyRotationRequest,
 } from '../domain/user-key-rotation'
+import { fingerprintCredentialWrapper } from '../domain/account-credentials'
 import {
   classifyStoredUserKeyRotationCipherMetadata,
   readUserKeyRotationCiphertextValues,
 } from '../domain/user-key-rotation-cipher'
+import { insertCredentialWrapperHistorySql } from './credential-wrapper-history-sql'
 import {
   clearRevokedDeviceKeysSql,
   insertAuditEventSql,
@@ -19,6 +21,7 @@ import {
   snapshotFoldersSql,
   snapshotSummarySql,
   snapshotTrustedDevicesSql,
+  snapshotWrapperHistorySql,
   updateAttachmentsSql,
   updateCiphersSql,
   updateFoldersSql,
@@ -29,8 +32,8 @@ import {
 type UserKeyRotationDatabase = Pick<D1Database, 'batch' | 'prepare'>
 
 export const userKeyRotationRepositoryPolicy = {
-  snapshotQueries: 5,
-  mutationStatements: 10,
+  snapshotQueries: 6,
+  mutationStatements: 11,
   maxQueriesPerInvocation: 50,
   maxBoundParameters: 100,
   maxStatementLength: 100_000,
@@ -72,6 +75,7 @@ export type RotateUserKeyGenerationResult =
   | { status: 'not_found' }
   | { status: 'unsupported_state'; reason: UnsupportedSnapshotReason }
   | { status: 'over_budget'; reason: OverBudgetReason }
+  | { status: 'replayed_generation' }
   | { status: 'conflict' }
 
 export type UserKeyRotationQueryBudget = {
@@ -162,6 +166,23 @@ type SnapshotTrustedDeviceRow = {
   encryptedPrivateKey: string
 }
 
+type SnapshotWrapperHistoryRow = {
+  wrapperKind: 'user_key' | 'private_key'
+  wrapperSha256: string
+}
+
+type WrapperFingerprints = {
+  current: {
+    userKey: string
+    privateKey: string
+  }
+  next: {
+    userKey: string
+    privateKey: string
+  }
+  currentHistoryCount: number
+}
+
 type UserKeyRotationSnapshot = {
   summary: SnapshotSummaryRow
   folders: SnapshotFolderRow[]
@@ -169,6 +190,7 @@ type UserKeyRotationSnapshot = {
   attachments: SnapshotAttachmentRow[]
   trustedDevices: SnapshotTrustedDeviceRow[]
   revokedDeviceKeys: SnapshotTrustedDeviceRow[]
+  wrapperFingerprints: WrapperFingerprints
 }
 
 type SnapshotReadResult =
@@ -307,6 +329,60 @@ async function readUserKeyRotationSnapshot(
     return { status: 'conflict' }
   }
 
+  const wrapperFingerprints = {
+    current: {
+      userKey: await fingerprintCredentialWrapper(summary.userKey),
+      privateKey: await fingerprintCredentialWrapper(summary.privateKey),
+    },
+    next: {
+      userKey: await fingerprintCredentialWrapper(input.request.nextUserKey),
+      privateKey: await fingerprintCredentialWrapper(
+        input.request.accountKeys.wrappedPrivateKey,
+      ),
+    },
+  }
+  const wrapperHistory = await prepareChecked(database, {
+    sql: snapshotWrapperHistorySql,
+    values: [
+      input.userId,
+      wrapperFingerprints.current.userKey,
+      wrapperFingerprints.next.userKey,
+      wrapperFingerprints.current.privateKey,
+      wrapperFingerprints.next.privateKey,
+    ],
+  }).all<SnapshotWrapperHistoryRow>()
+  const expectedHistoryDigests = new Set([
+    wrapperFingerprints.current.userKey,
+    wrapperFingerprints.current.privateKey,
+    wrapperFingerprints.next.userKey,
+    wrapperFingerprints.next.privateKey,
+  ])
+  const historyDigests = wrapperHistory.results.map((row) => row.wrapperSha256)
+  if (
+    new Set(historyDigests).size !== historyDigests.length ||
+    wrapperHistory.results.some(
+      (row) =>
+        !['user_key', 'private_key'].includes(row.wrapperKind) ||
+        !expectedHistoryDigests.has(row.wrapperSha256),
+    )
+  ) {
+    throw new Error('user key rotation wrapper history was inconsistent')
+  }
+  const nextHistoryDigests = new Set([
+    wrapperFingerprints.next.userKey,
+    wrapperFingerprints.next.privateKey,
+  ])
+  if (historyDigests.some((digest) => nextHistoryDigests.has(digest))) {
+    return { status: 'replayed_generation' }
+  }
+  const currentHistoryDigests = new Set([
+    wrapperFingerprints.current.userKey,
+    wrapperFingerprints.current.privateKey,
+  ])
+  const currentHistoryCount = historyDigests.filter((digest) =>
+    currentHistoryDigests.has(digest),
+  ).length
+
   const [folders, ciphers, attachments, trustedDevices] = await Promise.all([
     prepareChecked(database, {
       sql: snapshotFoldersSql,
@@ -351,6 +427,10 @@ async function readUserKeyRotationSnapshot(
       revokedDeviceKeys: trustedDevices.results.filter(
         (device) => device.revokedAt !== null,
       ),
+      wrapperFingerprints: {
+        ...wrapperFingerprints,
+        currentHistoryCount,
+      },
     },
   }
 }
@@ -717,6 +797,36 @@ function buildMutationStatements(
         summary.privateKey,
         input.expectedSecurityStamp,
         input.expectedRevisionDate,
+        snapshot.wrapperFingerprints.next.userKey,
+        snapshot.wrapperFingerprints.next.privateKey,
+      ],
+    },
+    {
+      sql: insertCredentialWrapperHistorySql,
+      values: [
+        JSON.stringify([
+          {
+            kind: 'user_key',
+            sha256: snapshot.wrapperFingerprints.current.userKey,
+          },
+          {
+            kind: 'private_key',
+            sha256: snapshot.wrapperFingerprints.current.privateKey,
+          },
+          {
+            kind: 'user_key',
+            sha256: snapshot.wrapperFingerprints.next.userKey,
+          },
+          {
+            kind: 'private_key',
+            sha256: snapshot.wrapperFingerprints.next.privateKey,
+          },
+        ]),
+        input.userId,
+        input.nextRevisionDate,
+        input.userId,
+        input.nextSecurityStamp,
+        input.nextRevisionDate,
       ],
     },
     generationGatedStatement(updateFoldersSql, manifests.nextFolders, input),
@@ -832,6 +942,7 @@ function interpretMutationResults(
   }
   const [
     userResult,
+    wrapperHistoryResult,
     folderResult,
     cipherResult,
     attachmentResult,
@@ -844,6 +955,7 @@ function interpretMutationResults(
   ] = results
   if (
     !userResult ||
+    !wrapperHistoryResult ||
     !folderResult ||
     !cipherResult ||
     !attachmentResult ||
@@ -873,11 +985,39 @@ function interpretMutationResults(
     (total, cipher) => total + cipher.attachments.length,
     0,
   )
+  const insertedWrapperHistory = (wrapperHistoryResult.results ??
+    []) as SnapshotWrapperHistoryRow[]
+  const insertedWrapperDigests = insertedWrapperHistory.map(
+    (row) => row.wrapperSha256,
+  )
+  const allowedWrapperDigests = new Set([
+    snapshot.wrapperFingerprints.current.userKey,
+    snapshot.wrapperFingerprints.current.privateKey,
+    snapshot.wrapperFingerprints.next.userKey,
+    snapshot.wrapperFingerprints.next.privateKey,
+  ])
+  const expectedWrapperHistoryChanges =
+    4 - snapshot.wrapperFingerprints.currentHistoryCount
   if (
     results.some((result) => !result.success) ||
     userChanges !== 1 ||
     updatedUsers[0]?.id !== input.userId ||
     (userResult?.meta.changes ?? 0) !== 1 ||
+    (wrapperHistoryResult.meta.changes ?? 0) !==
+      expectedWrapperHistoryChanges ||
+    insertedWrapperHistory.length !== expectedWrapperHistoryChanges ||
+    new Set(insertedWrapperDigests).size !== insertedWrapperDigests.length ||
+    insertedWrapperHistory.some(
+      (row) =>
+        !['user_key', 'private_key'].includes(row.wrapperKind) ||
+        !allowedWrapperDigests.has(row.wrapperSha256),
+    ) ||
+    !insertedWrapperDigests.includes(
+      snapshot.wrapperFingerprints.next.userKey,
+    ) ||
+    !insertedWrapperDigests.includes(
+      snapshot.wrapperFingerprints.next.privateKey,
+    ) ||
     (folderResult?.meta.changes ?? 0) !== input.request.folders.length ||
     (cipherResult?.meta.changes ?? 0) !== input.request.ciphers.length ||
     (attachmentResult?.meta.changes ?? 0) !== expectedAttachmentCount ||

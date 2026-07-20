@@ -253,6 +253,28 @@ describe('pinned official-client harness', () => {
     ).toThrow('official CLI returned an invalid server configuration')
   })
 
+  it('initializes a private empty data file for fresh CLI profiles', async () => {
+    const { ensureOfficialProfileDirectories, resolveHarnessRoot } =
+      await harnessModule
+    const root = resolveHarnessRoot(ignoredRoot('profile-initialization'))
+    const profile = 'fresh-profile'
+    const dataPath = join(root.absolute, 'profile', profile, 'data.json')
+
+    await mkdir(root.absolute, { recursive: true, mode: 0o700 })
+    await ensureOfficialProfileDirectories(root, profile)
+
+    expect(await readFile(dataPath, 'utf8')).toBe('{}\n')
+    expect((await lstat(dataPath)).mode & 0o777).toBe(0o600)
+
+    await writeFile(dataPath, '{"preserved":true}\n', { mode: 0o600 })
+    await ensureOfficialProfileDirectories(root, profile)
+    expect(await readFile(dataPath, 'utf8')).toBe('{"preserved":true}\n')
+
+    await expect(
+      ensureOfficialProfileDirectories(root, '../../outside'),
+    ).rejects.toThrow('official CLI profile name was invalid')
+  })
+
   it('rejects custom service endpoints in the pinned CLI profile', async () => {
     const { validateOfficialCliProfileEnvironment } = await harnessModule
     const origin = 'http://127.0.0.1:8787'
@@ -362,8 +384,11 @@ describe('pinned official-client harness', () => {
   })
 
   it('maps only explicitly synthetic upstream credentials into the client', async () => {
-    const { isolatedClientEnvironment, resolveHarnessRoot } =
-      await harnessModule
+    const {
+      isolatedClientEnvironment,
+      resolveHarnessRoot,
+      validateOfficialProfileName,
+    } = await harnessModule
     const root = resolveHarnessRoot(ignoredRoot('environment'))
     const environment = isolatedClientEnvironment(root, {
       PATH: '/usr/bin:/bin',
@@ -382,7 +407,56 @@ describe('pinned official-client harness', () => {
     expect(environment).not.toHaveProperty('HONOWARDEN_SYNTHETIC_BW_PASSWORD')
     expect(environment).not.toHaveProperty('HONOWARDEN_SYNTHETIC_BW_SESSION')
     expect(JSON.stringify(environment)).not.toContain('ambient-real')
+
+    const named = isolatedClientEnvironment(
+      root,
+      { PATH: '/usr/bin:/bin' },
+      'hon220-baseline',
+    )
+    expect(named.HOME).toBe(join(root.absolute, 'home', 'hon220-baseline'))
+    expect(named.TMPDIR).toBe(join(root.absolute, 'tmp', 'hon220-baseline'))
+    const appDataEnvironment = ['BIT', 'WARDENCLI_APPDATA_DIR'].join('')
+    expect(named[appDataEnvironment]).toBe(
+      join(root.absolute, 'profile', 'hon220-baseline'),
+    )
+    expect(validateOfficialProfileName('hon220-baseline')).toBe(
+      'hon220-baseline',
+    )
+    expect(() => validateOfficialProfileName('../normal-profile')).toThrow(
+      'official CLI profile name was invalid',
+    )
   })
+
+  it.each(['profile', 'home', 'tmp'] as const)(
+    'rejects a named %s directory replaced by a symlink before writing outside the harness',
+    async (directory) => {
+      const { ensureOfficialProfileDirectories, resolveHarnessRoot } =
+        await harnessModule
+      const root = resolveHarnessRoot(ignoredRoot(`named-${directory}-link`))
+      const profile = 'isolated-profile'
+      const outside = join(
+        repoRoot,
+        'test/.tmp',
+        `official-client-named-${directory}-outside-${crypto.randomUUID()}`,
+      )
+      await mkdir(root.absolute, { recursive: true, mode: 0o700 })
+      await mkdir(join(root.absolute, directory), { mode: 0o700 })
+      await mkdir(outside, { mode: 0o700 })
+      await symlink(outside, join(root.absolute, directory, profile))
+
+      try {
+        await expect(
+          ensureOfficialProfileDirectories(root, profile),
+        ).rejects.toThrow(
+          `official CLI ${directory} profile directory must not be a symlink`,
+        )
+        await expect(readdir(outside)).resolves.toEqual([])
+      } finally {
+        await rm(root.absolute, { recursive: true, force: true })
+        await rm(outside, { recursive: true, force: true })
+      }
+    },
+  )
 
   it('rejects secret-bearing CLI plans without echoing the secret', async () => {
     const secret = 'synthetic-plan-secret-that-must-not-be-printed'
@@ -623,7 +697,12 @@ require("external-package");
     expect(rendered).toContain('await __webpack_require__.e(685)')
     expect(rendered).toContain('sdk.lIU(wasm)')
     expect(rendered).toContain('sdk.IEs.unwrap_decapsulation_key')
+    expect(rendered).toContain('sdk.IEs.wrap_symmetric_key')
+    expect(rendered).toContain('sdk.IEs.unwrap_symmetric_key')
     expect(rendered).toContain('kdfId')
+    expect(rendered).toContain('"credential-fixture"')
+    expect(rendered).toContain('masterPasswordAuthenticationHash')
+    expect(rendered).toContain('credentialStages')
     expect(rendered.indexOf('HONOWARDEN_OFFICIAL_CRYPTO_BRIDGE')).toBeLessThan(
       rendered.indexOf('require("external-package")'),
     )
@@ -926,6 +1005,217 @@ await runCapturedProcess(${JSON.stringify(command)}, [], {
     expect(taskkillPids).toEqual([4242])
     expect(processKillCalls).toEqual([[4242, 0]])
     expect(destroyedStreams).toEqual(['stdout', 'stderr'])
+  })
+
+  it('runs every cleanup step and reports all failures together', async () => {
+    const { runCleanupSteps } = await signalCleanupModule
+    const calls: string[] = []
+
+    await expect(
+      runCleanupSteps(
+        [
+          async () => {
+            calls.push('first')
+            throw new Error('first cleanup failed')
+          },
+          async () => {
+            calls.push('second')
+          },
+          async () => {
+            calls.push('third')
+            throw new Error('third cleanup failed')
+          },
+        ],
+        'official client cleanup',
+      ),
+    ).rejects.toMatchObject({
+      message: 'official client cleanup failed with 2 errors',
+      errors: [
+        expect.objectContaining({ message: 'first cleanup failed' }),
+        expect.objectContaining({ message: 'third cleanup failed' }),
+      ],
+    })
+    expect(calls).toEqual(['first', 'second', 'third'])
+  })
+
+  it('bounds helper commands and reaps their detached process group', async () => {
+    const { runBoundedCommand } = await signalCleanupModule
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-bounded-${crypto.randomUUID()}`,
+    )
+    const childPidPath = join(root, 'child.pid')
+    const command = join(root, 'wait.sh')
+    const activeProcesses = new Set()
+    await mkdir(root, { recursive: true, mode: 0o700 })
+    await writeFile(
+      command,
+      `#!/bin/sh
+sleep 30 &
+printf '%s' "$!" > ${shellQuote(childPidPath)}
+wait
+`,
+      { mode: 0o700 },
+    )
+    await chmod(command, 0o700)
+
+    try {
+      await expect(
+        runBoundedCommand(command, [], {
+          activeProcesses,
+          cwd: root,
+          env: process.env,
+          label: 'bounded fixture',
+          timeoutMs: 1_000,
+        }),
+      ).rejects.toThrow('bounded fixture timed out after 1000ms')
+      const childPid = Number(await readFile(childPidPath, 'utf8'))
+      await expectProcessGone(childPid)
+      expect(activeProcesses.size).toBe(0)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reaps a successful bounded command that leaves a closed-stdio background child', async () => {
+    const { runBoundedCommand } = await signalCleanupModule
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-success-leak-${crypto.randomUUID()}`,
+    )
+    const childPidPath = join(root, 'child.pid')
+    const command = join(root, 'leak.sh')
+    const activeProcesses = new Set()
+    await mkdir(root, { recursive: true, mode: 0o700 })
+    await writeFile(
+      command,
+      `#!/bin/sh
+( trap '' TERM HUP; exec >/dev/null 2>/dev/null < /dev/null; while :; do sleep 1; done ) &
+printf '%s' "$!" > ${shellQuote(childPidPath)}
+exit 0
+`,
+      { mode: 0o700 },
+    )
+    await chmod(command, 0o700)
+
+    try {
+      const result = await runBoundedCommand(command, [], {
+        activeProcesses,
+        cwd: root,
+        env: process.env,
+        gracefulTimeoutMilliseconds: 250,
+        label: 'successful bounded leak',
+        timeoutMs: 5_000,
+      })
+      const childPid = Number(await readFile(childPidPath, 'utf8'))
+
+      expect(result.exitCode).toBe(0)
+      expect(activeProcesses.size).toBe(0)
+      await expectProcessGone(childPid)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('coordinates nested signal cleanups before re-sending the original signal once', async () => {
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-signal-coordinator-${crypto.randomUUID()}`,
+    )
+    const eventsPath = join(root, 'events.json')
+    const parentScript = join(root, 'parent.mjs')
+    let parent: ReturnType<typeof spawn> | undefined
+    await mkdir(root, { recursive: true, mode: 0o700 })
+    await writeFile(
+      parentScript,
+      `import { installSignalCleanup } from ${JSON.stringify(pathToFileURL(signalCleanupScript).href)}
+import { writeFileSync } from 'node:fs'
+
+const events = []
+const writeEvents = () => writeFileSync(${JSON.stringify(eventsPath)}, JSON.stringify(events))
+installSignalCleanup(async (signal) => {
+  events.push(['fast', signal])
+  writeEvents()
+})
+installSignalCleanup(async (signal) => {
+  events.push(['slow-start', signal])
+  writeEvents()
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  events.push(['slow-end', signal])
+  writeEvents()
+})
+process.stdout.write('ready\\n')
+setInterval(() => undefined, 1000)
+`,
+      { mode: 0o600 },
+    )
+
+    let testError: unknown
+    let cleanupError: unknown
+    try {
+      parent = spawn(process.execPath, [parentScript], {
+        cwd: repoRoot,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      await once(parent.stdout!, 'data')
+      process.kill(parent.pid!, 'SIGTERM')
+      const [exitCode, signal] = (await once(parent, 'exit')) as [
+        number | null,
+        NodeJS.Signals | null,
+      ]
+
+      expect(exitCode).toBeNull()
+      expect(signal).toBe('SIGTERM')
+      expect(JSON.parse(await readFile(eventsPath, 'utf8'))).toEqual([
+        ['fast', 'SIGTERM'],
+        ['slow-start', 'SIGTERM'],
+        ['slow-end', 'SIGTERM'],
+      ])
+    } catch (error) {
+      testError = error
+    }
+    if (parent?.pid && parent.exitCode === null && parent.signalCode === null) {
+      try {
+        process.kill(parent.pid, 'SIGKILL')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+          cleanupError = error
+        }
+      }
+    }
+    try {
+      await rm(root, { recursive: true, force: true })
+    } catch (error) {
+      cleanupError ??= error
+    }
+    if (testError) throw testError
+    if (cleanupError) throw cleanupError
+  }, 15_000)
+
+  it('removes shared signal listeners after every registration is disposed', async () => {
+    const { installSignalCleanup } = await signalCleanupModule
+    const before = new Map(
+      ['SIGINT', 'SIGTERM'].map((signal) => [
+        signal,
+        process.listenerCount(signal),
+      ]),
+    )
+    const disposeFirst = installSignalCleanup(async () => undefined)
+    const disposeSecond = installSignalCleanup(async () => undefined)
+
+    try {
+      expect(process.listenerCount('SIGINT')).toBe(before.get('SIGINT')! + 1)
+      expect(process.listenerCount('SIGTERM')).toBe(before.get('SIGTERM')! + 1)
+    } finally {
+      disposeFirst()
+      disposeSecond()
+    }
+
+    expect(process.listenerCount('SIGINT')).toBe(before.get('SIGINT'))
+    expect(process.listenerCount('SIGTERM')).toBe(before.get('SIGTERM'))
   })
 
   it('routes detached lifecycle workers through portable tree cleanup', () => {
