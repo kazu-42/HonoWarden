@@ -314,6 +314,41 @@ describe('user key rotation on real local D1', () => {
   )
 
   it.each(['password', 'KDF'] as const)(
+    'rejects a %s change that re-encodes a wrapper recorded under another role',
+    async (kind) => {
+      const database = await createDatabase()
+      const fixture = rotationFixture(
+        'credential-reencoding-security-stamp',
+        'credential-reencoding-audit-id',
+      )
+      await seedAccount(database, fixture)
+      const recordedWrapper =
+        '2.pMS6/icTQABtulw52pq2lg==|XXbxKxDTh+mWiN1HjH2N1w==|Q6PkuT+KX/axrgN9ubD5Ajk2YNwxQkgs3WJM0S0wtG8='
+      await database
+        .prepare(
+          `INSERT INTO user_key_rotation_wrapper_history (
+            user_id, wrapper_kind, wrapper_sha256, recorded_at
+          ) VALUES (?, 'private_key', ?, ?)`,
+        )
+        .bind(
+          userId,
+          await fingerprintCredentialWrapper(recordedWrapper),
+          oldRevisionDate,
+        )
+        .run()
+      const before = await readRotationState(database)
+
+      await expect(
+        mutateCredentialGeneration(database, kind, {
+          nextUserKey: recordedWrapper.replaceAll('=', ''),
+        }),
+      ).resolves.toEqual({ status: 'conflict' })
+
+      expect(await readRotationState(database)).toEqual(before)
+    },
+  )
+
+  it.each(['password', 'KDF'] as const)(
     'establishes a first wrapped user key during a %s change with null CAS values',
     async (kind) => {
       const database = await createDatabase()

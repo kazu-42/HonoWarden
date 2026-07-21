@@ -65,6 +65,28 @@ describe('release feature-freeze docs', () => {
     }
   })
 
+  it('locks the credential-history migration rollout and rollback order', () => {
+    const upgradeGuide = readReleaseDoc('upgrade-guide.md')
+    const rollbackGuide = readReleaseDoc('rollback-guide.md')
+
+    for (const requirement of [
+      '0016_user_key_rotation_wrapper_history.sql',
+      'must be applied before deploying',
+      'Drain credential mutation requests',
+      'HONOWARDEN_ACCOUNT_KEYS_ENABLED=false',
+      'HONOWARDEN_KDF_MUTATION_ENABLED=false',
+      'HONOWARDEN_USER_KEY_ROTATION_ENABLED=false',
+      '/health/db',
+      'cannot reconstruct wrappers superseded before `0016`',
+    ]) {
+      expect(upgradeGuide).toContain(requirement)
+    }
+    expect(rollbackGuide).toContain('Migration `0016` is forward-only')
+    expect(rollbackGuide).toMatch(
+      /do\s+not deploy a pre-reader Worker after any post-`0016` credential mutation/,
+    )
+  })
+
   it('keeps release notes explicit about alpha exclusions and gates', () => {
     const releaseNotes = readReleaseDoc('v0.1.0-alpha-release-notes.md')
 

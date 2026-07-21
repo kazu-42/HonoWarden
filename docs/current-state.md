@@ -1256,16 +1256,20 @@ Implemented:
   folders, cipher fields, attachment names/keys, and active/revoked trusted
   devices, plus next-generation uniqueness so cross-slot swaps cannot commit
 - forward-only migration `0016_user_key_rotation_wrapper_history.sql` stores
-  only per-user SHA-256 fingerprints for wrapped user/private keys, with
-  uniqueness enforced across wrapper roles; account-key initialization,
-  password, KDF, and complete user-key mutations atomically record current and
-  next wrappers in the same guarded D1 batch, so a recorded wrapper cannot be
-  replayed or mixed into a later generation
+  only per-user SHA-256 fingerprints of versioned canonical EncString decoded
+  parts for wrapped user/private keys, with uniqueness enforced across wrapper
+  roles; equivalent padding and ignored trailing-bit encodings share one
+  fingerprint, while account-key initialization, password, KDF, and complete
+  user-key mutations atomically record current and next wrappers in the same
+  guarded D1 batch, so a recorded wrapper cannot be replayed or mixed into a
+  later generation
 - wrapper history is forward-looking: wrappers superseded before migration
   `0016` cannot be reconstructed without retaining forbidden ciphertext.
-  Rollout must drain credential mutations while applying `0016` and activating
-  the reader/writer, after which the first mutation lazily fingerprints its
-  current wrappers before replacing them
+  Migration `0016` and its canonical reader/writer are introduced together, so
+  no prior release can write a legacy digest into this new table. Rollout must
+  drain credential mutations while applying `0016` and activating the
+  reader/writer, after which the first mutation lazily fingerprints its current
+  wrappers before replacing them
 - post-commit best-effort generation-aware Durable Object cleanup so transport
   failure is incident-logged without returning a false failure after D1 success
 - route tests for default-off D1-free behavior, parser/proof/preflight ordering,

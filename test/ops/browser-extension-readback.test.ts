@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import * as browserReadback from '../../scripts/honowarden-browser-extension-readback.mjs'
 
 const {
+  CdpClient,
   cleanupOfficialBrowserExtensionResources,
   closeTarget,
   createBlankTarget,
@@ -47,6 +48,50 @@ afterEach(async () => {
 })
 
 describe('official browser extension CDP ownership', () => {
+  it('marks an unexpected CDP close unhealthy after pending work is idle', () => {
+    const socket = new FakeCdpSocket()
+    const client = new CdpClient(socket)
+
+    socket.disconnect()
+
+    expect(() => client.assertHealthy()).toThrow(
+      'official browser CDP connection closed',
+    )
+  })
+
+  it('marks a CDP socket error unhealthy', () => {
+    const socket = new FakeCdpSocket()
+    const client = new CdpClient(socket)
+
+    socket.fail()
+
+    expect(() => client.assertHealthy()).toThrow(
+      'official browser CDP connection failed',
+    )
+  })
+
+  it('keeps an explicit CDP shutdown healthy', () => {
+    const socket = new FakeCdpSocket()
+    const client = new CdpClient(socket)
+
+    client.close()
+
+    expect(() => client.assertHealthy()).not.toThrow()
+  })
+
+  it('does not let cleanup mask a remote close already in progress', () => {
+    const socket = new FakeCdpSocket()
+    const client = new CdpClient(socket)
+
+    socket.beginDisconnect()
+    client.close()
+    socket.finishDisconnect()
+
+    expect(() => client.assertHealthy()).toThrow(
+      'official browser CDP connection closed',
+    )
+  })
+
   it('parses only loopback DevToolsActivePort browser endpoints', () => {
     expect(
       parseDevToolsActivePortFile('39157\n/devtools/browser/owned-id\n'),
@@ -276,6 +321,35 @@ process.exit(0)
     expect(redacted.text).toContain('[redacted-token]')
   })
 })
+
+class FakeCdpSocket extends EventTarget {
+  readyState = 1
+
+  send() {}
+
+  close() {
+    this.readyState = 3
+    this.dispatchEvent(new Event('close'))
+  }
+
+  disconnect() {
+    this.readyState = 3
+    this.dispatchEvent(new Event('close'))
+  }
+
+  beginDisconnect() {
+    this.readyState = 2
+  }
+
+  finishDisconnect() {
+    this.readyState = 3
+    this.dispatchEvent(new Event('close'))
+  }
+
+  fail() {
+    this.dispatchEvent(new Event('error'))
+  }
+}
 
 async function createOwnedProfile(label: string) {
   const root = join(

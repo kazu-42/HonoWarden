@@ -155,11 +155,13 @@ Secret-handling invariants:
 4. One D1 batch reserves a redacted `account.keys.initialize` audit row from the
    exact active, non-empty-user-key, both-null security-stamp/revision generation,
    updates that same generation with the opaque pair and next account revision,
-   and records SHA-256 fingerprints for the unchanged wrapped user key and new
-   wrapped private key. The update rejects a private-wrapper fingerprint already
-   present under either role, while the history insert is gated by the exact
-   committed user/public/private values so a losing same-revision request cannot
-   record its wrapper.
+   and records SHA-256 fingerprints over the encryption type and length-framed
+   decoded EncString parts for the unchanged wrapped user key and new wrapped
+   private key. Equivalent padding and ignored trailing-bit encodings therefore
+   share one fingerprint. The update rejects a private-wrapper fingerprint
+   already present under either role, while the history insert is gated by the
+   exact committed user/public/private values so a losing same-revision request
+   cannot record its wrapper.
 5. Security stamp, authentication hash, KDF, wrapped user key, devices, refresh
    tokens, auth requests, ciphers, and attachments remain unchanged. Migration
    `0016_user_key_rotation_wrapper_history.sql` must be present before deploying

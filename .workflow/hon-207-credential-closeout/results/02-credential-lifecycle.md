@@ -12,8 +12,9 @@ Linear issue: HON-220
 - HON-220: In Progress and non-archived
 - parent HON-207: In Progress
 - successor HON-221: Todo
-- production, remote D1/R2, real credentials, normal browser profiles, paid
-  actions, and compatibility promotion remain excluded
+- production mutation, remote D1/R2 writes, real credentials, normal browser
+  profiles, paid actions, and compatibility promotion remain excluded;
+  production and staging received only a read-only `0016` migration query
 
 ## Delivered
 
@@ -41,7 +42,9 @@ Linear issue: HON-220
   Worker restart. D1 and R2 remained byte-for-byte unchanged.
 - Added forward-only migration
   `0016_user_key_rotation_wrapper_history.sql`. It stores only per-user SHA-256
-  fingerprints in one cross-role digest namespace. Account-key initialization,
+  fingerprints over the encryption type and length-framed decoded EncString
+  parts in one cross-role digest namespace. Equivalent padding and ignored
+  trailing-bit encodings share one fingerprint. Account-key initialization,
   password, KDF, and complete user-key mutations atomically record current and
   next wrappers, preventing recorded historical or mixed-wrapper replay without
   retaining ciphertext. The boundary is forward-looking; pre-`0016` superseded
@@ -66,21 +69,26 @@ Linear issue: HON-220
   are separated by an evidence epoch. Unknown console, loading, response, or
   runtime diagnostics fail the run. Stored diagnostic evidence contains
   categories and digests rather than raw messages.
+- Browser CDP close and error events now latch a terminal health error unless
+  the client itself initiated the close while the socket was still open. An
+  already-closing remote socket cannot be relabeled as an explicit cleanup.
 - Browser, profile, clipboard, TLS proxy, Wrangler, workerd, and temporary
   managed state cleanup are idempotent and bounded.
 
 No remote Cloudflare resource, real account, normal Brave/Chrome profile,
-staging, production, compatibility row, routing, or deployment changed.
+compatibility row, routing, or deployment changed. Read-only production and
+staging D1 queries confirmed that migration `0016` is not applied in either
+environment; both returned zero rows and wrote zero rows.
 
 ## Integrated Readback
 
-The latest aggregate run began at `2026-07-21T00:08:39.768Z` and returned
+The latest aggregate run began at `2026-07-21T01:24:33.693Z` and returned
 `status: passed`.
 
 | Evidence                    | Readback                                                                                              |
 | --------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Mode                        | local Wrangler + D1/R2 + official CLI + official browser extension                                    |
-| Generation manifest SHA-256 | `a1541502029ce0f810d08cfba3b6bc7e604c3858289029086a6efdf18f08cb21`                                    |
+| Generation manifest SHA-256 | `a894eb81bf721f57ce8f925fc024bc6024ee83a67ef24da566642ccf9ab7eab2`                                    |
 | Same-account generations    | 7/7                                                                                                   |
 | Official CLI item reads     | 7/7                                                                                                   |
 | Successful CLI stderr       | 0 bytes, including config read/write                                                                  |
@@ -92,7 +100,7 @@ The latest aggregate run began at `2026-07-21T00:08:39.768Z` and returned
 | Concurrent rotations        | HTTP 200 and 401; exactly one generation committed                                                    |
 | Stale wrapped generation    | HTTP 400 before/after restart; D1/R2 unchanged                                                        |
 | Audit secret scan           | passed for every issued token and token shape                                                         |
-| Final wrapper history       | 7 unique fingerprints; set SHA-256 `e820a4468f3fbfc47a76fcfae7d8af437e8577d30f773a7ea9c462e6252e12fe` |
+| Final wrapper history       | 7 unique fingerprints; set SHA-256 `6dc6908dc86be230c8bffd08cf1373f6676c3ea294d9874e76851e3de22d701b` |
 | Final foreign-key errors    | 0                                                                                                     |
 | Final restart readback      | passed                                                                                                |
 
@@ -118,7 +126,7 @@ the unchanged wrapped user key and the newly initialized wrapped private key.
 | Browser source    | `browser-v2026.6.1@723c075bf8b9f45c901e56195be8e94e43ed75a2`                             |
 | CLI source asset  | SHA-256 `31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660`               |
 | Lifecycle bridge  | SHA-256 `1a38398906d268c61ad40b79310d4810125f25d056052404fb0b8dfc23cd6601`               |
-| Fixture response  | 24,397 bytes; SHA-256 `9022cfe080e36df567b9079bf87e7371257e2afac6f9f631c75c435e94017f20` |
+| Fixture response  | 24,397 bytes; SHA-256 `69df0949e5bad7be29598fb4dd9ef9a09ddf022d6a69094fef096d95bdb0c233` |
 | CLI stdout/stderr | 0 / 0 bytes                                                                              |
 
 All ten CLI profiles were isolated under the ignored harness root. No ambient
@@ -142,7 +150,7 @@ temporary profile and loopback-only remote debugging.
 | Decrypted item fields      | 6/6                                                                |
 | Runtime exceptions         | 0                                                                  |
 | Unexpected diagnostics     | 0                                                                  |
-| Screenshot SHA-256         | `a82d0a88caa97faa52f3997200533d2e23029dad8e9327ec8451304a82f553b2` |
+| Screenshot SHA-256         | `627202ed5c3f186331e4392e7f5857ebd2f2da0c94569000376f033298930e68` |
 | Browser/profile/clipboard  | stopped / removed / cleared                                        |
 | Residual CDP listener      | none                                                               |
 
@@ -254,6 +262,20 @@ remains fatal, and raw messages are not retained.
     committed user/public/private values so a losing same-revision request
     cannot pollute history. A second real-D1 test forces that collision and
     proves one winner, one audit, and only the winner's two fingerprints.
+16. Native review of candidate `af6cc2c` reproduced two remaining false-green
+    boundaries. Raw wrapper hashing treated padding aliases and ignored Base64
+    trailing bits as different history, while an unexpected idle CDP close did
+    not reach `assertHealthy()`. Focused unit and real-D1 tests failed first;
+    canonical decoded-part fingerprinting and terminal CDP close/error latching
+    then made both regressions pass. A remote-close-in-progress test also proves
+    cleanup cannot mask the disconnect.
+17. Independent preflight review initially raised legacy raw-digest
+    compatibility as P1. Full-baseline and live readback proved migration `0016`
+    and the fingerprint writer are absent from main, the candidate branch has
+    never been pushed, and both production and staging lack schema version
+    `0016`. The reviewer withdrew P1 because the canonical writer is the first
+    writer for the new empty table. Release-doc and DB-health tests now lock the
+    required migration-before-Worker order and rollback boundary.
 
 ## Verification So Far
 
@@ -273,14 +295,17 @@ browser unexpected diagnostics: 0
 browser/profile/clipboard cleanup: passed
 live residual lifecycle/browser/Worker process readback: none
 latest fixture secret scan: 40 values / 1,680 files / 0 matches
-real D1 credential-generation suite: 13 tests passed
+real D1 credential-generation suite: 15 tests passed
 runtime-exception URL redaction regression: passed
 account-key initialization cross-role replay regression: passed
 account-key initialization same-revision concurrency: passed
-full serial suite: 99 files, 1,250 tests passed
+EncString padding and ignored-trailing-bit replay regressions: passed
+unexpected CDP close/error and remote-close race regressions: passed
+rollout-order docs and wrapper-history DB-health regressions: passed
+full serial suite: 99 files, 1,261 tests passed
 typecheck / ESLint / Prettier / brand scan: passed
 compatibility suite: 105 tests passed
-migration/release docs focused suite: 27 tests passed
+migration/release docs focused suite: passed
 release gate: 11 passed, 0 manual, 0 blocked
 ```
 

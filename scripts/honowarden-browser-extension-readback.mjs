@@ -1915,6 +1915,7 @@ export class CdpClient {
     this.nextId = 0
     this.pending = new Map()
     this.eventError = null
+    this.closing = false
     socket.addEventListener('message', (event) => {
       let message
       try {
@@ -1944,16 +1945,26 @@ export class CdpClient {
       }
     })
     socket.addEventListener('close', () => {
-      for (const pending of this.pending.values()) {
-        globalThis.clearTimeout(pending.timeout)
-        pending.reject(new Error('official browser CDP connection closed'))
+      const error = new Error('official browser CDP connection closed')
+      if (this.closing) {
+        this.rejectPending(error)
+      } else {
+        this.failEvents(error)
       }
-      this.pending.clear()
+    })
+    socket.addEventListener('error', () => {
+      if (!this.closing) {
+        this.failEvents(new Error('official browser CDP connection failed'))
+      }
     })
   }
 
   failEvents(error) {
-    this.eventError = error
+    this.eventError ??= error
+    this.rejectPending(this.eventError)
+  }
+
+  rejectPending(error) {
     for (const pending of this.pending.values()) {
       globalThis.clearTimeout(pending.timeout)
       pending.reject(error)
@@ -1994,8 +2005,13 @@ export class CdpClient {
   }
 
   close() {
-    if (this.socket.readyState < globalThis.WebSocket.CLOSING) {
-      this.socket.close()
+    if (
+      this.closing ||
+      this.socket.readyState >= globalThis.WebSocket.CLOSING
+    ) {
+      return
     }
+    this.closing = true
+    this.socket.close()
   }
 }

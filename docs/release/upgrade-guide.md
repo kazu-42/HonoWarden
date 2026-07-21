@@ -59,7 +59,8 @@ pnpm backup:export -- \
   migration and reader behavior are verified.
 - `0016_user_key_rotation_wrapper_history.sql` must be applied before deploying
   the Worker commit that records account-key initialization, password, KDF, and
-  user-key wrapper history.
+  user-key wrapper history. The migration and canonical fingerprint writer are
+  introduced in the same release; no earlier release writes this new table.
   Drain credential mutation requests across the migration/Worker activation
   window because password change has no independent feature switch. Keep
   `HONOWARDEN_ACCOUNT_KEYS_ENABLED=false`,

@@ -221,16 +221,18 @@ is the rollback for harness corruption.
 
 Credential recovery is forward-only: it never restores an older credential
 generation. Migration `0016_user_key_rotation_wrapper_history.sql` retains only
-per-user SHA-256 fingerprints for current and prior wrapped user/private keys,
-with one digest namespace across both roles. Password, KDF, and complete
-user-key mutations append history in the same D1 batch that replaces a wrapper;
-account-key initialization records its current user and new private wrappers in
-the initialization batch. The history is not retroactive: a wrapper superseded
-before `0016` cannot be reconstructed safely. Rollout must drain credential
-mutations across the migration/Worker activation window, and rollback must
-preserve this table unless an explicit recovery procedure proves that replay
-defense can be rebuilt. Backup/restore generation binding belongs to HON-221 and
-must use an exact approved post-generation manifest.
+per-user SHA-256 fingerprints over the encryption type and length-framed decoded
+EncString parts for current and prior wrapped user/private keys, with one digest
+namespace across both roles. Equivalent padding and ignored trailing-bit
+encodings share one digest. Password, KDF, and complete user-key mutations append
+history in the same D1 batch that replaces a wrapper; account-key initialization
+records its current user and new private wrappers in the initialization batch.
+The history is not retroactive: a wrapper superseded before `0016` cannot be
+reconstructed safely. Rollout must drain credential mutations across the
+migration/Worker activation window, and rollback must preserve this table unless
+an explicit recovery procedure proves that replay defense can be rebuilt.
+Backup/restore generation binding belongs to HON-221 and must use an exact
+approved post-generation manifest.
 
 ## Verified Readback
 
