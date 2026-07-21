@@ -110,6 +110,12 @@ Linear issue: HON-225
     only after private SQLite imports prove matching canonical schema, every
     table-content digest, and zero foreign-key violations. Separate schema and
     row mismatch fixtures still fail closed.
+12. The third exact-head native review found that restore setup changed the
+    mode of `test/.tmp` before rejecting it as a symlink. A red fixture proved
+    that a failed invocation changed an unrelated symlink target from `0755`
+    to `0700`. Restore setup now rejects symlinks first and requires an existing
+    fixture root to be a current-user-owned directory with mode `0700`, without
+    mutating its permissions.
 
 ## Real Local Artifact
 
@@ -120,11 +126,11 @@ Worker/TLS origin.
 | Evidence                              | Readback                                                           |
 | ------------------------------------- | ------------------------------------------------------------------ |
 | Generated at                          | `2026-07-21T14:05:00.000Z`                                         |
-| Source lifecycle manifest SHA-256     | `8bdd365bb1282d0b2cc60b4d25900e1e932620800667542caa733154e1c9618b` |
-| Backup manifest SHA-256               | `83db6e12bc9a72453d6146289160d63fb03480fe9e09049515d175e103910421` |
-| Generation binding SHA-256            | `f73d1d951b980d904cf1da61fbfc6969a2abbda9e906e3825c2f4da964a977c6` |
-| D1/R2 source-state SHA-256            | `3e429ea3d76079aff2541d513e066c0cdf928f8ce27f625a9e2f326feab4dda8` |
-| Source D1 identity SHA-256            | `4c96f98bd308b2927531456369ca94bfaa71d9361aaf5256d9bc0ec4ef9e9e9c` |
+| Source lifecycle manifest SHA-256     | `ae714b4a3b2a21c27691fb7c08c702467761d07d3e67485a65b9d60e8546d669` |
+| Backup manifest SHA-256               | `7133d4ed08194bc14c5d5bfb254b01bd11a2ad90d6df4f584e92ae93ab026776` |
+| Generation binding SHA-256            | `414a69b61d376fc2c0c28b36c954cb728c58a831367f3b244c7e946838105f53` |
+| D1/R2 source-state SHA-256            | `abc9b76792051404b00852c452cb34f406c166266cacf1d15eeadc282a1f434c` |
+| Source D1 identity SHA-256            | `0f0fc9bfa5322cab4f23ea76bfa015f46069e553dde476d4ffc19e5db49d58d6` |
 | R2 object count                       | 1                                                                  |
 | Stale password/access/refresh/profile | 4 each before restart; 4 each after restart                        |
 | Current session                       | access and refresh passed; refreshed access passed after restart   |
@@ -141,10 +147,10 @@ credentials, vault exports, object keys, user identifiers, or production data.
 
 ```text
 real aggregate source -> backup -> fresh restore -> credential proof: passed
-native review red/green: 3 P2 across two rounds reproduced and remediated
+native review red/green: 4 P2 across three rounds reproduced and remediated
 backup CLI: 60 tests passed, including indexed FK parents and semantic readback
 signal cleanup: nested LIFO unwind; run root absent after aggregate
-full suite: 99 files, 1,315 tests passed
+full suite: 99 files, 1,316 tests passed
 typecheck: passed
 ESLint: passed
 Prettier: passed

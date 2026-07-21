@@ -228,6 +228,35 @@ describe('aggregate official-client credential lifecycle', () => {
     ).toThrow('credential restore packet contained a secret field')
   })
 
+  it('rejects a symlinked fixture root without mutating its target', async () => {
+    const sandbox = await mkdtemp(
+      join(tmpdir(), 'honowarden-restore-fixture-root-'),
+    )
+    const candidateRepoRoot = join(sandbox, 'repo')
+    const candidateTestRoot = join(candidateRepoRoot, 'test')
+    const candidateFixtureRoot = join(candidateTestRoot, '.tmp')
+    const outside = join(sandbox, 'outside')
+    await mkdir(candidateTestRoot, { recursive: true })
+    await mkdir(outside)
+    await chmod(outside, 0o755)
+    await symlink(outside, candidateFixtureRoot)
+
+    try {
+      const { prepareCredentialRestoreFixtureRoot } = await import(
+        pathToFileURL(restoreLifecycleScript).href
+      )
+      await expect(
+        prepareCredentialRestoreFixtureRoot(
+          candidateFixtureRoot,
+          candidateRepoRoot,
+        ),
+      ).rejects.toThrow('test/.tmp must not be a symlink')
+      expect((await lstat(outside)).mode & 0o777).toBe(0o755)
+    } finally {
+      await rm(sandbox, { recursive: true, force: true })
+    }
+  })
+
   it('plans an optional isolated Chrome for Testing closeout gate', async () => {
     const executable =
       '/tmp/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'

@@ -403,15 +403,7 @@ async function preparePersistenceRoot(root) {
 }
 
 async function prepareRunRoot(root) {
-  await mkdir(fixtureRoot, { recursive: true, mode: 0o700 })
-  await chmod(fixtureRoot, 0o700)
-  const [canonicalRepo, canonicalFixtureRoot] = await Promise.all([
-    realpath(repoRoot),
-    realpath(fixtureRoot),
-  ])
-  if (canonicalFixtureRoot !== join(canonicalRepo, 'test/.tmp')) {
-    throw new Error('test/.tmp must not be a symlink')
-  }
+  await prepareCredentialRestoreFixtureRoot(fixtureRoot, repoRoot)
   await mkdir(root, { recursive: false, mode: 0o700 })
   await chmod(root, 0o700)
   const info = await lstat(root)
@@ -422,6 +414,31 @@ async function prepareRunRoot(root) {
     flag: 'wx',
     mode: 0o600,
   })
+}
+
+export async function prepareCredentialRestoreFixtureRoot(
+  candidateFixtureRoot = fixtureRoot,
+  candidateRepoRoot = repoRoot,
+) {
+  await mkdir(candidateFixtureRoot, { recursive: true, mode: 0o700 })
+  const fixtureInfo = await lstat(candidateFixtureRoot)
+  if (fixtureInfo.isSymbolicLink()) {
+    throw new Error('test/.tmp must not be a symlink')
+  }
+  if (
+    !fixtureInfo.isDirectory() ||
+    !isOwnedByCurrentUser(fixtureInfo) ||
+    (fixtureInfo.mode & 0o777) !== 0o700
+  ) {
+    throw new Error('test/.tmp must be an owned directory with mode 0700')
+  }
+  const [canonicalRepo, canonicalFixtureRoot] = await Promise.all([
+    realpath(candidateRepoRoot),
+    realpath(candidateFixtureRoot),
+  ])
+  if (canonicalFixtureRoot !== join(canonicalRepo, 'test/.tmp')) {
+    throw new Error('test/.tmp must not be a symlink')
+  }
 }
 
 async function cleanupRunRoot(root) {
