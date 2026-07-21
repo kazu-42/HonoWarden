@@ -105,13 +105,13 @@
       "credentialLifecycleAggregate": "11_of_11_checks_99_files_1263_tests_output_sha256_532a1ef7b9cbec83c4c4d188b391f198fbbf6751e36e6ca2088ed91f7b4757bc_manifest_sha256_3cf45a41f1508a4024f7115169252ee61693f19253437b559d3d518f8fae3701",
       "recoveryRestorePlan": "hon_224_in_progress_blocks_hon_225_todo_blocks_hon_226_todo_exact_live_readback",
       "recoveryRestoreLinearCheckpoint": "comment_77d93627_2ae0_44d0_8e85_69b82715dfee_sha256_97e1e2d64cec44811af3fa8bf5ffffb532dcc08a458f0879231bb6b89fdad20b",
-      "recovery1aFocused": "passed_25_backup_cli_tests_including_real_local_wrangler_d1_r2_export_and_closed_generation_evidence_schema",
-      "recovery1aImpact": "passed_29_backup_scheduled_workflow_tests_and_47_backup_credential_lifecycle_combined_tests",
+      "recovery1aFocused": "passed_29_backup_cli_tests_including_real_local_wrangler_d1_r2_export_closed_generation_evidence_schema_and_4_bound_source_rejections",
+      "recovery1aImpact": "passed_33_backup_scheduled_workflow_tests_and_47_backup_credential_lifecycle_combined_tests",
       "recovery1aPreSpawn": "passed_manifest_and_historical_generation_mismatch_zero_wrangler_spawn",
       "recovery1aArtifact": "manifest_sha256_d01e4a0cbb926ebcb1b5ca6a3a14523141f12a5bfd1471979dcc447e833d3871_d1_sha256_78308c7940956b5a1f5e04fe39a72b13ae4f3d3af257f888f9afce4540554d2c_r2_count_1_body_sha256_ea94c5ee893ca30697f8309290566c08d4d52213eee17f02826f22c23f9bf962",
-      "recovery1aFullSuite": "passed_1275_tests_across_99_files",
-      "recovery1aQuality": "passed_typecheck_eslint_prettier_compatibility_105_brand_scan_dependency_audit_release_gate_11_of_11_git_diff_check",
-      "recovery1aReviews": "pending_exact_head_standard_and_five_axis"
+      "recovery1aFullSuite": "passed_1279_tests_across_99_files",
+      "recovery1aQuality": "passed_typecheck_eslint_prettier_compatibility_105_brand_scan_dependency_audit_release_gate_11_of_11_plan_tests_11_git_diff_check",
+      "recovery1aReviews": "initial_exact_f763ee4_native_codex_request_changes_1_p1_remote_ambient_or_split_bound_source_reproduced_and_remediated_final_exact_head_reviews_pending"
     },
     "checks": [
       "linear_plan_unit",

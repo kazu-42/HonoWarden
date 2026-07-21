@@ -387,9 +387,12 @@ describe('backup CLI', () => {
     const workDir = await fixtureDir('export-generation-binding')
     const objectList = join(workDir, 'objects.txt')
     const outDir = join(workDir, 'backup')
-    const persistDir = join(workDir, 'persist')
-    const configPath = join(workDir, 'source', 'wrangler.jsonc')
+    const sourceDir = join(workDir, 'source')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
     const generationManifestSha256 = 'a'.repeat(64)
+    await mkdir(sourceDir, { recursive: true })
+    await writeFile(configPath, '{}\n')
     await writeFile(objectList, 'attachments/object-one\n')
 
     const result = await execFileAsync('node', [
@@ -439,6 +442,82 @@ describe('backup CLI', () => {
     expect(output.commands[1]).toContain('--persist-to')
     expect(output.commands[1]).toContain(persistDir)
   })
+
+  it.each([
+    {
+      name: 'remote mode',
+      args: (sourceDir: string) => [
+        '--mode',
+        'remote',
+        '--config',
+        join(sourceDir, 'wrangler.jsonc'),
+        '--persist-to',
+        join(sourceDir, '.wrangler', 'state'),
+      ],
+      error: '--generation-manifest-sha256 requires --mode local',
+    },
+    {
+      name: 'missing config',
+      args: (sourceDir: string) => [
+        '--mode',
+        'local',
+        '--persist-to',
+        join(sourceDir, '.wrangler', 'state'),
+      ],
+      error: '--generation-manifest-sha256 requires --config',
+    },
+    {
+      name: 'missing persistence root',
+      args: (sourceDir: string) => [
+        '--mode',
+        'local',
+        '--config',
+        join(sourceDir, 'wrangler.jsonc'),
+      ],
+      error: '--generation-manifest-sha256 requires --persist-to',
+    },
+    {
+      name: 'split D1 and R2 persistence roots',
+      args: (sourceDir: string) => [
+        '--mode',
+        'local',
+        '--config',
+        join(sourceDir, 'wrangler.jsonc'),
+        '--persist-to',
+        join(sourceDir, 'other-state'),
+      ],
+      error:
+        '--persist-to must equal <config-directory>/.wrangler/state for a generation-bound export',
+    },
+  ])(
+    'rejects a generation-bound export with $name',
+    async ({ args, error }) => {
+      const workDir = await fixtureDir('export-unowned-generation-binding')
+      const sourceDir = join(workDir, 'source')
+      const objectList = join(workDir, 'objects.txt')
+      await mkdir(sourceDir, { recursive: true })
+      await writeFile(join(sourceDir, 'wrangler.jsonc'), '{}\n')
+      await writeFile(objectList, `${objectOneKey}\n`)
+
+      await expect(
+        execFileAsync('node', [
+          backupScript,
+          'export',
+          '--out',
+          join(workDir, 'backup'),
+          '--database',
+          'honowarden',
+          '--bucket',
+          'honowarden-vault-objects',
+          ...args(sourceDir),
+          '--generation-manifest-sha256',
+          'a'.repeat(64),
+          '--r2-objects',
+          objectList,
+        ]),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining(error) })
+    },
+  )
 
   it(
     'exports real local D1 and R2 state selected by an owned Wrangler config',

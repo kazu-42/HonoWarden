@@ -29,6 +29,10 @@ Linear issue: HON-224
 - Added explicit `--config` passthrough to D1 export/import and R2 get/put.
   Local D1 export uses the selected config directory's `.wrangler/state`, while
   supported D1/R2 commands also receive the matching `--persist-to` root.
+- Generation-bound export now requires local mode, an explicit config, and an
+  explicit persistence root equal to `<config-directory>/.wrangler/state`.
+  Remote, ambient, or split D1/R2 sources fail before object discovery,
+  manifest construction, or Wrangler spawn. Unbound backups remain compatible.
 - Rejected export-only or restore-only binding flags when used on the wrong
   command instead of silently ignoring an operator mistake.
 - Kept stdout as one machine-readable JSON document during execute mode by
@@ -63,6 +67,11 @@ Linear issue: HON-224
    hand-edited `credentialGeneration` object into public evidence. The binding
    now has a closed one-field schema, evidence reconstructs only the digest,
    and the raw synthetic value never reaches successful stdout.
+6. Exact-head standard review found that a digest could still label a remote,
+   ambient, or split D1/R2 source as the approved generation. Four regression
+   cases reproduced remote mode, missing config, missing persistence, and a
+   persistence root outside the config anchor. All now fail before backup work;
+   the real same-root Wrangler export still passes.
 
 ## Real Local Artifact
 
@@ -86,25 +95,26 @@ real credential or production manifest.
 ## Verification
 
 ```text
-backup CLI focused: 25 passed
-backup + scheduled workflow impact: 29 passed
+backup CLI focused: 29 passed
+backup + scheduled workflow impact: 33 passed
 backup + credential lifecycle combined: 47 passed
 real local D1/R2 source export: passed
+remote / ambient / split generation-bound exports: rejected before backup work
 manifest/history mismatch Wrangler spawns: 0
-full suite: 99 files, 1,275 tests passed
+full suite: 99 files, 1,279 tests passed
 typecheck / ESLint / Prettier: passed
 compatibility: 105 passed
 brand scan: passed
 production dependency audit: no known vulnerabilities
 strict release gate: 11 passed, 0 manual, 0 blocked
-HON-207/HON-221 plan tests: 9 passed
+HON-207/HON-221 plan tests: 11 passed
 git diff --check: passed
 ```
 
 ## Remaining Gate
 
-Create one exact candidate commit, run standard Codex and independent
-five-axis review against that exact head, remediate any actionable P1/P2/P3,
-then publish PR/head CI, verify zero unresolved threads, admin squash merge,
-compare candidate and merge trees, pass merged-main CI, and close/archive
+Create a remediated exact candidate commit, rerun standard Codex and independent
+five-axis review against that exact head, remediate any remaining actionable
+P1/P2/P3, then publish PR/head CI, verify zero unresolved threads, admin squash
+merge, compare candidate and merge trees, pass merged-main CI, and close/archive
 HON-224 before advancing HON-225.

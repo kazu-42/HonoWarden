@@ -47,11 +47,16 @@ async function runExport(options) {
   const database = requireValue(options.database, '--database')
   const bucket = requireValue(options.bucket, '--bucket')
   const mode = parseMode(options.mode)
-  rejectRemotePersistence(mode, options)
   const generationManifestSha256 = validateOptionalSha256(
     options.generationManifestSha256,
     '--generation-manifest-sha256',
   )
+  enforceGenerationBoundExportSource({
+    generationManifestSha256,
+    mode,
+    options,
+  })
+  rejectRemotePersistence(mode, options)
   const execute = Boolean(options.execute)
   const objectDiscovery = await resolveExportObjects({
     bucket,
@@ -844,6 +849,38 @@ function rejectRemotePersistence(mode, options) {
   }
 }
 
+function enforceGenerationBoundExportSource({
+  generationManifestSha256,
+  mode,
+  options,
+}) {
+  if (!generationManifestSha256) {
+    return
+  }
+
+  if (mode !== 'local') {
+    throw new Error('--generation-manifest-sha256 requires --mode local')
+  }
+  if (!options.config) {
+    throw new Error('--generation-manifest-sha256 requires --config')
+  }
+  if (!options.persistTo) {
+    throw new Error('--generation-manifest-sha256 requires --persist-to')
+  }
+
+  const configPath = resolve(options.config)
+  const expectedPersistenceRoot = join(
+    dirname(configPath),
+    '.wrangler',
+    'state',
+  )
+  if (resolve(options.persistTo) !== expectedPersistenceRoot) {
+    throw new Error(
+      '--persist-to must equal <config-directory>/.wrangler/state for a generation-bound export',
+    )
+  }
+}
+
 function requireFreshTargetConfirmation(options) {
   if (!options.confirmFreshTarget) {
     throw new Error(
@@ -1112,9 +1149,11 @@ function writeJson(value) {
 
 function printUsage() {
   process.stderr.write(`Usage:
-  node scripts/honowarden-backup.mjs export --out <dir> --database <name> --bucket <name> [--r2-objects <file> | --r2-list] [--r2-prefix <prefix>] [--r2-list-page-size <1-1000>] [--mode local|remote] [--config <file>] [--generation-manifest-sha256 <sha256>] [--execute]
+  node scripts/honowarden-backup.mjs export --out <dir> --database <name> --bucket <name> [--r2-objects <file> | --r2-list] [--r2-prefix <prefix>] [--r2-list-page-size <1-1000>] [--mode local|remote] [--config <file>] [--persist-to <dir>] [--generation-manifest-sha256 <sha256>] [--execute]
   node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--config <file>] [--expected-manifest-sha256 <sha256>] [--expected-generation-manifest-sha256 <sha256>] [--execute --confirm-fresh-target]
   node scripts/honowarden-backup.mjs evidence --from <dir> [--out <file>] [--source-commit <sha>] [--run-url <url>]
+
+Generation-bound export requires --mode local, --config <file>, and --persist-to <config-directory>/.wrangler/state.
 `)
 }
 

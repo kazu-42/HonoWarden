@@ -221,11 +221,14 @@ pnpm backup:export -- \
   --execute
 ```
 
-`--persist-to` alone does not select the D1 export source. The config directory
-and persistence root must have the relationship shown above; otherwise D1 and
-R2 can be read from different local states. `--config` is passed to every
-Wrangler command, while `--persist-to` remains limited to supported local D1
-import and R2 commands.
+`--persist-to` alone does not select the D1 export source. A generation-bound
+export is rejected unless it uses local mode, an explicit `--config`, and an
+explicit `--persist-to` equal to `<config-directory>/.wrangler/state`. This
+prevents D1 and R2 from being read from different local states and prevents a
+remote or ambient source from being labeled as the approved generation. The
+config is passed to every Wrangler command, while `--persist-to` remains limited
+to supported local D1 import and R2 commands. Unbound backups retain their
+existing local and remote behavior.
 
 `--generation-manifest-sha256` adds only
 `credentialGeneration.manifestSha256` to the backup manifest. It is a
