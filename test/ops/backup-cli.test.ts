@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import {
   createServer,
   type IncomingMessage,
@@ -9,11 +9,12 @@ import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const backupScript = join(repoRoot, 'scripts/honowarden-backup.mjs')
+const wranglerBinary = join(repoRoot, 'node_modules', '.bin', 'wrangler')
 const objectOneKey = 'attachments/object-one'
 const objectOneFile = r2FileForKey(objectOneKey)
 
@@ -382,6 +383,243 @@ describe('backup CLI', () => {
     expect(output.commands[1]).toContain(persistDir)
   })
 
+  it('plans a generation-bound local export through an explicit Wrangler config', async () => {
+    const workDir = await fixtureDir('export-generation-binding')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const persistDir = join(workDir, 'persist')
+    const configPath = join(workDir, 'source', 'wrangler.jsonc')
+    const generationManifestSha256 = 'a'.repeat(64)
+    await writeFile(objectList, 'attachments/object-one\n')
+
+    const result = await execFileAsync('node', [
+      backupScript,
+      'export',
+      '--out',
+      outDir,
+      '--database',
+      'honowarden',
+      '--bucket',
+      'honowarden-vault-objects',
+      '--mode',
+      'local',
+      '--config',
+      configPath,
+      '--persist-to',
+      persistDir,
+      '--generation-manifest-sha256',
+      generationManifestSha256,
+      '--r2-objects',
+      objectList,
+    ])
+    const output = JSON.parse(result.stdout) as { commands: string[][] }
+    const manifest = JSON.parse(
+      await readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
+    ) as {
+      credentialGeneration: { manifestSha256: string }
+    }
+
+    expect(manifest.credentialGeneration).toEqual({
+      manifestSha256: generationManifestSha256,
+    })
+    expect(output.commands[0]).toEqual([
+      'wrangler',
+      'd1',
+      'export',
+      'honowarden',
+      '--local',
+      '--output',
+      join(outDir, 'd1.sql'),
+      '--skip-confirmation',
+      '--config',
+      configPath,
+    ])
+    expect(output.commands[1]).toContain('--config')
+    expect(output.commands[1]).toContain(configPath)
+    expect(output.commands[1]).toContain('--persist-to')
+    expect(output.commands[1]).toContain(persistDir)
+  })
+
+  it(
+    'exports real local D1 and R2 state selected by an owned Wrangler config',
+    { timeout: 30_000 },
+    async () => {
+      const workDir = await fixtureDir('export-owned-local-state')
+      const sourceDir = join(workDir, 'source')
+      const persistDir = join(sourceDir, '.wrangler', 'state')
+      const configPath = join(sourceDir, 'wrangler.jsonc')
+      const objectList = join(workDir, 'objects.txt')
+      const objectBodyPath = join(workDir, 'object-body')
+      const outDir = join(workDir, 'backup')
+      const database = 'honowarden-backup-source'
+      const bucket = 'honowarden-backup-objects'
+      const generationManifestSha256 = 'f'.repeat(64)
+      const d1Sentinel = `owned-source-${crypto.randomUUID()}`
+      const objectBody = `owned-r2-${crypto.randomUUID()}`
+      await mkdir(sourceDir, { recursive: true })
+      await writeFile(
+        configPath,
+        JSON.stringify(
+          {
+            name: 'honowarden-backup-source',
+            compatibility_date: '2026-07-21',
+            d1_databases: [
+              {
+                binding: 'DB',
+                database_name: database,
+                database_id: crypto.randomUUID(),
+              },
+            ],
+            r2_buckets: [
+              {
+                binding: 'VAULT_OBJECTS',
+                bucket_name: bucket,
+              },
+            ],
+          },
+          null,
+          2,
+        ),
+      )
+      await writeFile(objectList, `${objectOneKey}\n`)
+      await writeFile(objectBodyPath, objectBody)
+
+      await execFileAsync(wranglerBinary, [
+        'd1',
+        'execute',
+        database,
+        '--local',
+        '--config',
+        configPath,
+        '--persist-to',
+        persistDir,
+        '--command',
+        `CREATE TABLE recovery_probe (id TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO recovery_probe (id, value) VALUES ('final', '${d1Sentinel}');`,
+        '--yes',
+      ])
+      await execFileAsync(wranglerBinary, [
+        'r2',
+        'object',
+        'put',
+        `${bucket}/${objectOneKey}`,
+        '--local',
+        '--config',
+        configPath,
+        '--persist-to',
+        persistDir,
+        '--file',
+        objectBodyPath,
+      ])
+
+      const result = await execFileAsync(
+        'node',
+        [
+          backupScript,
+          'export',
+          '--out',
+          outDir,
+          '--database',
+          database,
+          '--bucket',
+          bucket,
+          '--mode',
+          'local',
+          '--config',
+          configPath,
+          '--persist-to',
+          persistDir,
+          '--generation-manifest-sha256',
+          generationManifestSha256,
+          '--r2-objects',
+          objectList,
+          '--execute',
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${join(repoRoot, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`,
+          },
+        },
+      )
+      const output = JSON.parse(result.stdout) as {
+        executed: boolean
+        audit: { resultStatus: string }
+      }
+      const manifest = JSON.parse(
+        await readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
+      ) as {
+        credentialGeneration: { manifestSha256: string }
+        d1: { file: string; sha256: string }
+        r2: { objects: Array<{ file: string; sha256: string }> }
+      }
+      const d1Body = await readFile(join(outDir, manifest.d1.file), 'utf8')
+      const exportedObjectBody = await readFile(
+        join(outDir, manifest.r2.objects[0]?.file ?? ''),
+        'utf8',
+      )
+
+      expect(output.executed).toBe(true)
+      expect(output.audit.resultStatus).toBe('executed')
+      expect(d1Body).toContain(d1Sentinel)
+      expect(exportedObjectBody).toBe(objectBody)
+      expect(manifest.credentialGeneration.manifestSha256).toBe(
+        generationManifestSha256,
+      )
+      expect(manifest.d1.sha256).toBe(
+        await sha256FilePath(join(outDir, manifest.d1.file)),
+      )
+      expect(manifest.r2.objects[0]?.sha256).toBe(
+        await sha256FilePath(join(outDir, manifest.r2.objects[0]?.file ?? '')),
+      )
+    },
+  )
+
+  it('rejects malformed generation binding digests', async () => {
+    const workDir = await fixtureDir('export-invalid-generation-binding')
+
+    await expect(
+      execFileAsync('node', [
+        backupScript,
+        'export',
+        '--out',
+        join(workDir, 'backup'),
+        '--database',
+        'honowarden',
+        '--bucket',
+        'honowarden-vault-objects',
+        '--generation-manifest-sha256',
+        'not-a-sha256',
+      ]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        '--generation-manifest-sha256 must be a lowercase SHA-256',
+      ),
+    })
+  })
+
+  it('rejects restore-only binding flags during export', async () => {
+    const workDir = await fixtureDir('export-restore-only-binding')
+
+    await expect(
+      execFileAsync('node', [
+        backupScript,
+        'export',
+        '--out',
+        join(workDir, 'backup'),
+        '--database',
+        'honowarden',
+        '--bucket',
+        'honowarden-vault-objects',
+        '--expected-manifest-sha256',
+        'a'.repeat(64),
+      ]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        '--expected-manifest-sha256 is only supported by restore',
+      ),
+    })
+  })
+
   it('plans a local restore from a backup manifest into new resources', async () => {
     const workDir = await fixtureDir('restore')
     const fromDir = join(workDir, 'backup')
@@ -493,6 +731,153 @@ describe('backup CLI', () => {
       stderr: expect.stringContaining('--confirm-fresh-target is required'),
     })
   })
+
+  it('accepts an exact manifest and credential-generation restore binding', async () => {
+    const workDir = await fixtureDir('restore-exact-generation-binding')
+    const fromDir = join(workDir, 'backup')
+    const generationManifestSha256 = 'b'.repeat(64)
+    await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256,
+    })
+    const manifestSha256 = await sha256FilePath(
+      join(fromDir, 'backup-manifest.json'),
+    )
+
+    const result = await execFileAsync('node', [
+      backupScript,
+      'restore',
+      '--from',
+      fromDir,
+      '--expected-manifest-sha256',
+      manifestSha256,
+      '--expected-generation-manifest-sha256',
+      generationManifestSha256,
+    ])
+    const output = JSON.parse(result.stdout) as {
+      executed: boolean
+      manifest: string
+      audit: { manifestId: string }
+    }
+
+    expect(output.executed).toBe(false)
+    expect(output.manifest).toBe(join(fromDir, 'backup-manifest.json'))
+    expect(output.audit.manifestId).toBe(`sha256:${manifestSha256}`)
+  })
+
+  it('rejects export-only generation binding during restore', async () => {
+    const workDir = await fixtureDir('restore-export-only-binding')
+    const fromDir = join(workDir, 'backup')
+    await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+    })
+
+    await expect(
+      execFileAsync('node', [
+        backupScript,
+        'restore',
+        '--from',
+        fromDir,
+        '--generation-manifest-sha256',
+        'a'.repeat(64),
+      ]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        '--generation-manifest-sha256 is only supported by export',
+      ),
+    })
+  })
+
+  it('requires an exact manifest expectation with a generation expectation', async () => {
+    const workDir = await fixtureDir('restore-generation-requires-manifest')
+    const fromDir = join(workDir, 'backup')
+    await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256: 'c'.repeat(64),
+    })
+
+    await expect(
+      execFileAsync('node', [
+        backupScript,
+        'restore',
+        '--from',
+        fromDir,
+        '--expected-generation-manifest-sha256',
+        'c'.repeat(64),
+      ]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        '--expected-generation-manifest-sha256 requires --expected-manifest-sha256',
+      ),
+    })
+  })
+
+  it.each([
+    {
+      label: 'manifest',
+      expectedManifestSha256: '0'.repeat(64),
+      expectedGenerationManifestSha256: 'd'.repeat(64),
+      error: 'Backup manifest SHA-256 mismatch',
+    },
+    {
+      label: 'historical generation',
+      expectedManifestSha256: 'exact',
+      expectedGenerationManifestSha256: 'e'.repeat(64),
+      error: 'Backup credential generation SHA-256 mismatch',
+    },
+  ])(
+    'rejects a $label mismatch before spawning restore commands',
+    async ({
+      label,
+      expectedManifestSha256,
+      expectedGenerationManifestSha256,
+      error,
+    }) => {
+      const workDir = await fixtureDir(
+        `restore-pre-spawn-${label.replaceAll(' ', '-')}`,
+      )
+      const fromDir = join(workDir, 'backup')
+      const generationManifestSha256 = 'd'.repeat(64)
+      await writeSafeBackupFixture(fromDir, {
+        d1Sha256: await sha256('create table users(id text);\n'),
+        objectSha256: await sha256('object-body'),
+        generationManifestSha256,
+      })
+      const exactManifestSha256 = await sha256FilePath(
+        join(fromDir, 'backup-manifest.json'),
+      )
+      const fakeWrangler = await createFakeWrangler(workDir)
+
+      await expect(
+        execFileAsync(
+          'node',
+          [
+            backupScript,
+            'restore',
+            '--from',
+            fromDir,
+            '--execute',
+            '--confirm-fresh-target',
+            '--expected-manifest-sha256',
+            expectedManifestSha256 === 'exact'
+              ? exactManifestSha256
+              : expectedManifestSha256,
+            '--expected-generation-manifest-sha256',
+            expectedGenerationManifestSha256,
+          ],
+          { env: fakeWrangler.env },
+        ),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining(error) })
+      await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject(
+        {
+          code: 'ENOENT',
+        },
+      )
+    },
+  )
 
   it('rejects restore execution when manifest checksums do not match files', async () => {
     const workDir = await fixtureDir('restore-checksum')
@@ -674,6 +1059,57 @@ describe('backup CLI', () => {
     expect(result.stdout).not.toContain(objectBody)
   })
 
+  it('emits only the credential-generation digest from a bound manifest', async () => {
+    const workDir = await fixtureDir('evidence-generation-binding')
+    const fromDir = join(workDir, 'backup')
+    const generationManifestSha256 = '7'.repeat(64)
+    await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256,
+    })
+
+    const result = await execFileAsync('node', [
+      backupScript,
+      'evidence',
+      '--from',
+      fromDir,
+    ])
+    const output = JSON.parse(result.stdout) as {
+      credentialGeneration: { manifestSha256: string }
+    }
+
+    expect(output.credentialGeneration).toEqual({
+      manifestSha256: generationManifestSha256,
+    })
+  })
+
+  it('rejects unexpected credential-generation fields before evidence output', async () => {
+    const workDir = await fixtureDir('evidence-generation-extra-field')
+    const fromDir = join(workDir, 'backup')
+    const manifestPath = join(fromDir, 'backup-manifest.json')
+    const syntheticSecret = `synthetic-secret-${crypto.randomUUID()}`
+    await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256: '8'.repeat(64),
+    })
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+      credentialGeneration: Record<string, string>
+    }
+    manifest.credentialGeneration.unexpected = syntheticSecret
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
+
+    await expect(
+      execFileAsync('node', [backupScript, 'evidence', '--from', fromDir]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        'Invalid backup manifest credential generation',
+      ),
+      stdout: expect.not.stringContaining(syntheticSecret),
+    })
+  })
+
   it('requires checksum-bearing manifests before emitting executed evidence', async () => {
     const workDir = await fixtureDir('evidence-missing-checksum')
     const fromDir = join(workDir, 'backup')
@@ -718,19 +1154,41 @@ describe('backup CLI', () => {
       stderr: expect.stringContaining('Backup manifest missing checksum'),
     })
   })
+
+  it('documents generation-bound local export and pre-spawn restore gates', async () => {
+    const runbook = await readFile(
+      join(repoRoot, 'docs/operations/backup-restore.md'),
+      'utf8',
+    )
+
+    expect(runbook).toContain('--generation-manifest-sha256')
+    expect(runbook).toContain('--expected-manifest-sha256')
+    expect(runbook).toContain('--expected-generation-manifest-sha256')
+    expect(runbook).toContain('--config')
+    expect(runbook).toContain('.wrangler/state')
+    expect(runbook).toMatch(/before any restore command\s+is constructed/)
+    expect(runbook).toContain('Child Wrangler output is routed to stderr')
+  })
 })
 
 async function fixtureDir(label: string): Promise<string> {
   const root = fileURLToPath(new URL('../.tmp/', import.meta.url).toString())
   const dir = join(root, `${label}-${crypto.randomUUID()}`)
-  await mkdir(dir, { recursive: true })
+  await mkdir(root, { recursive: true, mode: 0o700 })
+  await chmod(root, 0o700)
+  await mkdir(dir, { recursive: false, mode: 0o700 })
+  onTestFinished(() => rm(dir, { recursive: true, force: true }))
 
   return dir
 }
 
 async function writeSafeBackupFixture(
   fromDir: string,
-  hashes: { d1Sha256: string; objectSha256: string },
+  hashes: {
+    d1Sha256: string
+    objectSha256: string
+    generationManifestSha256?: string
+  },
 ): Promise<void> {
   await mkdir(join(fromDir, 'r2'), { recursive: true })
   await writeFile(join(fromDir, 'd1.sql'), 'create table users(id text);\n')
@@ -744,6 +1202,13 @@ async function writeSafeBackupFixture(
         mode: 'local',
         database: 'honowarden',
         bucket: 'honowarden-vault-objects',
+        ...(hashes.generationManifestSha256
+          ? {
+              credentialGeneration: {
+                manifestSha256: hashes.generationManifestSha256,
+              },
+            }
+          : {}),
         d1: {
           file: 'd1.sql',
           sha256: hashes.d1Sha256,
@@ -777,6 +1242,32 @@ async function sha256(value: string): Promise<string> {
   const { createHash } = await import('node:crypto')
 
   return createHash('sha256').update(value).digest('hex')
+}
+
+async function sha256FilePath(path: string): Promise<string> {
+  return sha256(await readFile(path, 'utf8'))
+}
+
+async function createFakeWrangler(
+  workDir: string,
+): Promise<{ marker: string; env: NodeJS.ProcessEnv }> {
+  const binDir = join(workDir, 'bin')
+  const marker = join(workDir, 'wrangler-spawned')
+  const executable = join(binDir, 'wrangler')
+  await mkdir(binDir, { recursive: true })
+  await writeFile(
+    executable,
+    `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(process.env.WRANGLER_MARKER, 'spawned')\nprocess.exit(97)\n`,
+    { mode: 0o700 },
+  )
+  return {
+    marker,
+    env: {
+      ...process.env,
+      PATH: `${binDir}:${process.env.PATH ?? ''}`,
+      WRANGLER_MARKER: marker,
+    },
+  }
 }
 
 async function startS3ListServer(

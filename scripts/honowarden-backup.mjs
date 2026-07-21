@@ -42,11 +42,16 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 async function runExport(options) {
+  rejectUnsupportedBindingOptions('export', options)
   const outDir = resolveRequiredPath(options.out, '--out')
   const database = requireValue(options.database, '--database')
   const bucket = requireValue(options.bucket, '--bucket')
   const mode = parseMode(options.mode)
   rejectRemotePersistence(mode, options)
+  const generationManifestSha256 = validateOptionalSha256(
+    options.generationManifestSha256,
+    '--generation-manifest-sha256',
+  )
   const execute = Boolean(options.execute)
   const objectDiscovery = await resolveExportObjects({
     bucket,
@@ -77,6 +82,13 @@ async function runExport(options) {
     mode,
     database,
     bucket,
+    ...(generationManifestSha256
+      ? {
+          credentialGeneration: {
+            manifestSha256: generationManifestSha256,
+          },
+        }
+      : {}),
     d1: {
       file: d1ExportFileName,
     },
@@ -121,8 +133,28 @@ async function runExport(options) {
 }
 
 async function runRestore(options) {
+  rejectUnsupportedBindingOptions('restore', options)
   const fromDir = resolveRequiredPath(options.from, '--from')
-  const manifest = await readManifest(fromDir)
+  const expectedManifestSha256 = validateOptionalSha256(
+    options.expectedManifestSha256,
+    '--expected-manifest-sha256',
+  )
+  const expectedGenerationManifestSha256 = validateOptionalSha256(
+    options.expectedGenerationManifestSha256,
+    '--expected-generation-manifest-sha256',
+  )
+  if (expectedGenerationManifestSha256 && !expectedManifestSha256) {
+    throw new Error(
+      '--expected-generation-manifest-sha256 requires --expected-manifest-sha256',
+    )
+  }
+  const { manifest, manifestSha256 } = await readManifestWithIdentity(fromDir)
+  verifyExpectedRestoreBinding({
+    manifest,
+    manifestSha256,
+    expectedManifestSha256,
+    expectedGenerationManifestSha256,
+  })
   const database = options.database ?? manifest.database
   const bucket = options.bucket ?? manifest.bucket
   const mode = parseMode(options.mode ?? manifest.mode)
@@ -154,6 +186,7 @@ async function runRestore(options) {
     audit: await buildBackupAuditPacket({
       name: 'backup.restore',
       manifestPath,
+      manifestSha256,
       resultStatus: execute ? 'executed' : 'planned',
     }),
     executed: execute,
@@ -163,14 +196,14 @@ async function runRestore(options) {
 }
 
 async function runEvidence(options) {
+  rejectUnsupportedBindingOptions('evidence', options)
   const fromDir = resolveRequiredPath(options.from, '--from')
   const outPath = options.out ? resolve(options.out) : undefined
   const sourceCommit = validateOptionalSourceCommit(options.sourceCommit)
   const runUrl = validateOptionalRunUrl(options.runUrl)
-  const manifest = await readManifest(fromDir)
+  const { manifest, manifestSha256 } = await readManifestWithIdentity(fromDir)
   await verifyBackupFiles(fromDir, manifest)
 
-  const manifestPath = join(fromDir, manifestFileName)
   const d1Path = join(fromDir, manifest.d1.file)
   const d1Stats = await stat(d1Path)
   const objectEvidence = await buildR2Evidence(fromDir, manifest)
@@ -183,7 +216,12 @@ async function runEvidence(options) {
     runUrl,
     mode: manifest.mode,
     createdAt: manifest.createdAt,
-    manifestId: `sha256:${await sha256File(manifestPath)}`,
+    manifestId: `sha256:${manifestSha256}`,
+    credentialGeneration: manifest.credentialGeneration
+      ? {
+          manifestSha256: manifest.credentialGeneration.manifestSha256,
+        }
+      : null,
     d1: {
       sha256: manifest.d1.sha256,
       sizeBytes: d1Stats.size,
@@ -225,11 +263,16 @@ async function buildR2Evidence(fromDir, manifest) {
   }
 }
 
-async function buildBackupAuditPacket({ name, manifestPath, resultStatus }) {
+async function buildBackupAuditPacket({
+  name,
+  manifestPath,
+  manifestSha256,
+  resultStatus,
+}) {
   return {
     name,
     outcome: 'success',
-    manifestId: `sha256:${await sha256File(manifestPath)}`,
+    manifestId: `sha256:${manifestSha256 ?? (await sha256File(manifestPath))}`,
     resultStatus,
   }
 }
@@ -245,6 +288,7 @@ function buildD1ExportCommand({ database, d1File, mode, options }) {
     d1File,
     '--skip-confirmation',
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
   ]
 }
 
@@ -259,6 +303,7 @@ function buildD1ImportCommand({ database, d1File, mode, options }) {
     d1File,
     '--yes',
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
     ...localPersistenceFlags(options),
   ]
 }
@@ -274,6 +319,7 @@ function buildR2GetCommand({ bucket, key, file, mode, options }) {
     '--file',
     file,
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
     ...localPersistenceFlags(options),
   ]
 }
@@ -289,6 +335,7 @@ function buildR2PutCommand({ bucket, key, file, mode, options }) {
     '--file',
     file,
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
     ...localPersistenceFlags(options),
   ]
 }
@@ -301,6 +348,10 @@ function wranglerEnvFlags(options) {
   }
 
   return flags
+}
+
+function wranglerConfigFlags(options) {
+  return options.config ? ['--config', resolve(options.config)] : []
 }
 
 function localPersistenceFlags(options) {
@@ -322,7 +373,7 @@ async function runCommands(commands) {
 function runCommand(command) {
   return new Promise((resolveCommand, rejectCommand) => {
     const child = spawn(command[0], command.slice(1), {
-      stdio: 'inherit',
+      stdio: ['inherit', process.stderr, process.stderr],
       shell: process.platform === 'win32',
     })
 
@@ -668,9 +719,10 @@ async function writeManifest(outDir, manifest) {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
-async function readManifest(fromDir) {
+async function readManifestWithIdentity(fromDir) {
   const manifestPath = join(fromDir, manifestFileName)
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  const contents = await readFile(manifestPath)
+  const manifest = JSON.parse(contents.toString('utf8'))
 
   if (
     manifest?.schemaVersion !== manifestSchemaVersion ||
@@ -681,6 +733,20 @@ async function readManifest(fromDir) {
     typeof manifest.r2.objectListRequired !== 'boolean'
   ) {
     throw new Error(`Invalid backup manifest: ${manifestPath}`)
+  }
+
+  if (
+    manifest.credentialGeneration !== undefined &&
+    (!manifest.credentialGeneration ||
+      typeof manifest.credentialGeneration !== 'object' ||
+      Array.isArray(manifest.credentialGeneration) ||
+      Object.keys(manifest.credentialGeneration).length !== 1 ||
+      !Object.hasOwn(manifest.credentialGeneration, 'manifestSha256') ||
+      !isSha256(manifest.credentialGeneration.manifestSha256))
+  ) {
+    throw new Error(
+      `Invalid backup manifest credential generation: ${manifestPath}`,
+    )
   }
 
   assertSafeManifestPath(manifest.d1.file, 'd1.file')
@@ -699,7 +765,10 @@ async function readManifest(fromDir) {
     assertManifestObjectFileMatchesKey(object, index)
   }
 
-  return manifest
+  return {
+    manifest,
+    manifestSha256: sha256Hex(contents),
+  }
 }
 
 function objectFileName(key) {
@@ -738,7 +807,11 @@ function parseOptions(args) {
       case '--r2-account-id':
       case '--r2-region':
       case '--env':
+      case '--config':
       case '--persist-to':
+      case '--generation-manifest-sha256':
+      case '--expected-manifest-sha256':
+      case '--expected-generation-manifest-sha256':
       case '--source-commit':
       case '--run-url': {
         const value = args[index + 1]
@@ -808,6 +881,72 @@ function validateOptionalRunUrl(value) {
   }
 
   return url.toString()
+}
+
+function validateOptionalSha256(value, flagName) {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (!isSha256(value)) {
+    throw new Error(`${flagName} must be a lowercase SHA-256`)
+  }
+
+  return value
+}
+
+function rejectUnsupportedBindingOptions(command, options) {
+  const ownership = [
+    {
+      option: 'generationManifestSha256',
+      flag: '--generation-manifest-sha256',
+      command: 'export',
+    },
+    {
+      option: 'expectedManifestSha256',
+      flag: '--expected-manifest-sha256',
+      command: 'restore',
+    },
+    {
+      option: 'expectedGenerationManifestSha256',
+      flag: '--expected-generation-manifest-sha256',
+      command: 'restore',
+    },
+  ]
+
+  for (const owner of ownership) {
+    if (options[owner.option] !== undefined && command !== owner.command) {
+      throw new Error(`${owner.flag} is only supported by ${owner.command}`)
+    }
+  }
+}
+
+function verifyExpectedRestoreBinding({
+  manifest,
+  manifestSha256,
+  expectedManifestSha256,
+  expectedGenerationManifestSha256,
+}) {
+  if (expectedManifestSha256 && manifestSha256 !== expectedManifestSha256) {
+    throw new Error(
+      `Backup manifest SHA-256 mismatch: expected ${expectedManifestSha256}, received ${manifestSha256}`,
+    )
+  }
+
+  if (!expectedGenerationManifestSha256) {
+    return
+  }
+
+  const actualGenerationManifestSha256 =
+    manifest.credentialGeneration?.manifestSha256
+  if (!actualGenerationManifestSha256) {
+    throw new Error('Backup manifest is missing credential generation binding')
+  }
+  if (actualGenerationManifestSha256 !== expectedGenerationManifestSha256) {
+    throw new Error(
+      `Backup credential generation SHA-256 mismatch: expected ${expectedGenerationManifestSha256}, received ${actualGenerationManifestSha256}`,
+    )
+  }
 }
 
 function modeFlag(mode) {
@@ -973,8 +1112,8 @@ function writeJson(value) {
 
 function printUsage() {
   process.stderr.write(`Usage:
-  node scripts/honowarden-backup.mjs export --out <dir> --database <name> --bucket <name> [--r2-objects <file> | --r2-list] [--r2-prefix <prefix>] [--r2-list-page-size <1-1000>] [--mode local|remote] [--execute]
-  node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--execute --confirm-fresh-target]
+  node scripts/honowarden-backup.mjs export --out <dir> --database <name> --bucket <name> [--r2-objects <file> | --r2-list] [--r2-prefix <prefix>] [--r2-list-page-size <1-1000>] [--mode local|remote] [--config <file>] [--generation-manifest-sha256 <sha256>] [--execute]
+  node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--config <file>] [--expected-manifest-sha256 <sha256>] [--expected-generation-manifest-sha256 <sha256>] [--execute --confirm-fresh-target]
   node scripts/honowarden-backup.mjs evidence --from <dir> [--out <file>] [--source-commit <sha>] [--run-url <url>]
 `)
 }

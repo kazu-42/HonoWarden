@@ -76,6 +76,23 @@ imply staging or production activation.
    head, close/archive the hierarchy, and close HON-160 only after main
    readback.
 
+`RECOVERY-1` is an integration parent, not one implementation-sized change.
+It is serialized into three reviewable subpackets:
+
+1. `RECOVERY-1A`: bind a local backup to the approved final credential
+   generation and reject manifest or generation drift before restore commands
+   execute.
+2. `RECOVERY-1B`: restore that exact backup into owned fresh persistence,
+   compare D1/R2 contents, reject stale credentials and sessions, and complete
+   current official-client decrypt readback.
+3. `RECOVERY-1C`: make all credential writers explicitly default-off against
+   the same restored state, prove disabled requests are D1-free no-ops, then
+   complete exactly one forward credential generation.
+
+Each subpacket has its own focused tests, PR/head CI, exact-head reviews,
+merged-main CI, and Linear closeout. `RECOVERY-1` closes only after all three
+subpackets and the integrated recovery run pass.
+
 ## Design Decisions
 
 - Official release assets are downloaded by exact tag, size, and SHA-256.

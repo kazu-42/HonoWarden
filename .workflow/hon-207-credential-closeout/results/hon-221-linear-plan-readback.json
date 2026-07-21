@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-07-21T04:43:40.259Z",
+  "phase": "apply",
+  "status": "exact",
+  "activeIssueCount": 99,
+  "parent": {
+    "id": "7f868193-8232-4d35-b905-f7c73515f889",
+    "identifier": "HON-221",
+    "state": "In Progress",
+    "url": "https://linear.app/honowarden/issue/HON-221/account-a2f3-backup-restore-disable-and-forward-recovery"
+  },
+  "labels": [
+    "agent:codex",
+    "area:auth",
+    "area:ops",
+    "evidence:required",
+    "risk:security",
+    "type:feature"
+  ],
+  "issues": [
+    {
+      "key": "RECOVERY-1A",
+      "id": "63ed0dfd-f79a-4a13-894a-5cdda4db22b4",
+      "identifier": "HON-224",
+      "state": "In Progress",
+      "url": "https://linear.app/honowarden/issue/HON-224/account-a2f3a-generation-bound-local-backup-contract",
+      "descriptionBytes": 1416,
+      "descriptionSha256": "ee3e5052fa91ade37cd7ce023e19bf373e78aac3d8b6b3affeb244f51a912edc",
+      "checksPassed": 9
+    },
+    {
+      "key": "RECOVERY-1B",
+      "id": "ffa1328f-bde6-4e78-9fbe-0c1c015b8ece",
+      "identifier": "HON-225",
+      "state": "Todo",
+      "url": "https://linear.app/honowarden/issue/HON-225/account-a2f3b-fresh-restore-and-stale-generation-rejection",
+      "descriptionBytes": 1482,
+      "descriptionSha256": "0d173b213ec9b93ec8f32a211020ffd50ac6dca056932f24c49b242c8e04eecf",
+      "checksPassed": 9
+    },
+    {
+      "key": "RECOVERY-1C",
+      "id": "60b56c3c-9ad1-459b-a961-5b6b5ed0b9de",
+      "identifier": "HON-226",
+      "state": "Todo",
+      "url": "https://linear.app/honowarden/issue/HON-226/account-a2f3c-default-off-writers-and-forward-recovery",
+      "descriptionBytes": 1515,
+      "descriptionSha256": "4482a3e85024deb7072d3b77d809ff0b3057c88366637612243c44102b68316a",
+      "checksPassed": 9
+    }
+  ],
+  "relations": [
+    {
+      "id": "f83782a8-95f7-4c64-bb8d-7e478ba34634",
+      "type": "blocks",
+      "source": "HON-224",
+      "target": "HON-225",
+      "exact": true
+    },
+    {
+      "id": "1fdfaf8a-a931-43b6-92c2-fccab7b5a9a6",
+      "type": "blocks",
+      "source": "HON-225",
+      "target": "HON-226",
+      "exact": true
+    }
+  ],
+  "managedCheckpoint": {
+    "id": "77d93627-2ae0-44d0-8e85-69b82715dfee",
+    "updatedAt": "2026-07-21T04:43:37.613Z",
+    "bytes": 1390,
+    "sha256": "97e1e2d64cec44811af3fa8bf5ffffb532dcc08a458f0879231bb6b89fdad20b"
+  },
+  "errors": []
+}

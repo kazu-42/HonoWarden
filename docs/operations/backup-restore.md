@@ -39,13 +39,18 @@ and `executed` only after `--execute` commands complete. The audit packet does
 not include database names, bucket names, object keys, command arguments, or
 backup file contents.
 
+Stdout remains one machine-readable JSON document in both planned and executed
+mode. Child Wrangler output is routed to stderr so progress banners and command
+diagnostics cannot corrupt the final audit JSON. A non-zero child exit still
+fails the wrapper loudly and suppresses a false success packet.
+
 ## What The Backup Contains
 
 The backup directory contains:
 
 - `backup-manifest.json`: schema version, source resource names, object list
-  source, object list, planned commands, and file checksums after an executed
-  export
+  source, object list, planned commands, optional credential-generation
+  manifest SHA-256, and file checksums after an executed export
 - `d1.sql`: D1 SQL export
 - `r2/`: object files named by base64url-encoded object keys
 
@@ -101,7 +106,7 @@ partial writes and can be retried after the underlying D1 issue is resolved.
 ## R2 Object Discovery
 
 Wrangler's `r2 object get` and `put` commands operate on a single object path.
-Wrangler 4.107 does not expose an `r2 object list` command, so the wrapper has
+Wrangler 4.112 does not expose an `r2 object list` command, so the wrapper has
 two object discovery modes:
 
 1. `--r2-objects <file>` for local/offline drills with a reviewed object key
@@ -193,9 +198,40 @@ After an executed export, the script rewrites the manifest with SHA-256 hashes
 for `d1.sql` and each listed R2 object file. Restore execution requires these
 hashes.
 
-Wrangler 4.107 accepts `--persist-to` for `d1 execute` and `r2 object`, but not
-for `d1 export`. The wrapper therefore does not pass `--persist-to` to D1 export.
-If a future Wrangler version adds support, update tests before changing this.
+Wrangler 4.112 accepts `--persist-to` for `d1 execute` and `r2 object`, but does
+not accept it for `d1 export`. The wrapper therefore does not pass
+`--persist-to` to D1 export. Instead, local D1 export resolves its state
+relative to the selected `--config` file. To export one exact isolated source,
+put an owned temporary `wrangler.jsonc` directly under the source root and use
+that root's `.wrangler/state` for commands that accept `--persist-to`:
+
+```sh
+SOURCE_ROOT=test/.tmp/credential-lifecycle/source
+GENERATION_MANIFEST_SHA256=<credential-generation-manifest-sha256>
+
+pnpm backup:export -- \
+  --out backups/final-generation \
+  --database honowarden \
+  --bucket honowarden-vault-objects \
+  --mode local \
+  --config "$SOURCE_ROOT/wrangler.jsonc" \
+  --persist-to "$SOURCE_ROOT/.wrangler/state" \
+  --generation-manifest-sha256 "$GENERATION_MANIFEST_SHA256" \
+  --r2-objects object-keys.txt \
+  --execute
+```
+
+`--persist-to` alone does not select the D1 export source. The config directory
+and persistence root must have the relationship shown above; otherwise D1 and
+R2 can be read from different local states. `--config` is passed to every
+Wrangler command, while `--persist-to` remains limited to supported local D1
+import and R2 commands.
+
+`--generation-manifest-sha256` adds only
+`credentialGeneration.manifestSha256` to the backup manifest. It is a
+redaction-safe digest, not a password, token, key, ciphertext, vault value, or
+client profile. Omitting the flag preserves the existing unbound backup schema
+and scheduled-backup behavior.
 
 ## Remote Backup
 
@@ -281,10 +317,10 @@ pnpm backup:evidence -- \
 ```
 
 The evidence command verifies manifest checksums before emitting a JSON packet.
-It records only aggregate fields such as manifest id, D1 SQL checksum and byte
-size, R2 object count, R2 object digest id, and total R2 byte size. It does not
-emit database names, bucket names, object keys, SQL contents, object bodies, or
-secret values.
+It records only aggregate fields such as manifest id, optional credential
+generation manifest digest, D1 SQL checksum and byte size, R2 object count, R2
+object digest id, and total R2 byte size. It does not emit database names,
+bucket names, object keys, SQL contents, object bodies, or secret values.
 
 Failure handling:
 
@@ -320,6 +356,27 @@ pnpm backup:restore -- \
   --mode local
 ```
 
+Credential recovery must additionally pin both the exact executed backup
+manifest and the credential-generation manifest recorded during export:
+
+```sh
+MANIFEST_SHA256=<backup-manifest-sha256>
+GENERATION_MANIFEST_SHA256=<credential-generation-manifest-sha256>
+
+pnpm backup:restore -- \
+  --from backups/final-generation \
+  --database honowarden-restore \
+  --bucket honowarden-restore-vault-objects \
+  --mode local \
+  --expected-manifest-sha256 "$MANIFEST_SHA256" \
+  --expected-generation-manifest-sha256 "$GENERATION_MANIFEST_SHA256"
+```
+
+The generation expectation is accepted only together with an exact manifest
+expectation. A generic unbound backup remains restorable when neither option is
+provided. An exact manifest expectation may be used by itself for an unbound
+backup.
+
 Execute after creating fresh target resources and reviewing the plan:
 
 ```sh
@@ -334,6 +391,9 @@ pnpm backup:restore -- \
 
 Before executing any Wrangler command, restore checks:
 
+- the raw manifest bytes match `--expected-manifest-sha256`, when provided
+- `credentialGeneration.manifestSha256` matches
+  `--expected-generation-manifest-sha256`, when provided
 - manifest schema version and required fields
 - manifest file paths are relative and cannot escape the backup directory
 - R2 object files stay under `r2/`
@@ -341,6 +401,12 @@ Before executing any Wrangler command, restore checks:
   object keys
 - every required file exists
 - every required SHA-256 hash exists and matches the local file
+
+Manifest identity and generation binding are read and hashed from the same byte
+buffer. Both checks run in dry-run and execute modes before any restore command
+is constructed, so a mismatched or historical source cannot start D1 import or
+R2 upload. File-content checks continue to run immediately before command spawn
+in `--execute` mode.
 
 ## Recovery And Rollback
 
