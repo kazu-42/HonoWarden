@@ -41,6 +41,10 @@ Linear issue: HON-224
 - The bound manifest is written only after every export command succeeds and
   all D1/R2 checksums have been derived. A failed bound export leaves no new
   manifest that can be mistaken for a complete recovery artifact.
+- Restored the exact exported D1 SQL into a private temporary validation state
+  and required the explicit inventory to cover every
+  `cipher_attachments.object_key` before any R2 download. The temporary state is
+  removed on success or failure and is never included in the artifact.
 - Rejected export-only or restore-only binding flags when used on the wrong
   command instead of silently ignoring an operator mistake.
 - Kept stdout as one machine-readable JSON document during execute mode by
@@ -89,6 +93,13 @@ Linear issue: HON-224
 8. A local failure-mode pass found that reusing an output could preserve an old
    bound manifest if a replacement export failed. A regression now proves
    non-empty output is rejected before Wrangler spawn and remains unchanged.
+9. Exact-head standard review then reproduced an empty or incomplete explicit
+   inventory producing a valid bound manifest while exported D1 still
+   referenced a missing attachment body. The wrapper now restores the exact D1
+   export into isolated validation persistence, queries every attachment key,
+   and rejects missing inventory coverage after D1 export but before any R2 get
+   or bound manifest write. A matching real Wrangler export and a verified-empty
+   D1/inventory pair both pass.
 
 ## Real Local Artifact
 
@@ -98,14 +109,15 @@ executed backup through the public CLI.
 
 | Evidence                           | Readback                                                           |
 | ---------------------------------- | ------------------------------------------------------------------ |
-| Backup manifest SHA-256            | `7a256fb498e6f070ecf3c53ed820805b05ce0346350fbe335d4cd626cad17afb` |
+| Backup manifest SHA-256            | `121487bf3381491f9da76a44ccda0b6d23d364fc90a82296ff192229fd8d2a2a` |
 | Lifecycle manifest SHA-256         | `ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` |
-| Derived source-state SHA-256       | `f5609ee50f79b4cae682b7ba1141a1f2f5175b06bae814991b435e126afdaee8` |
-| Derived generation-binding SHA-256 | `1c07fcc7a7f5b1ae4fba836bd573f6eaa981a51f9f6012cf518d411f323c63bc` |
-| D1 SQL SHA-256                     | `ad6ad64216220f56abe6a32f6a8911e64c408f45f866d7d8caf11d1b22abeb86` |
+| Derived source-state SHA-256       | `36656911b1e60063c40722c69fc2cc6aff1c88fae136e5345dd4c7d556405b85` |
+| Derived generation-binding SHA-256 | `9f1b3310acdd0aa3ff9ecc25574b696bd9d9ce8799cca184509449b03c1512af` |
+| D1 SQL SHA-256                     | `f9c072e48473c25ce9bf476661757f3a8662df4b2bc12d6ca06a6d932bb4c2e6` |
 | R2 object count                    | 1                                                                  |
-| R2 body SHA-256                    | `b1f1eccf48844dd5943eb8882bc88b657d19e9063d8fd69bb310daece4b7833b` |
+| R2 body SHA-256                    | `077d89133030adcc7d4adc367f9bae74b5387bbae4657b0639c9e5b84bdda7d4` |
 | Stdout JSON                        | parsed successfully; executed                                      |
+| Inventory validation state         | removed                                                            |
 | Remote resources                   | none                                                               |
 
 The repeated `f` generation digest is an explicit synthetic test value, not a
@@ -114,15 +126,18 @@ real credential or production manifest.
 ## Verification
 
 ```text
-backup CLI focused: 32 passed
-backup + scheduled workflow impact: 36 passed
-backup + credential lifecycle combined: 50 passed
+backup CLI focused: 34 passed
+backup + scheduled workflow impact: 38 passed
+backup + credential lifecycle combined: 52 passed
 real local D1/R2 source export: passed
 remote / ambient / split / omitted-R2 / dry-run / reused-output bound exports: rejected before spawn
+incomplete D1-referenced R2 inventory: rejected after D1 export, before R2 get or manifest write
+verified-empty D1 attachment set and explicit inventory: passed
+temporary D1 inventory-validation persistence: removed on success and failure
 same source and lifecycle digest: stable derived binding
 changed D1 source: different binding; old expectation rejected before spawn
 manifest/history mismatch Wrangler spawns: 0
-full suite: 99 files, 1,282 tests passed
+full suite: 99 files, 1,284 tests passed
 typecheck / ESLint / Prettier: passed
 compatibility: 105 passed
 brand scan: passed

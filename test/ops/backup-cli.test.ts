@@ -530,6 +530,120 @@ describe('backup CLI', () => {
     ).resolves.toBe(staleManifest)
   })
 
+  it('rejects an R2 inventory that omits a D1 attachment reference', async () => {
+    const workDir = await fixtureDir('export-generation-incomplete-inventory')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createExportingFakeWrangler(
+      workDir,
+      "CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE); INSERT INTO cipher_attachments VALUES ('attachments/missing-body');\n",
+      ['attachments/missing-body'],
+    )
+    await mkdir(sourceDir, { recursive: true })
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, `${objectOneKey}\n`)
+
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          backupScript,
+          'export',
+          '--out',
+          outDir,
+          '--database',
+          'honowarden',
+          '--bucket',
+          'honowarden-vault-objects',
+          '--mode',
+          'local',
+          '--config',
+          configPath,
+          '--persist-to',
+          persistDir,
+          '--generation-manifest-sha256',
+          'a'.repeat(64),
+          '--r2-objects',
+          objectList,
+          '--execute',
+        ],
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        'Generation-bound R2 inventory is missing 1 D1 attachment object',
+      ),
+    })
+    await expect(readFile(fakeWrangler.operations, 'utf8')).resolves.toBe(
+      'd1 export\nd1 validation import\nd1 validation query\n',
+    )
+    await expect(
+      readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('accepts an empty R2 inventory when exported D1 has no attachment references', async () => {
+    const workDir = await fixtureDir('export-generation-empty-inventory')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createExportingFakeWrangler(
+      workDir,
+      'CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE);\n',
+      [],
+    )
+    await mkdir(sourceDir, { recursive: true })
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, '')
+
+    const result = await execFileAsync(
+      'node',
+      [
+        backupScript,
+        'export',
+        '--out',
+        outDir,
+        '--database',
+        'honowarden',
+        '--bucket',
+        'honowarden-vault-objects',
+        '--mode',
+        'local',
+        '--config',
+        configPath,
+        '--persist-to',
+        persistDir,
+        '--generation-manifest-sha256',
+        'a'.repeat(64),
+        '--r2-objects',
+        objectList,
+        '--execute',
+      ],
+      { env: fakeWrangler.env },
+    )
+    const output = JSON.parse(result.stdout) as { executed: boolean }
+    const manifest = JSON.parse(
+      await readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
+    ) as {
+      credentialGeneration: CredentialGenerationBinding
+      r2: { objects: unknown[] }
+    }
+
+    expect(output.executed).toBe(true)
+    expect(manifest.r2.objects).toEqual([])
+    expect(manifest.credentialGeneration.manifestSha256).toMatch(
+      /^[a-f0-9]{64}$/,
+    )
+    await expect(readFile(fakeWrangler.operations, 'utf8')).resolves.toBe(
+      'd1 export\nd1 validation import\nd1 validation query\n',
+    )
+  })
+
   it.each([
     {
       name: 'remote mode',
@@ -661,7 +775,7 @@ describe('backup CLI', () => {
         '--persist-to',
         persistDir,
         '--command',
-        `CREATE TABLE recovery_probe (id TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO recovery_probe (id, value) VALUES ('final', '${d1Sentinel}');`,
+        `CREATE TABLE recovery_probe (id TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO recovery_probe (id, value) VALUES ('final', '${d1Sentinel}'); CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE); INSERT INTO cipher_attachments (object_key) VALUES ('${objectOneKey}');`,
         '--yes',
       ])
       await execFileAsync(wranglerBinary, [
@@ -1426,6 +1540,7 @@ describe('backup CLI', () => {
     expect(runbook).toContain('honowarden.credential-generation-binding.v1')
     expect(runbook).toContain('execute-only')
     expect(runbook).toContain('explicit `--r2-objects` inventory')
+    expect(runbook).toContain('cipher_attachments.object_key')
     expect(runbook).toMatch(/before any restore command\s+is constructed/)
     expect(runbook).toContain('Child Wrangler output is routed to stderr')
   })
@@ -1567,6 +1682,64 @@ async function createFakeWrangler(
       ...process.env,
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
       WRANGLER_MARKER: marker,
+    },
+  }
+}
+
+async function createExportingFakeWrangler(
+  workDir: string,
+  d1ExportSql: string,
+  d1AttachmentKeys: string[],
+): Promise<{
+  operations: string
+  env: NodeJS.ProcessEnv
+}> {
+  const binDir = join(workDir, 'exporting-bin')
+  const operations = join(workDir, 'wrangler-operations')
+  const executable = join(binDir, 'wrangler')
+  await mkdir(binDir, { recursive: true })
+  await writeFile(
+    executable,
+    `#!/usr/bin/env node
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
+const args = process.argv.slice(2)
+if (args[0] === 'd1' && args[1] === 'export') {
+  const output = args[args.indexOf('--output') + 1]
+  mkdirSync(dirname(output), { recursive: true })
+  writeFileSync(output, process.env.D1_EXPORT_SQL)
+  appendFileSync(process.env.WRANGLER_OPERATIONS, 'd1 export\\n')
+  process.exit(0)
+}
+if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--file')) {
+  appendFileSync(process.env.WRANGLER_OPERATIONS, 'd1 validation import\\n')
+  process.exit(0)
+}
+if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--command')) {
+  const keys = JSON.parse(process.env.D1_ATTACHMENT_KEYS)
+  process.stdout.write(JSON.stringify([{ results: keys.map((objectKey) => ({ objectKey })) }]))
+  appendFileSync(process.env.WRANGLER_OPERATIONS, 'd1 validation query\\n')
+  process.exit(0)
+}
+if (args[0] === 'r2' && args[1] === 'object' && args[2] === 'get') {
+  const output = args[args.indexOf('--file') + 1]
+  mkdirSync(dirname(output), { recursive: true })
+  writeFileSync(output, 'synthetic-r2-body')
+  appendFileSync(process.env.WRANGLER_OPERATIONS, 'r2 object get\\n')
+  process.exit(0)
+}
+process.exit(98)
+`,
+    { mode: 0o700 },
+  )
+  return {
+    operations,
+    env: {
+      ...process.env,
+      D1_ATTACHMENT_KEYS: JSON.stringify(d1AttachmentKeys),
+      D1_EXPORT_SQL: d1ExportSql,
+      PATH: `${binDir}:${process.env.PATH ?? ''}`,
+      WRANGLER_OPERATIONS: operations,
     },
   }
 }

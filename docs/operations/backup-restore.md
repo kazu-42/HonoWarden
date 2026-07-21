@@ -229,10 +229,17 @@ This prevents D1 and R2 from being read from different local states, prevents a
 remote or ambient source from being labeled as the approved generation, and
 prevents an omitted R2 inventory from silently producing a D1-only recovery
 artifact. An explicitly empty inventory file is reserved for a reviewed source
-known to contain no R2 objects. The config is passed to every Wrangler command,
-while `--persist-to` remains limited to supported local D1 import and R2
-commands. Unbound backups retain their existing local, remote, and dry-run
-behavior.
+known to contain no R2 objects.
+
+After exporting D1, the wrapper restores that exact `d1.sql` into a private,
+temporary local validation database and queries every
+`cipher_attachments.object_key`. Every referenced key must be present in the
+explicit inventory before any R2 download starts. An empty inventory therefore
+succeeds only when the exported D1 attachment-reference set is also empty. The
+validation persistence is removed on success or failure and never enters the
+backup manifest. The config is passed to every Wrangler command, while the
+source `--persist-to` remains limited to supported local D1 and R2 commands.
+Unbound backups retain their existing local, remote, and dry-run behavior.
 
 The bound `--out` path must be missing or an empty directory. Reusing a prior
 output is rejected before Wrangler starts, so a failed replacement cannot leave

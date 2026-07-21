@@ -5,6 +5,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  rm,
   stat,
   writeFile,
 } from 'node:fs/promises'
@@ -25,6 +26,8 @@ const defaultR2Region = 'auto'
 const credentialGenerationSchemaVersion = 1
 const backupSourceDomain = 'honowarden.backup-source.v1'
 const credentialGenerationDomain = 'honowarden.credential-generation-binding.v1'
+const inventoryValidationDirectoryName = '.inventory-validation'
+const maxCapturedCommandBytes = 16 * 1024 * 1024
 
 async function main(argv = process.argv.slice(2)) {
   const [command, ...rest] = argv
@@ -128,7 +131,19 @@ async function runExport(options) {
   }
 
   if (execute) {
-    await runCommands(commands)
+    if (generationManifestSha256) {
+      await runCommand(commands[0])
+      await verifyGenerationBoundR2Inventory({
+        database,
+        d1File,
+        inventoryKeys: objectDiscovery.keys,
+        options,
+        outDir,
+      })
+      await runCommands(commands.slice(1))
+    } else {
+      await runCommands(commands)
+    }
     await addManifestHashes(outDir, manifest)
     if (generationManifestSha256) {
       manifest.credentialGeneration = deriveCredentialGenerationBinding({
@@ -412,6 +427,53 @@ function runCommand(command) {
     })
 
     child.on('error', rejectCommand)
+  })
+}
+
+function runJsonCommand(command) {
+  return new Promise((resolveCommand, rejectCommand) => {
+    const child = spawn(command[0], command.slice(1), {
+      stdio: ['inherit', 'pipe', process.stderr],
+      shell: process.platform === 'win32',
+    })
+    let stdout = ''
+    let stdoutBytes = 0
+    let settled = false
+
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      if (settled) return
+      stdoutBytes += Buffer.byteLength(chunk)
+      if (stdoutBytes > maxCapturedCommandBytes) {
+        settled = true
+        child.kill('SIGTERM')
+        rejectCommand(new Error('Wrangler JSON output exceeded 16 MiB'))
+        return
+      }
+      stdout += chunk
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      if (code !== 0) {
+        rejectCommand(
+          new Error(
+            `Command failed with exit code ${code}: ${command.join(' ')}`,
+          ),
+        )
+        return
+      }
+      try {
+        resolveCommand(JSON.parse(stdout))
+      } catch {
+        rejectCommand(new Error('Wrangler returned invalid JSON'))
+      }
+    })
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      rejectCommand(error)
+    })
   })
 }
 
@@ -916,6 +978,83 @@ async function assertFreshGenerationBoundOutput({
     throw new Error(
       '--out must be missing or an empty directory for a generation-bound export',
     )
+  }
+}
+
+async function verifyGenerationBoundR2Inventory({
+  database,
+  d1File,
+  inventoryKeys,
+  options,
+  outDir,
+}) {
+  const validationRoot = join(outDir, inventoryValidationDirectoryName)
+  await mkdir(validationRoot, { recursive: true, mode: 0o700 })
+
+  try {
+    let executions
+    try {
+      await runCommand(
+        buildD1ImportCommand({
+          database,
+          d1File,
+          mode: 'local',
+          options: { ...options, persistTo: validationRoot },
+        }),
+      )
+      executions = await runJsonCommand([
+        'wrangler',
+        'd1',
+        'execute',
+        database,
+        '--local',
+        '--command',
+        'SELECT object_key AS objectKey FROM cipher_attachments ORDER BY object_key;',
+        '--yes',
+        '--json',
+        ...wranglerEnvFlags(options),
+        ...wranglerConfigFlags(options),
+        '--persist-to',
+        validationRoot,
+      ])
+    } catch {
+      throw new Error(
+        'Generation-bound D1 export could not be validated for R2 attachment coverage',
+      )
+    }
+
+    if (
+      !Array.isArray(executions) ||
+      executions.length !== 1 ||
+      !Array.isArray(executions[0]?.results)
+    ) {
+      throw new Error(
+        'Generation-bound D1 export returned invalid attachment coverage evidence',
+      )
+    }
+
+    const referencedKeys = executions[0].results.map((row) => row?.objectKey)
+    if (
+      referencedKeys.some((key) => typeof key !== 'string') ||
+      new Set(referencedKeys).size !== referencedKeys.length
+    ) {
+      throw new Error(
+        'Generation-bound D1 export returned invalid attachment object keys',
+      )
+    }
+    for (const key of referencedKeys) validateObjectKey(key)
+
+    const inventory = new Set(inventoryKeys)
+    const missingCount = referencedKeys.filter(
+      (key) => !inventory.has(key),
+    ).length
+    if (missingCount !== 0) {
+      throw new Error(
+        `Generation-bound R2 inventory is missing ${missingCount} D1 attachment object${missingCount === 1 ? '' : 's'}`,
+      )
+    }
+  } finally {
+    await rm(validationRoot, { recursive: true, force: true })
   }
 }
 
