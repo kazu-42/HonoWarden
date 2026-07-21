@@ -1,6 +1,6 @@
 # RECOVERY-1A: Generation-Bound Backup Contract
 
-Status: all local gates passed; exact-head reviews pending
+Status: all local gates and implementation exact-head reviews passed; PR pending
 
 Linear issue: HON-224
 
@@ -223,10 +223,28 @@ HON-207/HON-221 plan tests: 11 passed
 git diff --check: passed
 ```
 
+## Exact-Head Reviews
+
+Implementation candidate `75b3b5c7f63fba310f520060e4a72e4f578eaf2a`
+with tree `68d7fe97ab8c68a34909beb47602305254dd4944` received two
+independent read-only reviews against base
+`7443d3daee70d09b015c864da6033ff3246d0f75`:
+
+- standard Opus review: no actionable P1, P2, or P3; it explicitly reverified
+  the unbound split-source, successful bound restore-execute, and retained
+  large-WAL remediations
+- five-axis Opus review: no actionable P1, P2, or P3; Problem framing `A`,
+  Diagnosis rigor `A`, Design principledness `A`, Architecture strength `A-`,
+  and Solution craft/completeness `A-`; merge-ready subject to CI and repository
+  gates
+
+Native `codex review` was attempted first but stopped before code inspection at
+the account usage limit. That environment limitation was kept separate from the
+candidate result and replaced with the two isolated Opus review sessions; both
+used an empty MCP configuration and made no file or external-state changes.
+
 ## Remaining Gate
 
-Create the remediated exact candidate commit, rerun standard Codex and
-independent five-axis review against that exact head, remediate any remaining
-actionable P1/P2/P3, then publish PR/head CI, verify zero unresolved threads,
-admin squash merge, compare candidate and merge trees, pass merged-main CI, and
-close/archive HON-224 before advancing HON-225.
+Review this metadata-only evidence update, then publish PR/head CI, verify zero
+unresolved threads, admin squash merge, compare the final candidate and merge
+trees, pass merged-main CI, and close/archive HON-224 before advancing HON-225.
