@@ -70,7 +70,7 @@
     }
   ],
   "verification": {
-    "status": "recovery_1b_local_proof_passed_reviews_pending",
+    "status": "recovery_1b_local_proof_and_reviews_passed_publication_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -128,14 +128,20 @@
       "recovery1bD1Artifact": "passed_node_sqlite_foreign_key_validation_tables_then_parent_key_unique_indexes_before_dependency_ordered_rows_non_unique_indexes_views_and_triggers_after_data_single_deferred_foreign_key_transaction_self_reference_row_order_independent_second_foreign_key_on_import_exact_schema_and_table_digest_equality_tamper_rejected",
       "recovery1bRestoredEquality": "passed_raw_or_checksum_pinned_canonical_d1_schema_table_and_foreign_key_equality_exact_r2_body_and_derived_source_state_identity_before_success",
       "recovery1bCredentialProof": "passed_4_password_access_refresh_and_authenticated_profile_rejections_before_and_after_restart_current_access_refresh_and_official_cli_decrypt_before_and_after_restart",
-      "recovery1bArtifact": "source_lifecycle_8bdd365bb1282d0b2cc60b4d25900e1e932620800667542caa733154e1c9618b_manifest_sha256_83db6e12bc9a72453d6146289160d63fb03480fe9e09049515d175e103910421_generation_binding_f73d1d951b980d904cf1da61fbfc6969a2abbda9e906e3825c2f4da964a977c6_source_state_3e429ea3d76079aff2541d513e066c0cdf928f8ce27f625a9e2f326feab4dda8_d1_4c96f98bd308b2927531456369ca94bfaa71d9361aaf5256d9bc0ec4ef9e9e9c_r2_count_1",
+      "recovery1bArtifact": "source_lifecycle_ae714b4a3b2a21c27691fb7c08c702467761d07d3e67485a65b9d60e8546d669_manifest_sha256_7133d4ed08194bc14c5d5bfb254b01bd11a2ad90d6df4f584e92ae93ab026776_generation_binding_414a69b61d376fc2c0c28b36c954cb728c58a831367f3b244c7e946838105f53_source_state_abc9b76792051404b00852c452cb34f406c166266cacf1d15eeadc282a1f434c_d1_0f0fc9bfa5322cab4f23ea76bfa015f46069e553dde476d4ffc19e5db49d58d6_r2_count_1",
       "recovery1bInitialStandardReview": "exact_b2598fd_native_codex_request_changes_2_p2_node_sqlite_floor_and_signal_cleanup_order_both_reproduced_and_remediated",
       "recovery1bSecondStandardReview": "exact_63a383f_native_codex_request_changes_1_p2_foreign_key_parent_unique_index_order_reproduced_and_remediated",
+      "recovery1bThirdStandardReview": "exact_58bd08c_native_codex_request_changes_1_p2_chmod_before_fixture_symlink_validation_reproduced_and_remediated",
       "recovery1bAggregateRemediation": "passed_semantic_d1_readback_after_safe_schema_reordering_with_schema_and_row_mismatches_rejected",
-      "recovery1bReviewRemediation": "passed_node_22_13_unflagged_sqlite_contract_nested_lifo_signal_cleanup_run_root_absent_fk_parent_unique_index_before_rows_and_semantic_d1_readback",
+      "recovery1bReviewRemediation": "passed_node_22_13_unflagged_sqlite_contract_nested_lifo_signal_cleanup_run_root_absent_fk_parent_unique_index_before_rows_semantic_d1_readback_and_fixture_symlink_target_mode_unchanged",
       "recovery1bCleanup": "passed_run_root_removed_retained_secret_files_0_residual_wrangler_workerd_0_temporary_inspection_root_removed",
-      "recovery1bFullSuite": "passed_1315_tests_across_99_files",
-      "recovery1bQuality": "passed_typecheck_eslint_prettier_compatibility_105_brand_scan_dependency_audit_release_gate_11_of_11_plan_tests_11_git_diff_check_reviews_pending"
+      "recovery1bFullSuite": "passed_1316_tests_across_99_files",
+      "recovery1bQuality": "passed_typecheck_eslint_prettier_compatibility_105_brand_scan_dependency_audit_release_gate_11_of_11_plan_tests_11_git_diff_check",
+      "recovery1bReviewedHead": "1c1592664050270c67136c141c8e35f04d7ff058",
+      "recovery1bReviewedTree": "5cfeb6030ae1e9639dd0bc32afeeb507ac7b2dc5",
+      "recovery1bFinalStandardReview": "exact_1c15926_independent_opus_0_actionable_p1_p2_p3_approve_native_codex_usage_limit_before_final_inspection",
+      "recovery1bFinalFiveAxisReview": "exact_1c15926_independent_opus_0_actionable_p1_p2_p3_problem_framing_a_diagnosis_a_design_a_architecture_a_solution_a_minus_overall_a_approve",
+      "recovery1bReviews": "exact_b2598fd_native_codex_2_p2_exact_63a383f_native_codex_1_p2_exact_58bd08c_native_codex_1_p2_all_reproduced_and_remediated_exact_1c15926_independent_opus_standard_and_five_axis_0_actionable_p1_p2_p3_approve"
     },
     "checks": [
       "linear_plan_unit",

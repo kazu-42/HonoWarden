@@ -1,7 +1,7 @@
 # RECOVERY-1B: Fresh Restore And Stale-Generation Rejection
 
-Status: local implementation and integrated recovery proof passed; exact-head
-reviews and repository publication pending
+Status: local implementation, integrated recovery proof, and implementation
+reviews passed; repository publication pending
 
 Linear issue: HON-225
 
@@ -148,6 +148,8 @@ credentials, vault exports, object keys, user identifiers, or production data.
 ```text
 real aggregate source -> backup -> fresh restore -> credential proof: passed
 native review red/green: 4 P2 across three rounds reproduced and remediated
+exact implementation-head standard review: 0 actionable P1/P2/P3; approve
+exact implementation-head five-axis review: A/A/A/A/A-; overall A; approve
 backup CLI: 60 tests passed, including indexed FK parents and semantic readback
 signal cleanup: nested LIFO unwind; run root absent after aggregate
 full suite: 99 files, 1,316 tests passed
@@ -165,10 +167,28 @@ run-owned source/backup/target root: removed
 temporary D1 inspection root: removed
 ```
 
+## Exact Implementation-Head Reviews
+
+- reviewed head:
+  `1c1592664050270c67136c141c8e35f04d7ff058`
+- reviewed tree:
+  `5cfeb6030ae1e9639dd0bc32afeeb507ac7b2dc5`
+- the final native Codex retry was blocked by its usage limit before source
+  inspection; its three earlier rounds produced four P2 findings, all of which
+  were reproduced with red tests and remediated
+- an independent Opus standard review inspected the full base-to-head diff,
+  callers, tests, runtime constraints, and prior remediations; it returned no
+  actionable P1/P2/P3 findings and recommended approval
+- a separate independent Opus five-axis review returned no actionable
+  P1/P2/P3 findings; problem framing, diagnosis rigor, design principledness,
+  and architecture strength were graded A, solution craft and completeness was
+  graded A-, and the overall result was A / APPROVE
+- accepted limitations remain local synthetic scope, discard-and-recreate
+  recovery for a consumed failed fresh target, and a loose CI Node 22 pin that
+  still resolves above the package's Node 22.13 runtime floor
+
 ## Remaining Gate
 
-Run exact-diff standard and five-axis reviews, remediate every actionable
-finding, rerun the full repository gates at the reviewed head, publish the PR,
-pass exact-head CI with zero unresolved review threads, squash with tree
-equality, pass merged-main CI, then move HON-225 to Done/archive before starting
-HON-226.
+Review this evidence-only metadata delta, publish the PR, pass exact-head CI
+with zero unresolved review threads, squash with tree equality, pass merged-main
+CI, then move HON-225 to Done/archive before starting HON-226.
