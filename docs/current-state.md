@@ -1296,6 +1296,55 @@ Not implemented:
 - a backward generation restore; recovery after commit is a newly authenticated
   forward generation or separately reviewed account recovery
 
+## Week 26 Fresh Credential-Generation Restore
+
+Implemented:
+
+- `pnpm account:credential-restore:lifecycle` plan and execute modes for a
+  local-synthetic, generation-bound recovery proof
+- distinct source, backup, and target roots under one run-owned mode-`0700`
+  directory, with exact current-user ownership, canonical no-symlink paths,
+  source/target separation, a mode-`0600` config, empty target persistence, and
+  an atomic restore claim before Wrangler spawn
+- a checksum-pinned `d1-restore.sql` artifact for generation-bound exports;
+  `node:sqlite` imports the Wrangler dump with foreign keys temporarily
+  disabled, rejects `pragma_foreign_key_check` violations, emits all tables and
+  foreign-key parent-key UNIQUE indexes before dependency-ordered rows, applies
+  non-unique indexes, views, and triggers after the data in one deferred
+  foreign-key transaction, then reimports with foreign keys enabled and compares
+  canonical schema and every table digest
+- Node.js runtime floor `>=22.13.0`, where `node:sqlite` is available without an
+  experimental feature flag, for D1 export validation and restore-artifact
+  generation
+- post-restore D1 raw-byte equality or isolated canonical schema, table-content,
+  and foreign-key equality against the checksum-pinned source export; exact R2
+  body checksums; and derived source-state identity before an executed restore
+  can report success
+- in-memory recovery context that retains four superseded passwords, access
+  tokens, refresh tokens, and authenticated official CLI profile snapshots only
+  long enough to prove rejection against the restored final generation
+- one-use stale profile clones and strict server-side rejection before and after
+  Worker restart; an empty or logged-out profile does not count as evidence
+- current-generation access and refresh acceptance plus official CLI login,
+  lock, unlock, sync, and decrypted item read before and after restart
+- bounded process and run-root cleanup on success or failure, with the passing
+  run reporting the run root removed and zero retained secret files inside it
+- focused fault coverage for non-empty, public, symlinked, overlapping, reused,
+  checksum-mismatched, foreign-key-invalid, and source-mutating paths, plus
+  current-user ownership gates, an atomic target claim, and a real Wrangler
+  local D1/R2/Worker/official-CLI aggregate run
+
+Not implemented:
+
+- remote, staging, production, deployed, or real-account restore evidence
+- in-place repair of a partial target or backward restore to a superseded
+  credential generation; failed targets must be discarded and recovery remains
+  forward-only
+- automatic freshness proof for generic unbound or remote resources, which
+  still require an operator assertion and separately reviewed resource handling
+- browser-extension recovery readback; the current restore proof uses the
+  pinned native official CLI
+
 ## Week 26 Account Lifecycle Operator CLI
 
 Implemented:

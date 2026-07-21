@@ -275,6 +275,63 @@ describe('pinned official-client harness', () => {
     ).rejects.toThrow('official CLI profile name was invalid')
   })
 
+  it('clones a stale CLI profile into an isolated private profile', async () => {
+    const {
+      cloneOfficialProfile,
+      ensureOfficialProfileDirectories,
+      resolveHarnessRoot,
+    } = await harnessModule
+    const root = resolveHarnessRoot(ignoredRoot('profile-clone'))
+    const source = 'stale-source'
+    const target = 'stale-restored-before-restart'
+    await mkdir(root.absolute, { recursive: true, mode: 0o700 })
+    await ensureOfficialProfileDirectories(root, source)
+    await writeFile(
+      join(root.absolute, 'profile', source, 'data.json'),
+      '{"authenticated":true}\n',
+      { mode: 0o600 },
+    )
+    await writeFile(join(root.absolute, 'home', source, 'state'), 'source\n', {
+      mode: 0o600,
+    })
+
+    await cloneOfficialProfile(root, source, target)
+
+    expect(
+      await readFile(
+        join(root.absolute, 'profile', target, 'data.json'),
+        'utf8',
+      ),
+    ).toBe('{"authenticated":true}\n')
+    expect(
+      await readFile(join(root.absolute, 'home', target, 'state'), 'utf8'),
+    ).toBe('source\n')
+    expect(await readdir(join(root.absolute, 'tmp', target))).toEqual([])
+    for (const directory of ['profile', 'home', 'tmp']) {
+      expect(
+        (await lstat(join(root.absolute, directory, target))).mode & 0o777,
+      ).toBe(0o700)
+    }
+    expect(
+      (await lstat(join(root.absolute, 'profile', target, 'data.json'))).mode &
+        0o777,
+    ).toBe(0o600)
+
+    await writeFile(
+      join(root.absolute, 'profile', target, 'data.json'),
+      '{"mutated":true}\n',
+    )
+    expect(
+      await readFile(
+        join(root.absolute, 'profile', source, 'data.json'),
+        'utf8',
+      ),
+    ).toBe('{"authenticated":true}\n')
+    await expect(cloneOfficialProfile(root, source, target)).rejects.toThrow(
+      'official CLI clone target already exists',
+    )
+  })
+
   it('rejects custom service endpoints in the pinned CLI profile', async () => {
     const { validateOfficialCliProfileEnvironment } = await harnessModule
     const origin = 'http://127.0.0.1:8787'
@@ -1170,10 +1227,92 @@ setInterval(() => undefined, 1000)
       expect(exitCode).toBeNull()
       expect(signal).toBe('SIGTERM')
       expect(JSON.parse(await readFile(eventsPath, 'utf8'))).toEqual([
-        ['fast', 'SIGTERM'],
         ['slow-start', 'SIGTERM'],
         ['slow-end', 'SIGTERM'],
+        ['fast', 'SIGTERM'],
       ])
+    } catch (error) {
+      testError = error
+    }
+    if (parent?.pid && parent.exitCode === null && parent.signalCode === null) {
+      try {
+        process.kill(parent.pid, 'SIGKILL')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+          cleanupError = error
+        }
+      }
+    }
+    try {
+      await rm(root, { recursive: true, force: true })
+    } catch (error) {
+      cleanupError ??= error
+    }
+    if (testError) throw testError
+    if (cleanupError) throw cleanupError
+  }, 15_000)
+
+  it('stops nested resources before an outer cleanup removes their run root', async () => {
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-signal-unwind-${crypto.randomUUID()}`,
+    )
+    const runRoot = join(root, 'run')
+    const eventsPath = join(root, 'events.json')
+    const parentScript = join(root, 'parent.mjs')
+    let parent: ReturnType<typeof spawn> | undefined
+    await mkdir(runRoot, { recursive: true, mode: 0o700 })
+    await writeFile(
+      parentScript,
+      `import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { installSignalCleanup } from ${JSON.stringify(pathToFileURL(signalCleanupScript).href)}
+
+const events = []
+const writeEvents = () => writeFileSync(${JSON.stringify(eventsPath)}, JSON.stringify(events))
+installSignalCleanup(async () => {
+  events.push('outer-remove-root')
+  rmSync(${JSON.stringify(runRoot)}, { recursive: true, force: true })
+  writeEvents()
+})
+installSignalCleanup(async () => {
+  events.push('inner-stop-start')
+  writeEvents()
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  mkdirSync(${JSON.stringify(runRoot)}, { recursive: true, mode: 0o700 })
+  writeFileSync(join(${JSON.stringify(runRoot)}, 'late-secret'), 'synthetic')
+  events.push('inner-stop-end')
+  writeEvents()
+})
+process.stdout.write('ready\\n')
+setInterval(() => undefined, 1000)
+`,
+      { mode: 0o600 },
+    )
+
+    let testError: unknown
+    let cleanupError: unknown
+    try {
+      parent = spawn(process.execPath, [parentScript], {
+        cwd: repoRoot,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      await once(parent.stdout!, 'data')
+      process.kill(parent.pid!, 'SIGTERM')
+      const [exitCode, signal] = (await once(parent, 'exit')) as [
+        number | null,
+        NodeJS.Signals | null,
+      ]
+
+      expect(exitCode).toBeNull()
+      expect(signal).toBe('SIGTERM')
+      expect(JSON.parse(await readFile(eventsPath, 'utf8'))).toEqual([
+        'inner-stop-start',
+        'inner-stop-end',
+        'outer-remove-root',
+      ])
+      await expect(access(runRoot)).rejects.toMatchObject({ code: 'ENOENT' })
     } catch (error) {
       testError = error
     }

@@ -34,6 +34,12 @@ type CredentialGenerationBinding = {
   manifestSha256: string
 }
 
+type FreshRestoreTarget = {
+  root: string
+  config: string
+  persistTo: string
+}
+
 describe('backup CLI', () => {
   it('plans a local D1 and R2 export with a manifest', async () => {
     const workDir = await fixtureDir('export')
@@ -364,7 +370,6 @@ describe('backup CLI', () => {
     const fakeWrangler = await createExportingFakeWrangler(
       workDir,
       'CREATE TABLE recovery_probe (id TEXT);\n',
-      [],
     )
     await mkdir(sourceDir, { recursive: true })
     await mkdir(persistDir, { recursive: true })
@@ -721,8 +726,14 @@ describe('backup CLI', () => {
     const outDir = join(workDir, 'backup')
     const fakeWrangler = await createExportingFakeWrangler(
       workDir,
-      "CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE); INSERT INTO cipher_attachments VALUES ('attachments/missing-body');\n",
-      ['attachments/missing-body'],
+      [
+        'PRAGMA defer_foreign_keys=TRUE;',
+        'CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL REFERENCES attachment_owners(id));',
+        "INSERT INTO cipher_attachments VALUES ('attachments/missing-body', 'owner-one');",
+        'CREATE TABLE attachment_owners (id TEXT PRIMARY KEY);',
+        "INSERT INTO attachment_owners VALUES ('owner-one');",
+        '',
+      ].join('\n'),
     )
     await mkdir(sourceDir, { recursive: true })
     await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
@@ -761,12 +772,199 @@ describe('backup CLI', () => {
       ),
     })
     await expect(readFile(fakeWrangler.operations, 'utf8')).resolves.toBe(
-      'd1 export\nd1 validation import\nd1 validation query\n',
+      'd1 export\n',
     )
     await expect(
       readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
     ).rejects.toMatchObject({ code: 'ENOENT' })
     expect(await readdir(outDir)).not.toContain('.generation-bound-export.lock')
+  })
+
+  it('rejects a generation-bound D1 export with unresolved foreign keys', async () => {
+    const workDir = await fixtureDir('export-generation-invalid-foreign-key')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createExportingFakeWrangler(
+      workDir,
+      [
+        'PRAGMA defer_foreign_keys=TRUE;',
+        'CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL REFERENCES attachment_owners(id));',
+        "INSERT INTO cipher_attachments VALUES ('attachments/object-one', 'missing-owner');",
+        'CREATE TABLE attachment_owners (id TEXT PRIMARY KEY);',
+        '',
+      ].join('\n'),
+    )
+    await mkdir(sourceDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, 'attachments/object-one\n')
+
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          backupScript,
+          'export',
+          '--out',
+          outDir,
+          '--database',
+          'honowarden',
+          '--bucket',
+          'honowarden-vault-objects',
+          '--mode',
+          'local',
+          '--config',
+          configPath,
+          '--persist-to',
+          persistDir,
+          '--generation-manifest-sha256',
+          'a'.repeat(64),
+          '--r2-objects',
+          objectList,
+          '--execute',
+        ],
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        'Generation-bound D1 export could not be validated for R2 attachment coverage',
+      ),
+    })
+    await expect(
+      readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readdir(outDir)).not.toContain('.generation-bound-export.lock')
+  })
+
+  it('restores valid self-referencing rows emitted before their parent rows', async () => {
+    const workDir = await fixtureDir('export-generation-self-reference')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createExportingFakeWrangler(
+      workDir,
+      [
+        'PRAGMA defer_foreign_keys=TRUE;',
+        'CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE);',
+        'CREATE TABLE generations (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES generations(id));',
+        "INSERT INTO generations VALUES ('child', 'parent');",
+        "INSERT INTO generations VALUES ('parent', NULL);",
+        '',
+      ].join('\n'),
+    )
+    await mkdir(sourceDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, '')
+
+    const result = await execFileAsync(
+      'node',
+      [
+        backupScript,
+        'export',
+        '--out',
+        outDir,
+        '--database',
+        'honowarden',
+        '--bucket',
+        'honowarden-vault-objects',
+        '--mode',
+        'local',
+        '--config',
+        configPath,
+        '--persist-to',
+        persistDir,
+        '--generation-manifest-sha256',
+        'a'.repeat(64),
+        '--r2-objects',
+        objectList,
+        '--execute',
+      ],
+      { env: fakeWrangler.env },
+    )
+    const output = JSON.parse(result.stdout) as { executed: boolean }
+    const restoreSql = await readFile(join(outDir, 'd1-restore.sql'), 'utf8')
+
+    expect(output.executed).toBe(true)
+    expect(restoreSql).toContain('PRAGMA defer_foreign_keys=ON;')
+    expect(restoreSql).toContain(
+      "VALUES(CAST(X'6368696C64' AS TEXT),CAST(X'706172656E74' AS TEXT));",
+    )
+  })
+
+  it('restores foreign keys backed by separately declared unique indexes', async () => {
+    const workDir = await fixtureDir('export-generation-unique-parent-index')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createExportingFakeWrangler(
+      workDir,
+      [
+        'CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE);',
+        'CREATE TABLE parent (code TEXT NOT NULL);',
+        'CREATE UNIQUE INDEX parent_code_unique ON parent(code);',
+        'CREATE INDEX parent_code_plain ON parent(code);',
+        'CREATE TABLE child (code TEXT NOT NULL REFERENCES parent(code));',
+        "INSERT INTO parent VALUES ('parent-code');",
+        "INSERT INTO child VALUES ('parent-code');",
+        '',
+      ].join('\n'),
+    )
+    await mkdir(sourceDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, '')
+
+    const result = await execFileAsync(
+      'node',
+      [
+        backupScript,
+        'export',
+        '--out',
+        outDir,
+        '--database',
+        'honowarden',
+        '--bucket',
+        'honowarden-vault-objects',
+        '--mode',
+        'local',
+        '--config',
+        configPath,
+        '--persist-to',
+        persistDir,
+        '--generation-manifest-sha256',
+        'a'.repeat(64),
+        '--r2-objects',
+        objectList,
+        '--execute',
+      ],
+      { env: fakeWrangler.env },
+    )
+    const output = JSON.parse(result.stdout) as { executed: boolean }
+    const restoreSql = await readFile(join(outDir, 'd1-restore.sql'), 'utf8')
+    const childTableOffset = restoreSql.indexOf('CREATE TABLE child')
+    const uniqueIndexOffset = restoreSql.indexOf(
+      'CREATE UNIQUE INDEX parent_code_unique',
+    )
+    const parentInsertOffset = restoreSql.indexOf('INSERT INTO "parent"')
+    const childInsertOffset = restoreSql.indexOf('INSERT INTO "child"')
+    const plainIndexOffset = restoreSql.indexOf(
+      'CREATE INDEX parent_code_plain',
+    )
+
+    expect(output.executed).toBe(true)
+    expect(childTableOffset).toBeGreaterThanOrEqual(0)
+    expect(uniqueIndexOffset).toBeGreaterThan(childTableOffset)
+    expect(parentInsertOffset).toBeGreaterThan(uniqueIndexOffset)
+    expect(childInsertOffset).toBeGreaterThan(uniqueIndexOffset)
+    expect(plainIndexOffset).toBeGreaterThan(childInsertOffset)
   })
 
   it('accepts an empty R2 inventory when exported D1 has no attachment references', async () => {
@@ -779,7 +977,6 @@ describe('backup CLI', () => {
     const fakeWrangler = await createExportingFakeWrangler(
       workDir,
       'CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE);\n',
-      [],
     )
     await mkdir(sourceDir, { recursive: true })
     await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
@@ -825,7 +1022,7 @@ describe('backup CLI', () => {
       /^[a-f0-9]{64}$/,
     )
     await expect(readFile(fakeWrangler.operations, 'utf8')).resolves.toBe(
-      'd1 export\nd1 validation import\nd1 validation query\n',
+      'd1 export\n',
     )
   })
 
@@ -1148,7 +1345,7 @@ describe('backup CLI', () => {
 
   it(
     'exports repeated real local D1 and R2 state with a large retained WAL',
-    { timeout: 60_000 },
+    { timeout: 90_000 },
     async () => {
       const workDir = await fixtureDir('export-owned-local-state')
       const sourceDir = join(workDir, 'source')
@@ -1203,7 +1400,7 @@ describe('backup CLI', () => {
         '--persist-to',
         persistDir,
         '--command',
-        `CREATE TABLE recovery_probe (id TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO recovery_probe (id, value) VALUES ('final', '${d1Sentinel}'); CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE); INSERT INTO cipher_attachments (object_key) VALUES ('${objectOneKey}'); CREATE TABLE wal_pressure (id INTEGER PRIMARY KEY, body TEXT NOT NULL); INSERT INTO wal_pressure (id, body) WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1500) SELECT x, hex(randomblob(4096)) FROM n;`,
+        `CREATE TABLE recovery_probe (id TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO recovery_probe (id, value) VALUES ('final', '${d1Sentinel}'); CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL REFERENCES attachment_owners(id)); CREATE TABLE attachment_owners (id TEXT PRIMARY KEY); INSERT INTO attachment_owners (id) VALUES ('owner-one'); INSERT INTO cipher_attachments (object_key, owner_id) VALUES ('${objectOneKey}', 'owner-one'); CREATE TABLE wal_pressure (id INTEGER PRIMARY KEY, body TEXT NOT NULL); INSERT INTO wal_pressure (id, body) WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1500) SELECT x, hex(randomblob(4096)) FROM n;`,
         '--yes',
       ])
       expect(
@@ -1265,7 +1462,12 @@ describe('backup CLI', () => {
         await readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
       ) as {
         credentialGeneration: CredentialGenerationBinding
-        d1: { file: string; sha256: string }
+        d1: {
+          file: string
+          sha256: string
+          restoreFile: string
+          restoreSha256: string
+        }
         r2: {
           objects: Array<{ key: string; file: string; sha256: string }>
         }
@@ -1293,9 +1495,67 @@ describe('backup CLI', () => {
       expect(manifest.d1.sha256).toBe(
         await sha256FilePath(join(outDir, manifest.d1.file)),
       )
+      expect(manifest.d1.restoreFile).toBe('d1-restore.sql')
+      expect(manifest.d1.restoreSha256).toBe(
+        await sha256FilePath(join(outDir, manifest.d1.restoreFile)),
+      )
       expect(manifest.r2.objects[0]?.sha256).toBe(
         await sha256FilePath(join(outDir, manifest.r2.objects[0]?.file ?? '')),
       )
+
+      const target = await prepareFreshRestoreTarget(join(workDir, 'target'))
+      await writeFile(target.config, await readFile(configPath), {
+        mode: 0o600,
+      })
+      const manifestSha256 = await sha256FilePath(
+        join(outDir, 'backup-manifest.json'),
+      )
+      const restoreArgs = boundRestoreArgs({
+        fromDir: outDir,
+        manifestSha256,
+        generationSha256: manifest.credentialGeneration.manifestSha256,
+        target,
+      })
+      const restore = await execFileAsync('node', restoreArgs, {
+        env: {
+          ...process.env,
+          PATH: `${join(repoRoot, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`,
+        },
+      })
+      const restored = JSON.parse(restore.stdout) as {
+        commands: string[][]
+        executed: boolean
+        verification: {
+          status: string
+          sourceStateSha256: string
+          d1Sha256: string
+          r2ObjectCount: number
+        }
+      }
+      expect(restored).toMatchObject({
+        executed: true,
+        verification: {
+          status: 'passed',
+          sourceStateSha256: manifest.credentialGeneration.sourceStateSha256,
+          d1Sha256: manifest.d1.sha256,
+          r2ObjectCount: 1,
+        },
+      })
+      expect(restored.commands[0]).toContain(
+        join(outDir, manifest.d1.restoreFile),
+      )
+      await expect(
+        execFileAsync('node', restoreArgs, {
+          env: {
+            ...process.env,
+            PATH: `${join(repoRoot, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          'fresh restore persistence must be empty',
+        ),
+      })
 
       const repeatedOutDir = join(workDir, 'repeated-backup')
       await runBoundExport(repeatedOutDir)
@@ -1492,7 +1752,11 @@ describe('backup CLI', () => {
   it('accepts an exact manifest and credential-generation restore binding', async () => {
     const workDir = await fixtureDir('restore-exact-generation-binding')
     const fromDir = join(workDir, 'backup')
-    const successfulWrangler = await createSuccessfulWrangler(workDir)
+    const target = await prepareFreshRestoreTarget(join(workDir, 'target'))
+    const successfulWrangler = await createSuccessfulWrangler(workDir, {
+      d1Body: 'create table users(id text);\n',
+      r2Body: 'object-body',
+    })
     const generationManifestSha256 = 'b'.repeat(64)
     const generationBinding = await writeSafeBackupFixture(fromDir, {
       d1Sha256: await sha256('create table users(id text);\n'),
@@ -1514,6 +1778,10 @@ describe('backup CLI', () => {
         manifestSha256,
         '--expected-generation-manifest-sha256',
         generationBinding?.manifestSha256 ?? '',
+        '--config',
+        target.config,
+        '--persist-to',
+        target.persistTo,
         '--execute',
         '--confirm-fresh-target',
       ],
@@ -1523,17 +1791,31 @@ describe('backup CLI', () => {
       executed: boolean
       manifest: string
       audit: { manifestId: string; resultStatus: string }
+      verification: {
+        status: string
+        sourceStateSha256: string
+        d1Sha256: string
+        r2ObjectCount: number
+      }
     }
 
     expect(output.executed).toBe(true)
     expect(output.manifest).toBe(join(fromDir, 'backup-manifest.json'))
     expect(output.audit.manifestId).toBe(`sha256:${manifestSha256}`)
     expect(output.audit.resultStatus).toBe('executed')
+    expect(output.verification).toEqual({
+      status: 'passed',
+      sourceStateSha256: generationBinding?.sourceStateSha256,
+      d1Sha256: await sha256('create table users(id text);\n'),
+      r2ObjectCount: 1,
+    })
+    expect(JSON.stringify(output.verification)).not.toContain(objectOneKey)
+    expect(JSON.stringify(output.verification)).not.toContain(target.root)
     const operations = (await readFile(successfulWrangler.operations, 'utf8'))
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as string[])
-    expect(operations).toHaveLength(2)
+    expect(operations).toHaveLength(4)
     expect(operations[0]?.slice(0, 3)).toEqual(['d1', 'execute', 'honowarden'])
     expect(operations[1]?.slice(0, 4)).toEqual([
       'r2',
@@ -1541,6 +1823,295 @@ describe('backup CLI', () => {
       'put',
       `honowarden-vault-objects/${objectOneKey}`,
     ])
+    expect(operations[2]?.slice(0, 3)).toEqual(['d1', 'export', 'honowarden'])
+    expect(operations[3]?.slice(0, 4)).toEqual([
+      'r2',
+      'object',
+      'get',
+      `honowarden-vault-objects/${objectOneKey}`,
+    ])
+    expect(await readdir(target.persistTo)).toEqual(['simulated-d1-state'])
+  })
+
+  it('requires an explicit verified local target before executing a bound restore', async () => {
+    const workDir = await fixtureDir('restore-bound-requires-target')
+    const fromDir = join(workDir, 'backup')
+    const fakeWrangler = await createFakeWrangler(workDir)
+    const generationBinding = await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256: 'b'.repeat(64),
+    })
+    const manifestSha256 = await sha256FilePath(
+      join(fromDir, 'backup-manifest.json'),
+    )
+
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          backupScript,
+          'restore',
+          '--from',
+          fromDir,
+          '--expected-manifest-sha256',
+          manifestSha256,
+          '--expected-generation-manifest-sha256',
+          generationBinding?.manifestSha256 ?? '',
+          '--execute',
+          '--confirm-fresh-target',
+        ],
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        'bound local restore --execute requires --config and --persist-to',
+      ),
+    })
+    await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
+  it.each([
+    {
+      label: 'non-empty persistence',
+      mutate: async (target: FreshRestoreTarget) =>
+        writeFile(join(target.persistTo, 'existing-state'), 'occupied'),
+      error: 'fresh restore persistence must be empty',
+    },
+    {
+      label: 'public target root',
+      mutate: async (target: FreshRestoreTarget) => chmod(target.root, 0o755),
+      error: 'fresh restore target directories must use mode 0700',
+    },
+    {
+      label: 'symlinked persistence',
+      mutate: async (target: FreshRestoreTarget) => {
+        const realState = `${target.persistTo}-real`
+        await rm(target.persistTo, { recursive: true, force: true })
+        await mkdir(realState, { mode: 0o700 })
+        await symlink(realState, target.persistTo)
+      },
+      error: 'fresh restore target paths must be canonical and symlink-free',
+    },
+  ])(
+    'rejects $label before spawning a generation-bound restore',
+    async ({ mutate, error }) => {
+      const workDir = await fixtureDir('restore-unsafe-target')
+      const fromDir = join(workDir, 'backup')
+      const target = await prepareFreshRestoreTarget(join(workDir, 'target'))
+      await mutate(target)
+      const fakeWrangler = await createFakeWrangler(workDir)
+      const generationBinding = await writeSafeBackupFixture(fromDir, {
+        d1Sha256: await sha256('create table users(id text);\n'),
+        objectSha256: await sha256('object-body'),
+        generationManifestSha256: 'c'.repeat(64),
+      })
+      const manifestSha256 = await sha256FilePath(
+        join(fromDir, 'backup-manifest.json'),
+      )
+
+      await expect(
+        execFileAsync(
+          'node',
+          boundRestoreArgs({
+            fromDir,
+            manifestSha256,
+            generationSha256: generationBinding?.manifestSha256 ?? '',
+            target,
+          }),
+          { env: fakeWrangler.env },
+        ),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining(error) })
+      await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      )
+    },
+  )
+
+  it('rejects a generation restore target that overlaps the backup source', async () => {
+    const workDir = await fixtureDir('restore-source-target-overlap')
+    const fromDir = join(workDir, 'backup')
+    const generationBinding = await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256: 'd'.repeat(64),
+    })
+    const target = await prepareFreshRestoreTarget(fromDir)
+    const fakeWrangler = await createFakeWrangler(workDir)
+    const manifestSha256 = await sha256FilePath(
+      join(fromDir, 'backup-manifest.json'),
+    )
+
+    await expect(
+      execFileAsync(
+        'node',
+        boundRestoreArgs({
+          fromDir,
+          manifestSha256,
+          generationSha256: generationBinding?.manifestSha256 ?? '',
+          target,
+        }),
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        'fresh restore target must be distinct from the backup source',
+      ),
+    })
+    await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
+  it('accepts logically equal D1 readback with different schema statement order', async () => {
+    const workDir = await fixtureDir('restore-equivalent-d1-order')
+    const fromDir = join(workDir, 'backup')
+    const target = await prepareFreshRestoreTarget(join(workDir, 'target'))
+    const sourceD1Body = [
+      'PRAGMA defer_foreign_keys=TRUE;',
+      'CREATE TABLE parent (code TEXT NOT NULL);',
+      'CREATE UNIQUE INDEX parent_code_unique ON parent(code);',
+      'CREATE TABLE child (code TEXT NOT NULL REFERENCES parent(code));',
+      "INSERT INTO parent VALUES ('parent-code');",
+      "INSERT INTO child VALUES ('parent-code');",
+      '',
+    ].join('\n')
+    const restoredD1Body = [
+      'PRAGMA defer_foreign_keys=TRUE;',
+      'CREATE TABLE parent (code TEXT NOT NULL);',
+      'CREATE TABLE child (code TEXT NOT NULL REFERENCES parent(code));',
+      'CREATE UNIQUE INDEX parent_code_unique ON parent(code);',
+      "INSERT INTO parent VALUES ('parent-code');",
+      "INSERT INTO child VALUES ('parent-code');",
+      '',
+    ].join('\n')
+    const generationBinding = await writeSafeBackupFixture(fromDir, {
+      d1Body: sourceD1Body,
+      d1Sha256: await sha256(sourceD1Body),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256: 'e'.repeat(64),
+    })
+    const manifestSha256 = await sha256FilePath(
+      join(fromDir, 'backup-manifest.json'),
+    )
+    const successfulWrangler = await createSuccessfulWrangler(workDir, {
+      d1Body: restoredD1Body,
+      r2Body: 'object-body',
+    })
+
+    const result = await execFileAsync(
+      'node',
+      boundRestoreArgs({
+        fromDir,
+        manifestSha256,
+        generationSha256: generationBinding?.manifestSha256 ?? '',
+        target,
+      }),
+      { env: successfulWrangler.env },
+    )
+    const output = JSON.parse(result.stdout) as {
+      verification: {
+        status: string
+        sourceStateSha256: string
+        d1Sha256: string
+        r2ObjectCount: number
+      }
+    }
+
+    expect(output.verification).toEqual({
+      status: 'passed',
+      sourceStateSha256: generationBinding?.sourceStateSha256,
+      d1Sha256: await sha256(sourceD1Body),
+      r2ObjectCount: 1,
+    })
+  })
+
+  it.each([
+    {
+      label: 'D1 schema',
+      d1Body: 'create table different_table(id text);\n',
+      r2Body: 'object-body',
+      error: 'Restored D1 state mismatch',
+    },
+    {
+      label: 'D1 rows',
+      d1Body:
+        "create table users(id text); insert into users values ('extra');\n",
+      r2Body: 'object-body',
+      error: 'Restored D1 state mismatch',
+    },
+    {
+      label: 'R2',
+      d1Body: 'create table users(id text);\n',
+      r2Body: 'different-object-body',
+      error: 'Restored R2 object SHA-256 mismatch',
+    },
+  ])(
+    'fails a bound restore when target $label readback differs',
+    async ({ d1Body, r2Body, error }) => {
+      const workDir = await fixtureDir('restore-readback-mismatch')
+      const fromDir = join(workDir, 'backup')
+      const target = await prepareFreshRestoreTarget(join(workDir, 'target'))
+      const generationBinding = await writeSafeBackupFixture(fromDir, {
+        d1Sha256: await sha256('create table users(id text);\n'),
+        objectSha256: await sha256('object-body'),
+        generationManifestSha256: 'e'.repeat(64),
+      })
+      const manifestSha256 = await sha256FilePath(
+        join(fromDir, 'backup-manifest.json'),
+      )
+      const successfulWrangler = await createSuccessfulWrangler(workDir, {
+        d1Body,
+        r2Body,
+      })
+
+      await expect(
+        execFileAsync(
+          'node',
+          boundRestoreArgs({
+            fromDir,
+            manifestSha256,
+            generationSha256: generationBinding?.manifestSha256 ?? '',
+            target,
+          }),
+          { env: successfulWrangler.env },
+        ),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining(error) })
+      expect(await readdir(target.persistTo)).toEqual(['simulated-d1-state'])
+    },
+  )
+
+  it('releases the fresh-target claim when a restore command fails', async () => {
+    const workDir = await fixtureDir('restore-command-failure-claim')
+    const fromDir = join(workDir, 'backup')
+    const target = await prepareFreshRestoreTarget(join(workDir, 'target'))
+    const generationBinding = await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256: 'f'.repeat(64),
+    })
+    const manifestSha256 = await sha256FilePath(
+      join(fromDir, 'backup-manifest.json'),
+    )
+    const fakeWrangler = await createFakeWrangler(workDir)
+
+    await expect(
+      execFileAsync(
+        'node',
+        boundRestoreArgs({
+          fromDir,
+          manifestSha256,
+          generationSha256: generationBinding?.manifestSha256 ?? '',
+          target,
+        }),
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('Command failed with exit code 97'),
+    })
+    expect(await readdir(target.persistTo)).toEqual([])
   })
 
   it.each([
@@ -1720,6 +2291,52 @@ describe('backup CLI', () => {
       ]),
     ).rejects.toMatchObject({
       stderr: expect.stringContaining('checksum mismatch'),
+    })
+  })
+
+  it('rejects a tampered restore-safe D1 artifact before Wrangler spawn', async () => {
+    const workDir = await fixtureDir('restore-safe-checksum')
+    const fromDir = join(workDir, 'backup')
+    const manifestPath = join(fromDir, 'backup-manifest.json')
+    const fakeWrangler = await createFakeWrangler(workDir)
+    await writeSafeBackupFixture(fromDir, {
+      d1Sha256: await sha256('create table users(id text);\n'),
+      objectSha256: await sha256('object-body'),
+    })
+    await writeFile(
+      join(fromDir, 'd1-restore.sql'),
+      'create table users(id text);\n',
+    )
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+      d1: {
+        file: string
+        sha256: string
+        restoreFile?: string
+        restoreSha256?: string
+      }
+    }
+    manifest.d1.restoreFile = 'd1-restore.sql'
+    manifest.d1.restoreSha256 = '0'.repeat(64)
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          backupScript,
+          'restore',
+          '--from',
+          fromDir,
+          '--execute',
+          '--confirm-fresh-target',
+        ],
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('checksum mismatch'),
+    })
+    await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
     })
   })
 
@@ -2110,6 +2727,7 @@ async function prepareOwnedStateDirectory(path: string): Promise<void> {
 async function writeSafeBackupFixture(
   fromDir: string,
   hashes: {
+    d1Body?: string
     d1Sha256: string
     objectSha256: string
     generationManifestSha256?: string
@@ -2123,7 +2741,10 @@ async function writeSafeBackupFixture(
       })
     : undefined
   await mkdir(join(fromDir, 'r2'), { recursive: true })
-  await writeFile(join(fromDir, 'd1.sql'), 'create table users(id text);\n')
+  await writeFile(
+    join(fromDir, 'd1.sql'),
+    hashes.d1Body ?? 'create table users(id text);\n',
+  )
   await writeFile(join(fromDir, objectOneFile), 'object-body')
   await writeFile(
     join(fromDir, 'backup-manifest.json'),
@@ -2160,6 +2781,48 @@ async function writeSafeBackupFixture(
   )
 
   return credentialGeneration
+}
+
+async function prepareFreshRestoreTarget(
+  root: string,
+): Promise<FreshRestoreTarget> {
+  const config = join(root, 'wrangler.jsonc')
+  const wranglerRoot = join(root, '.wrangler')
+  const persistTo = join(wranglerRoot, 'state')
+  await mkdir(root, { recursive: true, mode: 0o700 })
+  await chmod(root, 0o700)
+  await mkdir(wranglerRoot, { recursive: true, mode: 0o700 })
+  await chmod(wranglerRoot, 0o700)
+  await mkdir(persistTo, { recursive: true, mode: 0o700 })
+  await chmod(persistTo, 0o700)
+  await writeFile(config, '{"name":"honowarden-fresh-restore"}\n', {
+    mode: 0o600,
+  })
+  return { root, config, persistTo }
+}
+
+function boundRestoreArgs(input: {
+  fromDir: string
+  manifestSha256: string
+  generationSha256: string
+  target: FreshRestoreTarget
+}): string[] {
+  return [
+    backupScript,
+    'restore',
+    '--from',
+    input.fromDir,
+    '--expected-manifest-sha256',
+    input.manifestSha256,
+    '--expected-generation-manifest-sha256',
+    input.generationSha256,
+    '--config',
+    input.target.config,
+    '--persist-to',
+    input.target.persistTo,
+    '--execute',
+    '--confirm-fresh-target',
+  ]
 }
 
 function r2FileForKey(key: string): string {
@@ -2236,7 +2899,10 @@ async function createFakeWrangler(
   }
 }
 
-async function createSuccessfulWrangler(workDir: string): Promise<{
+async function createSuccessfulWrangler(
+  workDir: string,
+  verification: { d1Body: string; r2Body: string },
+): Promise<{
   operations: string
   env: NodeJS.ProcessEnv
 }> {
@@ -2246,7 +2912,26 @@ async function createSuccessfulWrangler(workDir: string): Promise<{
   await mkdir(binDir, { recursive: true })
   await writeFile(
     executable,
-    `#!/usr/bin/env node\nimport { appendFileSync } from 'node:fs'\nappendFileSync(process.env.WRANGLER_OPERATIONS, JSON.stringify(process.argv.slice(2)) + '\\n')\n`,
+    `#!/usr/bin/env node
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+const args = process.argv.slice(2)
+appendFileSync(process.env.WRANGLER_OPERATIONS, JSON.stringify(args) + '\\n')
+if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--file')) {
+  const persistTo = args[args.indexOf('--persist-to') + 1]
+  writeFileSync(join(persistTo, 'simulated-d1-state'), 'initialized')
+}
+if (args[0] === 'd1' && args[1] === 'export') {
+  const output = args[args.indexOf('--output') + 1]
+  mkdirSync(dirname(output), { recursive: true })
+  writeFileSync(output, process.env.RESTORED_D1_BODY)
+}
+if (args[0] === 'r2' && args[1] === 'object' && args[2] === 'get') {
+  const output = args[args.indexOf('--file') + 1]
+  mkdirSync(dirname(output), { recursive: true })
+  writeFileSync(output, process.env.RESTORED_R2_BODY)
+}
+`,
     { mode: 0o700 },
   )
   return {
@@ -2254,6 +2939,8 @@ async function createSuccessfulWrangler(workDir: string): Promise<{
     env: {
       ...process.env,
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
+      RESTORED_D1_BODY: verification.d1Body,
+      RESTORED_R2_BODY: verification.r2Body,
       WRANGLER_OPERATIONS: operations,
     },
   }
@@ -2262,7 +2949,6 @@ async function createSuccessfulWrangler(workDir: string): Promise<{
 async function createExportingFakeWrangler(
   workDir: string,
   d1ExportSql: string,
-  d1AttachmentKeys: string[],
 ): Promise<{
   operations: string
   env: NodeJS.ProcessEnv
@@ -2284,16 +2970,6 @@ if (args[0] === 'd1' && args[1] === 'export') {
   appendFileSync(process.env.WRANGLER_OPERATIONS, 'd1 export\\n')
   process.exit(0)
 }
-if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--file')) {
-  appendFileSync(process.env.WRANGLER_OPERATIONS, 'd1 validation import\\n')
-  process.exit(0)
-}
-if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--command')) {
-  const keys = JSON.parse(process.env.D1_ATTACHMENT_KEYS)
-  process.stdout.write(JSON.stringify([{ results: keys.map((objectKey) => ({ objectKey })) }]))
-  appendFileSync(process.env.WRANGLER_OPERATIONS, 'd1 validation query\\n')
-  process.exit(0)
-}
 if (args[0] === 'r2' && args[1] === 'object' && args[2] === 'get') {
   const output = args[args.indexOf('--file') + 1]
   mkdirSync(dirname(output), { recursive: true })
@@ -2309,7 +2985,6 @@ process.exit(98)
     operations,
     env: {
       ...process.env,
-      D1_ATTACHMENT_KEYS: JSON.stringify(d1AttachmentKeys),
       D1_EXPORT_SQL: d1ExportSql,
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
       WRANGLER_OPERATIONS: operations,

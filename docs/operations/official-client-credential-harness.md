@@ -1,7 +1,8 @@
 # Official Client Credential Harness
 
-Status: HON-219 baseline merged; HON-220 same-account CLI/browser lifecycle
-passed locally and is pending final repository gates and exact-head review.
+Status: HON-219 and HON-220 are merged. HON-225 same-account generation-bound
+fresh restore passes locally and is pending exact-head review and repository
+publication gates.
 
 ## Scope
 
@@ -232,7 +233,27 @@ reconstructed safely. Rollout must drain credential mutations across the
 migration/Worker activation window, and rollback must preserve this table unless
 an explicit recovery procedure proves that replay defense can be rebuilt.
 Backup/restore generation binding belongs to HON-221 and must use an exact
-approved post-generation manifest.
+approved post-generation manifest. HON-225 restores that exact final generation
+only into a verified fresh local target; it does not roll an account backward or
+repair a partially restored target in place.
+
+Run the complete local restore proof with:
+
+```sh
+pnpm account:credential-restore:lifecycle -- run \
+  --run-root test/.tmp/hon-225-fresh-restore \
+  --harness-root test/.tmp/hon-207-official-client \
+  --execute \
+  --confirm credential-restore-lifecycle
+```
+
+The source lifecycle snapshots one authenticated profile for each superseded
+generation while that generation is still current. The restore verifier clones
+each snapshot into a one-use profile, keeps the original loopback HTTPS origin,
+and requires server-side stale-session rejection before and after Worker
+restart. Empty or logged-out profiles are not accepted as stale-generation
+evidence. Current-generation proof uses fresh official CLI login, lock, unlock,
+sync, and decrypted item read before and after restart.
 
 ## Verified Readback
 
@@ -277,6 +298,27 @@ The 2026-07-21 local run verified:
 - latest fixture secret scan: 40 values checked against 1,680
   tracked/untracked files with zero matches.
 
-The readback proves the local synthetic aggregate lifecycle only. It is not
-staging, production, backup/restore, disable-state, or forward-recovery
-evidence.
+The HON-220 readback above proves the local synthetic source lifecycle. It is
+not staging, production, disable-state, or forward-recovery evidence.
+
+The 2026-07-21 HON-225 local run additionally verified:
+
+- source lifecycle manifest SHA-256
+  `8bdd365bb1282d0b2cc60b4d25900e1e932620800667542caa733154e1c9618b`;
+- generation-bound backup manifest SHA-256
+  `83db6e12bc9a72453d6146289160d63fb03480fe9e09049515d175e103910421`;
+- derived generation binding
+  `f73d1d951b980d904cf1da61fbfc6969a2abbda9e906e3825c2f4da964a977c6`;
+- checksum-pinned source D1 identity
+  `4c96f98bd308b2927531456369ca94bfaa71d9361aaf5256d9bc0ec4ef9e9e9c`,
+  canonical restored schema/table/foreign-key equality, and one exact R2 body;
+- four old passwords, access tokens, refresh tokens, and authenticated official
+  profiles rejected before and after restored Worker restart;
+- current access and refresh accepted, plus official CLI decrypted item read
+  before and after restart;
+- source completion state unchanged, zero foreign-key violations, run root
+  removed, and zero retained secret files inside the run root.
+
+This raises only the local synthetic recovery evidence level. It does not prove
+remote, staging, production, real-account, disable-state, or forward-recovery
+behavior.

@@ -33,6 +33,10 @@ const lifecycleStateScript = join(
   repoRoot,
   'scripts/honowarden-credential-lifecycle-state.mjs',
 )
+const restoreLifecycleScript = join(
+  repoRoot,
+  'scripts/honowarden-credential-restore-lifecycle.mjs',
+)
 const browserReadbackScript = join(
   repoRoot,
   'scripts/honowarden-browser-extension-readback.mjs',
@@ -95,8 +99,9 @@ describe('aggregate official-client credential lifecycle', () => {
   })
 
   it('keeps the implementation wired to the official harness and package command', async () => {
-    const [scriptSource, packageSource] = await Promise.all([
+    const [scriptSource, restoreSource, packageSource] = await Promise.all([
       readFile(lifecycleScript, 'utf8'),
+      readFile(restoreLifecycleScript, 'utf8'),
       readFile(join(repoRoot, 'package.json'), 'utf8'),
     ])
     const packageJson = JSON.parse(packageSource)
@@ -104,15 +109,152 @@ describe('aggregate official-client credential lifecycle', () => {
     expect(packageJson.scripts['account:credential-lifecycle']).toBe(
       'node scripts/honowarden-credential-lifecycle.mjs',
     )
+    expect(packageJson.scripts['account:credential-restore:lifecycle']).toBe(
+      'node scripts/honowarden-credential-restore-lifecycle.mjs',
+    )
+    expect(packageJson.engines.node).toBe('>=22.13.0')
     expect(scriptSource).toContain('generateOfficialCredentialFixture')
     expect(scriptSource).toContain('runOfficialCli')
     expect(scriptSource).toContain('readGenerationSnapshot')
     expect(scriptSource).toContain('assertStaleProfileRejected')
+    expect(scriptSource).toContain('snapshotRecoveryProfile')
+    expect(scriptSource).toContain('cloneOfficialProfile')
+    expect(scriptSource).toContain('requireRecoveryProfile')
     expect(scriptSource).toContain('generationManifestSha256')
     expect(scriptSource.indexOf('const baselineState')).toBeLessThan(
       scriptSource.indexOf('const accountKeys = await postAccountKeys'),
     )
     expect(scriptSource).toContain('expectAccountKeys: false')
+    expect(scriptSource).toContain('executeCredentialLifecycleForRecovery')
+    expect(scriptSource).toContain('verifyRestoredCredentialGeneration')
+    expect(scriptSource).not.toContain("'/api/profile'")
+    expect(restoreSource).toContain(
+      'assertCredentialLifecycleCompletionAttestation',
+    )
+    expect(restoreSource).toContain('--expected-generation-manifest-sha256')
+  })
+
+  it('plans a verified fresh-target restore without secret output', async () => {
+    const result = await execFileAsync(
+      'node',
+      [
+        restoreLifecycleScript,
+        'plan',
+        '--at',
+        '2026-07-21T00:00:00.000Z',
+        '--run-root',
+        'test/.tmp/hon-225-plan',
+      ],
+      { cwd: repoRoot, timeout: 10_000 },
+    )
+    const packet = JSON.parse(result.stdout)
+
+    expect(packet).toMatchObject({
+      schemaVersion: 1,
+      action: 'plan',
+      generatedAt: '2026-07-21T00:00:00.000Z',
+      executed: false,
+      status: 'planned',
+      mode: 'wrangler-local-generation-bound-fresh-restore-official-cli-synthetic',
+      runRoot: 'test/.tmp/hon-225-plan',
+      sequence: [
+        'complete_source_generation',
+        'attest_source_state',
+        'export_generation_bound_backup',
+        'claim_fresh_target',
+        'restore_and_compare_d1_r2',
+        'reject_stale_generations',
+        'verify_current_official_client',
+        'restart_and_repeat',
+        'bounded_cleanup',
+      ],
+      safety: {
+        localSyntheticOnly: true,
+        verifiedFreshTargetRequired: true,
+        generationApprovalPinsRequired: true,
+        sourceTargetSeparationRequired: true,
+        remoteResourcesAllowed: false,
+        realCredentialsAllowed: false,
+        deploymentAllowed: false,
+        printsSecrets: false,
+        trackedSecretEvidenceAllowed: false,
+      },
+    })
+    expect(packet.next.command).toContain(
+      '--execute --confirm credential-restore-lifecycle',
+    )
+    expect(result.stdout).not.toMatch(
+      /masterPassword|authenticationHash|wrappedUserKey|access_token|refresh_token|BW_SESSION/,
+    )
+  })
+
+  it('fails closed on unsafe restore lifecycle execution and packet fields', async () => {
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          restoreLifecycleScript,
+          'run',
+          '--run-root',
+          'test/.tmp/hon-225-invalid-run',
+        ],
+        { cwd: repoRoot, timeout: 10_000 },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('run requires --execute'),
+    })
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          restoreLifecycleScript,
+          'plan',
+          '--run-root',
+          'test/.tmp/nested/hon-225-invalid',
+        ],
+        { cwd: repoRoot, timeout: 10_000 },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        '--run-root must be one direct child of test/.tmp',
+      ),
+    })
+
+    const { assertSecretSafePacket } = await import(
+      pathToFileURL(restoreLifecycleScript).href
+    )
+    expect(() =>
+      assertSecretSafePacket({ nested: { access_token: 'private' } }),
+    ).toThrow('credential restore packet contained a secret field')
+  })
+
+  it('rejects a symlinked fixture root without mutating its target', async () => {
+    const sandbox = await mkdtemp(
+      join(tmpdir(), 'honowarden-restore-fixture-root-'),
+    )
+    const candidateRepoRoot = join(sandbox, 'repo')
+    const candidateTestRoot = join(candidateRepoRoot, 'test')
+    const candidateFixtureRoot = join(candidateTestRoot, '.tmp')
+    const outside = join(sandbox, 'outside')
+    await mkdir(candidateTestRoot, { recursive: true })
+    await mkdir(outside)
+    await chmod(outside, 0o755)
+    await symlink(outside, candidateFixtureRoot)
+
+    try {
+      const { prepareCredentialRestoreFixtureRoot } = await import(
+        pathToFileURL(restoreLifecycleScript).href
+      )
+      await expect(
+        prepareCredentialRestoreFixtureRoot(
+          candidateFixtureRoot,
+          candidateRepoRoot,
+        ),
+      ).rejects.toThrow('test/.tmp must not be a symlink')
+      expect((await lstat(outside)).mode & 0o777).toBe(0o755)
+    } finally {
+      await rm(sandbox, { recursive: true, force: true })
+    }
   })
 
   it('plans an optional isolated Chrome for Testing closeout gate', async () => {
@@ -429,9 +571,11 @@ describe('aggregate official-client credential lifecycle', () => {
   })
 
   it('namespaces every official CLI profile per lifecycle run', async () => {
-    const { buildCredentialLifecycleProfiles } = await import(
-      pathToFileURL(lifecycleScript).href
-    )
+    const {
+      buildCredentialLifecycleProfiles,
+      buildRestoredStaleProfileName,
+      validateRecoveryOfficialOrigin,
+    } = await import(pathToFileURL(lifecycleScript).href)
     const first = buildCredentialLifecycleProfiles('a'.repeat(12))
     const second = buildCredentialLifecycleProfiles('b'.repeat(12))
 
@@ -456,6 +600,28 @@ describe('aggregate official-client credential lifecycle', () => {
     expect(() => buildCredentialLifecycleProfiles('../shared-profile')).toThrow(
       'credential lifecycle run id was invalid',
     )
+    const restoredNames = [0, 1, 2, 3].flatMap((index) =>
+      ['before-restart', 'after-restart'].map((phase) =>
+        buildRestoredStaleProfileName('c'.repeat(12), index, phase),
+      ),
+    )
+    expect(new Set(restoredNames).size).toBe(8)
+    expect(restoredNames.every((name) => name.length <= 64)).toBe(true)
+    expect(() =>
+      buildRestoredStaleProfileName('c'.repeat(12), 4, 'before-restart'),
+    ).toThrow('restored stale profile coordinates were invalid')
+    expect(validateRecoveryOfficialOrigin('https://localhost:32123')).toEqual({
+      origin: 'https://localhost:32123',
+      port: 32123,
+    })
+    for (const origin of [
+      'http://localhost:32123',
+      'https://127.0.0.1:32123',
+      'https://localhost',
+      'https://example.com:32123',
+    ]) {
+      expect(() => validateRecoveryOfficialOrigin(origin)).toThrow()
+    }
   })
 
   it('builds a complete rotation request accepted by the domain parser', async () => {

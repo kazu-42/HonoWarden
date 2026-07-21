@@ -51,7 +51,10 @@ The backup directory contains:
 - `backup-manifest.json`: schema version, source resource names, object list
   source, object list, planned commands, optional derived credential-generation
   binding, and file checksums after an executed export
-- `d1.sql`: D1 SQL export
+- `d1.sql`: canonical D1 SQL export used for source identity and post-restore
+  equality
+- `d1-restore.sql`: generation-bound exports only; a checksum-pinned,
+  importer-safe SQL artifact proven equivalent to `d1.sql`
 - `r2/`: object files named by base64url-encoded object keys
 
 D1 contains attachment metadata in `cipher_attachments`; R2 contains the opaque
@@ -262,16 +265,34 @@ and non-regular state entries are rejected rather than omitted. This permits a
 repeat export of the same completed state while still rejecting committed or
 uncheckpointed WAL changes.
 
-After exporting D1, the wrapper restores that exact `d1.sql` into a private,
-temporary local validation database and queries every
-`cipher_attachments.object_key`. Every referenced key must be present in the
-explicit inventory before any R2 download starts. An empty inventory therefore
-succeeds only when the exported D1 attachment-reference set is also empty. The
-validation persistence is removed on success or failure and never enters the
-backup manifest. The config is passed to every Wrangler command, while the
-source `--persist-to` remains limited to supported local D1 and R2 commands.
-Unbound backups retain their existing remote and dry-run behavior; unsafe split
-local source routing now fails closed.
+After exporting D1, the wrapper loads the exact `d1.sql` into a private
+temporary `node:sqlite` database and queries every
+`cipher_attachments.object_key`. Foreign-key enforcement is disabled only while
+loading the Wrangler export because Wrangler may emit child table statements
+before their parent table statements; `pragma_foreign_key_check` must still
+return no violations before the export is accepted. Every referenced key must
+be present in the explicit inventory before any R2 download starts. An empty
+inventory therefore succeeds only when the exported D1 attachment-reference
+set is also empty.
+
+The wrapper then writes `d1-restore.sql`: all tables are created first, followed
+by separately declared unique indexes that can establish foreign-key parent
+keys. Rows are emitted in foreign-key dependency order, while views, non-unique
+indexes, and triggers are applied after table data. The artifact keeps foreign
+keys enabled but defers their checks inside one transaction, so valid
+self-references and cycles do not depend on row order. It concurrently imports
+that artifact into a second private database, compares canonical schema and
+every table-content digest with the source database, and rejects commit-time or
+post-import foreign-key violations. Both validation databases are removed on
+success or failure. The original `d1.sql` remains the source-identity artifact,
+while the manifest separately pins the restore artifact checksum. This
+validation uses `node:sqlite` without an experimental feature flag and therefore
+requires Node.js 22.13 or later.
+
+The config is passed to every Wrangler command, while the source
+`--persist-to` remains limited to supported local D1 and R2 commands. Unbound
+backups retain their existing remote and dry-run behavior; unsafe split local
+source routing now fails closed.
 
 The bound `--out` path must be missing or an empty directory owned by the
 current user at mode `0700`. A newly created output receives that mode; an
@@ -427,9 +448,9 @@ Restore and rollback:
 
 ## Restore Drill
 
-Restore should target fresh resources. The script cannot prove resource
-emptiness through Wrangler's object-level commands, so restore execution requires
-an explicit operator assertion:
+Restore should target fresh resources. Generic unbound and remote restore cannot
+prove resource emptiness through Wrangler's object-level commands, so their
+execution still requires an explicit operator assertion:
 
 ```sh
 pnpm backup:restore -- \
@@ -475,8 +496,21 @@ pnpm backup:restore -- \
   --confirm-fresh-target
 ```
 
-For a generation-bound backup, retain both approval pins in the executed
-command:
+For a generation-bound local backup, prepare one new private target root. The
+config must be an owned mode-`0600` regular file, and the target root,
+`.wrangler`, and `.wrangler/state` must be owned mode-`0700` directories. The
+persistence directory must be empty:
+
+```sh
+TARGET_ROOT=test/.tmp/hon-225-restore-target
+install -d -m 0700 "$TARGET_ROOT"
+install -d -m 0700 "$TARGET_ROOT/.wrangler"
+install -d -m 0700 "$TARGET_ROOT/.wrangler/state"
+install -m 0600 wrangler.jsonc "$TARGET_ROOT/wrangler.jsonc"
+```
+
+Retain both approval pins in the executed command and route every local resource
+through that exact target:
 
 ```sh
 pnpm backup:restore -- \
@@ -484,6 +518,8 @@ pnpm backup:restore -- \
   --database honowarden-restore \
   --bucket honowarden-restore-vault-objects \
   --mode local \
+  --config "$TARGET_ROOT/wrangler.jsonc" \
+  --persist-to "$TARGET_ROOT/.wrangler/state" \
   --expected-manifest-sha256 "$MANIFEST_SHA256" \
   --expected-generation-manifest-sha256 "$GENERATION_BINDING_SHA256" \
   --execute \
@@ -509,11 +545,57 @@ Before executing any Wrangler command, restore checks:
 - every required file exists
 - every required SHA-256 hash exists and matches the local file
 
+A generation-bound local execution additionally canonicalizes the config,
+target root, `.wrangler`, persistence, and backup paths; rejects symlinks,
+foreign ownership, public modes, source/target overlap, or pre-existing target
+state; and atomically claims the empty persistence directory before spawning
+Wrangler. The restore imports `d1-restore.sql` when the manifest contains it,
+then re-exports D1 and re-downloads every R2 object from the target. The
+re-exported `d1.sql` must either match the approved source bytes or import into
+an isolated SQLite database with the same canonical schema, every table-content
+digest, and zero foreign-key violations as the checksum-pinned source export.
+Each R2 body must match its approved checksum. Only then does the verifier reuse
+the manifest-bound D1 identity to recompute the approved D1/R2 source-state
+digest and emit an executed success packet. This semantic D1 comparison permits
+safe schema creation reordering without accepting schema or row changes. A
+partial restore is therefore never reported as successful and cannot be retried
+in place because the target is no longer fresh.
+
 Manifest identity and generation binding are read and hashed from the same byte
 buffer. Both checks run in dry-run and execute modes before any restore command
 is constructed, so a mismatched or historical source cannot start D1 import or
 R2 upload. File-content checks continue to run immediately before command spawn
 in `--execute` mode.
+
+## Synthetic Credential Restore Lifecycle
+
+Use the aggregate HON-225 command when the goal is to prove the complete local
+credential-generation recovery contract rather than only exercise the backup
+wrapper:
+
+```sh
+pnpm account:credential-restore:lifecycle -- plan
+
+pnpm account:credential-restore:lifecycle -- run \
+  --run-root test/.tmp/hon-225-fresh-restore \
+  --harness-root test/.tmp/hon-207-official-client \
+  --execute \
+  --confirm credential-restore-lifecycle
+```
+
+The run creates distinct owned source and target roots, completes the full
+same-account credential lifecycle, writes and verifies the completion
+attestation, exports a generation-bound backup, restores it into the verified
+fresh target, and proves canonical D1/R2 equality. It then rejects four stale
+password, access-token, refresh-token, and official-profile generations before
+and after Worker restart while accepting the current access token, refresh
+token, and official CLI login/unlock/sync/item-decrypt flow. Raw credential
+material stays in process memory or ignored mode-`0700` harness state. The
+run-owned source, backup, target, TLS material, and command processes are
+removed through bounded cleanup on success or failure.
+
+This command is local-synthetic only. It refuses remote resources, deployment,
+real credentials, and a run root outside one direct child of `test/.tmp`.
 
 ## Recovery And Rollback
 

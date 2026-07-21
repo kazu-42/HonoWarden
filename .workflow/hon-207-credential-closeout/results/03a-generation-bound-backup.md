@@ -1,6 +1,6 @@
 # RECOVERY-1A: Generation-Bound Backup Contract
 
-Status: all local gates and implementation exact-head reviews passed; PR pending
+Status: completed, merged, exact-main CI passed, Linear Done and archived
 
 Linear issue: HON-224
 
@@ -243,8 +243,13 @@ the account usage limit. That environment limitation was kept separate from the
 candidate result and replaced with the two isolated Opus review sessions; both
 used an empty MCP configuration and made no file or external-state changes.
 
-## Remaining Gate
+## Publication Closeout
 
-Review this metadata-only evidence update, then publish PR/head CI, verify zero
-unresolved threads, admin squash merge, compare the final candidate and merge
-trees, pass merged-main CI, and close/archive HON-224 before advancing HON-225.
+- PR #112 head `4c6734ff29e43a7ffd714ed39b74716938c3ddb5` passed CI run
+  `29817438108` and merged at `2026-07-21T09:19:09Z`.
+- squash commit `27388e56e54c8b7bd67249bc9cf4fea5401d3a7a` has tree
+  `4b4d224ba5201b4988fdfce70da8bec0f37b8454`, exactly matching the PR head
+  tree.
+- merged-main CI run `29817789762` passed for the exact squash commit.
+- Linear HON-224 moved to Done and archived at
+  `2026-07-21T09:22:10.453Z`; HON-225 then moved to In Progress.

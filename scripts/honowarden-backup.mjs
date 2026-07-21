@@ -1,21 +1,26 @@
 #!/usr/bin/env node
 
 import {
+  chmod,
   lstat,
   mkdir,
+  mkdtemp,
+  open,
   readFile,
   readdir,
   realpath,
+  rename,
   rm,
   stat,
   writeFile,
 } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath, URL } from 'node:url'
 import process from 'node:process'
 import { Buffer } from 'node:buffer'
 import { createHash, createHmac } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 
 import {
   assertCredentialLifecycleCompletionAttestation,
@@ -25,6 +30,7 @@ import {
 
 const manifestFileName = 'backup-manifest.json'
 const d1ExportFileName = 'd1.sql'
+const d1RestoreFileName = 'd1-restore.sql'
 const r2DirectoryName = 'r2'
 const manifestSchemaVersion = 1
 const defaultR2ListPageSize = 1000
@@ -34,8 +40,12 @@ const credentialGenerationSchemaVersion = 1
 const backupSourceDomain = 'honowarden.backup-source.v1'
 const credentialGenerationDomain = 'honowarden.credential-generation-binding.v1'
 const inventoryValidationDirectoryName = '.inventory-validation'
+const inventoryValidationDatabaseName = 'inventory.sqlite'
+const restoreValidationDatabaseName = 'restore.sqlite'
 const generationBoundExportClaimFileName = '.generation-bound-export.lock'
-const maxCapturedCommandBytes = 16 * 1024 * 1024
+const generationBoundRestoreClaimFileName = '.generation-bound-restore.lock'
+const generationBoundRestoreClaimBody =
+  '{"owner":"honowarden-generation-bound-restore"}\n'
 
 async function main(argv = process.argv.slice(2)) {
   const [command, ...rest] = argv
@@ -146,11 +156,9 @@ async function runExport(options) {
       if (execute) {
         if (generationManifestSha256) {
           await runCommand(commands[0])
-          await verifyGenerationBoundR2Inventory({
-            database,
+          manifest.d1.restoreFile = await verifyGenerationBoundR2Inventory({
             d1File,
             inventoryKeys: objectDiscovery.keys,
-            options,
             outDir,
           })
           await runCommands(commands.slice(1))
@@ -218,24 +226,67 @@ async function runRestore(options) {
   const mode = parseMode(options.mode ?? manifest.mode)
   rejectRemotePersistence(mode, options)
   const execute = Boolean(options.execute)
-  const d1File = join(fromDir, manifest.d1.file)
-  const commands = [
-    buildD1ImportCommand({ database, d1File, mode, options }),
-    ...manifest.r2.objects.map((object) =>
-      buildR2PutCommand({
-        bucket,
-        key: object.key,
-        file: join(fromDir, object.file),
-        mode,
-        options,
-      }),
-    ),
-  ]
+  const d1File = join(fromDir, manifest.d1.restoreFile ?? manifest.d1.file)
+  let targetClaim = null
+  let verification
+  let commands
 
-  if (execute) {
-    requireFreshTargetConfirmation(options)
-    await verifyBackupFiles(fromDir, manifest)
-    await runCommands(commands)
+  try {
+    if (execute) {
+      requireFreshTargetConfirmation(options)
+      if (manifest.credentialGeneration) {
+        targetClaim = await claimFreshGenerationRestoreTarget({
+          fromDir,
+          mode,
+          options,
+        })
+      }
+    }
+
+    const commandOptions = targetClaim
+      ? {
+          ...options,
+          config: targetClaim.configPath,
+          persistTo: targetClaim.persistenceRoot,
+        }
+      : options
+    commands = [
+      buildD1ImportCommand({
+        database,
+        d1File,
+        mode,
+        options: commandOptions,
+      }),
+      ...manifest.r2.objects.map((object) =>
+        buildR2PutCommand({
+          bucket,
+          key: object.key,
+          file: join(fromDir, object.file),
+          mode,
+          options: commandOptions,
+        }),
+      ),
+    ]
+
+    if (execute) {
+      await verifyBackupFiles(fromDir, manifest)
+      await runCommands(commands)
+      if (targetClaim) {
+        verification = await verifyRestoredGenerationState({
+          bucket,
+          database,
+          manifest,
+          mode,
+          options: commandOptions,
+          sourceD1File: join(fromDir, manifest.d1.file),
+          targetRoot: targetClaim.targetRoot,
+        })
+      }
+    }
+  } finally {
+    if (targetClaim) {
+      await releaseGenerationRestoreClaim(targetClaim.claimPath)
+    }
   }
   const manifestPath = join(fromDir, manifestFileName)
 
@@ -250,6 +301,7 @@ async function runRestore(options) {
     executed: execute,
     manifest: manifestPath,
     commands,
+    ...(verification ? { verification } : {}),
   })
 }
 
@@ -449,53 +501,6 @@ function runCommand(command) {
     })
 
     child.on('error', rejectCommand)
-  })
-}
-
-function runJsonCommand(command) {
-  return new Promise((resolveCommand, rejectCommand) => {
-    const child = spawn(command[0], command.slice(1), {
-      stdio: ['inherit', 'pipe', process.stderr],
-      shell: process.platform === 'win32',
-    })
-    let stdout = ''
-    let stdoutBytes = 0
-    let settled = false
-
-    child.stdout.setEncoding('utf8')
-    child.stdout.on('data', (chunk) => {
-      if (settled) return
-      stdoutBytes += Buffer.byteLength(chunk)
-      if (stdoutBytes > maxCapturedCommandBytes) {
-        settled = true
-        child.kill('SIGTERM')
-        rejectCommand(new Error('Wrangler JSON output exceeded 16 MiB'))
-        return
-      }
-      stdout += chunk
-    })
-    child.on('close', (code) => {
-      if (settled) return
-      settled = true
-      if (code !== 0) {
-        rejectCommand(
-          new Error(
-            `Command failed with exit code ${code}: ${command.join(' ')}`,
-          ),
-        )
-        return
-      }
-      try {
-        resolveCommand(JSON.parse(stdout))
-      } catch {
-        rejectCommand(new Error('Wrangler returned invalid JSON'))
-      }
-    })
-    child.on('error', (error) => {
-      if (settled) return
-      settled = true
-      rejectCommand(error)
-    })
   })
 }
 
@@ -843,6 +848,7 @@ async function readManifestWithIdentity(fromDir) {
   assertCredentialGenerationShape(manifest.credentialGeneration, manifestPath)
 
   assertSafeManifestPath(manifest.d1.file, 'd1.file')
+  validateOptionalD1RestoreArtifact(manifest.d1, manifestPath)
 
   for (const [index, object] of manifest.r2.objects.entries()) {
     if (typeof object?.key !== 'string' || typeof object?.file !== 'string') {
@@ -1188,58 +1194,55 @@ function isOwnedByCurrentUser(stats) {
 }
 
 async function verifyGenerationBoundR2Inventory({
-  database,
   d1File,
   inventoryKeys,
-  options,
   outDir,
 }) {
   const validationRoot = join(outDir, inventoryValidationDirectoryName)
+  const validationDatabasePath = join(
+    validationRoot,
+    inventoryValidationDatabaseName,
+  )
+  const pendingRestoreFile = join(validationRoot, d1RestoreFileName)
+  const restoreFile = join(outDir, d1RestoreFileName)
   await mkdir(validationRoot, { recursive: true, mode: 0o700 })
 
+  let validationDatabase
   try {
-    let executions
     try {
-      await runCommand(
-        buildD1ImportCommand({
-          database,
-          d1File,
-          mode: 'local',
-          options: { ...options, persistTo: validationRoot },
-        }),
-      )
-      executions = await runJsonCommand([
-        'wrangler',
-        'd1',
-        'execute',
-        database,
-        '--local',
-        '--command',
-        'SELECT object_key AS objectKey FROM cipher_attachments ORDER BY object_key;',
-        '--yes',
-        '--json',
-        ...wranglerEnvFlags(options),
-        ...wranglerConfigFlags(options),
-        '--persist-to',
-        validationRoot,
-      ])
-    } catch {
+      validationDatabase = new DatabaseSync(validationDatabasePath, {
+        enableForeignKeyConstraints: false,
+      })
+      await chmod(validationDatabasePath, 0o600)
+      validationDatabase.exec(await readFile(d1File, 'utf8'))
+
+      const invalidForeignKey = validationDatabase
+        .prepare('SELECT 1 AS invalid FROM pragma_foreign_key_check LIMIT 1;')
+        .get()
+      if (invalidForeignKey !== undefined) {
+        throw new Error(
+          'Generation-bound D1 export contains unresolved foreign keys',
+        )
+      }
+    } catch (error) {
       throw new Error(
         'Generation-bound D1 export could not be validated for R2 attachment coverage',
+        { cause: error },
       )
     }
 
-    if (
-      !Array.isArray(executions) ||
-      executions.length !== 1 ||
-      !Array.isArray(executions[0]?.results)
-    ) {
+    const referencedRows = validationDatabase
+      .prepare(
+        'SELECT object_key AS objectKey FROM cipher_attachments ORDER BY object_key;',
+      )
+      .all()
+    if (!Array.isArray(referencedRows)) {
       throw new Error(
         'Generation-bound D1 export returned invalid attachment coverage evidence',
       )
     }
 
-    const referencedKeys = executions[0].results.map((row) => row?.objectKey)
+    const referencedKeys = referencedRows.map((row) => row?.objectKey)
     if (
       referencedKeys.some((key) => typeof key !== 'string') ||
       new Set(referencedKeys).size !== referencedKeys.length
@@ -1259,9 +1262,349 @@ async function verifyGenerationBoundR2Inventory({
         `Generation-bound R2 inventory is missing ${missingCount} D1 attachment object${missingCount === 1 ? '' : 's'}`,
       )
     }
+
+    try {
+      await writeRestoreSafeD1Dump({
+        destinationFile: pendingRestoreFile,
+        sourceDatabase: validationDatabase,
+        validationDatabasePath: join(
+          validationRoot,
+          restoreValidationDatabaseName,
+        ),
+      })
+      await rename(pendingRestoreFile, restoreFile)
+    } catch (error) {
+      throw new Error(
+        'Generation-bound D1 export could not produce a restore-safe import',
+        { cause: error },
+      )
+    }
+
+    return d1RestoreFileName
   } finally {
+    validationDatabase?.close()
     await rm(validationRoot, { recursive: true, force: true })
   }
+}
+
+async function writeRestoreSafeD1Dump({
+  destinationFile,
+  sourceDatabase,
+  validationDatabasePath,
+}) {
+  const schemaEntries = readRestorableSchemaEntries(sourceDatabase)
+  const tableEntries = schemaEntries.filter((entry) => entry.type === 'table')
+  const preDataIndexEntries = readPreDataIndexEntries(
+    sourceDatabase,
+    schemaEntries,
+  )
+  const preDataIndexNames = new Set(
+    preDataIndexEntries.map((entry) => entry.name),
+  )
+  const orderedTables = orderTablesForRestore(sourceDatabase, tableEntries)
+  const validationDatabase = new DatabaseSync(validationDatabasePath)
+  await chmod(validationDatabasePath, 0o600)
+  const output = await open(destinationFile, 'wx', 0o600)
+
+  const emit = async (statement) => {
+    const sql = terminateSqlStatement(statement)
+    validationDatabase.exec(sql)
+    await output.writeFile(`${sql}\n`)
+  }
+
+  let operationError
+  try {
+    await emit('PRAGMA foreign_keys=ON')
+    await emit('BEGIN TRANSACTION')
+    await emit('PRAGMA defer_foreign_keys=ON')
+    for (const entry of tableEntries) await emit(entry.sql)
+    for (const entry of preDataIndexEntries) await emit(entry.sql)
+    for (const entry of orderedTables) {
+      for (const statement of iterateTableInsertStatements(
+        sourceDatabase,
+        entry,
+      )) {
+        await emit(statement)
+      }
+    }
+
+    if (hasSqliteSequence(sourceDatabase)) {
+      await emit('DELETE FROM sqlite_sequence')
+      const sequenceEntry = {
+        name: 'sqlite_sequence',
+        sql: 'CREATE TABLE sqlite_sequence(name,seq)',
+        type: 'table',
+      }
+      for (const statement of iterateTableInsertStatements(
+        sourceDatabase,
+        sequenceEntry,
+      )) {
+        await emit(statement)
+      }
+    }
+
+    for (const type of ['view', 'index', 'trigger']) {
+      for (const entry of schemaEntries.filter(
+        (item) => item.type === type && !preDataIndexNames.has(item.name),
+      )) {
+        await emit(entry.sql)
+      }
+    }
+    await emit('COMMIT')
+
+    if (hasForeignKeyViolation(validationDatabase)) {
+      throw new Error('restore-safe D1 import contains unresolved foreign keys')
+    }
+    assertRestoredDatabaseEquality({
+      sourceDatabase,
+      validationDatabase,
+      tableEntries,
+    })
+  } catch (error) {
+    operationError = error
+  }
+
+  let closeError
+  try {
+    await output.close()
+  } catch (error) {
+    closeError = error
+  }
+  try {
+    validationDatabase.close()
+  } catch (error) {
+    closeError ??= error
+  }
+  if (operationError) throw operationError
+  if (closeError) throw closeError
+}
+
+function readRestorableSchemaEntries(database) {
+  const entries = database
+    .prepare(
+      `SELECT type, name, tbl_name AS tableName, sql
+       FROM sqlite_schema
+       WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+       ORDER BY rowid;`,
+    )
+    .all()
+  const allowedTypes = new Set(['table', 'index', 'trigger', 'view'])
+
+  for (const entry of entries) {
+    if (
+      !allowedTypes.has(entry?.type) ||
+      typeof entry?.name !== 'string' ||
+      typeof entry?.tableName !== 'string' ||
+      typeof entry?.sql !== 'string'
+    ) {
+      throw new Error('D1 export contains an unsupported schema entry')
+    }
+    if (
+      entry.type === 'table' &&
+      !/^CREATE\s+TABLE\b/iu.test(entry.sql.trim())
+    ) {
+      throw new Error('D1 restore does not support virtual tables')
+    }
+  }
+
+  return entries
+}
+
+function readPreDataIndexEntries(database, schemaEntries) {
+  const readIndexMetadata = database.prepare(
+    'SELECT "unique" AS isUnique FROM pragma_index_list(?) WHERE name = ?;',
+  )
+  return schemaEntries.filter((entry) => {
+    if (entry.type !== 'index') return false
+    const metadata = readIndexMetadata.get(entry.tableName, entry.name)
+    if (
+      metadata === undefined ||
+      (metadata.isUnique !== 0 && metadata.isUnique !== 1)
+    ) {
+      throw new Error('D1 export returned invalid index metadata')
+    }
+    return metadata.isUnique === 1
+  })
+}
+
+function orderTablesForRestore(database, tableEntries) {
+  const byKey = new Map(
+    tableEntries.map((entry) => [normalizeSqliteName(entry.name), entry]),
+  )
+  const dependencies = new Map(
+    tableEntries.map((entry) => [normalizeSqliteName(entry.name), new Set()]),
+  )
+  const dependents = new Map(
+    tableEntries.map((entry) => [normalizeSqliteName(entry.name), new Set()]),
+  )
+
+  for (const entry of tableEntries) {
+    const child = normalizeSqliteName(entry.name)
+    const foreignKeys = database
+      .prepare(`PRAGMA foreign_key_list(${quoteSqliteIdentifier(entry.name)});`)
+      .all()
+    for (const foreignKey of foreignKeys) {
+      if (typeof foreignKey?.table !== 'string') {
+        throw new Error('D1 export returned an invalid foreign-key target')
+      }
+      const parent = normalizeSqliteName(foreignKey.table)
+      if (parent === child) continue
+      if (!byKey.has(parent)) {
+        throw new Error('D1 export references a missing foreign-key table')
+      }
+      dependencies.get(child).add(parent)
+      dependents.get(parent).add(child)
+    }
+  }
+
+  const ready = tableEntries
+    .map((entry) => normalizeSqliteName(entry.name))
+    .filter((key) => dependencies.get(key).size === 0)
+  const ordered = []
+  const emitted = new Set()
+  while (ready.length > 0) {
+    const key = ready.shift()
+    if (emitted.has(key)) continue
+    emitted.add(key)
+    ordered.push(byKey.get(key))
+    for (const child of dependents.get(key)) {
+      dependencies.get(child).delete(key)
+      if (dependencies.get(child).size === 0) ready.push(child)
+    }
+  }
+
+  for (const entry of tableEntries) {
+    const key = normalizeSqliteName(entry.name)
+    if (!emitted.has(key)) ordered.push(entry)
+  }
+  return ordered
+}
+
+function* iterateTableInsertStatements(database, entry) {
+  const columns = database
+    .prepare(`PRAGMA table_xinfo(${quoteSqliteIdentifier(entry.name)});`)
+    .all()
+    .filter((column) => column?.hidden === 0)
+    .map((column) => column?.name)
+  if (
+    columns.length === 0 ||
+    columns.some((column) => typeof column !== 'string')
+  ) {
+    throw new Error('D1 export returned invalid table-column metadata')
+  }
+
+  const quotedTable = quoteSqliteIdentifier(entry.name)
+  const quotedColumns = columns.map(quoteSqliteIdentifier)
+  const insertPrefix = `INSERT INTO ${quotedTable} (${quotedColumns.join(',')}) VALUES(`
+  const valueExpression = quotedColumns
+    .map(
+      (column) =>
+        `CASE typeof(${column}) ` +
+        `WHEN 'text' THEN printf('CAST(X''%s'' AS TEXT)', hex(${column})) ` +
+        `WHEN 'blob' THEN printf('X''%s''', hex(${column})) ` +
+        `ELSE quote(${column}) END`,
+    )
+    .join(` || ',' || `)
+  const order = /\bWITHOUT\s+ROWID\b/iu.test(entry.sql) ? '' : ' ORDER BY rowid'
+  const query =
+    `SELECT ${quoteSqliteString(insertPrefix)} || ${valueExpression} || ');' AS statement ` +
+    `FROM ${quotedTable}${order};`
+
+  for (const row of database.prepare(query).iterate()) {
+    if (typeof row?.statement !== 'string') {
+      throw new Error('D1 export returned an invalid row serialization')
+    }
+    yield row.statement
+  }
+}
+
+function assertRestoredDatabaseEquality({
+  sourceDatabase,
+  validationDatabase,
+  tableEntries,
+}) {
+  const sourceSchema = restorableSchemaDigest(sourceDatabase)
+  const restoredSchema = restorableSchemaDigest(validationDatabase)
+  if (sourceSchema !== restoredSchema) {
+    throw new Error('restore-safe D1 schema differs from the source export')
+  }
+
+  const entries = [...tableEntries]
+  if (hasSqliteSequence(sourceDatabase)) {
+    entries.push({
+      name: 'sqlite_sequence',
+      sql: 'CREATE TABLE sqlite_sequence(name,seq)',
+      type: 'table',
+    })
+  }
+  for (const entry of entries) {
+    if (
+      tableContentDigest(sourceDatabase, entry) !==
+      tableContentDigest(validationDatabase, entry)
+    ) {
+      throw new Error(
+        'restore-safe D1 table content differs from the source export',
+      )
+    }
+  }
+}
+
+function restorableSchemaDigest(database) {
+  const entries = readRestorableSchemaEntries(database)
+    .map(({ type, name, tableName, sql }) => ({ type, name, tableName, sql }))
+    .sort((left, right) =>
+      `${left.type}\0${left.name}`.localeCompare(
+        `${right.type}\0${right.name}`,
+      ),
+    )
+  return sha256Hex(JSON.stringify(entries))
+}
+
+function tableContentDigest(database, entry) {
+  const digest = createHash('sha256')
+  let rowCount = 0
+  for (const statement of iterateTableInsertStatements(database, entry)) {
+    digest.update(`${Buffer.byteLength(statement)}:`)
+    digest.update(statement)
+    rowCount += 1
+  }
+  return `${rowCount}:${digest.digest('hex')}`
+}
+
+function hasSqliteSequence(database) {
+  return (
+    database
+      .prepare(
+        "SELECT 1 AS present FROM sqlite_schema WHERE type = 'table' AND name = 'sqlite_sequence';",
+      )
+      .get() !== undefined
+  )
+}
+
+function hasForeignKeyViolation(database) {
+  return (
+    database
+      .prepare('SELECT 1 AS invalid FROM pragma_foreign_key_check LIMIT 1;')
+      .get() !== undefined
+  )
+}
+
+function terminateSqlStatement(statement) {
+  const trimmed = statement.trim()
+  if (!trimmed) throw new Error('D1 restore statement must not be empty')
+  return trimmed.endsWith(';') ? trimmed : `${trimmed};`
+}
+
+function quoteSqliteIdentifier(value) {
+  return `"${value.replaceAll('"', '""')}"`
+}
+
+function quoteSqliteString(value) {
+  return `'${value.replaceAll("'", "''")}'`
+}
+
+function normalizeSqliteName(value) {
+  return value.toLowerCase()
 }
 
 function deriveCredentialGenerationBinding({
@@ -1279,20 +1622,10 @@ function deriveCredentialGenerationBinding({
     )
   }
 
-  const sourceStateSha256 = sha256Hex(
-    JSON.stringify({
-      domain: backupSourceDomain,
-      d1: { sha256: manifest.d1.sha256 },
-      r2: {
-        objects: [...manifest.r2.objects]
-          .sort(compareObjectKeys)
-          .map((object) => ({
-            key: object.key,
-            sha256: object.sha256,
-          })),
-      },
-    }),
-  )
+  const sourceStateSha256 = deriveBackupSourceStateSha256({
+    d1Sha256: manifest.d1.sha256,
+    objects: manifest.r2.objects,
+  })
   const manifestSha256 = sha256Hex(
     JSON.stringify({
       domain: credentialGenerationDomain,
@@ -1307,6 +1640,33 @@ function deriveCredentialGenerationBinding({
     sourceStateSha256,
     manifestSha256,
   }
+}
+
+function deriveBackupSourceStateSha256({ d1Sha256, objects }) {
+  if (
+    !isSha256(d1Sha256) ||
+    !Array.isArray(objects) ||
+    objects.some(
+      (object) => typeof object?.key !== 'string' || !isSha256(object.sha256),
+    )
+  ) {
+    throw new Error(
+      'Backup source identity requires complete D1 and R2 checksums',
+    )
+  }
+
+  return sha256Hex(
+    JSON.stringify({
+      domain: backupSourceDomain,
+      d1: { sha256: d1Sha256 },
+      r2: {
+        objects: [...objects].sort(compareObjectKeys).map((object) => ({
+          key: object.key,
+          sha256: object.sha256,
+        })),
+      },
+    }),
+  )
 }
 
 function assertCredentialGenerationShape(credentialGeneration, manifestPath) {
@@ -1365,6 +1725,279 @@ function verifyCredentialGenerationBinding(manifest, manifestPath) {
 function compareObjectKeys(left, right) {
   if (left.key === right.key) return 0
   return left.key < right.key ? -1 : 1
+}
+
+async function claimFreshGenerationRestoreTarget({ fromDir, mode, options }) {
+  if (mode !== 'local') {
+    throw new Error('bound restore --execute requires --mode local')
+  }
+  if (!options.config || !options.persistTo) {
+    throw new Error(
+      'bound local restore --execute requires --config and --persist-to',
+    )
+  }
+
+  const configPath = resolve(options.config)
+  const persistenceRoot = resolve(options.persistTo)
+  const targetRoot = dirname(configPath)
+  const wranglerRoot = dirname(persistenceRoot)
+  const expectedPersistenceRoot = join(targetRoot, '.wrangler', 'state')
+  if (persistenceRoot !== expectedPersistenceRoot) {
+    throw new Error(
+      'bound local restore --persist-to must equal <config-directory>/.wrangler/state',
+    )
+  }
+
+  let canonicalConfigPath
+  let canonicalPersistenceRoot
+  let canonicalTargetRoot
+  let canonicalWranglerRoot
+  let canonicalFromDir
+  try {
+    ;[
+      canonicalConfigPath,
+      canonicalPersistenceRoot,
+      canonicalTargetRoot,
+      canonicalWranglerRoot,
+      canonicalFromDir,
+    ] = await Promise.all([
+      realpath(configPath),
+      realpath(persistenceRoot),
+      realpath(targetRoot),
+      realpath(wranglerRoot),
+      realpath(fromDir),
+    ])
+  } catch (error) {
+    throw new Error('fresh restore target paths must exist', { cause: error })
+  }
+  if (
+    canonicalConfigPath !== configPath ||
+    canonicalPersistenceRoot !== persistenceRoot ||
+    canonicalTargetRoot !== targetRoot ||
+    canonicalWranglerRoot !== wranglerRoot
+  ) {
+    throw new Error(
+      'fresh restore target paths must be canonical and symlink-free',
+    )
+  }
+  if (pathsOverlap(canonicalFromDir, canonicalTargetRoot)) {
+    throw new Error(
+      'fresh restore target must be distinct from the backup source',
+    )
+  }
+
+  const configStats = await lstat(configPath)
+  if (
+    configStats.isSymbolicLink() ||
+    !configStats.isFile() ||
+    !isOwnedByCurrentUser(configStats) ||
+    (configStats.mode & 0o777) !== 0o600
+  ) {
+    throw new Error(
+      'fresh restore --config must be an owned regular file with mode 0600',
+    )
+  }
+  for (const directory of [targetRoot, wranglerRoot, persistenceRoot]) {
+    const directoryStats = await lstat(directory)
+    if (
+      directoryStats.isSymbolicLink() ||
+      !directoryStats.isDirectory() ||
+      !isOwnedByCurrentUser(directoryStats)
+    ) {
+      throw new Error(
+        'fresh restore target directories must be owned regular directories',
+      )
+    }
+    if ((directoryStats.mode & 0o777) !== 0o700) {
+      throw new Error('fresh restore target directories must use mode 0700')
+    }
+  }
+
+  if ((await readdir(persistenceRoot)).length !== 0) {
+    throw new Error('fresh restore persistence must be empty')
+  }
+  const claimPath = join(persistenceRoot, generationBoundRestoreClaimFileName)
+  try {
+    await writeFile(claimPath, generationBoundRestoreClaimBody, {
+      flag: 'wx',
+      mode: 0o600,
+    })
+  } catch (error) {
+    throw new Error('fresh restore target could not be claimed', {
+      cause: error,
+    })
+  }
+  const claimedEntries = await readdir(persistenceRoot)
+  if (
+    claimedEntries.length !== 1 ||
+    claimedEntries[0] !== generationBoundRestoreClaimFileName
+  ) {
+    await releaseGenerationRestoreClaim(claimPath)
+    throw new Error('fresh restore persistence changed while being claimed')
+  }
+
+  return {
+    claimPath,
+    configPath,
+    persistenceRoot,
+    targetRoot,
+  }
+}
+
+async function releaseGenerationRestoreClaim(claimPath) {
+  const claimStats = await lstat(claimPath)
+  if (
+    claimStats.isSymbolicLink() ||
+    !claimStats.isFile() ||
+    !isOwnedByCurrentUser(claimStats) ||
+    (claimStats.mode & 0o777) !== 0o600 ||
+    (await readFile(claimPath, 'utf8')) !== generationBoundRestoreClaimBody
+  ) {
+    throw new Error('generation-bound restore claim changed before release')
+  }
+  await rm(claimPath)
+}
+
+async function verifyRestoredGenerationState({
+  bucket,
+  database,
+  manifest,
+  mode,
+  options,
+  sourceD1File,
+  targetRoot,
+}) {
+  const validationRoot = await mkdtemp(
+    join(targetRoot, '.honowarden-restore-validation-'),
+  )
+  await chmod(validationRoot, 0o700)
+  const d1File = join(validationRoot, d1ExportFileName)
+  const r2Dir = join(validationRoot, r2DirectoryName)
+  await mkdir(r2Dir, { recursive: true, mode: 0o700 })
+  await chmod(r2Dir, 0o700)
+  const restoredObjects = manifest.r2.objects.map((object) => ({
+    key: object.key,
+    file: join(validationRoot, object.file),
+    expectedSha256: object.sha256,
+  }))
+  const commands = [
+    buildD1ExportCommand({ database, d1File, mode, options }),
+    ...restoredObjects.map((object) =>
+      buildR2GetCommand({
+        bucket,
+        key: object.key,
+        file: object.file,
+        mode,
+        options,
+      }),
+    ),
+  ]
+
+  try {
+    await runCommands(commands)
+    const restoredD1Sha256 = await sha256File(d1File)
+    if (restoredD1Sha256 !== manifest.d1.sha256) {
+      await assertEquivalentD1Exports({
+        restoredFile: d1File,
+        sourceFile: sourceD1File,
+        validationRoot,
+      })
+    }
+    const objectChecksums = []
+    for (const object of restoredObjects) {
+      const sha256 = await sha256File(object.file)
+      if (sha256 !== object.expectedSha256) {
+        throw new Error('Restored R2 object SHA-256 mismatch')
+      }
+      objectChecksums.push({ key: object.key, sha256 })
+    }
+    const d1Sha256 = manifest.d1.sha256
+    const sourceStateSha256 = deriveBackupSourceStateSha256({
+      d1Sha256,
+      objects: objectChecksums,
+    })
+    if (sourceStateSha256 !== manifest.credentialGeneration.sourceStateSha256) {
+      throw new Error('Restored D1/R2 source-state SHA-256 mismatch')
+    }
+    return {
+      status: 'passed',
+      sourceStateSha256,
+      d1Sha256,
+      r2ObjectCount: objectChecksums.length,
+    }
+  } finally {
+    await rm(validationRoot, { recursive: true, force: true })
+  }
+}
+
+async function assertEquivalentD1Exports({
+  restoredFile,
+  sourceFile,
+  validationRoot,
+}) {
+  let sourceDatabase
+  let restoredDatabase
+  try {
+    sourceDatabase = await loadD1ExportDatabase(
+      sourceFile,
+      join(validationRoot, 'source-readback.sqlite'),
+    )
+    restoredDatabase = await loadD1ExportDatabase(
+      restoredFile,
+      join(validationRoot, 'restored-readback.sqlite'),
+    )
+    if (
+      hasForeignKeyViolation(sourceDatabase) ||
+      hasForeignKeyViolation(restoredDatabase)
+    ) {
+      throw new Error('D1 readback contains unresolved foreign keys')
+    }
+    const tableEntries = readRestorableSchemaEntries(sourceDatabase).filter(
+      (entry) => entry.type === 'table',
+    )
+    assertRestoredDatabaseEquality({
+      sourceDatabase,
+      validationDatabase: restoredDatabase,
+      tableEntries,
+    })
+  } catch (error) {
+    throw new Error('Restored D1 state mismatch', { cause: error })
+  } finally {
+    restoredDatabase?.close()
+    sourceDatabase?.close()
+  }
+}
+
+async function loadD1ExportDatabase(sqlFile, databasePath) {
+  const database = new DatabaseSync(databasePath, {
+    enableForeignKeyConstraints: false,
+  })
+  try {
+    await chmod(databasePath, 0o600)
+    database.exec(await readFile(sqlFile, 'utf8'))
+    return database
+  } catch (error) {
+    try {
+      database.close()
+    } catch (closeError) {
+      throw new AggregateError(
+        [error, closeError],
+        'D1 readback validation database setup failed',
+        { cause: closeError },
+      )
+    }
+    throw error
+  }
+}
+
+function pathsOverlap(left, right) {
+  const leftToRight = relative(left, right)
+  const rightToLeft = relative(right, left)
+  return [leftToRight, rightToLeft].some(
+    (value) =>
+      value.length === 0 ||
+      (!isAbsolute(value) && value !== '..' && !value.startsWith(`..${sep}`)),
+  )
 }
 
 function requireFreshTargetConfirmation(options) {
@@ -1542,8 +2175,30 @@ function assertSafeManifestPath(value, fieldName, requiredPrefix) {
   }
 }
 
+function validateOptionalD1RestoreArtifact(d1, manifestPath) {
+  const hasRestoreFile = d1.restoreFile !== undefined
+  const hasRestoreSha256 = d1.restoreSha256 !== undefined
+  if (hasRestoreFile !== hasRestoreSha256) {
+    throw new Error(`Invalid backup manifest: ${manifestPath}`)
+  }
+  if (!hasRestoreFile) return
+  if (
+    typeof d1.restoreFile !== 'string' ||
+    !isSha256(d1.restoreSha256) ||
+    d1.restoreFile === d1.file
+  ) {
+    throw new Error(`Invalid backup manifest: ${manifestPath}`)
+  }
+  assertSafeManifestPath(d1.restoreFile, 'd1.restoreFile')
+}
+
 async function addManifestHashes(outDir, manifest) {
   manifest.d1.sha256 = await sha256File(join(outDir, manifest.d1.file))
+  if (manifest.d1.restoreFile) {
+    manifest.d1.restoreSha256 = await sha256File(
+      join(outDir, manifest.d1.restoreFile),
+    )
+  }
 
   for (const object of manifest.r2.objects) {
     object.sha256 = await sha256File(join(outDir, object.file))
@@ -1556,6 +2211,13 @@ async function verifyBackupFiles(fromDir, manifest) {
     expected: manifest.d1.sha256,
     fieldName: 'd1.sha256',
   })
+  if (manifest.d1.restoreFile) {
+    await verifyManifestFileHash({
+      path: join(fromDir, manifest.d1.restoreFile),
+      expected: manifest.d1.restoreSha256,
+      fieldName: 'd1.restoreSha256',
+    })
+  }
 
   for (const [index, object] of manifest.r2.objects.entries()) {
     await verifyManifestFileHash({

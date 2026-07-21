@@ -7,7 +7,7 @@
   "private": false,
   "packageManager": "pnpm@11.8.0",
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=22.13.0",
     "pnpm": ">=11.0.0"
   },
   "keywords": [
@@ -23,6 +23,7 @@
     "account:lifecycle": "node scripts/honowarden-account-lifecycle.mjs",
     "account:kdf-change:lifecycle": "node scripts/honowarden-kdf-change-lifecycle.mjs",
     "account:credential-lifecycle": "node scripts/honowarden-credential-lifecycle.mjs",
+    "account:credential-restore:lifecycle": "node scripts/honowarden-credential-restore-lifecycle.mjs",
     "account:key-rotation:lifecycle": "node scripts/honowarden-user-key-rotation-lifecycle.mjs",
     "account:keys:lifecycle": "node scripts/honowarden-account-key-lifecycle.mjs",
     "account:password-change:lifecycle": "node scripts/honowarden-password-change-lifecycle.mjs",

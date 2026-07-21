@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import {
   chmod,
+  cp,
   lstat,
   mkdir,
   open,
@@ -2050,6 +2051,79 @@ export async function ensureOfficialProfileDirectories(root, profile) {
   const info = await lstat(profilePath)
   if (!info.isFile() || (info.mode & 0o777) !== 0o600) {
     throw new Error(officialCliProfileConfigurationError)
+  }
+}
+
+export async function cloneOfficialProfile(root, sourceProfile, targetProfile) {
+  const sourceName = validateOfficialProfileName(sourceProfile)
+  const targetName = validateOfficialProfileName(targetProfile)
+  if (!sourceName || !targetName || sourceName === targetName) {
+    throw new Error('official CLI clone profiles were invalid')
+  }
+
+  await ensureOfficialProfileDirectories(root, sourceName)
+  const resolvedRoot = await realpath(root.absolute)
+  const directories = ['profile', 'home', 'tmp']
+  const sourcePaths = directories.map((directory) => ({
+    directory,
+    path: join(root.absolute, directory, sourceName),
+  }))
+  const targetPaths = directories.map((directory) => ({
+    directory,
+    path: join(root.absolute, directory, targetName),
+  }))
+
+  for (const source of sourcePaths) {
+    await validatePrivateProfileDirectory(
+      source.path,
+      resolvedRoot,
+      `official CLI ${source.directory} clone source`,
+    )
+    await validateMutableHarnessTree(source.path, source.directory)
+  }
+  if (
+    (await Promise.all(targetPaths.map((target) => exists(target.path)))).some(
+      Boolean,
+    )
+  ) {
+    throw new Error('official CLI clone target already exists')
+  }
+
+  try {
+    for (const directory of ['profile', 'home']) {
+      await cp(
+        join(root.absolute, directory, sourceName),
+        join(root.absolute, directory, targetName),
+        { errorOnExist: true, force: false, recursive: true },
+      )
+    }
+    await mkdir(join(root.absolute, 'tmp', targetName), { mode: 0o700 })
+
+    for (const target of targetPaths) {
+      await validatePrivateProfileDirectory(
+        target.path,
+        resolvedRoot,
+        `official CLI ${target.directory} clone target`,
+      )
+      await validateMutableHarnessTree(target.path, target.directory)
+    }
+  } catch (error) {
+    const cleanup = await Promise.allSettled(
+      targetPaths.map((target) =>
+        rm(target.path, { recursive: true, force: true }),
+      ),
+    )
+    const cleanupErrors = cleanup
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason)
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        'official CLI profile clone cleanup failed',
+        { cause: error },
+      )
+    }
+    throw error
   }
 }
 
