@@ -49,8 +49,8 @@ fails the wrapper loudly and suppresses a false success packet.
 The backup directory contains:
 
 - `backup-manifest.json`: schema version, source resource names, object list
-  source, object list, planned commands, optional credential-generation
-  manifest SHA-256, and file checksums after an executed export
+  source, object list, planned commands, optional derived credential-generation
+  binding, and file checksums after an executed export
 - `d1.sql`: D1 SQL export
 - `r2/`: object files named by base64url-encoded object keys
 
@@ -207,7 +207,7 @@ that root's `.wrangler/state` for commands that accept `--persist-to`:
 
 ```sh
 SOURCE_ROOT=test/.tmp/credential-lifecycle/source
-GENERATION_MANIFEST_SHA256=<credential-generation-manifest-sha256>
+LIFECYCLE_MANIFEST_SHA256=<approved-credential-lifecycle-manifest-sha256>
 
 pnpm backup:export -- \
   --out backups/final-generation \
@@ -216,25 +216,54 @@ pnpm backup:export -- \
   --mode local \
   --config "$SOURCE_ROOT/wrangler.jsonc" \
   --persist-to "$SOURCE_ROOT/.wrangler/state" \
-  --generation-manifest-sha256 "$GENERATION_MANIFEST_SHA256" \
+  --generation-manifest-sha256 "$LIFECYCLE_MANIFEST_SHA256" \
   --r2-objects object-keys.txt \
   --execute
 ```
 
 `--persist-to` alone does not select the D1 export source. A generation-bound
-export is rejected unless it uses local mode, an explicit `--config`, and an
-explicit `--persist-to` equal to `<config-directory>/.wrangler/state`. This
-prevents D1 and R2 from being read from different local states and prevents a
-remote or ambient source from being labeled as the approved generation. The
-config is passed to every Wrangler command, while `--persist-to` remains limited
-to supported local D1 import and R2 commands. Unbound backups retain their
-existing local and remote behavior.
+export is execute-only and is rejected unless it uses local mode, an explicit
+`--config`, an explicit `--persist-to` equal to
+`<config-directory>/.wrangler/state`, and an explicit `--r2-objects` inventory.
+This prevents D1 and R2 from being read from different local states, prevents a
+remote or ambient source from being labeled as the approved generation, and
+prevents an omitted R2 inventory from silently producing a D1-only recovery
+artifact. An explicitly empty inventory file is reserved for a reviewed source
+known to contain no R2 objects. The config is passed to every Wrangler command,
+while `--persist-to` remains limited to supported local D1 import and R2
+commands. Unbound backups retain their existing local, remote, and dry-run
+behavior.
 
-`--generation-manifest-sha256` adds only
-`credentialGeneration.manifestSha256` to the backup manifest. It is a
-redaction-safe digest, not a password, token, key, ciphertext, vault value, or
-client profile. Omitting the flag preserves the existing unbound backup schema
-and scheduled-backup behavior.
+The bound `--out` path must be missing or an empty directory. Reusing a prior
+output is rejected before Wrangler starts, so a failed replacement cannot leave
+an older bound manifest next to partially overwritten D1 or R2 files. Use a new
+run-owned output directory for every generation-bound export.
+
+`--generation-manifest-sha256` supplies the approved credential-lifecycle
+manifest digest; it is not copied into the final generation identity. After all
+D1 and R2 export commands succeed, the wrapper hashes the actual D1 SQL and each
+sorted R2 key/body checksum into the domain-separated
+`honowarden.backup-source.v1` source identity. It then derives the
+`honowarden.credential-generation-binding.v1` manifest identity from the
+lifecycle digest and source identity:
+
+```json
+{
+  "schemaVersion": 1,
+  "lifecycleManifestSha256": "<approved-lifecycle-manifest-sha256>",
+  "sourceStateSha256": "<derived-d1-r2-source-sha256>",
+  "manifestSha256": "<derived-generation-binding-sha256>"
+}
+```
+
+This object is written as `credentialGeneration` only after a successful
+executed export. The same source and lifecycle digest produce the same binding;
+any D1 content, R2 inventory, object body, or lifecycle digest change produces a
+different binding. A failed or planned export cannot leave a falsely bound
+manifest. All fields are redaction-safe digests or a schema version, not a
+password, token, key, ciphertext, vault value, or client profile. Omitting the
+flag preserves the existing unbound backup schema and scheduled-backup
+behavior.
 
 ## Remote Backup
 
@@ -319,11 +348,12 @@ pnpm backup:evidence -- \
   --run-url <github-actions-run-url>
 ```
 
-The evidence command verifies manifest checksums before emitting a JSON packet.
-It records only aggregate fields such as manifest id, optional credential
-generation manifest digest, D1 SQL checksum and byte size, R2 object count, R2
-object digest id, and total R2 byte size. It does not emit database names,
-bucket names, object keys, SQL contents, object bodies, or secret values.
+The evidence command verifies the nested generation binding and file checksums
+before emitting a JSON packet. It records only aggregate fields such as manifest
+id, optional derived credential-generation binding digest, D1 SQL checksum and
+byte size, R2 object count, R2 object digest id, and total R2 byte size. It does
+not emit the lifecycle digest, source-state digest, database names, bucket names,
+object keys, SQL contents, object bodies, or secret values.
 
 Failure handling:
 
@@ -364,7 +394,7 @@ manifest and the credential-generation manifest recorded during export:
 
 ```sh
 MANIFEST_SHA256=<backup-manifest-sha256>
-GENERATION_MANIFEST_SHA256=<credential-generation-manifest-sha256>
+GENERATION_BINDING_SHA256=<credentialGeneration.manifestSha256>
 
 pnpm backup:restore -- \
   --from backups/final-generation \
@@ -372,7 +402,7 @@ pnpm backup:restore -- \
   --bucket honowarden-restore-vault-objects \
   --mode local \
   --expected-manifest-sha256 "$MANIFEST_SHA256" \
-  --expected-generation-manifest-sha256 "$GENERATION_MANIFEST_SHA256"
+  --expected-generation-manifest-sha256 "$GENERATION_BINDING_SHA256"
 ```
 
 The generation expectation is accepted only together with an exact manifest
@@ -397,6 +427,10 @@ Before executing any Wrangler command, restore checks:
 - the raw manifest bytes match `--expected-manifest-sha256`, when provided
 - `credentialGeneration.manifestSha256` matches
   `--expected-generation-manifest-sha256`, when provided
+- the nested source-state digest recomputes from the manifest's D1 checksum and
+  sorted R2 key/body checksums
+- the nested generation-manifest digest recomputes from the approved lifecycle
+  digest and source-state digest
 - manifest schema version and required fields
 - manifest file paths are relative and cannot escape the backup directory
 - R2 object files stay under `r2/`

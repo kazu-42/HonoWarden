@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath, URL } from 'node:url'
@@ -15,6 +22,9 @@ const manifestSchemaVersion = 1
 const defaultR2ListPageSize = 1000
 const maxR2ListPageSize = 1000
 const defaultR2Region = 'auto'
+const credentialGenerationSchemaVersion = 1
+const backupSourceDomain = 'honowarden.backup-source.v1'
+const credentialGenerationDomain = 'honowarden.credential-generation-binding.v1'
 
 async function main(argv = process.argv.slice(2)) {
   const [command, ...rest] = argv
@@ -55,6 +65,11 @@ async function runExport(options) {
     generationManifestSha256,
     mode,
     options,
+    execute: Boolean(options.execute),
+  })
+  await assertFreshGenerationBoundOutput({
+    generationManifestSha256,
+    outDir,
   })
   rejectRemotePersistence(mode, options)
   const execute = Boolean(options.execute)
@@ -87,13 +102,6 @@ async function runExport(options) {
     mode,
     database,
     bucket,
-    ...(generationManifestSha256
-      ? {
-          credentialGeneration: {
-            manifestSha256: generationManifestSha256,
-          },
-        }
-      : {}),
     d1: {
       file: d1ExportFileName,
     },
@@ -115,11 +123,19 @@ async function runExport(options) {
   }
 
   await mkdir(r2Dir, { recursive: true })
-  await writeManifest(outDir, manifest)
+  if (!generationManifestSha256) {
+    await writeManifest(outDir, manifest)
+  }
 
   if (execute) {
     await runCommands(commands)
     await addManifestHashes(outDir, manifest)
+    if (generationManifestSha256) {
+      manifest.credentialGeneration = deriveCredentialGenerationBinding({
+        lifecycleManifestSha256: generationManifestSha256,
+        manifest,
+      })
+    }
     await writeManifest(outDir, manifest)
   }
   const manifestPath = join(outDir, manifestFileName)
@@ -740,19 +756,7 @@ async function readManifestWithIdentity(fromDir) {
     throw new Error(`Invalid backup manifest: ${manifestPath}`)
   }
 
-  if (
-    manifest.credentialGeneration !== undefined &&
-    (!manifest.credentialGeneration ||
-      typeof manifest.credentialGeneration !== 'object' ||
-      Array.isArray(manifest.credentialGeneration) ||
-      Object.keys(manifest.credentialGeneration).length !== 1 ||
-      !Object.hasOwn(manifest.credentialGeneration, 'manifestSha256') ||
-      !isSha256(manifest.credentialGeneration.manifestSha256))
-  ) {
-    throw new Error(
-      `Invalid backup manifest credential generation: ${manifestPath}`,
-    )
-  }
+  assertCredentialGenerationShape(manifest.credentialGeneration, manifestPath)
 
   assertSafeManifestPath(manifest.d1.file, 'd1.file')
 
@@ -769,6 +773,8 @@ async function readManifestWithIdentity(fromDir) {
     )
     assertManifestObjectFileMatchesKey(object, index)
   }
+
+  verifyCredentialGenerationBinding(manifest, manifestPath)
 
   return {
     manifest,
@@ -853,6 +859,7 @@ function enforceGenerationBoundExportSource({
   generationManifestSha256,
   mode,
   options,
+  execute,
 }) {
   if (!generationManifestSha256) {
     return
@@ -879,6 +886,140 @@ function enforceGenerationBoundExportSource({
       '--persist-to must equal <config-directory>/.wrangler/state for a generation-bound export',
     )
   }
+  if (!options.r2Objects) {
+    throw new Error('--generation-manifest-sha256 requires --r2-objects')
+  }
+  if (!execute) {
+    throw new Error('--generation-manifest-sha256 requires --execute')
+  }
+}
+
+async function assertFreshGenerationBoundOutput({
+  generationManifestSha256,
+  outDir,
+}) {
+  if (!generationManifestSha256) {
+    return
+  }
+
+  let outputStats
+  try {
+    outputStats = await lstat(outDir)
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return
+    }
+    throw error
+  }
+
+  if (!outputStats.isDirectory() || (await readdir(outDir)).length !== 0) {
+    throw new Error(
+      '--out must be missing or an empty directory for a generation-bound export',
+    )
+  }
+}
+
+function deriveCredentialGenerationBinding({
+  lifecycleManifestSha256,
+  manifest,
+}) {
+  if (
+    !isSha256(lifecycleManifestSha256) ||
+    !isSha256(manifest.d1?.sha256) ||
+    !Array.isArray(manifest.r2?.objects) ||
+    manifest.r2.objects.some((object) => !isSha256(object.sha256))
+  ) {
+    throw new Error(
+      'Credential generation binding requires complete D1 and R2 checksums',
+    )
+  }
+
+  const sourceStateSha256 = sha256Hex(
+    JSON.stringify({
+      domain: backupSourceDomain,
+      d1: { sha256: manifest.d1.sha256 },
+      r2: {
+        objects: [...manifest.r2.objects]
+          .sort(compareObjectKeys)
+          .map((object) => ({
+            key: object.key,
+            sha256: object.sha256,
+          })),
+      },
+    }),
+  )
+  const manifestSha256 = sha256Hex(
+    JSON.stringify({
+      domain: credentialGenerationDomain,
+      lifecycleManifestSha256,
+      sourceStateSha256,
+    }),
+  )
+
+  return {
+    schemaVersion: credentialGenerationSchemaVersion,
+    lifecycleManifestSha256,
+    sourceStateSha256,
+    manifestSha256,
+  }
+}
+
+function assertCredentialGenerationShape(credentialGeneration, manifestPath) {
+  if (credentialGeneration === undefined) {
+    return
+  }
+
+  if (
+    !credentialGeneration ||
+    typeof credentialGeneration !== 'object' ||
+    Array.isArray(credentialGeneration) ||
+    Object.keys(credentialGeneration).length !== 4 ||
+    credentialGeneration.schemaVersion !== credentialGenerationSchemaVersion ||
+    !Object.hasOwn(credentialGeneration, 'lifecycleManifestSha256') ||
+    !isSha256(credentialGeneration.lifecycleManifestSha256) ||
+    !Object.hasOwn(credentialGeneration, 'sourceStateSha256') ||
+    !isSha256(credentialGeneration.sourceStateSha256) ||
+    !Object.hasOwn(credentialGeneration, 'manifestSha256') ||
+    !isSha256(credentialGeneration.manifestSha256)
+  ) {
+    throw new Error(
+      `Invalid backup manifest credential generation: ${manifestPath}`,
+    )
+  }
+}
+
+function verifyCredentialGenerationBinding(manifest, manifestPath) {
+  if (!manifest.credentialGeneration) {
+    return
+  }
+
+  let expected
+  try {
+    expected = deriveCredentialGenerationBinding({
+      lifecycleManifestSha256:
+        manifest.credentialGeneration.lifecycleManifestSha256,
+      manifest,
+    })
+  } catch {
+    throw new Error(
+      `Invalid backup manifest credential generation: ${manifestPath}`,
+    )
+  }
+
+  if (
+    expected.sourceStateSha256 !==
+      manifest.credentialGeneration.sourceStateSha256 ||
+    expected.manifestSha256 !== manifest.credentialGeneration.manifestSha256
+  ) {
+    throw new Error(
+      `Backup credential generation binding mismatch: ${manifestPath}`,
+    )
+  }
+}
+
+function compareObjectKeys(left, right) {
+  if (left.key === right.key) return 0
+  return left.key < right.key ? -1 : 1
 }
 
 function requireFreshTargetConfirmation(options) {
@@ -1153,7 +1294,7 @@ function printUsage() {
   node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--config <file>] [--expected-manifest-sha256 <sha256>] [--expected-generation-manifest-sha256 <sha256>] [--execute --confirm-fresh-target]
   node scripts/honowarden-backup.mjs evidence --from <dir> [--out <file>] [--source-commit <sha>] [--run-url <url>]
 
-Generation-bound export requires --mode local, --config <file>, and --persist-to <config-directory>/.wrangler/state.
+Generation-bound export is execute-only and requires --mode local, --config <file>, --persist-to <config-directory>/.wrangler/state, and --r2-objects <file>.
 `)
 }
 
