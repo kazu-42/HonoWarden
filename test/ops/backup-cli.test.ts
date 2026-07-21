@@ -358,27 +358,44 @@ describe('backup CLI', () => {
     const workDir = await fixtureDir('export-flags')
     const objectList = join(workDir, 'objects.txt')
     const outDir = join(workDir, 'backup')
-    const persistDir = join(workDir, 'persist')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const fakeWrangler = await createExportingFakeWrangler(
+      workDir,
+      'CREATE TABLE recovery_probe (id TEXT);\n',
+      [],
+    )
+    await mkdir(sourceDir, { recursive: true })
+    await mkdir(persistDir, { recursive: true })
+    await writeFile(configPath, '{}\n')
     await writeFile(objectList, 'attachments/object-one\n')
 
-    const result = await execFileAsync('node', [
-      backupScript,
-      'export',
-      '--out',
-      outDir,
-      '--database',
-      'honowarden',
-      '--bucket',
-      'honowarden-vault-objects',
-      '--mode',
-      'local',
-      '--env',
-      'staging',
-      '--persist-to',
-      persistDir,
-      '--r2-objects',
-      objectList,
-    ])
+    const result = await execFileAsync(
+      'node',
+      [
+        backupScript,
+        'export',
+        '--out',
+        outDir,
+        '--database',
+        'honowarden',
+        '--bucket',
+        'honowarden-vault-objects',
+        '--mode',
+        'local',
+        '--env',
+        'staging',
+        '--config',
+        configPath,
+        '--persist-to',
+        persistDir,
+        '--r2-objects',
+        objectList,
+        '--execute',
+      ],
+      { env: fakeWrangler.env },
+    )
     const output = JSON.parse(result.stdout) as {
       commands: string[][]
     }
@@ -394,10 +411,80 @@ describe('backup CLI', () => {
       '--skip-confirmation',
       '--env',
       'staging',
+      '--config',
+      configPath,
     ])
     expect(output.commands[1]).toContain('--persist-to')
     expect(output.commands[1]).toContain(persistDir)
+    await expect(readFile(fakeWrangler.operations, 'utf8')).resolves.toBe(
+      'd1 export\nr2 object get\n',
+    )
   })
+
+  it.each([
+    {
+      label: 'no config anchor',
+      config: false,
+      matchingPersistence: true,
+      error:
+        'local export --persist-to requires --config so D1 and R2 share one source',
+    },
+    {
+      label: 'a persistence root outside the config anchor',
+      config: true,
+      matchingPersistence: false,
+      error:
+        'local export --persist-to must equal <config-directory>/.wrangler/state',
+    },
+  ])(
+    'rejects unbound local export with $label before Wrangler spawn',
+    async ({ config, matchingPersistence, error }) => {
+      const workDir = await fixtureDir('export-unbound-split-source')
+      const sourceDir = join(workDir, 'source')
+      const configPath = join(sourceDir, 'wrangler.jsonc')
+      const persistDir = matchingPersistence
+        ? join(sourceDir, '.wrangler', 'state')
+        : join(workDir, 'different-state')
+      const objectList = join(workDir, 'objects.txt')
+      const outDir = join(workDir, 'backup')
+      const fakeWrangler = await createFakeWrangler(workDir)
+      await mkdir(persistDir, { recursive: true })
+      await mkdir(sourceDir, { recursive: true })
+      await writeFile(configPath, '{}\n')
+      await writeFile(objectList, `${objectOneKey}\n`)
+
+      await expect(
+        execFileAsync(
+          'node',
+          [
+            backupScript,
+            'export',
+            '--out',
+            outDir,
+            '--database',
+            'honowarden',
+            '--bucket',
+            'honowarden-vault-objects',
+            '--mode',
+            'local',
+            ...(config ? ['--config', configPath] : []),
+            '--persist-to',
+            persistDir,
+            '--r2-objects',
+            objectList,
+            '--execute',
+          ],
+          { env: fakeWrangler.env },
+        ),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining(error) })
+      await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      )
+      await expect(
+        readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
+      ).rejects.toMatchObject({ code: 'ENOENT' })
+    },
+  )
 
   it('rejects a generation-bound dry run before writing a manifest', async () => {
     const workDir = await fixtureDir('export-generation-binding')
@@ -1060,8 +1147,8 @@ describe('backup CLI', () => {
   })
 
   it(
-    'exports real local D1 and R2 state selected by an owned Wrangler config',
-    { timeout: 30_000 },
+    'exports repeated real local D1 and R2 state with a large retained WAL',
+    { timeout: 60_000 },
     async () => {
       const workDir = await fixtureDir('export-owned-local-state')
       const sourceDir = join(workDir, 'source')
@@ -1116,9 +1203,12 @@ describe('backup CLI', () => {
         '--persist-to',
         persistDir,
         '--command',
-        `CREATE TABLE recovery_probe (id TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO recovery_probe (id, value) VALUES ('final', '${d1Sentinel}'); CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE); INSERT INTO cipher_attachments (object_key) VALUES ('${objectOneKey}');`,
+        `CREATE TABLE recovery_probe (id TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO recovery_probe (id, value) VALUES ('final', '${d1Sentinel}'); CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE); INSERT INTO cipher_attachments (object_key) VALUES ('${objectOneKey}'); CREATE TABLE wal_pressure (id INTEGER PRIMARY KEY, body TEXT NOT NULL); INSERT INTO wal_pressure (id, body) WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1500) SELECT x, hex(randomblob(4096)) FROM n;`,
         '--yes',
       ])
+      expect(
+        await largestRegularFileWithSuffix(persistDir, '.sqlite-wal'),
+      ).toBeGreaterThan(8 * 1024 * 1024)
       await execFileAsync(wranglerBinary, [
         'r2',
         'object',
@@ -1402,6 +1492,7 @@ describe('backup CLI', () => {
   it('accepts an exact manifest and credential-generation restore binding', async () => {
     const workDir = await fixtureDir('restore-exact-generation-binding')
     const fromDir = join(workDir, 'backup')
+    const successfulWrangler = await createSuccessfulWrangler(workDir)
     const generationManifestSha256 = 'b'.repeat(64)
     const generationBinding = await writeSafeBackupFixture(fromDir, {
       d1Sha256: await sha256('create table users(id text);\n'),
@@ -1412,25 +1503,44 @@ describe('backup CLI', () => {
       join(fromDir, 'backup-manifest.json'),
     )
 
-    const result = await execFileAsync('node', [
-      backupScript,
-      'restore',
-      '--from',
-      fromDir,
-      '--expected-manifest-sha256',
-      manifestSha256,
-      '--expected-generation-manifest-sha256',
-      generationBinding?.manifestSha256 ?? '',
-    ])
+    const result = await execFileAsync(
+      'node',
+      [
+        backupScript,
+        'restore',
+        '--from',
+        fromDir,
+        '--expected-manifest-sha256',
+        manifestSha256,
+        '--expected-generation-manifest-sha256',
+        generationBinding?.manifestSha256 ?? '',
+        '--execute',
+        '--confirm-fresh-target',
+      ],
+      { env: successfulWrangler.env },
+    )
     const output = JSON.parse(result.stdout) as {
       executed: boolean
       manifest: string
-      audit: { manifestId: string }
+      audit: { manifestId: string; resultStatus: string }
     }
 
-    expect(output.executed).toBe(false)
+    expect(output.executed).toBe(true)
     expect(output.manifest).toBe(join(fromDir, 'backup-manifest.json'))
     expect(output.audit.manifestId).toBe(`sha256:${manifestSha256}`)
+    expect(output.audit.resultStatus).toBe('executed')
+    const operations = (await readFile(successfulWrangler.operations, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as string[])
+    expect(operations).toHaveLength(2)
+    expect(operations[0]?.slice(0, 3)).toEqual(['d1', 'execute', 'honowarden'])
+    expect(operations[1]?.slice(0, 4)).toEqual([
+      'r2',
+      'object',
+      'put',
+      `honowarden-vault-objects/${objectOneKey}`,
+    ])
   })
 
   it.each([
@@ -1906,6 +2016,9 @@ describe('backup CLI', () => {
     expect(runbook).toContain('honowarden.credential-generation-binding.v1')
     expect(runbook).toContain('execute-only')
     expect(runbook).toContain('explicit `--r2-objects` inventory')
+    expect(runbook).toMatch(
+      /Every local export\s+that supplies it must also supply `--config`/,
+    )
     expect(runbook).toContain('cipher_attachments.object_key')
     expect(runbook).toContain('.honowarden-credential-lifecycle-complete.json')
     expect(runbook).toContain('*.sqlite-shm')
@@ -1926,6 +2039,26 @@ async function fixtureDir(label: string): Promise<string> {
   onTestFinished(() => rm(dir, { recursive: true, force: true }))
 
   return dir
+}
+
+async function largestRegularFileWithSuffix(
+  directory: string,
+  suffix: string,
+): Promise<number> {
+  let largest = 0
+  for (const entry of await readdir(directory)) {
+    const path = join(directory, entry)
+    const info = await lstat(path)
+    if (info.isDirectory()) {
+      largest = Math.max(
+        largest,
+        await largestRegularFileWithSuffix(path, suffix),
+      )
+    } else if (info.isFile() && entry.endsWith(suffix)) {
+      largest = Math.max(largest, info.size)
+    }
+  }
+  return largest
 }
 
 async function prepareOwnedGenerationState(
@@ -2099,6 +2232,29 @@ async function createFakeWrangler(
       ...process.env,
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
       WRANGLER_MARKER: marker,
+    },
+  }
+}
+
+async function createSuccessfulWrangler(workDir: string): Promise<{
+  operations: string
+  env: NodeJS.ProcessEnv
+}> {
+  const binDir = join(workDir, 'successful-bin')
+  const operations = join(workDir, 'successful-wrangler-operations')
+  const executable = join(binDir, 'wrangler')
+  await mkdir(binDir, { recursive: true })
+  await writeFile(
+    executable,
+    `#!/usr/bin/env node\nimport { appendFileSync } from 'node:fs'\nappendFileSync(process.env.WRANGLER_OPERATIONS, JSON.stringify(process.argv.slice(2)) + '\\n')\n`,
+    { mode: 0o700 },
+  )
+  return {
+    operations,
+    env: {
+      ...process.env,
+      PATH: `${binDir}:${process.env.PATH ?? ''}`,
+      WRANGLER_OPERATIONS: operations,
     },
   }
 }

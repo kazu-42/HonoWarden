@@ -72,6 +72,12 @@ async function runExport(options) {
     options.generationManifestSha256,
     '--generation-manifest-sha256',
   )
+  await enforceUnboundLocalExportSource({
+    generationManifestSha256,
+    mode,
+    options,
+    execute: Boolean(options.execute),
+  })
   await enforceGenerationBoundExportSource({
     generationManifestSha256,
     mode,
@@ -930,6 +936,57 @@ function parseMode(value = 'local') {
 function rejectRemotePersistence(mode, options) {
   if (mode === 'remote' && options.persistTo) {
     throw new Error('--persist-to can only be used with --mode local')
+  }
+}
+
+async function enforceUnboundLocalExportSource({
+  generationManifestSha256,
+  mode,
+  options,
+  execute,
+}) {
+  if (generationManifestSha256 || mode !== 'local' || !options.persistTo) {
+    return
+  }
+  if (!options.config) {
+    throw new Error(
+      'local export --persist-to requires --config so D1 and R2 share one source',
+    )
+  }
+
+  const configPath = resolve(options.config)
+  const persistenceRoot = resolve(options.persistTo)
+  const expectedPersistenceRoot = join(
+    dirname(configPath),
+    '.wrangler',
+    'state',
+  )
+  if (persistenceRoot !== expectedPersistenceRoot) {
+    throw new Error(
+      'local export --persist-to must equal <config-directory>/.wrangler/state',
+    )
+  }
+  if (!execute) {
+    return
+  }
+
+  let canonicalConfigPath
+  let canonicalPersistenceRoot
+  try {
+    ;[canonicalConfigPath, canonicalPersistenceRoot] = await Promise.all([
+      realpath(configPath),
+      realpath(persistenceRoot),
+    ])
+  } catch (error) {
+    throw new Error('local export source paths must exist', { cause: error })
+  }
+  if (
+    canonicalConfigPath !== configPath ||
+    canonicalPersistenceRoot !== persistenceRoot
+  ) {
+    throw new Error(
+      'local export source paths must be canonical and symlink-free',
+    )
   }
 }
 

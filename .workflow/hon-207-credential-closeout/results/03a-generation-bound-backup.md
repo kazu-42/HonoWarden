@@ -30,6 +30,10 @@ Linear issue: HON-224
 - Added explicit `--config` passthrough to D1 export/import and R2 get/put.
   Local D1 export uses the selected config directory's `.wrangler/state`, while
   supported D1/R2 commands also receive the matching `--persist-to` root.
+- Closed the same split-source hazard for unbound local export. Supplying
+  `--persist-to` now requires a config-anchored matching `.wrangler/state`, and
+  execute mode requires both paths to be canonical and symlink-free before
+  output creation or Wrangler spawn.
 - Generation-bound export is execute-only and now requires local mode, an
   explicit config, an explicit persistence root equal to
   `<config-directory>/.wrangler/state`, and an explicit R2 inventory. Remote,
@@ -150,6 +154,16 @@ Linear issue: HON-224
     valid while a new `*.sqlite-wal` invalidates completion. The same real state
     exports twice with one binding, and a subsequent D1 update is rejected
     without a new manifest.
+14. Independent exact-head standard review at `9bb5c55` reported no P1, one P2
+    split-source hazard for unbound local export, and two P3 gaps: no successful
+    restore-execute slice and possible large-WAL checkpoint drift. Two red tests
+    reproduced the unbound no-config and mismatched-root cases reaching Wrangler;
+    both now fail before output or spawn, while a matching unbound execute still
+    completes D1 and R2 export. A bound restore with both pins now completes a
+    recorded D1 import and R2 put and emits executed audit. Finally, real
+    Wrangler 4.112 retained a WAL larger than 8 MiB unchanged across two bound
+    exports; that large-WAL condition is now part of the automated repeat-export
+    test rather than a one-off assumption.
 
 ## Real Local Artifact
 
@@ -181,21 +195,25 @@ real credential or production manifest.
 ## Verification
 
 ```text
-backup CLI focused: 44 passed
-backup + scheduled workflow impact: 48 passed
-backup + credential lifecycle combined: 63 passed
+backup CLI focused: 46 passed
+backup + scheduled workflow impact: 50 passed
+backup + credential lifecycle combined: 65 passed
 real local D1/R2 source export: passed
 remote / ambient / split / unowned / incomplete-or-drifted / symlinked / omitted-R2 / dry-run / reused/public-output bound exports: rejected before spawn
+unbound local no-config or mismatched persistence source: rejected before output and spawn
+matching unbound config/persistence execute: D1 and R2 export passed
 bound restore execution missing either approval pin: rejected before command construction and spawn
+bound restore execution with both approval pins: D1 import, R2 put, and executed audit passed
 concurrent same-output bound exports: exactly one coherent success; competitor rejected before spawn
 incomplete D1-referenced R2 inventory: rejected after D1 export, before R2 get or manifest write
 verified-empty D1 attachment set and explicit inventory: passed
 generation-bound output claim: removed on success and handled failure
 temporary D1 inventory-validation persistence: removed on success and failure
 same source and lifecycle digest: stable derived binding
+retained SQLite WAL larger than 8 MiB: unchanged across two real exports
 changed D1 source after completion: export rejected before output claim and spawn
 manifest/history mismatch Wrangler spawns: 0
-full suite: 99 files, 1,295 tests passed
+full suite: 99 files, 1,297 tests passed
 typecheck / ESLint / Prettier: passed
 compatibility: 105 passed
 brand scan: passed

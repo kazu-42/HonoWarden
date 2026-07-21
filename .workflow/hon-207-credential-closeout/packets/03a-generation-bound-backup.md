@@ -33,13 +33,16 @@ manifest whose content or generation identity differs from the approved input.
   tokens, encrypted bodies, filesystem secrets, or client profile data.
 - Local D1 export must not silently fall back to the repository's ambient
   `.wrangler/state`; the selected source state is explicit and owned.
+- Any local export that supplies `--persist-to` must anchor D1 and R2 to the
+  same config-relative state, even when generation binding is omitted.
 - Config and persistence paths must be canonical and symlink-free. The selected
   private persistence must carry both the credential-lifecycle ownership marker
   and a matching completion attestation, and the run-owned output must be
   private before any Wrangler process starts.
 - Existing unbound scheduled/operator backups remain readable. Restore only
   requires both approval pins automatically when executing a bound manifest;
-  unbound compatibility remains unchanged.
+  unbound compatibility remains unchanged except unsafe split local source
+  routing fails closed.
 
 ## Exit Gate
 

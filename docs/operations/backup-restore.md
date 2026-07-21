@@ -221,24 +221,28 @@ pnpm backup:export -- \
   --execute
 ```
 
-`--persist-to` alone does not select the D1 export source. A generation-bound
-export is execute-only and is rejected unless it uses local mode, an explicit
-`--config`, an explicit `--persist-to` equal to
-`<config-directory>/.wrangler/state`, and an explicit `--r2-objects` inventory.
-This prevents D1 and R2 from being read from different local states, prevents a
-remote or ambient source from being labeled as the approved generation, and
-prevents an omitted R2 inventory from silently producing a D1-only recovery
-artifact. An explicitly empty inventory file is reserved for a reviewed source
-known to contain no R2 objects.
+`--persist-to` alone does not select the D1 export source. Every local export
+that supplies it must also supply `--config`, and the persistence root must
+equal `<config-directory>/.wrangler/state`. During execute, both paths must
+exist and resolve to their exact supplied paths; config or persistence symlinks
+are rejected before output creation or Wrangler spawn. This prevents even an
+unbound backup from combining D1 from config-relative or ambient state with R2
+from a different persistence root. Omitting both options retains the existing
+ambient local behavior.
 
-Before any Wrangler process starts, both source paths must exist and resolve to
-their exact supplied paths; config or persistence symlinks are rejected. The
-config file and the config, `.wrangler`, and state directories must be owned by
-the current user, with all three directories at mode `0700`. The persistence
-root must also contain the mode-`0600` lifecycle ownership marker written by
-`account:credential-lifecycle`. A structurally matching but ambient or
-unmarked operator-created local state therefore cannot receive a generation
-binding accidentally.
+A generation-bound export adds stricter gates: it is execute-only and requires
+local mode, explicit source paths, and an explicit `--r2-objects` inventory.
+This prevents a remote or ambient source from being labeled as the approved
+generation and prevents an omitted R2 inventory from silently producing a
+D1-only recovery artifact. An explicitly empty inventory file is reserved for
+a reviewed source known to contain no R2 objects.
+
+For a generation-bound export, the config file and the config, `.wrangler`, and
+state directories must also be owned by the current user, with all three
+directories at mode `0700`. The persistence root must contain the mode-`0600`
+lifecycle ownership marker written by `account:credential-lifecycle`. A
+structurally matching but ambient or unmarked operator-created local state
+therefore cannot receive a generation binding accidentally.
 
 The ownership marker proves only that the lifecycle prepared the directory; it
 does not prove that a credential generation completed. A successful lifecycle
@@ -266,7 +270,8 @@ succeeds only when the exported D1 attachment-reference set is also empty. The
 validation persistence is removed on success or failure and never enters the
 backup manifest. The config is passed to every Wrangler command, while the
 source `--persist-to` remains limited to supported local D1 and R2 commands.
-Unbound backups retain their existing local, remote, and dry-run behavior.
+Unbound backups retain their existing remote and dry-run behavior; unsafe split
+local source routing now fails closed.
 
 The bound `--out` path must be missing or an empty directory owned by the
 current user at mode `0700`. A newly created output receives that mode; an
