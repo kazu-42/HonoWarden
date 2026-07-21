@@ -303,13 +303,15 @@ not staging, production, disable-state, or forward-recovery evidence.
 
 The 2026-07-21 HON-225 local run additionally verified:
 
+- source lifecycle manifest SHA-256
+  `8bdd365bb1282d0b2cc60b4d25900e1e932620800667542caa733154e1c9618b`;
 - generation-bound backup manifest SHA-256
-  `1cefeb938c3e5e3f268a96d95fdbfa5b427d32afc2b3fd0eb84feb83c6595277`;
+  `83db6e12bc9a72453d6146289160d63fb03480fe9e09049515d175e103910421`;
 - derived generation binding
-  `14054d7a0267de04e37f3db865a06a902857c7aa4d044afbaf9ab36bedc011b7`;
-- exact restored D1 export SHA-256
-  `fe83270da6ab4d82bfa8f48ef10fce687b7f921246b46338ec8bedcfe3f42421`
-  and one exact R2 body;
+  `f73d1d951b980d904cf1da61fbfc6969a2abbda9e906e3825c2f4da964a977c6`;
+- checksum-pinned source D1 identity
+  `4c96f98bd308b2927531456369ca94bfaa71d9361aaf5256d9bc0ec4ef9e9e9c`,
+  canonical restored schema/table/foreign-key equality, and one exact R2 body;
 - four old passwords, access tokens, refresh tokens, and authenticated official
   profiles rejected before and after restored Worker restart;
 - current access and refresh accepted, plus official CLI decrypted item read

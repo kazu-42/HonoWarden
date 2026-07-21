@@ -1308,15 +1308,18 @@ Implemented:
   an atomic restore claim before Wrangler spawn
 - a checksum-pinned `d1-restore.sql` artifact for generation-bound exports;
   `node:sqlite` imports the Wrangler dump with foreign keys temporarily
-  disabled, rejects `pragma_foreign_key_check` violations, emits tables before
-  dependency-ordered rows and secondary schema objects in one deferred
-  foreign-key transaction, then reimports with foreign keys enabled and
-  compares canonical schema and every table digest
+  disabled, rejects `pragma_foreign_key_check` violations, emits all tables and
+  foreign-key parent-key UNIQUE indexes before dependency-ordered rows, applies
+  non-unique indexes, views, and triggers after the data in one deferred
+  foreign-key transaction, then reimports with foreign keys enabled and compares
+  canonical schema and every table digest
 - Node.js runtime floor `>=22.13.0`, where `node:sqlite` is available without an
   experimental feature flag, for D1 export validation and restore-artifact
   generation
-- exact post-restore D1 re-export, every R2 body checksum, and derived
-  source-state digest equality before an executed restore can report success
+- post-restore D1 raw-byte equality or isolated canonical schema, table-content,
+  and foreign-key equality against the checksum-pinned source export; exact R2
+  body checksums; and derived source-state identity before an executed restore
+  can report success
 - in-memory recovery context that retains four superseded passwords, access
   tokens, refresh tokens, and authenticated official CLI profile snapshots only
   long enough to prove rejection against the restored final generation

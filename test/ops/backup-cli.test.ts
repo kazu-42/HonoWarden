@@ -897,6 +897,76 @@ describe('backup CLI', () => {
     )
   })
 
+  it('restores foreign keys backed by separately declared unique indexes', async () => {
+    const workDir = await fixtureDir('export-generation-unique-parent-index')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createExportingFakeWrangler(
+      workDir,
+      [
+        'CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE);',
+        'CREATE TABLE parent (code TEXT NOT NULL);',
+        'CREATE UNIQUE INDEX parent_code_unique ON parent(code);',
+        'CREATE INDEX parent_code_plain ON parent(code);',
+        'CREATE TABLE child (code TEXT NOT NULL REFERENCES parent(code));',
+        "INSERT INTO parent VALUES ('parent-code');",
+        "INSERT INTO child VALUES ('parent-code');",
+        '',
+      ].join('\n'),
+    )
+    await mkdir(sourceDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, '')
+
+    const result = await execFileAsync(
+      'node',
+      [
+        backupScript,
+        'export',
+        '--out',
+        outDir,
+        '--database',
+        'honowarden',
+        '--bucket',
+        'honowarden-vault-objects',
+        '--mode',
+        'local',
+        '--config',
+        configPath,
+        '--persist-to',
+        persistDir,
+        '--generation-manifest-sha256',
+        'a'.repeat(64),
+        '--r2-objects',
+        objectList,
+        '--execute',
+      ],
+      { env: fakeWrangler.env },
+    )
+    const output = JSON.parse(result.stdout) as { executed: boolean }
+    const restoreSql = await readFile(join(outDir, 'd1-restore.sql'), 'utf8')
+    const childTableOffset = restoreSql.indexOf('CREATE TABLE child')
+    const uniqueIndexOffset = restoreSql.indexOf(
+      'CREATE UNIQUE INDEX parent_code_unique',
+    )
+    const parentInsertOffset = restoreSql.indexOf('INSERT INTO "parent"')
+    const childInsertOffset = restoreSql.indexOf('INSERT INTO "child"')
+    const plainIndexOffset = restoreSql.indexOf(
+      'CREATE INDEX parent_code_plain',
+    )
+
+    expect(output.executed).toBe(true)
+    expect(childTableOffset).toBeGreaterThanOrEqual(0)
+    expect(uniqueIndexOffset).toBeGreaterThan(childTableOffset)
+    expect(parentInsertOffset).toBeGreaterThan(uniqueIndexOffset)
+    expect(childInsertOffset).toBeGreaterThan(uniqueIndexOffset)
+    expect(plainIndexOffset).toBeGreaterThan(childInsertOffset)
+  })
+
   it('accepts an empty R2 inventory when exported D1 has no attachment references', async () => {
     const workDir = await fixtureDir('export-generation-empty-inventory')
     const sourceDir = join(workDir, 'source')
@@ -1895,12 +1965,82 @@ describe('backup CLI', () => {
     })
   })
 
+  it('accepts logically equal D1 readback with different schema statement order', async () => {
+    const workDir = await fixtureDir('restore-equivalent-d1-order')
+    const fromDir = join(workDir, 'backup')
+    const target = await prepareFreshRestoreTarget(join(workDir, 'target'))
+    const sourceD1Body = [
+      'PRAGMA defer_foreign_keys=TRUE;',
+      'CREATE TABLE parent (code TEXT NOT NULL);',
+      'CREATE UNIQUE INDEX parent_code_unique ON parent(code);',
+      'CREATE TABLE child (code TEXT NOT NULL REFERENCES parent(code));',
+      "INSERT INTO parent VALUES ('parent-code');",
+      "INSERT INTO child VALUES ('parent-code');",
+      '',
+    ].join('\n')
+    const restoredD1Body = [
+      'PRAGMA defer_foreign_keys=TRUE;',
+      'CREATE TABLE parent (code TEXT NOT NULL);',
+      'CREATE TABLE child (code TEXT NOT NULL REFERENCES parent(code));',
+      'CREATE UNIQUE INDEX parent_code_unique ON parent(code);',
+      "INSERT INTO parent VALUES ('parent-code');",
+      "INSERT INTO child VALUES ('parent-code');",
+      '',
+    ].join('\n')
+    const generationBinding = await writeSafeBackupFixture(fromDir, {
+      d1Body: sourceD1Body,
+      d1Sha256: await sha256(sourceD1Body),
+      objectSha256: await sha256('object-body'),
+      generationManifestSha256: 'e'.repeat(64),
+    })
+    const manifestSha256 = await sha256FilePath(
+      join(fromDir, 'backup-manifest.json'),
+    )
+    const successfulWrangler = await createSuccessfulWrangler(workDir, {
+      d1Body: restoredD1Body,
+      r2Body: 'object-body',
+    })
+
+    const result = await execFileAsync(
+      'node',
+      boundRestoreArgs({
+        fromDir,
+        manifestSha256,
+        generationSha256: generationBinding?.manifestSha256 ?? '',
+        target,
+      }),
+      { env: successfulWrangler.env },
+    )
+    const output = JSON.parse(result.stdout) as {
+      verification: {
+        status: string
+        sourceStateSha256: string
+        d1Sha256: string
+        r2ObjectCount: number
+      }
+    }
+
+    expect(output.verification).toEqual({
+      status: 'passed',
+      sourceStateSha256: generationBinding?.sourceStateSha256,
+      d1Sha256: await sha256(sourceD1Body),
+      r2ObjectCount: 1,
+    })
+  })
+
   it.each([
     {
-      label: 'D1',
+      label: 'D1 schema',
       d1Body: 'create table different_table(id text);\n',
       r2Body: 'object-body',
-      error: 'Restored D1 SHA-256 mismatch',
+      error: 'Restored D1 state mismatch',
+    },
+    {
+      label: 'D1 rows',
+      d1Body:
+        "create table users(id text); insert into users values ('extra');\n",
+      r2Body: 'object-body',
+      error: 'Restored D1 state mismatch',
     },
     {
       label: 'R2',
@@ -2587,6 +2727,7 @@ async function prepareOwnedStateDirectory(path: string): Promise<void> {
 async function writeSafeBackupFixture(
   fromDir: string,
   hashes: {
+    d1Body?: string
     d1Sha256: string
     objectSha256: string
     generationManifestSha256?: string
@@ -2600,7 +2741,10 @@ async function writeSafeBackupFixture(
       })
     : undefined
   await mkdir(join(fromDir, 'r2'), { recursive: true })
-  await writeFile(join(fromDir, 'd1.sql'), 'create table users(id text);\n')
+  await writeFile(
+    join(fromDir, 'd1.sql'),
+    hashes.d1Body ?? 'create table users(id text);\n',
+  )
   await writeFile(join(fromDir, objectOneFile), 'object-body')
   await writeFile(
     join(fromDir, 'backup-manifest.json'),

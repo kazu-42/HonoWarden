@@ -25,9 +25,10 @@ Linear issue: HON-225
   continue to import their original `d1.sql`.
 - Replaced string-level or Wrangler-order-dependent D1 validation with private
   `node:sqlite` databases. The source import rejects foreign-key violations;
-  the generated restore artifact creates all tables first, inserts in
-  dependency order, applies views/indexes/triggers last, reimports with foreign
-  keys enabled, and compares schema and every table-content digest.
+  the generated restore artifact creates all tables and separately declared
+  parent-key UNIQUE indexes first, inserts in dependency order, applies
+  views/non-unique indexes/triggers last, reimports with foreign keys enabled,
+  and compares schema and every table-content digest.
 - Raised the Node.js engine floor from 22.0 to 22.13, where `node:sqlite` is
   available without an experimental feature flag.
 - Required a generation-bound local restore target to use canonical,
@@ -38,8 +39,10 @@ Linear issue: HON-225
   targets fail before import, and the owned claim is removed after success or a
   handled failure.
 - Re-exported restored D1 and re-downloaded every R2 object through the exact
-  target config/persistence. D1 bytes, R2 body checksums, and the derived
-  source-state digest must match the approved manifest before success output.
+  target config/persistence. D1 raw bytes must match, or isolated SQLite imports
+  must prove canonical schema, every table digest, and foreign-key equality
+  against the checksum-pinned source export. R2 body checksums and the derived
+  source-state identity must match the approved manifest before success output.
 - Captured a recovery context only in memory after the source lifecycle. Four
   authenticated stale official profiles are snapshotted while their generation
   is current, then cloned into one-use profiles for restored verification.
@@ -94,6 +97,19 @@ Linear issue: HON-225
    test reproduced the run-root recreation race. Shared signal cleanup now
    unwinds registrations in LIFO order, so nested resources stop before their
    owner removes the root.
+10. The second exact-head native review found that a separately declared UNIQUE
+    INDEX establishing a foreign-key parent key was emitted after row inserts.
+    A real generation-bound export fixture reproduced SQLite's foreign-key
+    mismatch. The generator now reads SQLite index metadata, creates only those
+    UNIQUE indexes after all tables and before data, and retains non-unique
+    indexes after data for restore performance.
+11. The first post-remediation aggregate then showed that this safe schema
+    reordering changes Wrangler's raw D1 export bytes even when the database is
+    logically identical. A red restore-readback fixture reproduced the false
+    rejection. Raw equality remains the fast path; differing exports now pass
+    only after private SQLite imports prove matching canonical schema, every
+    table-content digest, and zero foreign-key violations. Separate schema and
+    row mismatch fixtures still fail closed.
 
 ## Real Local Artifact
 
@@ -103,12 +119,12 @@ Worker/TLS origin.
 
 | Evidence                              | Readback                                                           |
 | ------------------------------------- | ------------------------------------------------------------------ |
-| Generated at                          | `2026-07-21T13:11:54.000Z`                                         |
-| Source lifecycle manifest SHA-256     | `c59809f2c951620a9d0651c99434a72f4981b83bf40abd8fb0399fd0c78ea65e` |
-| Backup manifest SHA-256               | `512b6f9a2792d1c526c181b5796e541b9dbabca625563fdf7f31e3162004e564` |
-| Generation binding SHA-256            | `a663583126b9eb39db4700f629af2d7eb0fbddeb15ef9dacf4b7bad54cee788f` |
-| D1/R2 source-state SHA-256            | `8ebdb7ab8dfa4e1a806ce4dea8797d09448e754e1833685581dbf6d5b01d3763` |
-| D1 export SHA-256                     | `33704e8b124d6625133271c1bfb56c79a3021d6c8f113c0c9db2d59092ebbcf3` |
+| Generated at                          | `2026-07-21T14:05:00.000Z`                                         |
+| Source lifecycle manifest SHA-256     | `8bdd365bb1282d0b2cc60b4d25900e1e932620800667542caa733154e1c9618b` |
+| Backup manifest SHA-256               | `83db6e12bc9a72453d6146289160d63fb03480fe9e09049515d175e103910421` |
+| Generation binding SHA-256            | `f73d1d951b980d904cf1da61fbfc6969a2abbda9e906e3825c2f4da964a977c6` |
+| D1/R2 source-state SHA-256            | `3e429ea3d76079aff2541d513e066c0cdf928f8ce27f625a9e2f326feab4dda8` |
+| Source D1 identity SHA-256            | `4c96f98bd308b2927531456369ca94bfaa71d9361aaf5256d9bc0ec4ef9e9e9c` |
 | R2 object count                       | 1                                                                  |
 | Stale password/access/refresh/profile | 4 each before restart; 4 each after restart                        |
 | Current session                       | access and refresh passed; refreshed access passed after restart   |
@@ -125,12 +141,13 @@ credentials, vault exports, object keys, user identifiers, or production data.
 
 ```text
 real aggregate source -> backup -> fresh restore -> credential proof: passed
-native review red/green: 2 P2 reproduced and remediated
+native review red/green: 3 P2 across two rounds reproduced and remediated
+backup CLI: 60 tests passed, including indexed FK parents and semantic readback
 signal cleanup: nested LIFO unwind; run root absent after aggregate
-full suite: 99 files, 1,312 tests passed
+full suite: 99 files, 1,315 tests passed
 typecheck: passed
 ESLint: passed
-Prettier: passed after formatting the changed lifecycle file
+Prettier: passed
 compatibility: 105 passed
 brand scan: passed
 production dependency audit: no known vulnerabilities

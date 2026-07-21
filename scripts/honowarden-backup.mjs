@@ -278,6 +278,7 @@ async function runRestore(options) {
           manifest,
           mode,
           options: commandOptions,
+          sourceD1File: join(fromDir, manifest.d1.file),
           targetRoot: targetClaim.targetRoot,
         })
       }
@@ -1293,6 +1294,13 @@ async function writeRestoreSafeD1Dump({
 }) {
   const schemaEntries = readRestorableSchemaEntries(sourceDatabase)
   const tableEntries = schemaEntries.filter((entry) => entry.type === 'table')
+  const preDataIndexEntries = readPreDataIndexEntries(
+    sourceDatabase,
+    schemaEntries,
+  )
+  const preDataIndexNames = new Set(
+    preDataIndexEntries.map((entry) => entry.name),
+  )
   const orderedTables = orderTablesForRestore(sourceDatabase, tableEntries)
   const validationDatabase = new DatabaseSync(validationDatabasePath)
   await chmod(validationDatabasePath, 0o600)
@@ -1310,6 +1318,7 @@ async function writeRestoreSafeD1Dump({
     await emit('BEGIN TRANSACTION')
     await emit('PRAGMA defer_foreign_keys=ON')
     for (const entry of tableEntries) await emit(entry.sql)
+    for (const entry of preDataIndexEntries) await emit(entry.sql)
     for (const entry of orderedTables) {
       for (const statement of iterateTableInsertStatements(
         sourceDatabase,
@@ -1335,7 +1344,9 @@ async function writeRestoreSafeD1Dump({
     }
 
     for (const type of ['view', 'index', 'trigger']) {
-      for (const entry of schemaEntries.filter((item) => item.type === type)) {
+      for (const entry of schemaEntries.filter(
+        (item) => item.type === type && !preDataIndexNames.has(item.name),
+      )) {
         await emit(entry.sql)
       }
     }
@@ -1397,6 +1408,23 @@ function readRestorableSchemaEntries(database) {
   }
 
   return entries
+}
+
+function readPreDataIndexEntries(database, schemaEntries) {
+  const readIndexMetadata = database.prepare(
+    'SELECT "unique" AS isUnique FROM pragma_index_list(?) WHERE name = ?;',
+  )
+  return schemaEntries.filter((entry) => {
+    if (entry.type !== 'index') return false
+    const metadata = readIndexMetadata.get(entry.tableName, entry.name)
+    if (
+      metadata === undefined ||
+      (metadata.isUnique !== 0 && metadata.isUnique !== 1)
+    ) {
+      throw new Error('D1 export returned invalid index metadata')
+    }
+    return metadata.isUnique === 1
+  })
 }
 
 function orderTablesForRestore(database, tableEntries) {
@@ -1836,6 +1864,7 @@ async function verifyRestoredGenerationState({
   manifest,
   mode,
   options,
+  sourceD1File,
   targetRoot,
 }) {
   const validationRoot = await mkdtemp(
@@ -1866,9 +1895,13 @@ async function verifyRestoredGenerationState({
 
   try {
     await runCommands(commands)
-    const d1Sha256 = await sha256File(d1File)
-    if (d1Sha256 !== manifest.d1.sha256) {
-      throw new Error('Restored D1 SHA-256 mismatch')
+    const restoredD1Sha256 = await sha256File(d1File)
+    if (restoredD1Sha256 !== manifest.d1.sha256) {
+      await assertEquivalentD1Exports({
+        restoredFile: d1File,
+        sourceFile: sourceD1File,
+        validationRoot,
+      })
     }
     const objectChecksums = []
     for (const object of restoredObjects) {
@@ -1878,6 +1911,7 @@ async function verifyRestoredGenerationState({
       }
       objectChecksums.push({ key: object.key, sha256 })
     }
+    const d1Sha256 = manifest.d1.sha256
     const sourceStateSha256 = deriveBackupSourceStateSha256({
       d1Sha256,
       objects: objectChecksums,
@@ -1893,6 +1927,66 @@ async function verifyRestoredGenerationState({
     }
   } finally {
     await rm(validationRoot, { recursive: true, force: true })
+  }
+}
+
+async function assertEquivalentD1Exports({
+  restoredFile,
+  sourceFile,
+  validationRoot,
+}) {
+  let sourceDatabase
+  let restoredDatabase
+  try {
+    sourceDatabase = await loadD1ExportDatabase(
+      sourceFile,
+      join(validationRoot, 'source-readback.sqlite'),
+    )
+    restoredDatabase = await loadD1ExportDatabase(
+      restoredFile,
+      join(validationRoot, 'restored-readback.sqlite'),
+    )
+    if (
+      hasForeignKeyViolation(sourceDatabase) ||
+      hasForeignKeyViolation(restoredDatabase)
+    ) {
+      throw new Error('D1 readback contains unresolved foreign keys')
+    }
+    const tableEntries = readRestorableSchemaEntries(sourceDatabase).filter(
+      (entry) => entry.type === 'table',
+    )
+    assertRestoredDatabaseEquality({
+      sourceDatabase,
+      validationDatabase: restoredDatabase,
+      tableEntries,
+    })
+  } catch (error) {
+    throw new Error('Restored D1 state mismatch', { cause: error })
+  } finally {
+    restoredDatabase?.close()
+    sourceDatabase?.close()
+  }
+}
+
+async function loadD1ExportDatabase(sqlFile, databasePath) {
+  const database = new DatabaseSync(databasePath, {
+    enableForeignKeyConstraints: false,
+  })
+  try {
+    await chmod(databasePath, 0o600)
+    database.exec(await readFile(sqlFile, 'utf8'))
+    return database
+  } catch (error) {
+    try {
+      database.close()
+    } catch (closeError) {
+      throw new AggregateError(
+        [error, closeError],
+        'D1 readback validation database setup failed',
+        { cause: closeError },
+      )
+    }
+    throw error
   }
 }
 

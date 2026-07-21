@@ -275,13 +275,14 @@ be present in the explicit inventory before any R2 download starts. An empty
 inventory therefore succeeds only when the exported D1 attachment-reference
 set is also empty.
 
-The wrapper then writes `d1-restore.sql`: all tables are created before data is
-inserted, rows are emitted in foreign-key dependency order, and views, indexes,
-and triggers are applied after table data. The artifact keeps foreign keys
-enabled but defers their checks inside one transaction, so valid self-references
-and cycles do not depend on row order. It concurrently imports that artifact
-into a second private database, compares canonical schema and every
-table-content digest with the source database, and rejects commit-time or
+The wrapper then writes `d1-restore.sql`: all tables are created first, followed
+by separately declared unique indexes that can establish foreign-key parent
+keys. Rows are emitted in foreign-key dependency order, while views, non-unique
+indexes, and triggers are applied after table data. The artifact keeps foreign
+keys enabled but defers their checks inside one transaction, so valid
+self-references and cycles do not depend on row order. It concurrently imports
+that artifact into a second private database, compares canonical schema and
+every table-content digest with the source database, and rejects commit-time or
 post-import foreign-key violations. Both validation databases are removed on
 success or failure. The original `d1.sql` remains the source-identity artifact,
 while the manifest separately pins the restore artifact checksum. This
@@ -550,10 +551,15 @@ foreign ownership, public modes, source/target overlap, or pre-existing target
 state; and atomically claims the empty persistence directory before spawning
 Wrangler. The restore imports `d1-restore.sql` when the manifest contains it,
 then re-exports D1 and re-downloads every R2 object from the target. The
-re-exported `d1.sql`, each R2 body, and the derived D1/R2 source-state digest
-must exactly match the approved manifest before an executed success packet is
-emitted. A partial restore is therefore never reported as successful and cannot
-be retried in place because the target is no longer fresh.
+re-exported `d1.sql` must either match the approved source bytes or import into
+an isolated SQLite database with the same canonical schema, every table-content
+digest, and zero foreign-key violations as the checksum-pinned source export.
+Each R2 body must match its approved checksum. Only then does the verifier reuse
+the manifest-bound D1 identity to recompute the approved D1/R2 source-state
+digest and emit an executed success packet. This semantic D1 comparison permits
+safe schema creation reordering without accepting schema or row changes. A
+partial restore is therefore never reported as successful and cannot be retried
+in place because the target is no longer fresh.
 
 Manifest identity and generation binding are read and hashed from the same byte
 buffer. Both checks run in dry-run and execute modes before any restore command
