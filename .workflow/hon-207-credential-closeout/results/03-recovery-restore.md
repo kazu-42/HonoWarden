@@ -1,6 +1,7 @@
 # RECOVERY-1: Restore, Disable, And Forward Recovery
 
-Status: Linear child plan synchronized; RECOVERY-1A implementation in progress
+Status: RECOVERY-1A merged and archived; RECOVERY-1B local proof passed and is
+pending exact-head review/publication
 
 Linear parent: HON-221
 
@@ -42,12 +43,15 @@ merged-main CI, and Linear Done/archive before the next child starts.
   equality, stale credential/session rejection, and pinned official-client
   decrypt readback before forward recovery begins.
 
-## Next Gate
+## Current Gate
 
-Review and publish HON-224. Local focused, real Wrangler, full, static,
-compatibility, audit, and release gates pass; the child remains In Progress
-until exact-head standard/five-axis review, PR/head CI, merge/main CI, and
-Linear Done/archive complete.
+HON-224 was merged through PR #112 with exact head CI, squash tree equality,
+merged-main CI, and Linear Done/archive. HON-225 now has a complete local
+source-to-fresh-target proof: generation-bound D1/R2 equality, four stale
+credential/profile generations rejected before and after restart, current
+official CLI decrypt accepted before and after restart, and bounded run-root
+cleanup. Exact-head standard/five-axis review, PR/head CI, merge/main CI, and
+Linear Done/archive remain before HON-226 can start.
 
 ## Linear Plan Readback
 
@@ -65,3 +69,12 @@ Linear Done/archive complete.
 - managed checkpoint: `77d93627-2ae0-44d0-8e85-69b82715dfee`; SHA-256
   `97e1e2d64cec44811af3fa8bf5ffffb532dcc08a458f0879231bb6b89fdad20b`
 - API verification errors: 0
+
+## Current Linear Readback
+
+- synchronized at `2026-07-21T12:34:17Z`
+- HON-224: Done and archived at `2026-07-21T09:22:10.453Z`
+- HON-225: In Progress and non-archived
+- HON-226: Todo and non-archived
+- parent relation: all three remain direct children of HON-221
+- serialization remains HON-224 -> HON-225 -> HON-226

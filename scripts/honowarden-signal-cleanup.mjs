@@ -184,20 +184,26 @@ export async function runBoundedCommand(command, args, options = {}) {
     const outcome = await Promise.race([completed, timedOut])
     if (outcome.type === 'timeout') {
       await stopDetachedProcessTree(child)
-      throw new Error(`${label} timed out after ${timeoutMs}ms`)
+      throw boundedCommandError(
+        `${label} timed out after ${timeoutMs}ms`,
+        stdout,
+        stderr,
+      )
     }
     if (outcome.type === 'error') {
       if (Number.isSafeInteger(child.pid) && child.pid > 0) {
         await stopDetachedProcessTree(child).catch(() => undefined)
       }
-      throw new Error(`${label} could not start`)
+      throw boundedCommandError(`${label} could not start`, stdout, stderr)
     }
     if (outcome.exitCode !== 0) {
       await stopDetachedProcessTree(child).catch(() => undefined)
-      throw new Error(
+      throw boundedCommandError(
         `${label} failed with exit ${String(outcome.exitCode)}${
           outcome.signal ? ` (${outcome.signal})` : ''
         }`,
+        stdout,
+        stderr,
       )
     }
     if ((options.platform ?? process.platform) !== 'win32') {
@@ -218,6 +224,15 @@ export async function runBoundedCommand(command, args, options = {}) {
     globalThis.clearTimeout(timeout)
     activeProcesses.delete(child)
   }
+}
+
+function boundedCommandError(message, stdout, stderr) {
+  const error = new Error(message)
+  Object.defineProperties(error, {
+    stdout: { value: stdout, enumerable: false },
+    stderr: { value: stderr, enumerable: false },
+  })
+  return error
 }
 
 async function stopWindowsProcessTree(

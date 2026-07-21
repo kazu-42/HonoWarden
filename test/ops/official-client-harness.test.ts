@@ -275,6 +275,63 @@ describe('pinned official-client harness', () => {
     ).rejects.toThrow('official CLI profile name was invalid')
   })
 
+  it('clones a stale CLI profile into an isolated private profile', async () => {
+    const {
+      cloneOfficialProfile,
+      ensureOfficialProfileDirectories,
+      resolveHarnessRoot,
+    } = await harnessModule
+    const root = resolveHarnessRoot(ignoredRoot('profile-clone'))
+    const source = 'stale-source'
+    const target = 'stale-restored-before-restart'
+    await mkdir(root.absolute, { recursive: true, mode: 0o700 })
+    await ensureOfficialProfileDirectories(root, source)
+    await writeFile(
+      join(root.absolute, 'profile', source, 'data.json'),
+      '{"authenticated":true}\n',
+      { mode: 0o600 },
+    )
+    await writeFile(join(root.absolute, 'home', source, 'state'), 'source\n', {
+      mode: 0o600,
+    })
+
+    await cloneOfficialProfile(root, source, target)
+
+    expect(
+      await readFile(
+        join(root.absolute, 'profile', target, 'data.json'),
+        'utf8',
+      ),
+    ).toBe('{"authenticated":true}\n')
+    expect(
+      await readFile(join(root.absolute, 'home', target, 'state'), 'utf8'),
+    ).toBe('source\n')
+    expect(await readdir(join(root.absolute, 'tmp', target))).toEqual([])
+    for (const directory of ['profile', 'home', 'tmp']) {
+      expect(
+        (await lstat(join(root.absolute, directory, target))).mode & 0o777,
+      ).toBe(0o700)
+    }
+    expect(
+      (await lstat(join(root.absolute, 'profile', target, 'data.json'))).mode &
+        0o777,
+    ).toBe(0o600)
+
+    await writeFile(
+      join(root.absolute, 'profile', target, 'data.json'),
+      '{"mutated":true}\n',
+    )
+    expect(
+      await readFile(
+        join(root.absolute, 'profile', source, 'data.json'),
+        'utf8',
+      ),
+    ).toBe('{"authenticated":true}\n')
+    await expect(cloneOfficialProfile(root, source, target)).rejects.toThrow(
+      'official CLI clone target already exists',
+    )
+  })
+
   it('rejects custom service endpoints in the pinned CLI profile', async () => {
     const { validateOfficialCliProfileEnvironment } = await harnessModule
     const origin = 'http://127.0.0.1:8787'

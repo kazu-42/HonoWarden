@@ -37,15 +37,16 @@
         {
           "id": "03a-generation-bound-backup",
           "key": "RECOVERY-1A",
-          "status": "in_progress",
+          "status": "completed",
           "linear": "HON-224",
           "result": "results/03a-generation-bound-backup.md"
         },
         {
           "id": "03b-fresh-restore",
           "key": "RECOVERY-1B",
-          "status": "pending",
-          "linear": "HON-225"
+          "status": "in_progress",
+          "linear": "HON-225",
+          "result": "results/03b-fresh-restore.md"
         },
         {
           "id": "03c-disable-forward-recovery",
@@ -69,7 +70,7 @@
     }
   ],
   "verification": {
-    "status": "recovery_1a_exact_reviews_passed_pr_pending",
+    "status": "recovery_1b_local_proof_passed_reviews_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -103,7 +104,7 @@
       "credentialLifecycleFinalReviews": "exact_bc51cbd_native_codex_approved_and_independent_opus_five_axis_approved_0_actionable_p1_p2_p3",
       "credentialLifecycleReviewedHead": "bc51cbdc9b89c365fdcc36e542e1ebff63615770",
       "credentialLifecycleAggregate": "11_of_11_checks_99_files_1263_tests_output_sha256_532a1ef7b9cbec83c4c4d188b391f198fbbf6751e36e6ca2088ed91f7b4757bc_manifest_sha256_3cf45a41f1508a4024f7115169252ee61693f19253437b559d3d518f8fae3701",
-      "recoveryRestorePlan": "hon_224_in_progress_blocks_hon_225_todo_blocks_hon_226_todo_exact_live_readback",
+      "recoveryRestorePlan": "hon_224_done_archived_hon_225_in_progress_blocks_hon_226_todo_exact_live_readback",
       "recoveryRestoreLinearCheckpoint": "comment_77d93627_2ae0_44d0_8e85_69b82715dfee_sha256_97e1e2d64cec44811af3fa8bf5ffffb532dcc08a458f0879231bb6b89fdad20b",
       "recovery1aFocused": "passed_46_backup_cli_tests_including_real_local_wrangler_d1_export_large_retained_wal_completion_attestation_owned_source_marker_symlink_rejection_private_output_attachment_inventory_validation_atomic_output_claim_derived_generation_binding_fresh_output_and_bound_restore_execute_success",
       "recovery1aImpact": "passed_50_backup_scheduled_workflow_tests_and_65_backup_credential_lifecycle_combined_tests",
@@ -120,7 +121,17 @@
       "recovery1aReviewedTree": "68d7fe97ab8c68a34909beb47602305254dd4944",
       "recovery1aFinalStandardReview": "exact_75b3b5c_independent_opus_0_actionable_p1_p2_p3_previous_split_source_restore_execute_and_large_wal_findings_verified_remediated",
       "recovery1aFinalFiveAxisReview": "exact_75b3b5c_independent_opus_0_actionable_p1_p2_p3_problem_framing_a_diagnosis_a_design_a_architecture_a_minus_solution_a_minus_merge_ready_subject_to_ci",
-      "recovery1aReviews": "exact_f763ee4_native_codex_request_changes_1_p1_source_routing_remediated_exact_f4b74e0_native_codex_request_changes_2_p1_self_asserted_binding_and_omitted_r2_remediated_exact_42036cb_native_codex_request_changes_1_p1_incomplete_d1_referenced_r2_inventory_remediated_exact_ae7bf7e_native_codex_request_changes_1_p1_non_atomic_output_claim_remediated_exact_9cec7c4_native_codex_request_changes_1_p1_unowned_source_and_1_p2_public_output_remediated_exact_9fa2b3a_native_codex_request_changes_2_p1_unpinned_bound_restore_and_preparation_only_marker_remediated_exact_9bb5c55_independent_opus_standard_review_no_p1_1_p2_unbound_split_source_2_p3_restore_execute_coverage_and_large_wal_remediated_exact_75b3b5c_standard_and_five_axis_independent_opus_0_actionable_p1_p2_p3_native_codex_usage_limit_before_inspection"
+      "recovery1aReviews": "exact_f763ee4_native_codex_request_changes_1_p1_source_routing_remediated_exact_f4b74e0_native_codex_request_changes_2_p1_self_asserted_binding_and_omitted_r2_remediated_exact_42036cb_native_codex_request_changes_1_p1_incomplete_d1_referenced_r2_inventory_remediated_exact_ae7bf7e_native_codex_request_changes_1_p1_non_atomic_output_claim_remediated_exact_9cec7c4_native_codex_request_changes_1_p1_unowned_source_and_1_p2_public_output_remediated_exact_9fa2b3a_native_codex_request_changes_2_p1_unpinned_bound_restore_and_preparation_only_marker_remediated_exact_9bb5c55_independent_opus_standard_review_no_p1_1_p2_unbound_split_source_2_p3_restore_execute_coverage_and_large_wal_remediated_exact_75b3b5c_standard_and_five_axis_independent_opus_0_actionable_p1_p2_p3_native_codex_usage_limit_before_inspection",
+      "recovery1aPublication": "pr_112_head_4c6734ff_ci_29817438108_squash_27388e56_tree_equal_4b4d224b_main_ci_29817789762",
+      "recovery1aLinearCloseout": "hon_224_done_archived_2026_07_21t09_22_10_453z_hon_225_in_progress",
+      "recovery1bRestoreSafety": "passed_owned_mode_0600_config_mode_0700_target_canonical_no_symlink_empty_persistence_source_target_separation_atomic_claim_reused_nonempty_public_symlinked_and_overlapping_targets_rejected",
+      "recovery1bD1Artifact": "passed_node_sqlite_foreign_key_validation_tables_before_dependency_ordered_rows_secondary_schema_after_data_single_deferred_foreign_key_transaction_self_reference_row_order_independent_second_foreign_key_on_import_exact_schema_and_table_digest_equality_tamper_rejected",
+      "recovery1bRestoredEquality": "passed_exact_d1_reexport_r2_body_and_derived_source_state_equality_before_success",
+      "recovery1bCredentialProof": "passed_4_password_access_refresh_and_authenticated_profile_rejections_before_and_after_restart_current_access_refresh_and_official_cli_decrypt_before_and_after_restart",
+      "recovery1bArtifact": "manifest_sha256_1cefeb938c3e5e3f268a96d95fdbfa5b427d32afc2b3fd0eb84feb83c6595277_generation_binding_14054d7a0267de04e37f3db865a06a902857c7aa4d044afbaf9ab36bedc011b7_source_state_38a0bc3bc00e5008ee7c332fde0dd34f32f63561412c48f0307de504bc6b8e89_d1_fe83270da6ab4d82bfa8f48ef10fce687b7f921246b46338ec8bedcfe3f42421_r2_count_1",
+      "recovery1bCleanup": "passed_run_root_removed_retained_secret_files_0_residual_wrangler_workerd_0_temporary_inspection_root_removed",
+      "recovery1bFullSuite": "passed_1311_tests_across_99_files",
+      "recovery1bQuality": "passed_typecheck_eslint_prettier_compatibility_105_brand_scan_dependency_audit_release_gate_11_of_11_plan_tests_11_git_diff_check_reviews_pending"
     },
     "checks": [
       "linear_plan_unit",

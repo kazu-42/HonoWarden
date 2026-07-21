@@ -23,9 +23,11 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import {
+  cloneOfficialProfile,
   generateOfficialCredentialFixture,
   resolveHarnessRoot,
   runOfficialCli,
+  validateLoopbackOrigin,
 } from './honowarden-official-client-harness.mjs'
 import {
   cleanupOfficialBrowserExtensionResources,
@@ -189,7 +191,10 @@ function buildPacket(action, options) {
   }
 }
 
-async function executeLifecycle(options, generatedAt) {
+async function executeLifecycle(options, generatedAt, onCompletedState = null) {
+  if (onCompletedState && !options.keepState) {
+    throw new Error('credential recovery callback requires retained state')
+  }
   const harnessRoot = resolveHarnessRoot(
     options.harnessRoot ?? defaultHarnessRoot,
   )
@@ -229,6 +234,7 @@ async function executeLifecycle(options, generatedAt) {
   })
   const removeSignalCleanup = installSignalCleanup(cleanup)
   let result
+  let recoveryContext
 
   try {
     const fixture = await generateOfficialCredentialFixture(harnessRoot, {
@@ -311,6 +317,14 @@ async function executeLifecycle(options, generatedAt) {
         officialBaseUrl = `https://localhost:${ports[2]}`
         return { baseUrl, officialBaseUrl }
       },
+      captureRecoveryContext: onCompletedState
+        ? (context) => {
+            if (recoveryContext) {
+              throw new Error('credential recovery context was captured twice')
+            }
+            recoveryContext = context
+          }
+        : null,
     })
   } finally {
     try {
@@ -326,7 +340,275 @@ async function executeLifecycle(options, generatedAt) {
       result.generationManifestSha256,
     )
   }
+  if (onCompletedState) {
+    if (!recoveryContext) {
+      throw new Error('credential recovery context was not captured')
+    }
+    result = {
+      ...result,
+      recovery: await onCompletedState({
+        persistTo,
+        readback: result,
+        recoveryContext,
+      }),
+    }
+    recoveryContext = undefined
+  }
   return result
+}
+
+export async function executeCredentialLifecycleForRecovery({
+  options,
+  generatedAt,
+  onCompletedState,
+}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError('credential recovery options were invalid')
+  }
+  if (typeof onCompletedState !== 'function') {
+    throw new TypeError('credential recovery callback is required')
+  }
+  return executeLifecycle(
+    { ...options, keepState: true },
+    parseTimestamp(generatedAt),
+    onCompletedState,
+  )
+}
+
+export async function verifyRestoredCredentialGeneration({
+  persistTo,
+  harnessRoot,
+  recoveryContext,
+  timeoutMs = '120000',
+}) {
+  if (
+    !recoveryContext?.material ||
+    !recoveryContext?.officialOrigin ||
+    !recoveryContext?.current?.stage ||
+    !recoveryContext?.current?.tokens ||
+    !Array.isArray(recoveryContext?.stale) ||
+    recoveryContext.stale.length !== 4
+  ) {
+    throw new Error('restored credential recovery context was invalid')
+  }
+  const normalizedHarnessRoot = resolveHarnessRoot(harnessRoot)
+  const timeout = parseTimeout(timeoutMs)
+  const commandProcesses = new Set()
+  let worker = null
+  let proxy = null
+  const cleanup = createIdempotentCleanup(async () => {
+    await runCleanupSteps(
+      [
+        () =>
+          stopTrackedProcesses(
+            commandProcesses,
+            'restored credential command cleanup',
+          ),
+        async () => {
+          const activeProxy = proxy
+          proxy = null
+          if (activeProxy) await stopTlsProxy(activeProxy)
+        },
+        async () => {
+          const activeWorker = worker
+          worker = null
+          if (activeWorker) await stopDetachedProcessTree(activeWorker)
+        },
+      ],
+      'restored credential cleanup',
+    )
+  })
+  const removeSignalCleanup = installSignalCleanup(cleanup)
+  const material = recoveryContext.material
+  const recoveryOrigin = validateRecoveryOfficialOrigin(
+    recoveryContext.officialOrigin,
+  )
+  const runId = sha256(`${persistTo}\n${Date.now()}`).slice(0, 12)
+  let tls
+  let ports
+  let baseUrl
+  let officialBaseUrl
+
+  const start = async () => {
+    worker = startWorker({
+      persistTo,
+      port: ports[0],
+      inspectorPort: ports[1],
+      email: material.email,
+    })
+    baseUrl = `http://127.0.0.1:${ports[0]}`
+    await waitForHealth(baseUrl, worker)
+    proxy = await startTlsProxy({
+      backendPort: ports[0],
+      certificatePath: tls.certificatePath,
+      keyPath: tls.keyPath,
+      port: recoveryOrigin.port,
+    })
+    officialBaseUrl = recoveryOrigin.origin
+  }
+
+  const stop = async () => {
+    const activeProxy = proxy
+    const activeWorker = worker
+    proxy = null
+    worker = null
+    await runCleanupSteps(
+      [
+        async () => {
+          if (activeProxy) await stopTlsProxy(activeProxy)
+        },
+        async () => {
+          if (activeWorker) await stopDetachedProcessTree(activeWorker)
+        },
+      ],
+      'restored credential restart cleanup',
+    )
+  }
+
+  const rejectStale = async (phase) => {
+    for (const [index, stale] of recoveryContext.stale.entries()) {
+      await assertDirectGenerationRejected({
+        baseUrl,
+        material,
+        previous: stale.previous,
+        tokens: stale.tokens,
+        label: `${stale.label}-${phase}`,
+      })
+      const restoredProfile = buildRestoredStaleProfileName(runId, index, phase)
+      await cloneOfficialProfile(
+        normalizedHarnessRoot,
+        stale.profile,
+        restoredProfile,
+      )
+      await assertStaleProfileRejected({
+        baseUrl: officialBaseUrl,
+        caPath: tls.certificatePath,
+        harnessRoot: normalizedHarnessRoot,
+        profile: restoredProfile,
+        session: stale.session,
+        label: `${stale.label}-${phase}`,
+        timeoutMs: timeout,
+      })
+    }
+  }
+
+  try {
+    tls = await prepareTlsCertificate(persistTo, commandProcesses)
+    ports = await findDistinctFreePorts(2, [recoveryOrigin.port])
+    await start()
+    await rejectStale('before-restart')
+    const currentAccess = await authorizedJson(
+      baseUrl,
+      '/api/sync',
+      recoveryContext.current.tokens.accessToken,
+    )
+    assertStatus(currentAccess, 200, 'restored current access token')
+    const currentRefresh = await refreshGrant(
+      baseUrl,
+      recoveryContext.current.tokens.refreshToken,
+    )
+    assertStatus(currentRefresh, 200, 'restored current refresh token')
+    const refreshedTokens = readTokens(currentRefresh, 'restored-current')
+    const beforeRestartOfficial = await verifyOfficialStage({
+      baseUrl: officialBaseUrl,
+      caPath: tls.certificatePath,
+      harnessRoot: normalizedHarnessRoot,
+      material,
+      profile: `hon225-${runId}-before-restart`,
+      stage: recoveryContext.current.stage,
+      timeoutMs: timeout,
+    })
+
+    await stop()
+    await start()
+    await rejectStale('after-restart')
+    const currentAccessAfterRestart = await authorizedJson(
+      baseUrl,
+      '/api/sync',
+      refreshedTokens.accessToken,
+    )
+    assertStatus(
+      currentAccessAfterRestart,
+      200,
+      'restored current access token after restart',
+    )
+    const afterRestartOfficial = await verifyOfficialStage({
+      baseUrl: officialBaseUrl,
+      caPath: tls.certificatePath,
+      harnessRoot: normalizedHarnessRoot,
+      material,
+      profile: `hon225-${runId}-after-restart`,
+      stage: recoveryContext.current.stage,
+      timeoutMs: timeout,
+    })
+    const restoredState = await generationStateCheckpoint({
+      id: 'restored_restart_readback',
+      expectedStage: recoveryContext.current.stage,
+      persistTo,
+      commandProcesses,
+    })
+    const checks = [
+      check('restored_stale_generations_rejected', true),
+      check('restored_current_access_and_refresh_accepted', true),
+      check(
+        'restored_official_client_decrypts',
+        beforeRestartOfficial.itemRead,
+      ),
+      check(
+        'restored_restart_preserves_rejection_and_decrypt',
+        afterRestartOfficial.itemRead,
+      ),
+    ]
+    if (checks.some((entry) => entry.status !== 'pass')) {
+      throw new Error('restored credential generation checks failed')
+    }
+    return {
+      status: 'passed',
+      rejectionCounts: {
+        passwords: recoveryContext.stale.length,
+        accessTokens: recoveryContext.stale.length,
+        refreshTokens: recoveryContext.stale.length,
+        profiles: recoveryContext.stale.length,
+      },
+      restartRejectionCounts: {
+        passwords: recoveryContext.stale.length,
+        accessTokens: recoveryContext.stale.length,
+        refreshTokens: recoveryContext.stale.length,
+        profiles: recoveryContext.stale.length,
+      },
+      currentSession: {
+        accessAccepted: true,
+        refreshAccepted: true,
+        accessAcceptedAfterRestart: true,
+      },
+      officialClient: {
+        beforeRestart: redactOfficialReadback(beforeRestartOfficial),
+        afterRestart: redactOfficialReadback(afterRestartOfficial),
+      },
+      final: restoredState,
+      checks,
+    }
+  } finally {
+    try {
+      await cleanup()
+    } finally {
+      removeSignalCleanup()
+    }
+  }
+}
+
+function redactOfficialReadback(official) {
+  return {
+    itemRead: official.itemRead,
+    commandDigests: official.commandDigests,
+  }
+}
+
+function requireRecoveryProfile(value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error('credential recovery profile snapshot was missing')
+  }
+  return value
 }
 
 export function buildCredentialLifecycleProfiles(runId) {
@@ -346,6 +628,38 @@ export function buildCredentialLifecycleProfiles(runId) {
     userKeyRotation: `${prefix}-user-key-rotation`,
     restartReadback: `${prefix}-restart-readback`,
   }
+}
+
+export function buildRestoredStaleProfileName(runId, index, phase) {
+  if (
+    typeof runId !== 'string' ||
+    !/^[a-f0-9]{12}$/.test(runId) ||
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index > 3 ||
+    !['before-restart', 'after-restart'].includes(phase)
+  ) {
+    throw new Error('restored stale profile coordinates were invalid')
+  }
+  return `hon225-${runId}-stale-${index}-${phase}`
+}
+
+export function validateRecoveryOfficialOrigin(value) {
+  const origin = validateLoopbackOrigin(value)
+  const parsed = new globalThis.URL(origin)
+  const port = Number.parseInt(parsed.port, 10)
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.hostname !== 'localhost' ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65_535
+  ) {
+    throw new Error(
+      'credential recovery origin must be explicit localhost HTTPS',
+    )
+  }
+  return { origin, port }
 }
 
 export function normalizeCredentialMaterial(value) {
@@ -598,6 +912,13 @@ async function runGenerationSequence(context) {
     profiles: [],
   }
   const issuedTokens = []
+  const recoveryProfileSnapshots = new Map()
+  const snapshotRecoveryProfile = async (generation, profile) => {
+    if (!context.captureRecoveryContext) return
+    const snapshot = `${profile}-recovery-snapshot`
+    await cloneOfficialProfile(harnessRoot, profile, snapshot)
+    recoveryProfileSnapshots.set(generation, snapshot)
+  }
 
   const baselineLogin = await passwordGrant(
     baseUrl,
@@ -656,6 +977,7 @@ async function runGenerationSequence(context) {
     profile: profiles.baseline,
     stage: material.stages.baseline,
   })
+  await snapshotRecoveryProfile('baseline', profiles.baseline)
   generationManifest.push(
     attachOfficialGenerationEvidence(baselineState, baselineOfficial, {
       accountKeysInitializedAtRead: true,
@@ -744,6 +1066,10 @@ async function runGenerationSequence(context) {
     profile: profiles.passwordChangeRestart,
     stage: material.stages.password_change,
   })
+  await snapshotRecoveryProfile(
+    'password_change',
+    profiles.passwordChangeRestart,
+  )
 
   const argonMutation = await postCredentialJson(
     baseUrl,
@@ -807,6 +1133,7 @@ async function runGenerationSequence(context) {
     profile: profiles.argon2idRestart,
     stage: material.stages.argon2id,
   })
+  await snapshotRecoveryProfile('argon2id', profiles.argon2idRestart)
 
   const pbkdf2Mutation = await postCredentialJson(
     baseUrl,
@@ -869,6 +1196,7 @@ async function runGenerationSequence(context) {
     profile: profiles.pbkdf2ReturnRestart,
     stage: material.stages.pbkdf2_return,
   })
+  await snapshotRecoveryProfile('pbkdf2_return', profiles.pbkdf2ReturnRestart)
 
   const beforeRollback = await readGenerationSnapshot(
     persistTo,
@@ -1044,6 +1372,7 @@ async function runGenerationSequence(context) {
       label: 'baseline-after-restart',
       previous: material.stages.baseline,
       profile: profiles.baseline,
+      recoveryProfile: recoveryProfileSnapshots.get('baseline'),
       session: baselineOfficial.session,
       tokens: baselineTokens,
     },
@@ -1051,6 +1380,7 @@ async function runGenerationSequence(context) {
       label: 'password-change-after-restart',
       previous: material.stages.password_change,
       profile: profiles.passwordChangeRestart,
+      recoveryProfile: recoveryProfileSnapshots.get('password_change'),
       session: passwordRestartOfficial.session,
       tokens: passwordTokens,
     },
@@ -1058,6 +1388,7 @@ async function runGenerationSequence(context) {
       label: 'argon2id-after-restart',
       previous: material.stages.argon2id,
       profile: profiles.argon2idRestart,
+      recoveryProfile: recoveryProfileSnapshots.get('argon2id'),
       session: argonRestartOfficial.session,
       tokens: argonTokens,
     },
@@ -1065,6 +1396,7 @@ async function runGenerationSequence(context) {
       label: 'pbkdf2-return-after-restart',
       previous: material.stages.pbkdf2_return,
       profile: profiles.pbkdf2ReturnRestart,
+      recoveryProfile: recoveryProfileSnapshots.get('pbkdf2_return'),
       session: pbkdf2RestartOfficial.session,
       tokens: pbkdf2Tokens,
     },
@@ -1239,6 +1571,22 @@ async function runGenerationSequence(context) {
     throw new Error('credential lifecycle checks failed')
   }
 
+  context.captureRecoveryContext?.({
+    material,
+    officialOrigin: officialBaseUrl,
+    current: {
+      stage: material.stages.user_key_rotation,
+      tokens: currentGenerationTokens,
+    },
+    stale: staleGenerationsAfterRestart.map((entry) => ({
+      label: entry.label,
+      previous: entry.previous,
+      profile: requireRecoveryProfile(entry.recoveryProfile),
+      session: entry.session,
+      tokens: entry.tokens,
+    })),
+  })
+
   const browserMode = Boolean(browserExtension)
   return {
     schemaVersion,
@@ -1371,6 +1719,7 @@ async function verifyOfficialStage({
   material,
   profile,
   stage,
+  timeoutMs = 60_000,
 }) {
   const login = await runOfficialCommand({
     args: [
@@ -1386,6 +1735,7 @@ async function verifyOfficialStage({
     harnessRoot,
     password: stage.password,
     profile,
+    timeoutMs,
   })
   assertOfficialCommandSuccess(login, `${profile} login`)
   const loginSession = readOfficialSession(
@@ -1400,6 +1750,7 @@ async function verifyOfficialStage({
     harnessRoot,
     profile,
     session: loginSession,
+    timeoutMs,
   })
   assertOfficialCommandSuccess(lock, `${profile} lock`)
   const unlock = await runOfficialCommand({
@@ -1415,6 +1766,7 @@ async function verifyOfficialStage({
     harnessRoot,
     password: stage.password,
     profile,
+    timeoutMs,
   })
   assertOfficialCommandSuccess(unlock, `${profile} unlock`)
   const session = readOfficialSession(
@@ -1428,6 +1780,7 @@ async function verifyOfficialStage({
     harnessRoot,
     profile,
     session,
+    timeoutMs,
   })
   assertOfficialCommandSuccess(sync, `${profile} sync`)
   const itemRead = await runOfficialCommand({
@@ -1437,6 +1790,7 @@ async function verifyOfficialStage({
     harnessRoot,
     profile,
     session,
+    timeoutMs,
   })
   assertOfficialCommandSuccess(itemRead, `${profile} item read`)
   const itemBytes = await readOfficialOutput(harnessRoot, itemRead.stdout)
@@ -1470,6 +1824,7 @@ async function runOfficialCommand({
   password,
   profile,
   session,
+  timeoutMs = 60_000,
 }) {
   const sourceEnvironment = {
     ...isolatedLifecycleEnvironment(),
@@ -1482,7 +1837,7 @@ async function runOfficialCommand({
     passthrough: args,
     profile,
     sourceEnvironment,
-    timeoutMs: 60_000,
+    timeoutMs,
   })
 }
 
@@ -1571,6 +1926,7 @@ async function assertStaleProfileRejected({
   session,
   label,
   rejected,
+  timeoutMs = 60_000,
 }) {
   const result = await runOfficialCommand({
     args: ['sync', '--force'],
@@ -1579,6 +1935,7 @@ async function assertStaleProfileRejected({
     harnessRoot,
     profile,
     session,
+    timeoutMs,
   })
   const stderr = await readOfficialOutput(harnessRoot, result.stderr)
   assertStaleOfficialProfileRejected(result, stderr, label)
@@ -2397,11 +2754,12 @@ function findFreePort() {
   })
 }
 
-async function findDistinctFreePorts(count = 2) {
+async function findDistinctFreePorts(count = 2, excluded = []) {
   const ports = []
+  const blocked = new Set(excluded)
   while (ports.length < count) {
     const port = await findFreePort()
-    if (!ports.includes(port)) ports.push(port)
+    if (!ports.includes(port) && !blocked.has(port)) ports.push(port)
   }
   return ports
 }
