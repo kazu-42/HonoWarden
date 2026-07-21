@@ -246,6 +246,14 @@ output is rejected before Wrangler starts, so a failed replacement cannot leave
 an older bound manifest next to partially overwritten D1 or R2 files. Use a new
 run-owned output directory for every generation-bound export.
 
+Before any Wrangler process starts, the wrapper atomically creates
+`.generation-bound-export.lock` inside the output directory. It holds that
+exclusive claim through D1/R2 hashing and the final manifest write, then removes
+it on success or a handled failure. A concurrent export to the same output is
+rejected before spawn. If the process is interrupted before cleanup, treat the
+remaining claim and any adjacent files as one incomplete artifact and choose a
+new output directory; do not remove the claim to reuse the partial output.
+
 `--generation-manifest-sha256` supplies the approved credential-lifecycle
 manifest digest; it is not copied into the final generation identity. After all
 D1 and R2 export commands succeed, the wrapper hashes the actual D1 SQL and each

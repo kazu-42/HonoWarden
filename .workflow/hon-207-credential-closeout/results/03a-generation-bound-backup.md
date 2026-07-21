@@ -38,6 +38,10 @@ Linear issue: HON-224
 - A bound output path must be missing or empty. Reusing a previous output fails
   before spawn, preserving the old artifact and preventing a failed replacement
   from leaving an old manifest beside partially overwritten files.
+- The output is atomically claimed before Wrangler spawn and remains exclusive
+  through final manifest write. Concurrent same-output exports cannot mix one
+  lifecycle digest with another invocation's D1/R2 bytes. The claim is removed
+  after success or handled failure; an interrupted output remains non-reusable.
 - The bound manifest is written only after every export command succeeds and
   all D1/R2 checksums have been derived. A failed bound export leaves no new
   manifest that can be mistaken for a complete recovery artifact.
@@ -100,6 +104,13 @@ Linear issue: HON-224
    and rejects missing inventory coverage after D1 export but before any R2 get
    or bound manifest write. A matching real Wrangler export and a verified-empty
    D1/inventory pair both pass.
+10. Exact-head standard review reproduced two concurrent exports passing the
+    non-atomic fresh-output check and writing a checksum-valid artifact whose
+    lifecycle digest and D1/R2 bytes came from different invocations. A
+    deterministic concurrent regression failed with two successful processes.
+    The wrapper now acquires an exclusive output claim before spawn, holds it
+    through manifest write, and produces exactly one coherent success while the
+    competitor fails before Wrangler starts.
 
 ## Real Local Artifact
 
@@ -126,18 +137,20 @@ real credential or production manifest.
 ## Verification
 
 ```text
-backup CLI focused: 34 passed
-backup + scheduled workflow impact: 38 passed
-backup + credential lifecycle combined: 52 passed
+backup CLI focused: 35 passed
+backup + scheduled workflow impact: 39 passed
+backup + credential lifecycle combined: 53 passed
 real local D1/R2 source export: passed
 remote / ambient / split / omitted-R2 / dry-run / reused-output bound exports: rejected before spawn
+concurrent same-output bound exports: exactly one coherent success; competitor rejected before spawn
 incomplete D1-referenced R2 inventory: rejected after D1 export, before R2 get or manifest write
 verified-empty D1 attachment set and explicit inventory: passed
+generation-bound output claim: removed on success and handled failure
 temporary D1 inventory-validation persistence: removed on success and failure
 same source and lifecycle digest: stable derived binding
 changed D1 source: different binding; old expectation rejected before spawn
 manifest/history mismatch Wrangler spawns: 0
-full suite: 99 files, 1,284 tests passed
+full suite: 99 files, 1,285 tests passed
 typecheck / ESLint / Prettier: passed
 compatibility: 105 passed
 brand scan: passed

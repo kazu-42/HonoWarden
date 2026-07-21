@@ -27,6 +27,7 @@ const credentialGenerationSchemaVersion = 1
 const backupSourceDomain = 'honowarden.backup-source.v1'
 const credentialGenerationDomain = 'honowarden.credential-generation-binding.v1'
 const inventoryValidationDirectoryName = '.inventory-validation'
+const generationBoundExportClaimFileName = '.generation-bound-export.lock'
 const maxCapturedCommandBytes = 16 * 1024 * 1024
 
 async function main(argv = process.argv.slice(2)) {
@@ -70,102 +71,104 @@ async function runExport(options) {
     options,
     execute: Boolean(options.execute),
   })
-  await assertFreshGenerationBoundOutput({
-    generationManifestSha256,
-    outDir,
-  })
-  rejectRemotePersistence(mode, options)
-  const execute = Boolean(options.execute)
-  const objectDiscovery = await resolveExportObjects({
-    bucket,
-    mode,
-    options,
-  })
-  const d1File = join(outDir, d1ExportFileName)
-  const r2Dir = join(outDir, r2DirectoryName)
-  const objects = objectDiscovery.keys.map((key) => ({
-    key,
-    file: `${r2DirectoryName}/${objectFileName(key)}`,
-  }))
-  const commands = [
-    buildD1ExportCommand({ database, d1File, mode, options }),
-    ...objects.map((object) =>
-      buildR2GetCommand({
+  const result = await withGenerationBoundOutputClaim(
+    { generationManifestSha256, outDir },
+    async () => {
+      rejectRemotePersistence(mode, options)
+      const execute = Boolean(options.execute)
+      const objectDiscovery = await resolveExportObjects({
         bucket,
-        key: object.key,
-        file: join(outDir, object.file),
         mode,
         options,
-      }),
-    ),
-  ]
-  const manifest = {
-    schemaVersion: manifestSchemaVersion,
-    createdAt: new Date().toISOString(),
-    mode,
-    database,
-    bucket,
-    d1: {
-      file: d1ExportFileName,
-    },
-    r2: {
-      objectListRequired: objectDiscovery.objectListRequired,
-      objectListSource: objectDiscovery.objectListSource,
-      ...(objectDiscovery.prefix === undefined
-        ? {}
-        : { prefix: objectDiscovery.prefix }),
-      ...(objectDiscovery.pageSize === undefined
-        ? {}
-        : { pageSize: objectDiscovery.pageSize }),
-      objects,
-    },
-    restore: {
-      command: 'node scripts/honowarden-backup.mjs restore',
-    },
-    commands,
-  }
-
-  await mkdir(r2Dir, { recursive: true })
-  if (!generationManifestSha256) {
-    await writeManifest(outDir, manifest)
-  }
-
-  if (execute) {
-    if (generationManifestSha256) {
-      await runCommand(commands[0])
-      await verifyGenerationBoundR2Inventory({
+      })
+      const d1File = join(outDir, d1ExportFileName)
+      const r2Dir = join(outDir, r2DirectoryName)
+      const objects = objectDiscovery.keys.map((key) => ({
+        key,
+        file: `${r2DirectoryName}/${objectFileName(key)}`,
+      }))
+      const commands = [
+        buildD1ExportCommand({ database, d1File, mode, options }),
+        ...objects.map((object) =>
+          buildR2GetCommand({
+            bucket,
+            key: object.key,
+            file: join(outDir, object.file),
+            mode,
+            options,
+          }),
+        ),
+      ]
+      const manifest = {
+        schemaVersion: manifestSchemaVersion,
+        createdAt: new Date().toISOString(),
+        mode,
         database,
-        d1File,
-        inventoryKeys: objectDiscovery.keys,
-        options,
-        outDir,
-      })
-      await runCommands(commands.slice(1))
-    } else {
-      await runCommands(commands)
-    }
-    await addManifestHashes(outDir, manifest)
-    if (generationManifestSha256) {
-      manifest.credentialGeneration = deriveCredentialGenerationBinding({
-        lifecycleManifestSha256: generationManifestSha256,
-        manifest,
-      })
-    }
-    await writeManifest(outDir, manifest)
-  }
-  const manifestPath = join(outDir, manifestFileName)
+        bucket,
+        d1: {
+          file: d1ExportFileName,
+        },
+        r2: {
+          objectListRequired: objectDiscovery.objectListRequired,
+          objectListSource: objectDiscovery.objectListSource,
+          ...(objectDiscovery.prefix === undefined
+            ? {}
+            : { prefix: objectDiscovery.prefix }),
+          ...(objectDiscovery.pageSize === undefined
+            ? {}
+            : { pageSize: objectDiscovery.pageSize }),
+          objects,
+        },
+        restore: {
+          command: 'node scripts/honowarden-backup.mjs restore',
+        },
+        commands,
+      }
 
-  writeJson({
-    action: 'export',
-    audit: await buildBackupAuditPacket({
-      name: 'backup.export',
-      manifestPath,
-      resultStatus: execute ? 'executed' : 'planned',
-    }),
-    executed: execute,
-    manifest: manifestPath,
-    commands,
-  })
+      await mkdir(r2Dir, { recursive: true })
+      if (!generationManifestSha256) {
+        await writeManifest(outDir, manifest)
+      }
+
+      if (execute) {
+        if (generationManifestSha256) {
+          await runCommand(commands[0])
+          await verifyGenerationBoundR2Inventory({
+            database,
+            d1File,
+            inventoryKeys: objectDiscovery.keys,
+            options,
+            outDir,
+          })
+          await runCommands(commands.slice(1))
+        } else {
+          await runCommands(commands)
+        }
+        await addManifestHashes(outDir, manifest)
+        if (generationManifestSha256) {
+          manifest.credentialGeneration = deriveCredentialGenerationBinding({
+            lifecycleManifestSha256: generationManifestSha256,
+            manifest,
+          })
+        }
+        await writeManifest(outDir, manifest)
+      }
+      const manifestPath = join(outDir, manifestFileName)
+
+      return {
+        action: 'export',
+        audit: await buildBackupAuditPacket({
+          name: 'backup.export',
+          manifestPath,
+          resultStatus: execute ? 'executed' : 'planned',
+        }),
+        executed: execute,
+        manifest: manifestPath,
+        commands,
+      }
+    },
+  )
+  writeJson(result)
 }
 
 async function runRestore(options) {
@@ -956,28 +959,58 @@ function enforceGenerationBoundExportSource({
   }
 }
 
-async function assertFreshGenerationBoundOutput({
-  generationManifestSha256,
-  outDir,
-}) {
+async function withGenerationBoundOutputClaim(
+  { generationManifestSha256, outDir },
+  operation,
+) {
   if (!generationManifestSha256) {
-    return
+    return operation()
   }
 
-  let outputStats
+  const claimPath = await claimFreshGenerationBoundOutput(outDir)
   try {
-    outputStats = await lstat(outDir)
+    return await operation()
+  } finally {
+    await rm(claimPath, { force: true })
+  }
+}
+
+async function claimFreshGenerationBoundOutput(outDir) {
+  await mkdir(outDir, { recursive: true, mode: 0o700 })
+
+  const outputStats = await lstat(outDir)
+  if (!outputStats.isDirectory()) {
+    throw new Error(
+      '--out must be missing or an empty directory for a generation-bound export',
+    )
+  }
+
+  const claimPath = join(outDir, generationBoundExportClaimFileName)
+  try {
+    await writeFile(claimPath, '', { flag: 'wx', mode: 0o600 })
   } catch (error) {
-    if (error?.code === 'ENOENT') {
-      return
+    if (error?.code === 'EEXIST') {
+      throw new Error('generation-bound output is already claimed', {
+        cause: error,
+      })
     }
     throw error
   }
 
-  if (!outputStats.isDirectory() || (await readdir(outDir)).length !== 0) {
-    throw new Error(
-      '--out must be missing or an empty directory for a generation-bound export',
-    )
+  try {
+    const entries = await readdir(outDir)
+    if (
+      entries.length !== 1 ||
+      entries[0] !== generationBoundExportClaimFileName
+    ) {
+      throw new Error(
+        '--out must be missing or an empty directory for a generation-bound export',
+      )
+    }
+    return claimPath
+  } catch (error) {
+    await rm(claimPath, { force: true })
+    throw error
   }
 }
 

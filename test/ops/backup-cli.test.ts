@@ -1,4 +1,11 @@
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import {
   createServer,
   type IncomingMessage,
@@ -530,6 +537,89 @@ describe('backup CLI', () => {
     ).resolves.toBe(staleManifest)
   })
 
+  it('atomically reserves generation-bound output across concurrent exports', async () => {
+    const workDir = await fixtureDir('export-generation-concurrent-output')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createConcurrentExportFakeWrangler(workDir)
+    await mkdir(sourceDir, { recursive: true })
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, `${objectOneKey}\n`)
+
+    const runExport = (runId: 'A' | 'B') =>
+      execFileAsync(
+        'node',
+        [
+          backupScript,
+          'export',
+          '--out',
+          outDir,
+          '--database',
+          'honowarden',
+          '--bucket',
+          'honowarden-vault-objects',
+          '--mode',
+          'local',
+          '--config',
+          configPath,
+          '--persist-to',
+          persistDir,
+          '--generation-manifest-sha256',
+          runId === 'A' ? 'a'.repeat(64) : 'b'.repeat(64),
+          '--r2-objects',
+          objectList,
+          '--execute',
+        ],
+        {
+          env: {
+            ...fakeWrangler.env,
+            GENERATION_EXPORT_RUN_ID: runId,
+          },
+        },
+      )
+
+    const firstExport = runExport('A')
+    await waitForFile(fakeWrangler.firstExportStarted)
+    const secondResults = await Promise.allSettled([runExport('B')])
+    await writeFile(fakeWrangler.releaseFirstExport, '')
+    const firstResults = await Promise.allSettled([firstExport])
+    const results = [...firstResults, ...secondResults]
+    const successes = results.filter((result) => result.status === 'fulfilled')
+    const failures = results.filter((result) => result.status === 'rejected')
+
+    expect(successes).toHaveLength(1)
+    expect(failures).toHaveLength(1)
+    expect(String(failures[0]?.reason?.stderr)).toContain(
+      'generation-bound output is already claimed',
+    )
+    await expect(
+      readFile(fakeWrangler.secondExportStarted),
+    ).rejects.toMatchObject({ code: 'ENOENT' })
+
+    const d1 = await readFile(join(outDir, 'd1.sql'), 'utf8')
+    const runId = d1.match(/-- generation ([AB])/u)?.[1]
+    const manifest = JSON.parse(
+      await readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
+    ) as {
+      credentialGeneration: CredentialGenerationBinding
+      r2: { objects: Array<{ file: string }> }
+    }
+    const [object] = manifest.r2.objects
+    expect(object).toBeDefined()
+    if (!object) throw new Error('concurrent export manifest omitted R2 object')
+    const body = await readFile(join(outDir, object.file), 'utf8')
+
+    expect(runId).toMatch(/^[AB]$/u)
+    expect(body).toBe(`BODY-${runId}`)
+    expect(manifest.credentialGeneration.lifecycleManifestSha256).toBe(
+      runId === 'A' ? 'a'.repeat(64) : 'b'.repeat(64),
+    )
+    expect(await readdir(outDir)).not.toContain('.generation-bound-export.lock')
+  })
+
   it('rejects an R2 inventory that omits a D1 attachment reference', async () => {
     const workDir = await fixtureDir('export-generation-incomplete-inventory')
     const sourceDir = join(workDir, 'source')
@@ -583,6 +673,7 @@ describe('backup CLI', () => {
     await expect(
       readFile(join(outDir, 'backup-manifest.json'), 'utf8'),
     ).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readdir(outDir)).not.toContain('.generation-bound-export.lock')
   })
 
   it('accepts an empty R2 inventory when exported D1 has no attachment references', async () => {
@@ -1741,6 +1832,97 @@ process.exit(98)
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
       WRANGLER_OPERATIONS: operations,
     },
+  }
+}
+
+async function createConcurrentExportFakeWrangler(workDir: string): Promise<{
+  env: NodeJS.ProcessEnv
+  firstExportStarted: string
+  releaseFirstExport: string
+  secondExportStarted: string
+}> {
+  const binDir = join(workDir, 'concurrent-export-bin')
+  const coordinationDir = join(workDir, 'concurrent-export-coordination')
+  const firstExportStarted = join(coordinationDir, 'A-d1-started')
+  const releaseFirstExport = join(coordinationDir, 'release-A-d1')
+  const secondExportStarted = join(coordinationDir, 'B-d1-started')
+  const executable = join(binDir, 'wrangler')
+  await mkdir(binDir, { recursive: true })
+  await mkdir(coordinationDir, { recursive: true })
+  await writeFile(
+    executable,
+    `#!/usr/bin/env node
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+const args = process.argv.slice(2)
+const runId = process.env.GENERATION_EXPORT_RUN_ID
+const coordinationDir = process.env.GENERATION_EXPORT_COORDINATION_DIR
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+if (args[0] === 'd1' && args[1] === 'export') {
+  writeFileSync(join(coordinationDir, \`\${runId}-d1-started\`), '')
+  if (runId === 'A') {
+    const deadline = Date.now() + 5000
+    while (!existsSync(join(coordinationDir, 'release-A-d1'))) {
+      if (Date.now() >= deadline) process.exit(97)
+      await delay(10)
+    }
+  }
+  const output = args[args.indexOf('--output') + 1]
+  mkdirSync(dirname(output), { recursive: true })
+  writeFileSync(output, \`CREATE TABLE cipher_attachments (object_key TEXT NOT NULL UNIQUE); INSERT INTO cipher_attachments VALUES ('attachments/object-one'); -- generation \${runId}\\n\`)
+  process.exit(0)
+}
+if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--file')) {
+  process.exit(0)
+}
+if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--command')) {
+  process.stdout.write(JSON.stringify([{ results: [{ objectKey: 'attachments/object-one' }] }]))
+  process.exit(0)
+}
+if (args[0] === 'r2' && args[1] === 'object' && args[2] === 'get') {
+  const output = args[args.indexOf('--file') + 1]
+  mkdirSync(dirname(output), { recursive: true })
+  writeFileSync(output, \`BODY-\${runId}\`)
+  process.exit(0)
+}
+process.exit(98)
+`,
+    { mode: 0o700 },
+  )
+  return {
+    env: {
+      ...process.env,
+      GENERATION_EXPORT_COORDINATION_DIR: coordinationDir,
+      PATH: `${binDir}:${process.env.PATH ?? ''}`,
+    },
+    firstExportStarted,
+    releaseFirstExport,
+    secondExportStarted,
+  }
+}
+
+async function waitForFile(path: string): Promise<void> {
+  const deadline = Date.now() + 5000
+  while (true) {
+    try {
+      await readFile(path)
+      return
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== 'object' ||
+        !('code' in error) ||
+        error.code !== 'ENOENT'
+      ) {
+        throw error
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`timed out waiting for fixture file: ${path}`, {
+          cause: error,
+        })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
   }
 }
 
