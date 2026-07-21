@@ -341,22 +341,22 @@ async function readUserKeyRotationSnapshot(
       ),
     },
   }
+  const wrapperFingerprintValues = [
+    wrapperFingerprints.current.userKey,
+    wrapperFingerprints.next.userKey,
+    wrapperFingerprints.current.privateKey,
+    wrapperFingerprints.next.privateKey,
+  ]
+  if (
+    new Set(wrapperFingerprintValues).size !== wrapperFingerprintValues.length
+  ) {
+    return { status: 'replayed_generation' }
+  }
   const wrapperHistory = await prepareChecked(database, {
     sql: snapshotWrapperHistorySql,
-    values: [
-      input.userId,
-      wrapperFingerprints.current.userKey,
-      wrapperFingerprints.next.userKey,
-      wrapperFingerprints.current.privateKey,
-      wrapperFingerprints.next.privateKey,
-    ],
+    values: [input.userId, ...wrapperFingerprintValues],
   }).all<SnapshotWrapperHistoryRow>()
-  const expectedHistoryDigests = new Set([
-    wrapperFingerprints.current.userKey,
-    wrapperFingerprints.current.privateKey,
-    wrapperFingerprints.next.userKey,
-    wrapperFingerprints.next.privateKey,
-  ])
+  const expectedHistoryDigests = new Set(wrapperFingerprintValues)
   const historyDigests = wrapperHistory.results.map((row) => row.wrapperSha256)
   if (
     new Set(historyDigests).size !== historyDigests.length ||

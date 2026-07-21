@@ -148,6 +148,29 @@ describe('user key rotation on real local D1', () => {
     )
   })
 
+  it('rejects a canonical current-wrapper alias without committing any D1 state', async () => {
+    const database = await createDatabase()
+    const fixture = rotationFixture(
+      'canonical-alias-security-stamp',
+      'canonical-alias-audit-id',
+    )
+    await seedRotationState(database, fixture, false, true)
+    const currentUserKey =
+      '2.pMS6/icTQABtulw52pq2lg==|XXbxKxDTh+mWiN1HjH2N1w==|Q6PkuT+KX/axrgN9ubD5Ajk2YNwxQkgs3WJM0S0wtG8='
+    await database
+      .prepare('UPDATE users SET user_key = ? WHERE id = ?')
+      .bind(currentUserKey, userId)
+      .run()
+    fixture.request.nextUserKey = currentUserKey.replaceAll('=', '')
+    const before = await readRotationState(database)
+
+    await expect(
+      rotateUserKeyGeneration(database, fixture.input),
+    ).resolves.toEqual({ status: 'replayed_generation' })
+
+    expect(await readRotationState(database)).toEqual(before)
+  })
+
   it('rejects an older persisted wrapper generation after a successful rotation', async () => {
     const database = await createDatabase()
     const first = rotationFixture('first-security-stamp', 'first-audit-id')

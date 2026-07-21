@@ -189,6 +189,23 @@ describe('user key rotation repository', () => {
     },
   )
 
+  it('rejects canonically duplicate current and next wrappers before entering the mutation batch', async () => {
+    const fixture = rotationFixture()
+    fixture.snapshot.summary.userKey =
+      '2.pMS6/icTQABtulw52pq2lg==|XXbxKxDTh+mWiN1HjH2N1w==|Q6PkuT+KX/axrgN9ubD5Ajk2YNwxQkgs3WJM0S0wtG8='
+    fixture.request.nextUserKey = fixture.snapshot.summary.userKey.replaceAll(
+      '=',
+      '',
+    )
+    const database = new RotationD1Database(fixture.snapshot)
+
+    await expect(
+      rotateUserKeyGeneration(database, fixture.input),
+    ).resolves.toEqual({ status: 'replayed_generation' })
+    expect(database.batchCalls).toHaveLength(0)
+    expect(database.committed).toBe(false)
+  })
+
   it('uses the protocol default when stored reprompt metadata is absent', async () => {
     const fixture = rotationFixture()
     const payload = JSON.parse(
