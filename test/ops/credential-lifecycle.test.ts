@@ -593,8 +593,8 @@ describe('aggregate official-client credential lifecycle', () => {
     const { prepareCredentialLifecyclePersistPath } = await import(
       pathToFileURL(lifecycleScript).href
     )
-    const fixtureParent = await mkdtemp(
-      join(repoRoot, 'test/.tmp/hon220-persist-boundary-'),
+    const fixtureParent = await makeRepoFixtureDirectory(
+      'hon220-persist-boundary-',
     )
     const externalRoot = await mkdtemp(
       join(tmpdir(), 'hon220-persist-external-'),
@@ -638,9 +638,7 @@ describe('aggregate official-client credential lifecycle', () => {
       cleanupCredentialLifecycleState,
       prepareCredentialLifecyclePersistPath,
     } = await import(pathToFileURL(lifecycleScript).href)
-    const parent = await mkdtemp(
-      join(repoRoot, 'test/.tmp/hon220-persist-ownership-'),
-    )
+    const parent = await makeRepoFixtureDirectory('hon220-persist-ownership-')
     const disposable = join(parent, 'disposable')
     const retained = join(parent, 'retained')
     const foreign = join(parent, 'foreign')
@@ -1412,6 +1410,12 @@ describe('aggregate official-client credential lifecycle', () => {
     )
   })
 })
+
+async function makeRepoFixtureDirectory(prefix: string): Promise<string> {
+  const fixtureRoot = join(repoRoot, 'test/.tmp')
+  await mkdir(fixtureRoot, { recursive: true, mode: 0o700 })
+  return mkdtemp(join(fixtureRoot, prefix))
+}
 
 function credentialStage(label: string, userKeyGeneration: number) {
   const encrypted = (field: string) => `2.${label}-${field}`
