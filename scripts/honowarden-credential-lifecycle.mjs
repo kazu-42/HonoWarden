@@ -39,6 +39,10 @@ import {
   stopDetachedProcessTree,
   stopTrackedProcesses,
 } from './honowarden-signal-cleanup.mjs'
+import {
+  credentialLifecycleStateOwnershipMarker as stateOwnershipMarker,
+  credentialLifecycleStateOwnershipMarkerBody as stateOwnershipMarkerBody,
+} from './honowarden-credential-lifecycle-state.mjs'
 
 const schemaVersion = 1
 const confirmation = 'credential-lifecycle'
@@ -49,8 +53,6 @@ const databaseName = 'honowarden'
 const r2BucketName = 'honowarden-vault-objects'
 const tokenSecret = 'synthetic-hon220-token-secret-with-at-least-32-bytes'
 const initialRevision = '2026-07-20T12:00:00.000Z'
-const stateOwnershipMarker = '.honowarden-credential-lifecycle-owned'
-const stateOwnershipMarkerBody = '{"owner":"honowarden-credential-lifecycle"}\n'
 const lifecycleEnvironmentKeys = Object.freeze([
   'HOME',
   'LANG',

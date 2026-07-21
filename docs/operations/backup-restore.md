@@ -231,6 +231,15 @@ prevents an omitted R2 inventory from silently producing a D1-only recovery
 artifact. An explicitly empty inventory file is reserved for a reviewed source
 known to contain no R2 objects.
 
+Before any Wrangler process starts, both source paths must exist and resolve to
+their exact supplied paths; config or persistence symlinks are rejected. The
+config file and the config, `.wrangler`, and state directories must be owned by
+the current user, with all three directories at mode `0700`. The persistence
+root must also contain the mode-`0600` lifecycle ownership marker written by
+`account:credential-lifecycle`. A structurally matching but ambient or
+unmarked operator-created local state therefore cannot receive a generation
+binding accidentally.
+
 After exporting D1, the wrapper restores that exact `d1.sql` into a private,
 temporary local validation database and queries every
 `cipher_attachments.object_key`. Every referenced key must be present in the
@@ -241,10 +250,13 @@ backup manifest. The config is passed to every Wrangler command, while the
 source `--persist-to` remains limited to supported local D1 and R2 commands.
 Unbound backups retain their existing local, remote, and dry-run behavior.
 
-The bound `--out` path must be missing or an empty directory. Reusing a prior
-output is rejected before Wrangler starts, so a failed replacement cannot leave
-an older bound manifest next to partially overwritten D1 or R2 files. Use a new
-run-owned output directory for every generation-bound export.
+The bound `--out` path must be missing or an empty directory owned by the
+current user at mode `0700`. A newly created output receives that mode; an
+existing public or foreign output is rejected instead of being silently
+re-permissioned. Reusing a prior output is rejected before Wrangler starts, so
+a failed replacement cannot leave an older bound manifest next to partially
+overwritten D1 or R2 files. Use a new run-owned output directory for every
+generation-bound export.
 
 Before any Wrangler process starts, the wrapper atomically creates
 `.generation-bound-export.lock` inside the output directory. It holds that

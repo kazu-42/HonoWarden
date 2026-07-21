@@ -1,9 +1,11 @@
 import {
   chmod,
+  lstat,
   mkdir,
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises'
 import {
@@ -493,7 +495,9 @@ describe('backup CLI', () => {
     const staleManifest = '{"stale":true}\n'
     const fakeWrangler = await createFakeWrangler(workDir)
     await mkdir(sourceDir, { recursive: true })
-    await mkdir(outDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir)
+    await mkdir(outDir, { recursive: true, mode: 0o700 })
+    await chmod(outDir, 0o700)
     await writeFile(configPath, '{}\n')
     await writeFile(objectList, `${objectOneKey}\n`)
     await writeFile(join(outDir, 'backup-manifest.json'), staleManifest)
@@ -546,6 +550,7 @@ describe('backup CLI', () => {
     const outDir = join(workDir, 'backup')
     const fakeWrangler = await createConcurrentExportFakeWrangler(workDir)
     await mkdir(sourceDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir)
     await writeFile(configPath, '{}\n')
     await writeFile(objectList, `${objectOneKey}\n`)
 
@@ -633,6 +638,7 @@ describe('backup CLI', () => {
       ['attachments/missing-body'],
     )
     await mkdir(sourceDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir)
     await writeFile(configPath, '{}\n')
     await writeFile(objectList, `${objectOneKey}\n`)
 
@@ -689,6 +695,7 @@ describe('backup CLI', () => {
       [],
     )
     await mkdir(sourceDir, { recursive: true })
+    await prepareOwnedGenerationState(sourceDir)
     await writeFile(configPath, '{}\n')
     await writeFile(objectList, '')
 
@@ -811,6 +818,175 @@ describe('backup CLI', () => {
     },
   )
 
+  it('rejects an unowned generation source before Wrangler spawn', async () => {
+    const workDir = await fixtureDir('export-unowned-generation-source')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = join(sourceDir, '.wrangler', 'state')
+    const objectList = join(workDir, 'objects.txt')
+    const fakeWrangler = await createFakeWrangler(workDir)
+    await mkdir(persistDir, { recursive: true, mode: 0o700 })
+    await chmod(sourceDir, 0o700)
+    await chmod(join(sourceDir, '.wrangler'), 0o700)
+    await chmod(persistDir, 0o700)
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, `${objectOneKey}\n`)
+
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          backupScript,
+          'export',
+          '--out',
+          join(workDir, 'backup'),
+          '--database',
+          'honowarden',
+          '--bucket',
+          'honowarden-vault-objects',
+          '--mode',
+          'local',
+          '--config',
+          configPath,
+          '--persist-to',
+          persistDir,
+          '--generation-manifest-sha256',
+          'a'.repeat(64),
+          '--r2-objects',
+          objectList,
+          '--execute',
+        ],
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        'generation-bound persistence ownership marker is invalid',
+      ),
+    })
+    await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
+  it.each(['config', 'persistence'] as const)(
+    'rejects a generation source with a symlinked %s path before Wrangler spawn',
+    async (symlinkedPath) => {
+      const workDir = await fixtureDir(
+        `export-symlinked-generation-${symlinkedPath}`,
+      )
+      const sourceDir = join(workDir, 'source')
+      const configPath = join(sourceDir, 'wrangler.jsonc')
+      const persistDir = join(sourceDir, '.wrangler', 'state')
+      const objectList = join(workDir, 'objects.txt')
+      const fakeWrangler = await createFakeWrangler(workDir)
+      await mkdir(join(sourceDir, '.wrangler'), {
+        recursive: true,
+        mode: 0o700,
+      })
+      await chmod(sourceDir, 0o700)
+      await chmod(join(sourceDir, '.wrangler'), 0o700)
+
+      if (symlinkedPath === 'config') {
+        const realConfig = join(workDir, 'real-wrangler.jsonc')
+        await writeFile(realConfig, '{}\n')
+        await symlink(realConfig, configPath)
+        await prepareOwnedStateDirectory(persistDir)
+      } else {
+        const realPersistDir = join(workDir, 'real-state')
+        await writeFile(configPath, '{}\n')
+        await prepareOwnedStateDirectory(realPersistDir)
+        await symlink(realPersistDir, persistDir)
+      }
+      await writeFile(objectList, `${objectOneKey}\n`)
+
+      await expect(
+        execFileAsync(
+          'node',
+          [
+            backupScript,
+            'export',
+            '--out',
+            join(workDir, 'backup'),
+            '--database',
+            'honowarden',
+            '--bucket',
+            'honowarden-vault-objects',
+            '--mode',
+            'local',
+            '--config',
+            configPath,
+            '--persist-to',
+            persistDir,
+            '--generation-manifest-sha256',
+            'a'.repeat(64),
+            '--r2-objects',
+            objectList,
+            '--execute',
+          ],
+          { env: fakeWrangler.env },
+        ),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          'generation-bound source paths must be canonical and symlink-free',
+        ),
+      })
+      await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      )
+    },
+  )
+
+  it('rejects a public pre-existing generation-bound output before Wrangler spawn', async () => {
+    const workDir = await fixtureDir('export-public-generation-output')
+    const sourceDir = join(workDir, 'source')
+    const configPath = join(sourceDir, 'wrangler.jsonc')
+    const persistDir = await prepareOwnedGenerationState(sourceDir)
+    const objectList = join(workDir, 'objects.txt')
+    const outDir = join(workDir, 'backup')
+    const fakeWrangler = await createFakeWrangler(workDir)
+    await writeFile(configPath, '{}\n')
+    await writeFile(objectList, `${objectOneKey}\n`)
+    await mkdir(outDir, { mode: 0o755 })
+    await chmod(outDir, 0o755)
+
+    await expect(
+      execFileAsync(
+        'node',
+        [
+          backupScript,
+          'export',
+          '--out',
+          outDir,
+          '--database',
+          'honowarden',
+          '--bucket',
+          'honowarden-vault-objects',
+          '--mode',
+          'local',
+          '--config',
+          configPath,
+          '--persist-to',
+          persistDir,
+          '--generation-manifest-sha256',
+          'a'.repeat(64),
+          '--r2-objects',
+          objectList,
+          '--execute',
+        ],
+        { env: fakeWrangler.env },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        'generation-bound --out must be owned by the current user with mode 0700',
+      ),
+    })
+    expect((await lstat(outDir)).mode & 0o777).toBe(0o755)
+    expect(await readdir(outDir)).toEqual([])
+    await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
   it(
     'exports real local D1 and R2 state selected by an owned Wrangler config',
     { timeout: 30_000 },
@@ -828,6 +1004,7 @@ describe('backup CLI', () => {
       const d1Sentinel = `owned-source-${crypto.randomUUID()}`
       const objectBody = `owned-r2-${crypto.randomUUID()}`
       await mkdir(sourceDir, { recursive: true })
+      await prepareOwnedGenerationState(sourceDir)
       await writeFile(
         configPath,
         JSON.stringify(
@@ -854,7 +1031,8 @@ describe('backup CLI', () => {
       )
       await writeFile(objectList, `${objectOneKey}\n`)
       await writeFile(objectBodyPath, objectBody)
-      await mkdir(outDir, { recursive: true })
+      await mkdir(outDir, { recursive: true, mode: 0o700 })
+      await chmod(outDir, 0o700)
 
       await execFileAsync(wranglerBinary, [
         'd1',
@@ -1646,6 +1824,26 @@ async function fixtureDir(label: string): Promise<string> {
   onTestFinished(() => rm(dir, { recursive: true, force: true }))
 
   return dir
+}
+
+async function prepareOwnedGenerationState(sourceDir: string): Promise<string> {
+  await mkdir(sourceDir, { recursive: true, mode: 0o700 })
+  await chmod(sourceDir, 0o700)
+  const wranglerDir = join(sourceDir, '.wrangler')
+  const persistDir = join(wranglerDir, 'state')
+  await mkdir(wranglerDir, { mode: 0o700 })
+  await prepareOwnedStateDirectory(persistDir)
+  return persistDir
+}
+
+async function prepareOwnedStateDirectory(path: string): Promise<void> {
+  await mkdir(path, { recursive: true, mode: 0o700 })
+  await chmod(path, 0o700)
+  await writeFile(
+    join(path, '.honowarden-credential-lifecycle-owned'),
+    '{"owner":"honowarden-credential-lifecycle"}\n',
+    { flag: 'wx', mode: 0o600 },
+  )
 }
 
 async function writeSafeBackupFixture(

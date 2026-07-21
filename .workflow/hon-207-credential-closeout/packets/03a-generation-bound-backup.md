@@ -30,6 +30,9 @@ manifest whose content or generation identity differs from the approved input.
   tokens, encrypted bodies, filesystem secrets, or client profile data.
 - Local D1 export must not silently fall back to the repository's ambient
   `.wrangler/state`; the selected source state is explicit and owned.
+- Config and persistence paths must be canonical and symlink-free. The selected
+  private persistence must carry the credential-lifecycle ownership marker, and
+  the run-owned output must be private before any Wrangler process starts.
 - Existing unbound scheduled/operator backups remain readable. Restore only
   requires a generation binding when the operator supplies the corresponding
   expectation.

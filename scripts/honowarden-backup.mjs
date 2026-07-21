@@ -5,6 +5,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -15,6 +16,11 @@ import { fileURLToPath, URL } from 'node:url'
 import process from 'node:process'
 import { Buffer } from 'node:buffer'
 import { createHash, createHmac } from 'node:crypto'
+
+import {
+  credentialLifecycleStateOwnershipMarker,
+  credentialLifecycleStateOwnershipMarkerBody,
+} from './honowarden-credential-lifecycle-state.mjs'
 
 const manifestFileName = 'backup-manifest.json'
 const d1ExportFileName = 'd1.sql'
@@ -65,7 +71,7 @@ async function runExport(options) {
     options.generationManifestSha256,
     '--generation-manifest-sha256',
   )
-  enforceGenerationBoundExportSource({
+  await enforceGenerationBoundExportSource({
     generationManifestSha256,
     mode,
     options,
@@ -920,7 +926,7 @@ function rejectRemotePersistence(mode, options) {
   }
 }
 
-function enforceGenerationBoundExportSource({
+async function enforceGenerationBoundExportSource({
   generationManifestSha256,
   mode,
   options,
@@ -957,6 +963,90 @@ function enforceGenerationBoundExportSource({
   if (!execute) {
     throw new Error('--generation-manifest-sha256 requires --execute')
   }
+
+  await assertOwnedGenerationBoundSource({
+    configPath,
+    persistenceRoot: expectedPersistenceRoot,
+  })
+}
+
+async function assertOwnedGenerationBoundSource({
+  configPath,
+  persistenceRoot,
+}) {
+  let canonicalConfigPath
+  let canonicalPersistenceRoot
+  try {
+    ;[canonicalConfigPath, canonicalPersistenceRoot] = await Promise.all([
+      realpath(configPath),
+      realpath(persistenceRoot),
+    ])
+  } catch (error) {
+    throw new Error('generation-bound source paths must exist', {
+      cause: error,
+    })
+  }
+
+  if (
+    canonicalConfigPath !== configPath ||
+    canonicalPersistenceRoot !== persistenceRoot
+  ) {
+    throw new Error(
+      'generation-bound source paths must be canonical and symlink-free',
+    )
+  }
+
+  const configStats = await lstat(configPath)
+  if (
+    configStats.isSymbolicLink() ||
+    !configStats.isFile() ||
+    !isOwnedByCurrentUser(configStats)
+  ) {
+    throw new Error(
+      'generation-bound --config must be a regular file owned by the current user',
+    )
+  }
+
+  for (const directory of [
+    dirname(configPath),
+    dirname(persistenceRoot),
+    persistenceRoot,
+  ]) {
+    const directoryStats = await lstat(directory)
+    if (
+      directoryStats.isSymbolicLink() ||
+      !directoryStats.isDirectory() ||
+      (directoryStats.mode & 0o777) !== 0o700 ||
+      !isOwnedByCurrentUser(directoryStats)
+    ) {
+      throw new Error(
+        'generation-bound source directories must be owned by the current user with mode 0700',
+      )
+    }
+  }
+
+  const markerPath = join(
+    persistenceRoot,
+    credentialLifecycleStateOwnershipMarker,
+  )
+  try {
+    const markerStats = await lstat(markerPath)
+    if (
+      markerStats.isSymbolicLink() ||
+      !markerStats.isFile() ||
+      (markerStats.mode & 0o777) !== 0o600 ||
+      !isOwnedByCurrentUser(markerStats) ||
+      (await readFile(markerPath, 'utf8')) !==
+        credentialLifecycleStateOwnershipMarkerBody
+    ) {
+      throw new Error('invalid marker')
+    }
+  } catch (error) {
+    throw new Error(
+      'generation-bound persistence ownership marker is invalid',
+      { cause: error },
+    )
+  }
 }
 
 async function withGenerationBoundOutputClaim(
@@ -982,6 +1072,14 @@ async function claimFreshGenerationBoundOutput(outDir) {
   if (!outputStats.isDirectory()) {
     throw new Error(
       '--out must be missing or an empty directory for a generation-bound export',
+    )
+  }
+  if (
+    (outputStats.mode & 0o777) !== 0o700 ||
+    !isOwnedByCurrentUser(outputStats)
+  ) {
+    throw new Error(
+      'generation-bound --out must be owned by the current user with mode 0700',
     )
   }
 
@@ -1012,6 +1110,10 @@ async function claimFreshGenerationBoundOutput(outDir) {
     await rm(claimPath, { force: true })
     throw error
   }
+}
+
+function isOwnedByCurrentUser(stats) {
+  return typeof process.getuid !== 'function' || stats.uid === process.getuid()
 }
 
 async function verifyGenerationBoundR2Inventory({

@@ -35,9 +35,16 @@ Linear issue: HON-224
   `<config-directory>/.wrangler/state`, and an explicit R2 inventory. Remote,
   ambient, split, D1-only-by-omission, or dry-run sources fail before manifest
   construction or Wrangler spawn. Unbound backups remain compatible.
+- Canonicalized the selected config and persistence paths, rejected either path
+  when symlinked, and required current-user ownership, private source
+  directories, and the exact mode-0600 credential-lifecycle ownership marker
+  before any Wrangler process can start.
 - A bound output path must be missing or empty. Reusing a previous output fails
   before spawn, preserving the old artifact and preventing a failed replacement
   from leaving an old manifest beside partially overwritten files.
+- Required every bound output to be current-user-owned at mode 0700 before the
+  exclusive claim is created. A pre-existing public output is rejected without
+  changing its permissions or writing backup data.
 - The output is atomically claimed before Wrangler spawn and remains exclusive
   through final manifest write. Concurrent same-output exports cannot mix one
   lifecycle digest with another invocation's D1/R2 bytes. The claim is removed
@@ -111,23 +118,30 @@ Linear issue: HON-224
     The wrapper now acquires an exclusive output claim before spawn, holds it
     through manifest write, and produces exactly one coherent success while the
     competitor fails before Wrangler starts.
+11. The next exact-head standard review found that the lexical source check
+    accepted unowned or symlink-routed state and that an existing public output
+    retained mode 0755. Four regressions reproduced a missing lifecycle marker,
+    symlinked config, symlinked persistence, and public output. All now fail
+    before Wrangler spawn; valid private owned state and output still pass.
 
 ## Real Local Artifact
 
 The latest ignored synthetic run used a private temporary Wrangler config next
-to its `.wrangler/state`, initialized real local D1 and R2 sentinels, and ran an
-executed backup through the public CLI.
+to its lifecycle-owned `.wrangler/state`, initialized real local D1 and R2
+sentinels, and ran an executed backup through the public CLI.
 
 | Evidence                           | Readback                                                           |
 | ---------------------------------- | ------------------------------------------------------------------ |
-| Backup manifest SHA-256            | `121487bf3381491f9da76a44ccda0b6d23d364fc90a82296ff192229fd8d2a2a` |
+| Backup manifest SHA-256            | `a81c18b45a36be1e9c162ec3c751d3a67c0c29ba32312cf6412393f8f121e7d5` |
 | Lifecycle manifest SHA-256         | `ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` |
-| Derived source-state SHA-256       | `36656911b1e60063c40722c69fc2cc6aff1c88fae136e5345dd4c7d556405b85` |
-| Derived generation-binding SHA-256 | `9f1b3310acdd0aa3ff9ecc25574b696bd9d9ce8799cca184509449b03c1512af` |
-| D1 SQL SHA-256                     | `f9c072e48473c25ce9bf476661757f3a8662df4b2bc12d6ca06a6d932bb4c2e6` |
+| Derived source-state SHA-256       | `dec4f6d3ce9979832bf1c999340a98e7c9e91e22d2c8df5d41bd410de8141f63` |
+| Derived generation-binding SHA-256 | `4c5af3462310df6bd60e4cc0cf7733b9cce36143e9b8801b2d729fd2b81af606` |
+| D1 SQL SHA-256                     | `5046485c44ee22b23e9854a727cd6595c51954095bea47f3495006e6e4f7e4bb` |
 | R2 object count                    | 1                                                                  |
-| R2 body SHA-256                    | `077d89133030adcc7d4adc367f9bae74b5387bbae4657b0639c9e5b84bdda7d4` |
+| R2 body SHA-256                    | `955d1fdc73a41edcf50fb2fb81efd72bffe2f1ee09a168036e7a4efe69652c4b` |
+| Output permissions                 | mode `0700`                                                        |
 | Stdout JSON                        | parsed successfully; executed                                      |
+| Output claim                       | removed                                                            |
 | Inventory validation state         | removed                                                            |
 | Remote resources                   | none                                                               |
 
@@ -137,11 +151,11 @@ real credential or production manifest.
 ## Verification
 
 ```text
-backup CLI focused: 35 passed
-backup + scheduled workflow impact: 39 passed
-backup + credential lifecycle combined: 53 passed
+backup CLI focused: 39 passed
+backup + scheduled workflow impact: 43 passed
+backup + credential lifecycle combined: 57 passed
 real local D1/R2 source export: passed
-remote / ambient / split / omitted-R2 / dry-run / reused-output bound exports: rejected before spawn
+remote / ambient / split / unowned / symlinked / omitted-R2 / dry-run / reused/public-output bound exports: rejected before spawn
 concurrent same-output bound exports: exactly one coherent success; competitor rejected before spawn
 incomplete D1-referenced R2 inventory: rejected after D1 export, before R2 get or manifest write
 verified-empty D1 attachment set and explicit inventory: passed
@@ -150,7 +164,7 @@ temporary D1 inventory-validation persistence: removed on success and failure
 same source and lifecycle digest: stable derived binding
 changed D1 source: different binding; old expectation rejected before spawn
 manifest/history mismatch Wrangler spawns: 0
-full suite: 99 files, 1,285 tests passed
+full suite: 99 files, 1,289 tests passed
 typecheck / ESLint / Prettier: passed
 compatibility: 105 passed
 brand scan: passed
