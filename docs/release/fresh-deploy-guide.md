@@ -10,7 +10,7 @@ requires explicit operator approval.
 
 ## Prerequisites
 
-- Node.js 22 or newer
+- Node.js 22.13 or newer
 - pnpm 11 or newer
 - Wrangler authenticated to the intended Cloudflare account
 - fresh D1 database for the target environment

@@ -413,7 +413,8 @@ async function handleCoordinatedSignal(signal) {
     return
   }
   signalCleanupCoordinator.activeSignal = signal
-  const registrations = [...signalCleanupCoordinator.cleanups]
+  // Nested resources register after their owners, so unwind them first.
+  const registrations = [...signalCleanupCoordinator.cleanups].reverse()
   try {
     await runCleanupSteps(
       registrations.map((registration) => async () => {

@@ -1227,10 +1227,92 @@ setInterval(() => undefined, 1000)
       expect(exitCode).toBeNull()
       expect(signal).toBe('SIGTERM')
       expect(JSON.parse(await readFile(eventsPath, 'utf8'))).toEqual([
-        ['fast', 'SIGTERM'],
         ['slow-start', 'SIGTERM'],
         ['slow-end', 'SIGTERM'],
+        ['fast', 'SIGTERM'],
       ])
+    } catch (error) {
+      testError = error
+    }
+    if (parent?.pid && parent.exitCode === null && parent.signalCode === null) {
+      try {
+        process.kill(parent.pid, 'SIGKILL')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+          cleanupError = error
+        }
+      }
+    }
+    try {
+      await rm(root, { recursive: true, force: true })
+    } catch (error) {
+      cleanupError ??= error
+    }
+    if (testError) throw testError
+    if (cleanupError) throw cleanupError
+  }, 15_000)
+
+  it('stops nested resources before an outer cleanup removes their run root', async () => {
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-signal-unwind-${crypto.randomUUID()}`,
+    )
+    const runRoot = join(root, 'run')
+    const eventsPath = join(root, 'events.json')
+    const parentScript = join(root, 'parent.mjs')
+    let parent: ReturnType<typeof spawn> | undefined
+    await mkdir(runRoot, { recursive: true, mode: 0o700 })
+    await writeFile(
+      parentScript,
+      `import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { installSignalCleanup } from ${JSON.stringify(pathToFileURL(signalCleanupScript).href)}
+
+const events = []
+const writeEvents = () => writeFileSync(${JSON.stringify(eventsPath)}, JSON.stringify(events))
+installSignalCleanup(async () => {
+  events.push('outer-remove-root')
+  rmSync(${JSON.stringify(runRoot)}, { recursive: true, force: true })
+  writeEvents()
+})
+installSignalCleanup(async () => {
+  events.push('inner-stop-start')
+  writeEvents()
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  mkdirSync(${JSON.stringify(runRoot)}, { recursive: true, mode: 0o700 })
+  writeFileSync(join(${JSON.stringify(runRoot)}, 'late-secret'), 'synthetic')
+  events.push('inner-stop-end')
+  writeEvents()
+})
+process.stdout.write('ready\\n')
+setInterval(() => undefined, 1000)
+`,
+      { mode: 0o600 },
+    )
+
+    let testError: unknown
+    let cleanupError: unknown
+    try {
+      parent = spawn(process.execPath, [parentScript], {
+        cwd: repoRoot,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      await once(parent.stdout!, 'data')
+      process.kill(parent.pid!, 'SIGTERM')
+      const [exitCode, signal] = (await once(parent, 'exit')) as [
+        number | null,
+        NodeJS.Signals | null,
+      ]
+
+      expect(exitCode).toBeNull()
+      expect(signal).toBe('SIGTERM')
+      expect(JSON.parse(await readFile(eventsPath, 'utf8'))).toEqual([
+        'inner-stop-start',
+        'inner-stop-end',
+        'outer-remove-root',
+      ])
+      await expect(access(runRoot)).rejects.toMatchObject({ code: 'ENOENT' })
     } catch (error) {
       testError = error
     }

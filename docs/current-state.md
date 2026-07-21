@@ -1312,8 +1312,9 @@ Implemented:
   dependency-ordered rows and secondary schema objects in one deferred
   foreign-key transaction, then reimports with foreign keys enabled and
   compares canonical schema and every table digest
-- Node.js runtime floor `>=22.10.0` for the `DatabaseSync` options used by D1
-  export validation and restore-artifact generation
+- Node.js runtime floor `>=22.13.0`, where `node:sqlite` is available without an
+  experimental feature flag, for D1 export validation and restore-artifact
+  generation
 - exact post-restore D1 re-export, every R2 body checksum, and derived
   source-state digest equality before an executed restore can report success
 - in-memory recovery context that retains four superseded passwords, access

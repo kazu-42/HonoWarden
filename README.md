@@ -28,7 +28,7 @@ The first milestone is a narrow compatibility target:
 
 Prerequisites:
 
-- Node.js 22 or newer
+- Node.js 22.13 or newer
 - pnpm 11 or newer
 - a Cloudflare account for deployed Workers, D1, and R2 resources
 

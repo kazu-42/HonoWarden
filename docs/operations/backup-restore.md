@@ -285,8 +285,8 @@ table-content digest with the source database, and rejects commit-time or
 post-import foreign-key violations. Both validation databases are removed on
 success or failure. The original `d1.sql` remains the source-identity artifact,
 while the manifest separately pins the restore artifact checksum. This
-validation uses `DatabaseSync` options available from Node.js 22.10 and
-therefore requires that runtime or later.
+validation uses `node:sqlite` without an experimental feature flag and therefore
+requires Node.js 22.13 or later.
 
 The config is passed to every Wrangler command, while the source
 `--persist-to` remains limited to supported local D1 and R2 commands. Unbound

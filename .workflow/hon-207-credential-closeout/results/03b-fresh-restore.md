@@ -28,8 +28,8 @@ Linear issue: HON-225
   the generated restore artifact creates all tables first, inserts in
   dependency order, applies views/indexes/triggers last, reimports with foreign
   keys enabled, and compares schema and every table-content digest.
-- Raised the Node.js engine floor from 22.0 to 22.10, which provides the
-  `DatabaseSync` options used by the validator.
+- Raised the Node.js engine floor from 22.0 to 22.13, where `node:sqlite` is
+  available without an experimental feature flag.
 - Required a generation-bound local restore target to use canonical,
   symlink-free, current-user-owned config and target paths. The config must be
   mode `0600`; target, `.wrangler`, and persistence directories must be mode
@@ -85,6 +85,15 @@ Linear issue: HON-225
    fixture reproduced the failure. The restore artifact now defers all foreign
    keys inside one transaction, so self-references and cycles remain row-order
    independent while commit and post-import checks still fail closed.
+8. The first exact-head native review found that the declared Node.js 22.10
+   floor still required `--experimental-sqlite`. A package-contract red test
+   reproduced the accepted unsupported range. The package and operator docs now
+   require Node.js 22.13, where `node:sqlite` is available without that flag.
+9. The same review found that the aggregate signal cleanup could remove its run
+   root before a nested Worker/Wrangler cleanup completed. A child-process red
+   test reproduced the run-root recreation race. Shared signal cleanup now
+   unwinds registrations in LIFO order, so nested resources stop before their
+   owner removes the root.
 
 ## Real Local Artifact
 
@@ -94,12 +103,12 @@ Worker/TLS origin.
 
 | Evidence                              | Readback                                                           |
 | ------------------------------------- | ------------------------------------------------------------------ |
-| Generated at                          | `2026-07-21T12:40:16.000Z`                                         |
-| Source lifecycle manifest SHA-256     | `d3d419cf9b28bf39795f90a84ccd8e162ad432cd0c56407e9926d09c292a5974` |
-| Backup manifest SHA-256               | `1cefeb938c3e5e3f268a96d95fdbfa5b427d32afc2b3fd0eb84feb83c6595277` |
-| Generation binding SHA-256            | `14054d7a0267de04e37f3db865a06a902857c7aa4d044afbaf9ab36bedc011b7` |
-| D1/R2 source-state SHA-256            | `38a0bc3bc00e5008ee7c332fde0dd34f32f63561412c48f0307de504bc6b8e89` |
-| D1 export SHA-256                     | `fe83270da6ab4d82bfa8f48ef10fce687b7f921246b46338ec8bedcfe3f42421` |
+| Generated at                          | `2026-07-21T13:11:54.000Z`                                         |
+| Source lifecycle manifest SHA-256     | `c59809f2c951620a9d0651c99434a72f4981b83bf40abd8fb0399fd0c78ea65e` |
+| Backup manifest SHA-256               | `512b6f9a2792d1c526c181b5796e541b9dbabca625563fdf7f31e3162004e564` |
+| Generation binding SHA-256            | `a663583126b9eb39db4700f629af2d7eb0fbddeb15ef9dacf4b7bad54cee788f` |
+| D1/R2 source-state SHA-256            | `8ebdb7ab8dfa4e1a806ce4dea8797d09448e754e1833685581dbf6d5b01d3763` |
+| D1 export SHA-256                     | `33704e8b124d6625133271c1bfb56c79a3021d6c8f113c0c9db2d59092ebbcf3` |
 | R2 object count                       | 1                                                                  |
 | Stale password/access/refresh/profile | 4 each before restart; 4 each after restart                        |
 | Current session                       | access and refresh passed; refreshed access passed after restart   |
@@ -116,7 +125,9 @@ credentials, vault exports, object keys, user identifiers, or production data.
 
 ```text
 real aggregate source -> backup -> fresh restore -> credential proof: passed
-full suite: 99 files, 1,311 tests passed
+native review red/green: 2 P2 reproduced and remediated
+signal cleanup: nested LIFO unwind; run root absent after aggregate
+full suite: 99 files, 1,312 tests passed
 typecheck: passed
 ESLint: passed
 Prettier: passed after formatting the changed lifecycle file

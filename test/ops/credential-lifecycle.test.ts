@@ -112,6 +112,7 @@ describe('aggregate official-client credential lifecycle', () => {
     expect(packageJson.scripts['account:credential-restore:lifecycle']).toBe(
       'node scripts/honowarden-credential-restore-lifecycle.mjs',
     )
+    expect(packageJson.engines.node).toBe('>=22.13.0')
     expect(scriptSource).toContain('generateOfficialCredentialFixture')
     expect(scriptSource).toContain('runOfficialCli')
     expect(scriptSource).toContain('readGenerationSnapshot')
