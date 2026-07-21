@@ -43,4 +43,22 @@ describe('getDatabaseHealth', () => {
       missingTables: ['ciphers'],
     })
   })
+
+  it('fails readiness when the credential wrapper history migration is missing', async () => {
+    const health = await getDatabaseHealth(
+      new FakeD1Database(
+        '0016',
+        requiredTables.filter(
+          (name) => name !== 'user_key_rotation_wrapper_history',
+        ),
+      ),
+    )
+
+    expect(health).toEqual({
+      ok: false,
+      code: 'required_tables_missing',
+      message: 'Database schema is missing required tables.',
+      missingTables: ['user_key_rotation_wrapper_history'],
+    })
+  })
 })

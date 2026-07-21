@@ -52,7 +52,7 @@ describe('official browser profile fixture CLI', () => {
       },
       launch: {
         browser: 'Brave Browser',
-        remoteDebuggingPort: 9224,
+        remoteDebuggingPort: 0,
       },
       safety: {
         freshProfileRequired: true,
@@ -87,7 +87,7 @@ describe('official browser profile fixture CLI', () => {
       browser: 'Chrome for Testing',
       executable: '/usr/bin/true',
       remoteDebuggingAddress: '127.0.0.1',
-      remoteDebuggingPort: 9224,
+      remoteDebuggingPort: 0,
     })
     expect(packet.launch.args).toEqual(expectedLaunchArgs(root, true))
     expect(
@@ -419,7 +419,6 @@ describe('official browser profile fixture CLI', () => {
     expect(packageJson).toContain('"client:browser-profile"')
     expect(runbook).toContain('browser-v2026.6.1')
     expect(runbook).toContain('fcd29c5971d9b218')
-    expect(runbook).toContain('--remote-debugging-port=9224')
     expect(runbook).toContain('clean-browser-profile')
     expect(runbook).toMatch(/never\s+enter\s+real\s+vault\s+credentials/i)
     expect(runbook).toContain('HON-95')
@@ -461,7 +460,7 @@ function expectedLaunchArgs(root: string, unsafe = false): string[] {
     `--load-extension=${join(root, 'extension')}`,
     ...(unsafe ? ['--enable-unsafe-extension-debugging'] : []),
     '--remote-debugging-address=127.0.0.1',
-    '--remote-debugging-port=9224',
+    '--remote-debugging-port=0',
     '--no-first-run',
     '--no-default-browser-check',
   ]

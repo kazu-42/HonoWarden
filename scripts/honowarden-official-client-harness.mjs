@@ -39,6 +39,7 @@ const supportedActions = new Set([
   'plan',
   'prepare',
   'crypto-roundtrip',
+  'credential-fixture',
   'cli-run',
   'status',
   'cleanup',
@@ -183,8 +184,8 @@ const officialRuntimeFileManifest = Object.freeze({
   'crypto/honowarden-bridge.cjs': Object.freeze({
     archive: null,
     entry: null,
-    bytes: 3_723_210,
-    sha256: 'bceddb20258bd62c85a9e8912b4b616ab5005dbe9cea55208ac3535d1481ff05',
+    bytes: 3_731_743,
+    sha256: '1a38398906d268c61ad40b79310d4810125f25d056052404fb0b8dfc23cd6601',
     mode: 0o700,
   }),
   'crypto/package.json': Object.freeze({
@@ -208,7 +209,7 @@ async function main(argv = process.argv.slice(2)) {
   const [action, ...rest] = normalized
   if (!action || !supportedActions.has(action)) {
     throw new Error(
-      'action must be plan, prepare, crypto-roundtrip, cli-run, status, or cleanup',
+      'action must be plan, prepare, crypto-roundtrip, credential-fixture, cli-run, status, or cleanup',
     )
   }
 
@@ -220,9 +221,13 @@ async function main(argv = process.argv.slice(2)) {
   if (action === 'cli-run') {
     validateOfficialCliArgs(options.passthrough)
     validateLoopbackOrigin(options.origin)
+    validateOfficialProfileName(options.profile)
   } else {
     if (options.origin !== undefined) {
       throw new Error('--origin is only allowed for cli-run')
+    }
+    if (options.profile !== undefined) {
+      throw new Error('--profile is only allowed for cli-run')
     }
     if (options.passthrough.length > 0) {
       throw new Error('arguments after -- are only allowed for cli-run')
@@ -306,6 +311,12 @@ async function executeAction(packet, options, root) {
       packet.readback = await runCryptoRoundtrip(root, options)
       packet.status = 'verified'
       break
+    case 'credential-fixture': {
+      const fixture = await generateOfficialCredentialFixture(root, options)
+      packet.readback = fixture.readback
+      packet.status = 'generated'
+      break
+    }
     case 'cli-run':
       packet.readback = await runOfficialCli(root, options)
       packet.status =
@@ -589,7 +600,111 @@ async function runCryptoRoundtrip(root, options) {
   }
 }
 
-async function runOfficialCli(root, options) {
+export async function generateOfficialCredentialFixture(root, options = {}) {
+  const status = await readHarnessStatus(root)
+  if (!status.rootExists || !status.valid) {
+    throw new Error('prepare a valid harness before credential-fixture')
+  }
+
+  const runId = randomUUID()
+  const requestPath = join(
+    root.absolute,
+    'requests',
+    `credential-fixture-${runId}.json`,
+  )
+  const responsePath = join(
+    root.absolute,
+    'responses',
+    `credential-fixture-${runId}.json`,
+  )
+  const request = {
+    schemaVersion,
+    operation: 'credential-fixture',
+    fixture: {
+      email: `hon220-${randomUUID()}@example.invalid`,
+      passwords: {
+        baseline: randomBytes(32).toString('base64url'),
+        passwordChange: randomBytes(32).toString('base64url'),
+        userKeyRotation: randomBytes(32).toString('base64url'),
+      },
+      plaintext: {
+        folderName: `HON-220 ${randomBytes(12).toString('hex')}`,
+        itemName: `HON-220 item ${randomBytes(12).toString('hex')}`,
+        itemUsername: `hon220-user-${randomBytes(12).toString('hex')}`,
+        itemPassword: randomBytes(32).toString('base64url'),
+        itemUri: `https://hon220-${randomBytes(12).toString('hex')}.example.invalid`,
+        itemNotes: `HON-220 notes ${randomBytes(24).toString('hex')}`,
+        attachmentFileName: `hon220-${randomBytes(12).toString('hex')}.bin`,
+        attachmentKey: randomBytes(64).toString('base64url'),
+      },
+    },
+  }
+  await writeFile(requestPath, `${JSON.stringify(request)}\n`, {
+    mode: 0o600,
+    flag: 'wx',
+  })
+
+  const commandStatus = await readHarnessStatus(root)
+  if (!commandStatus.valid) {
+    throw new Error(
+      'prepared harness changed before official credential generation',
+    )
+  }
+  const run = await runCapturedProcess(
+    process.execPath,
+    [
+      join(root.absolute, 'crypto', 'honowarden-bridge.cjs'),
+      requestPath,
+      responsePath,
+    ],
+    {
+      cwd: join(root.absolute, 'crypto'),
+      env: {
+        ...isolatedClientEnvironment(root),
+        [cryptoBridgeEnvironment]: '1',
+      },
+      outputDirectory: join(root.absolute, 'output'),
+      timeoutMs: parseTimeout(options.timeoutMs, 120_000),
+      label: `credential-fixture-${runId}`,
+    },
+  )
+  if (run.exitCode !== 0 || run.timedOut) {
+    throw new Error(
+      'official credential fixture failed; inspect ignored output',
+    )
+  }
+  if (run.stdout.bytes !== 0 || run.stderr.bytes !== 0) {
+    throw new Error('official credential bridge emitted unexpected output')
+  }
+
+  const responseBytes = await readFile(responsePath)
+  const response = JSON.parse(responseBytes.toString('utf8'))
+  validateCredentialFixtureResponse(response)
+  return {
+    material: response.material,
+    responsePath,
+    readback: {
+      implementation: response.implementation,
+      sourceAssetSha256: officialClientAssets.cliNpm.sha256,
+      bridgeSha256: status.bridgeSha256,
+      response: {
+        file: basename(responsePath),
+        bytes: responseBytes.length,
+        sha256: sha256(responseBytes),
+      },
+      stages: response.readback.stages,
+      sameAccount: response.readback.sameAccount,
+      sharedInitialUserKey: response.readback.sharedInitialUserKey,
+      rotatedUserKeyDistinct: response.readback.rotatedUserKeyDistinct,
+      secretsPrinted: false,
+      outputFilesMode: '0600',
+      stdout: run.stdout,
+      stderr: run.stderr,
+    },
+  }
+}
+
+export async function runOfficialCli(root, options) {
   requireSupportedNativePlatform()
   const status = await readHarnessStatus(root)
   if (!status.rootExists || !status.valid) {
@@ -598,17 +713,28 @@ async function runOfficialCli(root, options) {
   validateOfficialCliArgs(options.passthrough)
   const origin = validateLoopbackOrigin(options.origin)
 
-  const environment = isolatedClientEnvironment(root)
+  const profile = validateOfficialProfileName(options.profile)
+  await ensureOfficialProfileDirectories(root, profile)
+  const environment = isolatedClientEnvironment(
+    root,
+    options.sourceEnvironment ?? process.env,
+    profile,
+  )
   const nativeCli = join(root.absolute, 'native', 'bw')
   const outputDirectory = join(root.absolute, 'output')
+  const timeoutMs = parseTimeout(options.timeoutMs, 30_000)
   const configRead = await runCapturedProcess(nativeCli, ['config', 'server'], {
     cwd: root.absolute,
     env: environment,
     outputDirectory,
-    timeoutMs: parseTimeout(options.timeoutMs, 30_000),
+    timeoutMs,
     label: `cli-config-read-${randomUUID()}`,
   })
-  if (configRead.exitCode !== 0 || configRead.timedOut) {
+  if (
+    configRead.exitCode !== 0 ||
+    configRead.timedOut ||
+    configRead.stderr.bytes !== 0
+  ) {
     throw new Error('official CLI server configuration read failed')
   }
   const configuredServer = await readCapturedFile(
@@ -626,11 +752,15 @@ async function runOfficialCli(root, options) {
         cwd: root.absolute,
         env: environment,
         outputDirectory,
-        timeoutMs: parseTimeout(options.timeoutMs, 30_000),
+        timeoutMs,
         label: `cli-config-write-${randomUUID()}`,
       },
     )
-    if (configWrite.exitCode !== 0 || configWrite.timedOut) {
+    if (
+      configWrite.exitCode !== 0 ||
+      configWrite.timedOut ||
+      configWrite.stderr.bytes !== 0
+    ) {
       throw new Error('official CLI local-server configuration failed')
     }
   }
@@ -642,6 +772,7 @@ async function runOfficialCli(root, options) {
   const profileEnvironment = await readOfficialCliProfileEnvironment(
     root,
     origin,
+    profile,
   )
   const commandRun = await runCapturedProcess(nativeCli, options.passthrough, {
     cwd: root.absolute,
@@ -652,6 +783,7 @@ async function runOfficialCli(root, options) {
   })
   return {
     origin,
+    profile: profile ?? 'default',
     serverConfigured: true,
     serverConfigurationChanged: configWrite !== null,
     configuration: {
@@ -790,38 +922,8 @@ function officialCryptoBridgeSource() {
   }
   const request = JSON.parse(fs.readFileSync(requestPath, "utf8"));
   const fixture = request?.fixture;
-  if (
-    request?.schemaVersion !== 1 ||
-    request?.operation !== "roundtrip" ||
-    typeof fixture?.email !== "string" ||
-    !fixture.email.endsWith("@example.invalid") ||
-    typeof fixture?.password !== "string" ||
-    fixture.password.length < 24 ||
-    typeof fixture?.plaintext !== "string" ||
-    fixture.plaintext.length < 24 ||
-    typeof fixture?.kdf !== "object" ||
-    fixture.kdf === null
-  ) {
+  if (request?.schemaVersion !== 1 || typeof fixture !== "object" || fixture === null) {
     throw new Error("official crypto bridge request was invalid");
-  }
-  const kdfKeys = Object.keys(fixture.kdf);
-  let kdfId;
-  if (
-    kdfKeys.length === 1 &&
-    kdfKeys[0] === "pBKDF2" &&
-    fixture.kdf.pBKDF2?.iterations === 600000
-  ) {
-    kdfId = "pbkdf2";
-  } else if (
-    kdfKeys.length === 1 &&
-    kdfKeys[0] === "argon2id" &&
-    fixture.kdf.argon2id?.iterations === 3 &&
-    fixture.kdf.argon2id?.memory === 64 &&
-    fixture.kdf.argon2id?.parallelism === 4
-  ) {
-    kdfId = "argon2id";
-  } else {
-    throw new Error("official crypto bridge KDF was invalid");
   }
 
   await __webpack_require__.e(685);
@@ -830,84 +932,400 @@ function officialCryptoBridgeSource() {
   sdk.lIU(wasm);
   sdk.Geh(sdk.$bb.Error, sdk.$bb.Error, 0);
 
-  const userKey = sdk.IEs.make_user_key_aes256_cbc_hmac();
-  const wrappedUserKey = sdk.IEs.encrypt_user_key_with_master_password(
-    userKey,
-    fixture.password,
-    fixture.email,
-    fixture.kdf,
-  );
-  const decryptedUserKey = sdk.IEs.decrypt_user_key_with_master_password(
-    wrappedUserKey,
-    fixture.password,
-    fixture.email,
-    fixture.kdf,
-  );
-  const encryptedItem = sdk.IEs.symmetric_encrypt_string(
-    fixture.plaintext,
-    userKey,
-  );
-  const decryptedItem = sdk.IEs.symmetric_decrypt_string(
-    encryptedItem,
-    userKey,
-  );
+  const source = {
+    tag: "cli-v2026.6.0",
+    commit: "e6293ff2bc85123e9baaa998cf1543030ec5d9f0",
+    assetSha256:
+      "31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660",
+  };
+  const sha256 = (value) =>
+    crypto.createHash("sha256").update(value).digest("hex");
+  const parseKdf = (kdf) => {
+    const kdfKeys = Object.keys(kdf ?? {});
+    let kdfId;
+    if (
+      kdfKeys.length === 1 &&
+      kdfKeys[0] === "pBKDF2" &&
+      kdf.pBKDF2?.iterations === 600000
+    ) {
+      kdfId = "pbkdf2";
+    } else if (
+      kdfKeys.length === 1 &&
+      kdfKeys[0] === "argon2id" &&
+      kdf.argon2id?.iterations === 3 &&
+      kdf.argon2id?.memory === 64 &&
+      kdf.argon2id?.parallelism === 4
+    ) {
+      kdfId = "argon2id";
+    } else {
+      throw new Error("official crypto bridge KDF was invalid");
+    }
+    return kdfId;
+  };
+
+  if (request.operation === "roundtrip") {
+    if (
+      typeof fixture.email !== "string" ||
+      !fixture.email.endsWith("@example.invalid") ||
+      typeof fixture.password !== "string" ||
+      fixture.password.length < 24 ||
+      typeof fixture.plaintext !== "string" ||
+      fixture.plaintext.length < 24
+    ) {
+      throw new Error("official crypto bridge request was invalid");
+    }
+    const kdfId = parseKdf(fixture.kdf);
+    const userKey = sdk.IEs.make_user_key_aes256_cbc_hmac();
+    const wrappedUserKey = sdk.IEs.encrypt_user_key_with_master_password(
+      userKey,
+      fixture.password,
+      fixture.email,
+      fixture.kdf,
+    );
+    const decryptedUserKey = sdk.IEs.decrypt_user_key_with_master_password(
+      wrappedUserKey,
+      fixture.password,
+      fixture.email,
+      fixture.kdf,
+    );
+    const encryptedItem = sdk.IEs.symmetric_encrypt_string(
+      fixture.plaintext,
+      userKey,
+    );
+    const decryptedItem = sdk.IEs.symmetric_decrypt_string(
+      encryptedItem,
+      userKey,
+    );
+    const client = new sdk.cPU(
+      { get_access_token: async () => undefined },
+      null,
+    );
+    const cryptoClient = client.crypto();
+    const keyPair = cryptoClient.make_key_pair(
+      Buffer.from(userKey).toString("base64"),
+    );
+    const privateKey = sdk.IEs.unwrap_decapsulation_key(
+      keyPair.userKeyEncryptedPrivateKey,
+      userKey,
+    );
+
+    const userKeyRoundTrips =
+      Buffer.compare(Buffer.from(userKey), Buffer.from(decryptedUserKey)) === 0;
+    const itemRoundTrips = decryptedItem === fixture.plaintext;
+    const privateKeyRoundTrips =
+      privateKey instanceof Uint8Array && privateKey.length > 0;
+    const response = {
+      schemaVersion: 1,
+      implementation: "upstream-cli-sdk-wasm",
+      source,
+      material: {
+        userKey: Buffer.from(userKey).toString("base64"),
+        wrappedUserKey,
+        encryptedItem,
+        userPublicKey: keyPair.userPublicKey,
+        userKeyEncryptedPrivateKey: keyPair.userKeyEncryptedPrivateKey,
+      },
+      readback: {
+        kdf: kdfId,
+        userKeyBytes: userKey.length,
+        wrappedUserKeyType: wrappedUserKey.split(".")[0],
+        encryptedItemType: encryptedItem.split(".")[0],
+        privateKeyType: keyPair.userKeyEncryptedPrivateKey.split(".")[0],
+        userKeyRoundTrips,
+        itemRoundTrips,
+        privateKeyRoundTrips,
+      },
+      digests: {
+        userKey: sha256(Buffer.from(userKey)),
+        encryptedItem: sha256(encryptedItem),
+        publicKey: sha256(keyPair.userPublicKey),
+      },
+    };
+    cryptoClient.free();
+    client.free();
+    fs.writeFileSync(responsePath, JSON.stringify(response), {
+      mode: 0o600,
+      flag: "wx",
+    });
+    return;
+  }
+
+  if (request.operation !== "credential-fixture") {
+    throw new Error("official crypto bridge request was invalid");
+  }
+  const email = fixture.email?.trim().toLowerCase();
+  const passwords = fixture.passwords;
+  const plaintext = fixture.plaintext;
+  const plaintextFields = [
+    "folderName",
+    "itemName",
+    "itemUsername",
+    "itemPassword",
+    "itemUri",
+    "itemNotes",
+    "attachmentFileName",
+    "attachmentKey",
+  ];
+  if (
+    typeof email !== "string" ||
+    !email.endsWith("@example.invalid") ||
+    !passwords ||
+    !["baseline", "passwordChange", "userKeyRotation"].every(
+      (key) => typeof passwords[key] === "string" && passwords[key].length >= 24,
+    ) ||
+    new Set(Object.values(passwords)).size !== 3 ||
+    !plaintext ||
+    !plaintextFields.every(
+      (key) => typeof plaintext[key] === "string" && plaintext[key].length >= 8,
+    )
+  ) {
+    throw new Error("official credential fixture request was invalid");
+  }
+  const attachmentKey = Buffer.from(plaintext.attachmentKey, "base64url");
+  if (
+    attachmentKey.length !== 64 ||
+    attachmentKey.toString("base64url") !== plaintext.attachmentKey
+  ) {
+    throw new Error("official attachment key was invalid");
+  }
+
+  const pbkdf2 = { pBKDF2: { iterations: 600000 } };
+  const argon2id = {
+    argon2id: { iterations: 3, memory: 64, parallelism: 4 },
+  };
+  const initialUserKey = sdk.IEs.make_user_key_aes256_cbc_hmac();
+  const rotatedUserKey = sdk.IEs.make_user_key_aes256_cbc_hmac();
   const client = new sdk.cPU(
     { get_access_token: async () => undefined },
     null,
   );
   const cryptoClient = client.crypto();
-  const keyPair = cryptoClient.make_key_pair(
-    Buffer.from(userKey).toString("base64"),
+  const makeAccountKeys = (userKey) => {
+    const pair = cryptoClient.make_key_pair(
+      Buffer.from(userKey).toString("base64"),
+    );
+    const privateKey = sdk.IEs.unwrap_decapsulation_key(
+      pair.userKeyEncryptedPrivateKey,
+      userKey,
+    );
+    if (!(privateKey instanceof Uint8Array) || privateKey.length === 0) {
+      throw new Error("official account key round trip failed");
+    }
+    return {
+      accountKeys: {
+        accountPublicKey: pair.userPublicKey,
+        userKeyEncryptedAccountPrivateKey: pair.userKeyEncryptedPrivateKey,
+      },
+      privateKey,
+    };
+  };
+  const encryptVault = (userKey) => {
+    const encrypt = (value) => {
+      const encrypted = sdk.IEs.symmetric_encrypt_string(value, userKey);
+      if (sdk.IEs.symmetric_decrypt_string(encrypted, userKey) !== value) {
+        throw new Error("official vault field round trip failed");
+      }
+      return encrypted;
+    };
+    const wrappedAttachmentKey = sdk.IEs.wrap_symmetric_key(
+      attachmentKey,
+      userKey,
+    );
+    const unwrappedAttachmentKey = sdk.IEs.unwrap_symmetric_key(
+      wrappedAttachmentKey,
+      userKey,
+    );
+    if (
+      Buffer.compare(
+        Buffer.from(attachmentKey),
+        Buffer.from(unwrappedAttachmentKey),
+      ) !== 0
+    ) {
+      throw new Error("official attachment key round trip failed");
+    }
+    return {
+      folderName: encrypt(plaintext.folderName),
+      cipher: {
+        name: encrypt(plaintext.itemName),
+        username: encrypt(plaintext.itemUsername),
+        password: encrypt(plaintext.itemPassword),
+        uri: encrypt(plaintext.itemUri),
+        notes: encrypt(plaintext.itemNotes),
+      },
+      attachment: {
+        fileName: encrypt(plaintext.attachmentFileName),
+        key: wrappedAttachmentKey,
+      },
+    };
+  };
+  const initialPair = makeAccountKeys(initialUserKey);
+  const initialAccountKeys = initialPair.accountKeys;
+  const rotatedWrappedPrivateKey = sdk.IEs.wrap_decapsulation_key(
+    initialPair.privateKey,
+    rotatedUserKey,
   );
-  const privateKey = sdk.IEs.unwrap_decapsulation_key(
-    keyPair.userKeyEncryptedPrivateKey,
+  const rotatedPrivateKey = sdk.IEs.unwrap_decapsulation_key(
+    rotatedWrappedPrivateKey,
+    rotatedUserKey,
+  );
+  if (
+    Buffer.compare(
+      Buffer.from(initialPair.privateKey),
+      Buffer.from(rotatedPrivateKey),
+    ) !== 0
+  ) {
+    throw new Error("official rotated account key round trip failed");
+  }
+  const rotatedAccountKeys = {
+    accountPublicKey: initialAccountKeys.accountPublicKey,
+    userKeyEncryptedAccountPrivateKey: rotatedWrappedPrivateKey,
+  };
+  const initialVault = encryptVault(initialUserKey);
+  const rotatedVault = encryptVault(rotatedUserKey);
+  const makeCredentialStage = ({
+    id,
+    password,
+    kdf,
     userKey,
-  );
-
-  const userKeyRoundTrips =
-    Buffer.compare(Buffer.from(userKey), Buffer.from(decryptedUserKey)) === 0;
-  const itemRoundTrips = decryptedItem === fixture.plaintext;
-  const privateKeyRoundTrips =
-    privateKey instanceof Uint8Array && privateKey.length > 0;
+    accountKeys,
+    vault,
+    userKeyGeneration,
+  }) => {
+    const kdfId = parseKdf(kdf);
+    const masterKey = sdk.IEs.derive_kdf_material(
+      Buffer.from(password, "utf8"),
+      Buffer.from(email, "utf8"),
+      kdf,
+    );
+    const masterPasswordAuthenticationHash = crypto
+      .pbkdf2Sync(
+        Buffer.from(masterKey),
+        Buffer.from(password, "utf8"),
+        1,
+        32,
+        "sha256",
+      )
+      .toString("base64");
+    const masterKeyEncryptedUserKey =
+      sdk.IEs.encrypt_user_key_with_master_password(
+        userKey,
+        password,
+        email,
+        kdf,
+      );
+    const unwrapped = sdk.IEs.decrypt_user_key_with_master_password(
+      masterKeyEncryptedUserKey,
+      password,
+      email,
+      kdf,
+    );
+    if (Buffer.compare(Buffer.from(userKey), Buffer.from(unwrapped)) !== 0) {
+      throw new Error("official credential user key round trip failed");
+    }
+    const userKeyDigest = sha256(Buffer.from(userKey));
+    const vaultDigest = sha256(JSON.stringify(vault));
+    return {
+      id,
+      password,
+      kdf,
+      kdfId,
+      userKeyGeneration,
+      masterPasswordAuthenticationHash,
+      masterKeyEncryptedUserKey,
+      accountKeys,
+      vault,
+      digests: {
+        userKey: userKeyDigest,
+        wrappedUserKey: sha256(masterKeyEncryptedUserKey),
+        accountKeys: sha256(JSON.stringify(accountKeys)),
+        vault: vaultDigest,
+        credential: sha256(
+          [
+            masterPasswordAuthenticationHash,
+            masterKeyEncryptedUserKey,
+            accountKeys.accountPublicKey,
+            accountKeys.userKeyEncryptedAccountPrivateKey,
+          ].join("\n"),
+        ),
+      },
+    };
+  };
+  const credentialStages = [
+    makeCredentialStage({
+      id: "baseline",
+      password: passwords.baseline,
+      kdf: pbkdf2,
+      userKey: initialUserKey,
+      accountKeys: initialAccountKeys,
+      vault: initialVault,
+      userKeyGeneration: 1,
+    }),
+    makeCredentialStage({
+      id: "password_change",
+      password: passwords.passwordChange,
+      kdf: pbkdf2,
+      userKey: initialUserKey,
+      accountKeys: initialAccountKeys,
+      vault: initialVault,
+      userKeyGeneration: 1,
+    }),
+    makeCredentialStage({
+      id: "argon2id",
+      password: passwords.passwordChange,
+      kdf: argon2id,
+      userKey: initialUserKey,
+      accountKeys: initialAccountKeys,
+      vault: initialVault,
+      userKeyGeneration: 1,
+    }),
+    makeCredentialStage({
+      id: "pbkdf2_return",
+      password: passwords.passwordChange,
+      kdf: pbkdf2,
+      userKey: initialUserKey,
+      accountKeys: initialAccountKeys,
+      vault: initialVault,
+      userKeyGeneration: 1,
+    }),
+    makeCredentialStage({
+      id: "user_key_rotation",
+      password: passwords.userKeyRotation,
+      kdf: pbkdf2,
+      userKey: rotatedUserKey,
+      accountKeys: rotatedAccountKeys,
+      vault: rotatedVault,
+      userKeyGeneration: 2,
+    }),
+  ];
   const response = {
     schemaVersion: 1,
+    operation: "credential-fixture",
     implementation: "upstream-cli-sdk-wasm",
-    source: {
-      tag: "cli-v2026.6.0",
-      commit: "e6293ff2bc85123e9baaa998cf1543030ec5d9f0",
-      assetSha256:
-        "31765936eef9beca89298ffb554a658138932d505deebc6b65e02baa065c0660",
-    },
+    source,
     material: {
-      userKey: Buffer.from(userKey).toString("base64"),
-      wrappedUserKey,
-      encryptedItem,
-      userPublicKey: keyPair.userPublicKey,
-      userKeyEncryptedPrivateKey: keyPair.userKeyEncryptedPrivateKey,
+      email,
+      plaintext,
+      credentialStages,
     },
     readback: {
-      kdf: kdfId,
-      userKeyBytes: userKey.length,
-      wrappedUserKeyType: wrappedUserKey.split(".")[0],
-      encryptedItemType: encryptedItem.split(".")[0],
-      privateKeyType: keyPair.userKeyEncryptedPrivateKey.split(".")[0],
-      userKeyRoundTrips,
-      itemRoundTrips,
-      privateKeyRoundTrips,
-    },
-    digests: {
-      userKey: crypto
-        .createHash("sha256")
-        .update(Buffer.from(userKey))
-        .digest("hex"),
-      encryptedItem: crypto
-        .createHash("sha256")
-        .update(encryptedItem)
-        .digest("hex"),
-      publicKey: crypto
-        .createHash("sha256")
-        .update(keyPair.userPublicKey)
-        .digest("hex"),
+      sameAccount: true,
+      stages: credentialStages.map((stage) => ({
+        id: stage.id,
+        kdf: stage.kdfId,
+        userKeyGeneration: stage.userKeyGeneration,
+        credentialDigest: stage.digests.credential,
+        wrappedUserKeyDigest: stage.digests.wrappedUserKey,
+        vaultDigest: stage.digests.vault,
+      })),
+      sharedInitialUserKey: credentialStages
+        .slice(0, 4)
+        .every(
+          (stage) =>
+            stage.digests.userKey === credentialStages[0].digests.userKey,
+        ),
+      rotatedUserKeyDistinct:
+        credentialStages[4].digests.userKey !==
+        credentialStages[0].digests.userKey,
     },
   };
   cryptoClient.free();
@@ -949,6 +1367,116 @@ function validateCryptoResponse(response, id) {
       throw new Error(`official crypto ${id} material was invalid`)
     }
   }
+}
+
+function validateCredentialFixtureResponse(response) {
+  const stages = response?.material?.credentialStages
+  const readbackStages = response?.readback?.stages
+  const expectedStages = [
+    ['baseline', 'pbkdf2', 1],
+    ['password_change', 'pbkdf2', 1],
+    ['argon2id', 'argon2id', 1],
+    ['pbkdf2_return', 'pbkdf2', 1],
+    ['user_key_rotation', 'pbkdf2', 2],
+  ]
+  if (
+    response?.schemaVersion !== schemaVersion ||
+    response?.operation !== 'credential-fixture' ||
+    response?.implementation !== 'upstream-cli-sdk-wasm' ||
+    response?.source?.tag !== officialClientPins.cli.tag ||
+    response?.source?.commit !== officialClientPins.cli.commit ||
+    response?.source?.assetSha256 !== officialClientAssets.cliNpm.sha256 ||
+    typeof response?.material?.email !== 'string' ||
+    !response.material.email.endsWith('@example.invalid') ||
+    !Array.isArray(stages) ||
+    stages.length !== expectedStages.length ||
+    !Array.isArray(readbackStages) ||
+    readbackStages.length !== expectedStages.length ||
+    response?.readback?.sameAccount !== true ||
+    response?.readback?.sharedInitialUserKey !== true ||
+    response?.readback?.rotatedUserKeyDistinct !== true
+  ) {
+    throw new Error('official credential fixture response was invalid')
+  }
+  for (let index = 0; index < expectedStages.length; index += 1) {
+    const [id, kdf, userKeyGeneration] = expectedStages[index]
+    const stage = stages[index]
+    const stageReadback = readbackStages[index]
+    if (
+      stage?.id !== id ||
+      stage?.kdfId !== kdf ||
+      stage?.userKeyGeneration !== userKeyGeneration ||
+      stageReadback?.id !== id ||
+      stageReadback?.kdf !== kdf ||
+      stageReadback?.userKeyGeneration !== userKeyGeneration ||
+      typeof stage?.password !== 'string' ||
+      stage.password.length < 24 ||
+      typeof stage?.masterPasswordAuthenticationHash !== 'string' ||
+      stage.masterPasswordAuthenticationHash.length === 0 ||
+      typeof stage?.masterKeyEncryptedUserKey !== 'string' ||
+      !stage.masterKeyEncryptedUserKey.startsWith('2.') ||
+      typeof stage?.accountKeys?.accountPublicKey !== 'string' ||
+      typeof stage?.accountKeys?.userKeyEncryptedAccountPrivateKey !==
+        'string' ||
+      !stage.accountKeys.userKeyEncryptedAccountPrivateKey.startsWith('2.') ||
+      !credentialVaultIsValid(stage.vault) ||
+      Object.values(stage?.digests ?? {}).some((digest) => !isSha256(digest)) ||
+      !isSha256(stageReadback?.credentialDigest) ||
+      !isSha256(stageReadback?.wrappedUserKeyDigest) ||
+      !isSha256(stageReadback?.vaultDigest)
+    ) {
+      throw new Error('official credential fixture stage was invalid')
+    }
+  }
+  const plaintext = response.material.plaintext
+  for (const key of [
+    'folderName',
+    'itemName',
+    'itemUsername',
+    'itemPassword',
+    'itemUri',
+    'itemNotes',
+    'attachmentFileName',
+    'attachmentKey',
+  ]) {
+    if (typeof plaintext?.[key] !== 'string' || plaintext[key].length < 8) {
+      throw new Error('official credential fixture plaintext was invalid')
+    }
+  }
+  if (
+    stages[0].password === stages[1].password ||
+    stages[1].password !== stages[2].password ||
+    stages[2].password !== stages[3].password ||
+    stages[3].password === stages[4].password ||
+    stages
+      .slice(0, 4)
+      .some(
+        (stage) =>
+          stage.digests.userKey !== stages[0].digests.userKey ||
+          stage.digests.vault !== stages[0].digests.vault,
+      ) ||
+    stages[4].digests.userKey === stages[0].digests.userKey ||
+    stages[4].digests.vault === stages[0].digests.vault ||
+    stages[4].accountKeys.accountPublicKey !==
+      stages[0].accountKeys.accountPublicKey ||
+    stages[4].accountKeys.userKeyEncryptedAccountPrivateKey ===
+      stages[0].accountKeys.userKeyEncryptedAccountPrivateKey
+  ) {
+    throw new Error('official credential fixture generation chain was invalid')
+  }
+}
+
+function credentialVaultIsValid(vault) {
+  return [
+    vault?.folderName,
+    vault?.cipher?.name,
+    vault?.cipher?.username,
+    vault?.cipher?.password,
+    vault?.cipher?.uri,
+    vault?.cipher?.notes,
+    vault?.attachment?.fileName,
+    vault?.attachment?.key,
+  ].every((value) => typeof value === 'string' && value.startsWith('2.'))
 }
 
 export async function runCapturedProcess(
@@ -1433,7 +1961,18 @@ function requireSupportedNativePlatform() {
 export function isolatedClientEnvironment(
   root,
   sourceEnvironment = process.env,
+  profile = null,
 ) {
+  const profileName = validateOfficialProfileName(profile)
+  const profilePath = profileName
+    ? join(root.absolute, 'profile', profileName)
+    : join(root.absolute, 'profile')
+  const homePath = profileName
+    ? join(root.absolute, 'home', profileName)
+    : join(root.absolute, 'home')
+  const temporaryPath = profileName
+    ? join(root.absolute, 'tmp', profileName)
+    : join(root.absolute, 'tmp')
   const environment = {}
   for (const key of [
     'LANG',
@@ -1455,10 +1994,85 @@ export function isolatedClientEnvironment(
     }
   }
   environment.BW_NOINTERACTION = 'true'
-  environment.HOME = join(root.absolute, 'home')
-  environment.TMPDIR = join(root.absolute, 'tmp')
-  environment[cliAppDataEnvironment] = join(root.absolute, 'profile')
+  environment.HOME = homePath
+  environment.TMPDIR = temporaryPath
+  environment[cliAppDataEnvironment] = profilePath
   return environment
+}
+
+export function validateOfficialProfileName(value) {
+  if (value === undefined || value === null) return null
+  if (
+    typeof value !== 'string' ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(value)
+  ) {
+    throw new Error('official CLI profile name was invalid')
+  }
+  return value
+}
+
+export async function ensureOfficialProfileDirectories(root, profile) {
+  const profileName = validateOfficialProfileName(profile)
+  await validateHarnessRoot(root)
+  const resolvedRoot = await realpath(root.absolute)
+  for (const directory of ['profile', 'home', 'tmp']) {
+    const basePath = join(root.absolute, directory)
+    await mkdir(basePath, { mode: 0o700 }).catch((error) => {
+      if (error?.code !== 'EEXIST') throw error
+    })
+    await validatePrivateProfileDirectory(
+      basePath,
+      resolvedRoot,
+      `official CLI ${directory} directory`,
+    )
+    if (!profileName) continue
+
+    const profileDirectoryPath = join(basePath, profileName)
+    await mkdir(profileDirectoryPath, { mode: 0o700 }).catch((error) => {
+      if (error?.code !== 'EEXIST') throw error
+    })
+    await validatePrivateProfileDirectory(
+      profileDirectoryPath,
+      resolvedRoot,
+      `official CLI ${directory} profile directory`,
+    )
+  }
+  const profilePath = officialCliProfileDataPath(root, profileName)
+  try {
+    await writeFile(profilePath, '{}\n', {
+      flag: 'wx',
+      mode: 0o600,
+    })
+  } catch (error) {
+    if (error?.code !== 'EEXIST') throw error
+  }
+  await rejectSymlink(profilePath, officialCliProfileConfigurationError)
+  const info = await lstat(profilePath)
+  if (!info.isFile() || (info.mode & 0o777) !== 0o600) {
+    throw new Error(officialCliProfileConfigurationError)
+  }
+}
+
+async function validatePrivateProfileDirectory(path, resolvedRoot, label) {
+  const info = await lstat(path)
+  if (info.isSymbolicLink()) {
+    throw new Error(`${label} must not be a symlink`)
+  }
+  if (!info.isDirectory()) {
+    throw new Error(`${label} must be a directory`)
+  }
+  if ((info.mode & 0o777) !== 0o700) {
+    throw new Error(`${label} permissions must be 0700`)
+  }
+  const resolvedPath = await realpath(path)
+  const insideRoot = relative(resolvedRoot, resolvedPath)
+  if (
+    insideRoot === '..' ||
+    insideRoot.startsWith(`..${sep}`) ||
+    isAbsolute(insideRoot)
+  ) {
+    throw new Error(`${label} escaped the harness root`)
+  }
 }
 
 export function validateOfficialCliArgs(args) {
@@ -1671,8 +2285,12 @@ export function validateOfficialCliProfileEnvironment(profile, requestedValue) {
   }
 }
 
-async function readOfficialCliProfileEnvironment(root, requestedOrigin) {
-  const profilePath = join(root.absolute, 'profile', 'data.json')
+async function readOfficialCliProfileEnvironment(
+  root,
+  requestedOrigin,
+  profile,
+) {
+  const profilePath = officialCliProfileDataPath(root, profile)
   try {
     await rejectSymlink(profilePath, officialCliProfileConfigurationError)
     const info = await lstat(profilePath)
@@ -1690,6 +2308,12 @@ async function readOfficialCliProfileEnvironment(root, requestedOrigin) {
     }
     throw new Error(officialCliProfileConfigurationError, { cause: error })
   }
+}
+
+function officialCliProfileDataPath(root, profile) {
+  return profile
+    ? join(root.absolute, 'profile', profile, 'data.json')
+    : join(root.absolute, 'profile', 'data.json')
 }
 
 async function clearClipboard() {
@@ -1724,6 +2348,7 @@ function parseOptions(args) {
       arg === '--confirm' ||
       arg === '--at' ||
       arg === '--origin' ||
+      arg === '--profile' ||
       arg === '--timeout-ms'
     ) {
       const value = args[index + 1]
@@ -1743,11 +2368,14 @@ function buildExecutionCommand(action, options, root, generatedAt, timeoutMs) {
   const timeout =
     timeoutMs === undefined ? '' : ` --timeout-ms ${String(timeoutMs)}`
   const origin = options.origin ? ` --origin ${shellQuote(options.origin)}` : ''
+  const profile = options.profile
+    ? ` --profile ${shellQuote(options.profile)}`
+    : ''
   const passthrough =
     options.passthrough.length > 0
       ? ` -- ${options.passthrough.map(shellQuote).join(' ')}`
       : ''
-  return `pnpm client:official-harness -- ${action} --root ${shellQuote(root.relative)}${timestamp}${timeout}${origin} --execute --confirm ${confirmation}${passthrough}`
+  return `pnpm client:official-harness -- ${action} --root ${shellQuote(root.relative)}${timestamp}${timeout}${origin}${profile} --execute --confirm ${confirmation}${passthrough}`
 }
 
 function requireConfirmation(options) {

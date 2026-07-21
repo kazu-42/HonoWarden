@@ -157,6 +157,7 @@ describe('user-key rotation route', () => {
   })
 
   it.each([
+    ['replayed', 400, 'invalid_request', 0],
     ['not_found', 409, 'user_key_rotation_conflict', 0],
     ['conflict', 409, 'user_key_rotation_conflict', 1],
     ['unsupported', 409, 'user_key_rotation_unsupported', 0],
@@ -375,6 +376,7 @@ describe('user-key rotation route', () => {
 
 type RotationMode =
   | 'success'
+  | 'replayed'
   | 'not_found'
   | 'conflict'
   | 'unsupported'
@@ -468,11 +470,23 @@ class RotationRouteD1Database {
         }
         return null
       },
-      all: async <T = Record<string, unknown>>() => ({
-        success: true as const,
-        results: [] as T[],
-        meta: d1Meta(0),
-      }),
+      all: async <T = Record<string, unknown>>() => {
+        const results =
+          this.mode === 'replayed' &&
+          query.includes('FROM user_key_rotation_wrapper_history')
+            ? [
+                {
+                  wrapperKind: 'user_key',
+                  wrapperSha256: String(values[2]),
+                },
+              ]
+            : []
+        return {
+          success: true as const,
+          results: results as T[],
+          meta: d1Meta(0),
+        }
+      },
       run: async <T = Record<string, unknown>>() => {
         if (query.includes('INSERT INTO auth_failure_buckets')) {
           const bucketKey = String(values[0])
@@ -582,7 +596,7 @@ class RotationRouteD1Database {
       session.tokenRevokedAt = String(userValues[8])
       session.deviceRevokedAt = String(userValues[8])
     }
-    this.auditValues = recorded[9]?.values ?? null
+    this.auditValues = recorded[10]?.values ?? null
 
     return recorded.map((_, index) => {
       if (index === 0) {
@@ -591,16 +605,31 @@ class RotationRouteD1Database {
           results: [{ id: this.user.id }] as T[],
         }
       }
-      if (index === 5) {
-        return d1Result<T>(0)
+      if (index === 1) {
+        const inserted = (
+          JSON.parse(String(recorded[index]?.values[0])) as Array<{
+            kind: 'user_key' | 'private_key'
+            sha256: string
+          }>
+        ).map((entry) => ({
+          wrapperKind: entry.kind,
+          wrapperSha256: entry.sha256,
+        }))
+        return {
+          ...d1Result<T>(inserted.length),
+          results: inserted as T[],
+        }
       }
       if (index === 6) {
-        return d1Result<T>(activeRefreshSessions.length > 0 ? 1 : 0)
+        return d1Result<T>(0)
       }
       if (index === 7) {
+        return d1Result<T>(activeRefreshSessions.length > 0 ? 1 : 0)
+      }
+      if (index === 8) {
         return d1Result<T>(activeRefreshSessions.length)
       }
-      return d1Result<T>(index === 9 ? 1 : 0)
+      return d1Result<T>(index === 10 ? 1 : 0)
     })
   }
 }

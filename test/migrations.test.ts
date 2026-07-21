@@ -19,6 +19,10 @@ const kdfPopulationMigration = readFileSync(
   'migrations/0014a_kdf_population.sql',
   'utf8',
 )
+const userKeyRotationHistoryMigration = readFileSync(
+  'migrations/0016_user_key_rotation_wrapper_history.sql',
+  'utf8',
+)
 const legacyInquiryMigration = readFileSync(
   'migrations/0009_inquiry_messages.sql',
   'utf8',
@@ -355,6 +359,27 @@ describe('initial D1 migration', () => {
     expect(kdfPopulationMigration).toContain('ON CONFLICT')
     expect(kdfPopulationMigration).toContain("VALUES ('0014a')")
   })
+
+  it('retains only per-user wrapper fingerprints for generation replay defense', () => {
+    expect(userKeyRotationHistoryMigration).toContain(
+      'CREATE TABLE user_key_rotation_wrapper_history',
+    )
+    expect(userKeyRotationHistoryMigration).toContain(
+      "wrapper_kind IN ('user_key', 'private_key')",
+    )
+    expect(userKeyRotationHistoryMigration).toContain(
+      'length(wrapper_sha256) = 64',
+    )
+    expect(userKeyRotationHistoryMigration).toContain(
+      'PRIMARY KEY (user_id, wrapper_sha256)',
+    )
+    expect(userKeyRotationHistoryMigration).toContain(
+      'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+    )
+    expect(userKeyRotationHistoryMigration).toContain("VALUES ('0016')")
+    expect(userKeyRotationHistoryMigration).not.toContain('wrapped_user_key')
+    expect(userKeyRotationHistoryMigration).not.toContain('wrapped_private_key')
+  })
 })
 
 const allMigrations = [
@@ -374,4 +399,5 @@ const allMigrations = [
   authRequestSupersedeMigration,
   organizationsMigration,
   kdfPopulationMigration,
+  userKeyRotationHistoryMigration,
 ].join('\n')

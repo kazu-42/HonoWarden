@@ -18,15 +18,15 @@
   "packets": [
     {
       "id": "01-official-client-harness",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-219",
       "result": "results/01-official-client-harness.md"
     },
     {
       "id": "02-credential-lifecycle",
-      "status": "pending",
+      "status": "in_progress",
       "linear": "HON-220",
-      "result": null
+      "result": "results/02-credential-lifecycle.md"
     },
     {
       "id": "03-recovery-restore",
@@ -48,7 +48,7 @@
     }
   ],
   "verification": {
-    "status": "official_client_harness_reviews_passed_pr_pending",
+    "status": "credential_lifecycle_all_local_gates_passed_final_reviews_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -56,14 +56,30 @@
       "nativeCli": "passed_effective_loopback_endpoint_preflight_and_version_capture",
       "focused": "passed_23_tests_in_worktree_and_clean_tracked_copy",
       "linearPlanAudit": "passed_7_node_tests_and_live_4_of_4_exact_relations",
-      "fullSuite": "passed_1190_tests",
+      "fullSuite": "passed_1261_tests_across_99_files_serial",
       "legacyLifecycleProcessCleanup": "passed_4_real_lifecycle_scripts_zero_residual_processes",
       "qualityGates": "passed_typecheck_eslint_prettier_brand_scan_release_gate_11_of_11",
       "secretOutput": "passed_zero_crypto_stdout_stderr",
       "processCleanup": "passed_timeout_and_parent_signal_group_termination",
-      "reviewRemediation": "passed_19_review_and_boundary_reproductions",
+      "reviewRemediation": "passed_nullable_bootstrap_network_observation_shared_cleanup_and_query_budget_reproductions",
       "standardReview": "passed_independent_opus_exact_diff_0_actionable_p0_p1_p2_codex_unavailable_usage_limit",
-      "fiveAxisReview": "passed_all_5_axes_0_blocking_3_nonblocking_p3"
+      "fiveAxisReview": "passed_all_5_axes_0_blocking_3_nonblocking_p3",
+      "headCi": "passed_pr_107",
+      "merge": "squash_1b7258da9a995648354cf2ca453210026ceada98_tree_equal",
+      "mainCi": "passed_run_29733825954",
+      "linearCloseout": "hon_219_done_archived_hon_220_in_progress",
+      "credentialLifecycleFocused": "passed_78_final_review_regressions_and_467_impact_tests",
+      "credentialLifecycleIntegrated": "passed_11_checks_7_generations_10_isolated_profiles_4x4_old_generation_rejections_before_and_after_restart_final_wrapper_history_7",
+      "credentialLifecycleManifest": "sha256_a894eb81bf721f57ce8f925fc024bc6024ee83a67ef24da566642ccf9ab7eab2",
+      "credentialLifecycleRollback": "passed_required_audit_503_d1_r2_unchanged_concurrent_200_401_stale_wrapped_400_before_after_restart_d1_r2_unchanged",
+      "credentialLifecycleWrapperHistory": "passed_migration_0016_cross_role_canonical_encstring_sha256_fingerprints_atomic_account_key_initialization_password_kdf_rotation_history_padding_trailing_bit_and_mixed_generation_replay_rejection",
+      "credentialLifecycleBrowser": "passed_chrome_149_owned_ephemeral_cdp_5_routes_6_fields_0_runtime_0_unexpected_diagnostics_2_blocked_bootstrap_requests_0_external_responses",
+      "credentialLifecycleCleanup": "passed_shared_inflight_browser_profile_clipboard_processes_cdp",
+      "credentialLifecycleSecretScan": "passed_40_latest_fixture_values_1680_files_0_matches",
+      "credentialLifecycleQualityGates": "passed_typecheck_eslint_prettier_brand_scan_full_1261_release_gate_11_of_11",
+      "credentialLifecycleInitialStandardReview": "request_changes_3_p2_1_p3_all_reproduced_and_remediated",
+      "credentialLifecycleInitialFiveAxisReview": "passed_all_5_axes_0_blocking_before_standard_review_remediation",
+      "credentialLifecycleFinalReviews": "af6cc2_raw_encstring_history_alias_and_unexpected_idle_cdp_close_reproduced_and_fixed_full_and_integrated_gates_passed_rollout_compatibility_p1_withdrawn_new_exact_head_codex_and_opus_reruns_pending"
     },
     "checks": [
       "linear_plan_unit",

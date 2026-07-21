@@ -50,10 +50,21 @@ type FakeD1DatabaseOptions = {
   totpChallengeUpdateChanges?: number
   auditEventCleanupChanges?: number
   auditEventInsertThrows?: boolean
-  accountKeyInitializationFailureAt?: 'user' | 'audit'
+  accountKeyInitializationFailureAt?: 'user' | 'wrapper_history' | 'audit'
   credentialRotationConflict?: boolean
   credentialRotationFailureAt?:
-    'user' | 'devices' | 'refresh_tokens' | 'auth_requests' | 'audit'
+    | 'user'
+    | 'wrapper_history'
+    | 'devices'
+    | 'refresh_tokens'
+    | 'auth_requests'
+    | 'audit'
+  wrapperHistory?: Array<{
+    userId: string
+    wrapperKind: 'user_key' | 'private_key'
+    wrapperSha256: string
+    recordedAt: string
+  }>
   requestQuotaBucket?: Record<string, unknown> | null
   requestQuotaCleanupChanges?: number
   requestQuotaInsertThrows?: boolean
@@ -1484,7 +1495,7 @@ function isAccountKeyInitializationBatch(
   statements: FakePreparedStatement[],
 ): boolean {
   return (
-    statements.length === 2 &&
+    statements.length === 3 &&
     statements.some(
       (statement) =>
         /UPDATE\s+users/.test(statement.__fakeQuery) &&
@@ -1496,6 +1507,11 @@ function isAccountKeyInitializationBatch(
     ) &&
     statements.some((statement) =>
       statement.__fakeQuery.includes('INSERT INTO audit_events'),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes(
+        'INSERT OR IGNORE INTO user_key_rotation_wrapper_history',
+      ),
     )
   )
 }
@@ -1505,11 +1521,13 @@ function applyAccountKeyInitializationBatch(
   statements: FakePreparedStatement[],
   auditEventInserts: FakeAuditEventInsert[],
 ): D1Result[] {
+  options.wrapperHistory ??= []
   const userRows = uniqueRows([
     ...(options.authUser ? [options.authUser] : []),
     ...(options.authUsers ?? []),
   ])
   const snapshots = userRows.map((row) => ({ row, values: { ...row } }))
+  const wrapperHistoryBefore = structuredClone(options.wrapperHistory)
   const auditLength = auditEventInserts.length
 
   try {
@@ -1521,7 +1539,12 @@ function applyAccountKeyInitializationBatch(
     const auditStatement = statements.find((statement) =>
       statement.__fakeQuery.includes('INSERT INTO audit_events'),
     )
-    if (!userStatement || !auditStatement) {
+    const wrapperHistoryStatement = statements.find((statement) =>
+      statement.__fakeQuery.includes(
+        'INSERT OR IGNORE INTO user_key_rotation_wrapper_history',
+      ),
+    )
+    if (!userStatement || !auditStatement || !wrapperHistoryStatement) {
       throw new Error('account key initialization statement missing')
     }
 
@@ -1534,10 +1557,12 @@ function applyAccountKeyInitializationBatch(
       fakeColumn(user, 'disabledAt', 'disabled_at') == null &&
       typeof wrappedUserKey === 'string' &&
       wrappedUserKey.trim().length > 0 &&
+      wrappedUserKey === values[5] &&
       fakeColumn(user, 'publicKey', 'public_key') == null &&
       fakeColumn(user, 'privateKey', 'private_key') == null &&
-      fakeColumn(user, 'securityStamp', 'security_stamp') === values[5] &&
-      fakeColumn(user, 'revisionDate', 'revision_date') === values[6]
+      !wrapperHistoryContains(options.wrapperHistory, user, values[7]) &&
+      fakeColumn(user, 'securityStamp', 'security_stamp') === values[8] &&
+      fakeColumn(user, 'revisionDate', 'revision_date') === values[9]
 
     if (generationMatches && user) {
       setFakeColumn(user, 'publicKey', 'public_key', values[0])
@@ -1552,6 +1577,19 @@ function applyAccountKeyInitializationBatch(
       success: true,
       results: generationMatches && user ? [{ id: user.id }] : [],
       meta: { ...fakeMeta, changes: generationMatches ? 1 : 0 },
+    })
+
+    const insertedHistory = generationMatches
+      ? insertCredentialWrapperHistory(
+          options.wrapperHistory,
+          wrapperHistoryStatement.__fakeBoundValues,
+        )
+      : []
+    failAccountKeyInitializationAt(options, 'wrapper_history')
+    results.set(wrapperHistoryStatement, {
+      success: true,
+      results: insertedHistory,
+      meta: { ...fakeMeta, changes: insertedHistory.length },
     })
 
     if (generationMatches) {
@@ -1586,6 +1624,11 @@ function applyAccountKeyInitializationBatch(
       }
       Object.assign(row, values)
     }
+    options.wrapperHistory.splice(
+      0,
+      options.wrapperHistory.length,
+      ...wrapperHistoryBefore,
+    )
     auditEventInserts.splice(auditLength)
     throw error
   }
@@ -1606,7 +1649,7 @@ function isCredentialRotationBatch(
   statements: FakePreparedStatement[],
 ): boolean {
   return (
-    statements.length === 5 &&
+    (statements.length === 5 || statements.length === 6) &&
     statements.some(
       (statement) =>
         /UPDATE\s+users/.test(statement.__fakeQuery) &&
@@ -1632,6 +1675,7 @@ function applyCredentialRotationBatch(
   statements: FakePreparedStatement[],
   auditEventInserts: FakeAuditEventInsert[],
 ): D1Result[] {
+  options.wrapperHistory ??= []
   const userRows = uniqueRows([
     ...(options.authUser ? [options.authUser] : []),
     ...(options.authUsers ?? []),
@@ -1648,6 +1692,7 @@ function applyCredentialRotationBatch(
       values: { ...row },
     })),
   ]
+  const wrapperHistoryBefore = structuredClone(options.wrapperHistory)
   const auditLength = auditEventInserts.length
 
   try {
@@ -1687,6 +1732,16 @@ function applyCredentialRotationBatch(
     )
     const kdfChange =
       passwordChange && userSetClause.includes('kdf_algorithm = ?')
+    const wrapperHistoryStatement = passwordChange
+      ? requiredFakeStatement(
+          statements,
+          (query) =>
+            query.includes(
+              'INSERT OR IGNORE INTO user_key_rotation_wrapper_history',
+            ),
+          'wrapper_history',
+        )
+      : undefined
     const userIdIndex = kdfChange ? 9 : passwordChange ? 5 : 3
     const user = userRows.find((row) => row.id === userValues[userIdIndex])
     const generationMatches = kdfChange
@@ -1738,6 +1793,21 @@ function applyCredentialRotationBatch(
         changes: generationMatches ? (kdfChange ? 3 : 1) : 0,
       },
     })
+
+    if (wrapperHistoryStatement) {
+      const inserted = generationMatches
+        ? insertCredentialWrapperHistory(
+            options.wrapperHistory,
+            wrapperHistoryStatement.__fakeBoundValues,
+          )
+        : []
+      failCredentialRotationAt(options, 'wrapper_history')
+      results.set(wrapperHistoryStatement, {
+        success: true,
+        results: inserted,
+        meta: { ...fakeMeta, changes: inserted.length },
+      })
+    }
 
     const deviceValues = deviceStatement.__fakeBoundValues
     const deviceChanges = generationMatches
@@ -1807,6 +1877,11 @@ function applyCredentialRotationBatch(
       Object.assign(row, values)
     }
     auditEventInserts.splice(auditLength)
+    options.wrapperHistory.splice(
+      0,
+      options.wrapperHistory.length,
+      ...wrapperHistoryBefore,
+    )
     throw error
   }
 }
@@ -1844,7 +1919,10 @@ function passwordChangeGenerationMatches(
     fakeColumn(user, 'kdfMemory', 'kdf_memory') === values[10] &&
     fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') === values[11] &&
     fakeColumn(user, 'securityStamp', 'security_stamp') === values[12] &&
-    fakeColumn(user, 'revisionDate', 'revision_date') === values[13]
+    fakeColumn(user, 'revisionDate', 'revision_date') === values[13] &&
+    fakeColumn(user, 'userKey', 'user_key') === values[14] &&
+    fakeColumn(user, 'privateKey', 'private_key') === values[15] &&
+    !wrapperHistoryContains(options.wrapperHistory ?? [], user, values[16])
   )
 }
 
@@ -1865,7 +1943,61 @@ function kdfChangeGenerationMatches(
     fakeColumn(user, 'kdfMemory', 'kdf_memory') === values[14] &&
     fakeColumn(user, 'kdfParallelism', 'kdf_parallelism') === values[15] &&
     fakeColumn(user, 'securityStamp', 'security_stamp') === values[16] &&
-    fakeColumn(user, 'revisionDate', 'revision_date') === values[17]
+    fakeColumn(user, 'revisionDate', 'revision_date') === values[17] &&
+    fakeColumn(user, 'userKey', 'user_key') === values[18] &&
+    fakeColumn(user, 'privateKey', 'private_key') === values[19] &&
+    !wrapperHistoryContains(options.wrapperHistory ?? [], user, values[20])
+  )
+}
+
+function insertCredentialWrapperHistory(
+  history: NonNullable<FakeD1DatabaseOptions['wrapperHistory']>,
+  values: unknown[],
+): Array<{
+  wrapperKind: 'user_key' | 'private_key'
+  wrapperSha256: string
+}> {
+  const entries = JSON.parse(String(values[0])) as Array<{
+    kind: 'user_key' | 'private_key'
+    sha256: string
+  }>
+  const userId = String(values[1])
+  const recordedAt = String(values[2])
+  const inserted: Array<{
+    wrapperKind: 'user_key' | 'private_key'
+    wrapperSha256: string
+  }> = []
+  for (const entry of entries) {
+    if (
+      history.some(
+        (row) => row.userId === userId && row.wrapperSha256 === entry.sha256,
+      )
+    ) {
+      continue
+    }
+    history.push({
+      userId,
+      wrapperKind: entry.kind,
+      wrapperSha256: entry.sha256,
+      recordedAt,
+    })
+    inserted.push({
+      wrapperKind: entry.kind,
+      wrapperSha256: entry.sha256,
+    })
+  }
+  return inserted
+}
+
+function wrapperHistoryContains(
+  history: NonNullable<FakeD1DatabaseOptions['wrapperHistory']>,
+  user: Record<string, unknown>,
+  wrapperSha256: unknown,
+): boolean {
+  return history.some(
+    (row) =>
+      row.userId === fakeColumn(user, 'id', 'id') &&
+      row.wrapperSha256 === wrapperSha256,
   )
 }
 
@@ -4068,4 +4200,5 @@ export const requiredTables = [
   'collection_users',
   'collection_ciphers',
   'account_kdf_population',
+  'user_key_rotation_wrapper_history',
 ] as const

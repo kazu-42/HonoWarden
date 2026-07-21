@@ -64,6 +64,115 @@ export function isKdfMutationEnabled(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === 'true'
 }
 
+export async function fingerprintCredentialWrapper(
+  value: string,
+): Promise<string> {
+  const fingerprintInput = canonicalCredentialWrapperFingerprintInput(value)
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(fingerprintInput),
+  )
+  return bytesToHex(new Uint8Array(digest))
+}
+
+const encStringPartCounts = {
+  '0': 2,
+  '1': 3,
+  '2': 3,
+  '3': 1,
+  '4': 1,
+  '5': 2,
+  '6': 2,
+  '7': 1,
+} as const
+
+function canonicalCredentialWrapperFingerprintInput(value: string): string {
+  const canonicalEncString = canonicalizeEncString(value)
+  return canonicalEncString === null
+    ? `opaque-v1:${value}`
+    : `enc-string-v1:${canonicalEncString}`
+}
+
+function canonicalizeEncString(value: string): string | null {
+  const separator = value.indexOf('.')
+  let encryptionType: keyof typeof encStringPartCounts
+  let encodedParts: string[]
+
+  if (separator === -1) {
+    encodedParts = value.split('|')
+    if (encodedParts.length === 2) {
+      encryptionType = '0'
+    } else if (encodedParts.length === 3) {
+      encryptionType = '1'
+    } else {
+      return null
+    }
+  } else {
+    if (separator === 0 || value.indexOf('.', separator + 1) !== -1) {
+      return null
+    }
+    const rawEncryptionType = value.slice(0, separator)
+    if (!Object.hasOwn(encStringPartCounts, rawEncryptionType)) {
+      return null
+    }
+    encryptionType = rawEncryptionType as keyof typeof encStringPartCounts
+    encodedParts = value.slice(separator + 1).split('|')
+  }
+
+  if (encodedParts.length !== encStringPartCounts[encryptionType]) {
+    return null
+  }
+  const decodedParts = encodedParts.map(decodeEncStringBase64)
+  if (decodedParts.some((part) => part === null)) {
+    return null
+  }
+
+  return [
+    encryptionType,
+    ...decodedParts.map((part) => `${part!.byteLength}:${bytesToHex(part!)}`),
+  ].join(':')
+}
+
+// The pinned decoder ignores padding and unused trailing bits.
+function decodeEncStringBase64(value: string): Uint8Array | null {
+  const unpadded = value.replace(/=+$/, '')
+  if (
+    unpadded.includes('=') ||
+    unpadded.length % 4 === 1 ||
+    !/^[A-Za-z0-9+/]*$/.test(unpadded)
+  ) {
+    return null
+  }
+
+  const decoded = new Uint8Array(Math.floor((unpadded.length * 6) / 8))
+  let accumulator = 0
+  let bitCount = 0
+  let outputIndex = 0
+  for (const character of unpadded) {
+    const codePoint = character.codePointAt(0)!
+    const sextet = base64Sextet(codePoint)
+    accumulator = (accumulator << 6) | sextet
+    bitCount += 6
+    if (bitCount < 8) continue
+    bitCount -= 8
+    decoded[outputIndex] = (accumulator >> bitCount) & 0xff
+    outputIndex += 1
+    accumulator &= (1 << bitCount) - 1
+  }
+  return decoded
+}
+
+function base64Sextet(codePoint: number): number {
+  if (codePoint >= 65 && codePoint <= 90) return codePoint - 65
+  if (codePoint >= 97 && codePoint <= 122) return codePoint - 71
+  if (codePoint >= 48 && codePoint <= 57) return codePoint + 4
+  return codePoint === 43 ? 62 : 63
+}
+
+function bytesToHex(value: Uint8Array): string {
+  return [...value].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 export function parseSecurityStampRotationBody(
   body: unknown,
 ): SecurityStampRotationParseResult {

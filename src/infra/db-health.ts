@@ -18,6 +18,7 @@ export const requiredSchemaTables = [
   'collection_users',
   'collection_ciphers',
   'account_kdf_population',
+  'user_key_rotation_wrapper_history',
 ] as const
 
 export type DatabaseHealth =

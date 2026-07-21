@@ -394,6 +394,12 @@ describe('user-key rotation domain', () => {
       }),
     ).toBe(false)
     expect(
+      matchesUserKeyRotationCredentialGeneration(parsed, {
+        ...generation,
+        privateKey: generation.userKey,
+      }),
+    ).toBe(false)
+    expect(
       matchesUserKeyRotationCredentialGeneration(
         {
           ...parsed,

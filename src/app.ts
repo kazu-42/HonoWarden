@@ -2634,6 +2634,7 @@ app.post('/api/accounts/keys', async (c) => {
     })
     const result = await initializeAccountKeyPair(c.env.DB, {
       userId: auth.user.id,
+      expectedUserKey: auth.user.userKey,
       expectedSecurityStamp: auth.user.securityStamp,
       expectedRevisionDate: auth.user.revisionDate,
       publicKey: request.keyPair.publicKey,
@@ -2845,6 +2846,9 @@ app.on(
         auditEvent,
       })
 
+      if (result.status === 'replayed_generation') {
+        return userKeyRotationInvalidRequest(c)
+      }
       if (result.status === 'conflict' || result.status === 'not_found') {
         return userKeyRotationConflictResponse(c)
       }
@@ -2982,6 +2986,8 @@ app.post('/api/accounts/password', async (c) => {
       expectedKdfIterations: auth.user.kdfIterations,
       expectedKdfMemory: auth.user.kdfMemory,
       expectedKdfParallelism: auth.user.kdfParallelism,
+      expectedUserKey: auth.user.userKey,
+      expectedPrivateKey: auth.user.privateKey,
       expectedSecurityStamp: auth.user.securityStamp,
       expectedRevisionDate: auth.user.revisionDate,
       nextMasterPasswordHash: request.nextMasterPasswordHash,
@@ -3146,6 +3152,8 @@ app.post('/api/accounts/kdf', async (c) => {
       expectedKdfIterations: auth.user.kdfIterations,
       expectedKdfMemory: auth.user.kdfMemory,
       expectedKdfParallelism: auth.user.kdfParallelism,
+      expectedUserKey: auth.user.userKey,
+      expectedPrivateKey: auth.user.privateKey,
       expectedSecurityStamp: auth.user.securityStamp,
       expectedRevisionDate: auth.user.revisionDate,
       nextMasterPasswordHash: request.nextMasterPasswordHash,

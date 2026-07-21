@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   accountCredentialKdfPolicy,
   accountCredentialPolicy,
+  fingerprintCredentialWrapper,
   isKdfMutationEnabled,
   matchesKdfChangeCredentialGeneration,
   matchesPasswordChangeCredentialGeneration,
@@ -14,6 +15,43 @@ import {
 } from '../../src/domain/account-credentials'
 
 describe('account credential domain', () => {
+  it('fingerprints equivalent official EncString encodings identically', async () => {
+    const padded =
+      '2.pMS6/icTQABtulw52pq2lg==|XXbxKxDTh+mWiN1HjH2N1w==|Q6PkuT+KX/axrgN9ubD5Ajk2YNwxQkgs3WJM0S0wtG8='
+    const unpadded = padded.replaceAll('=', '')
+
+    await expect(fingerprintCredentialWrapper(padded)).resolves.toBe(
+      await fingerprintCredentialWrapper(unpadded),
+    )
+  })
+
+  it('fingerprints EncString base64 by decoded bytes, including ignored trailing bits', async () => {
+    const canonical =
+      '2.AAAAAAAAAAAAAAAAAAAAAA==|YQ==|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+    const nonCanonical =
+      '2.AAAAAAAAAAAAAAAAAAAAAA|YR|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+
+    await expect(fingerprintCredentialWrapper(canonical)).resolves.toBe(
+      await fingerprintCredentialWrapper(nonCanonical),
+    )
+  })
+
+  it('keeps different EncString bytes and opaque wrappers distinct', async () => {
+    const first =
+      '2.AAAAAAAAAAAAAAAAAAAAAA==|YQ==|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+    const second =
+      '2.AAAAAAAAAAAAAAAAAAAAAA==|Yg==|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+
+    await expect(fingerprintCredentialWrapper(first)).resolves.not.toBe(
+      await fingerprintCredentialWrapper(second),
+    )
+    await expect(
+      fingerprintCredentialWrapper('2.synthetic-wrapped-user-key'),
+    ).resolves.not.toBe(
+      await fingerprintCredentialWrapper('2.different-synthetic-wrapper'),
+    )
+  })
+
   it('keeps KDF mutation disabled unless the rollout flag is exact true', () => {
     expect(isKdfMutationEnabled(undefined)).toBe(false)
     expect(isKdfMutationEnabled('')).toBe(false)
