@@ -4,6 +4,8 @@
 
 ```text
 CLIENT-1 -> CLIENT-2 -> RECOVERY-1 -> EVIDENCE-1 -> CLOSE-1
+                         |
+                         +-> RECOVERY-1A -> RECOVERY-1B -> RECOVERY-1C
 ```
 
 Only one packet is active at a time. A packet advances after focused tests,
@@ -30,12 +32,18 @@ individual transactional or default-off invariants.
 
 ### RECOVERY-1
 
-Owns exact post-generation backup export, manifest/digest validation,
-fresh-target restore, stale-generation rejection, enabled/disabled Worker
-state equality, forward recovery, and R2 byte preservation.
+Acts as the integration parent for three separately reviewed changes:
+
+- `RECOVERY-1A` owns exact post-generation backup export, generation binding,
+  local source-state routing, and pre-execution manifest/digest rejection.
+- `RECOVERY-1B` owns fresh-target restore, D1/R2 equality, stale-generation
+  rejection, and current official-client decrypt readback.
+- `RECOVERY-1C` owns default-off coverage for every credential writer,
+  disabled-state no-op proof, and exactly one forward recovery generation.
 
 It must fail loudly if the restore source does not match the approved
-post-generation manifest.
+post-generation manifest. A later subpacket cannot start until its predecessor
+is merged, archived, and read back from exact main.
 
 ### EVIDENCE-1
 
@@ -61,6 +69,8 @@ Done/archive operations, HON-160 closeout, and isolated cleanup.
   encrypted item body, personal identity, provider payload, or profile data.
 - All four credential writers remain default-off in tracked environments.
 - The lifecycle enables writers only on isolated local Workers.
+- Disabled writer requests return before authentication and D1 access, and
+  exact restored D1/R2 content digests remain unchanged.
 - Old-generation rejection is tested after each owning commit and after
   Worker/client restart.
 - A restored target must use the exact approved final backup and must reject

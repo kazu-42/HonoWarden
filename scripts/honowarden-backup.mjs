@@ -1,12 +1,27 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath, URL } from 'node:url'
 import process from 'node:process'
 import { Buffer } from 'node:buffer'
 import { createHash, createHmac } from 'node:crypto'
+
+import {
+  assertCredentialLifecycleCompletionAttestation,
+  credentialLifecycleStateOwnershipMarker,
+  credentialLifecycleStateOwnershipMarkerBody,
+} from './honowarden-credential-lifecycle-state.mjs'
 
 const manifestFileName = 'backup-manifest.json'
 const d1ExportFileName = 'd1.sql'
@@ -15,6 +30,12 @@ const manifestSchemaVersion = 1
 const defaultR2ListPageSize = 1000
 const maxR2ListPageSize = 1000
 const defaultR2Region = 'auto'
+const credentialGenerationSchemaVersion = 1
+const backupSourceDomain = 'honowarden.backup-source.v1'
+const credentialGenerationDomain = 'honowarden.credential-generation-binding.v1'
+const inventoryValidationDirectoryName = '.inventory-validation'
+const generationBoundExportClaimFileName = '.generation-bound-export.lock'
+const maxCapturedCommandBytes = 16 * 1024 * 1024
 
 async function main(argv = process.argv.slice(2)) {
   const [command, ...rest] = argv
@@ -42,87 +63,156 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 async function runExport(options) {
+  rejectUnsupportedBindingOptions('export', options)
   const outDir = resolveRequiredPath(options.out, '--out')
   const database = requireValue(options.database, '--database')
   const bucket = requireValue(options.bucket, '--bucket')
   const mode = parseMode(options.mode)
-  rejectRemotePersistence(mode, options)
-  const execute = Boolean(options.execute)
-  const objectDiscovery = await resolveExportObjects({
-    bucket,
+  const generationManifestSha256 = validateOptionalSha256(
+    options.generationManifestSha256,
+    '--generation-manifest-sha256',
+  )
+  await enforceUnboundLocalExportSource({
+    generationManifestSha256,
     mode,
     options,
+    execute: Boolean(options.execute),
   })
-  const d1File = join(outDir, d1ExportFileName)
-  const r2Dir = join(outDir, r2DirectoryName)
-  const objects = objectDiscovery.keys.map((key) => ({
-    key,
-    file: `${r2DirectoryName}/${objectFileName(key)}`,
-  }))
-  const commands = [
-    buildD1ExportCommand({ database, d1File, mode, options }),
-    ...objects.map((object) =>
-      buildR2GetCommand({
+  await enforceGenerationBoundExportSource({
+    generationManifestSha256,
+    mode,
+    options,
+    execute: Boolean(options.execute),
+  })
+  const result = await withGenerationBoundOutputClaim(
+    { generationManifestSha256, outDir },
+    async () => {
+      rejectRemotePersistence(mode, options)
+      const execute = Boolean(options.execute)
+      const objectDiscovery = await resolveExportObjects({
         bucket,
-        key: object.key,
-        file: join(outDir, object.file),
         mode,
         options,
-      }),
-    ),
-  ]
-  const manifest = {
-    schemaVersion: manifestSchemaVersion,
-    createdAt: new Date().toISOString(),
-    mode,
-    database,
-    bucket,
-    d1: {
-      file: d1ExportFileName,
-    },
-    r2: {
-      objectListRequired: objectDiscovery.objectListRequired,
-      objectListSource: objectDiscovery.objectListSource,
-      ...(objectDiscovery.prefix === undefined
-        ? {}
-        : { prefix: objectDiscovery.prefix }),
-      ...(objectDiscovery.pageSize === undefined
-        ? {}
-        : { pageSize: objectDiscovery.pageSize }),
-      objects,
-    },
-    restore: {
-      command: 'node scripts/honowarden-backup.mjs restore',
-    },
-    commands,
-  }
+      })
+      const d1File = join(outDir, d1ExportFileName)
+      const r2Dir = join(outDir, r2DirectoryName)
+      const objects = objectDiscovery.keys.map((key) => ({
+        key,
+        file: `${r2DirectoryName}/${objectFileName(key)}`,
+      }))
+      const commands = [
+        buildD1ExportCommand({ database, d1File, mode, options }),
+        ...objects.map((object) =>
+          buildR2GetCommand({
+            bucket,
+            key: object.key,
+            file: join(outDir, object.file),
+            mode,
+            options,
+          }),
+        ),
+      ]
+      const manifest = {
+        schemaVersion: manifestSchemaVersion,
+        createdAt: new Date().toISOString(),
+        mode,
+        database,
+        bucket,
+        d1: {
+          file: d1ExportFileName,
+        },
+        r2: {
+          objectListRequired: objectDiscovery.objectListRequired,
+          objectListSource: objectDiscovery.objectListSource,
+          ...(objectDiscovery.prefix === undefined
+            ? {}
+            : { prefix: objectDiscovery.prefix }),
+          ...(objectDiscovery.pageSize === undefined
+            ? {}
+            : { pageSize: objectDiscovery.pageSize }),
+          objects,
+        },
+        restore: {
+          command: 'node scripts/honowarden-backup.mjs restore',
+        },
+        commands,
+      }
 
-  await mkdir(r2Dir, { recursive: true })
-  await writeManifest(outDir, manifest)
+      await mkdir(r2Dir, { recursive: true })
+      if (!generationManifestSha256) {
+        await writeManifest(outDir, manifest)
+      }
 
-  if (execute) {
-    await runCommands(commands)
-    await addManifestHashes(outDir, manifest)
-    await writeManifest(outDir, manifest)
-  }
-  const manifestPath = join(outDir, manifestFileName)
+      if (execute) {
+        if (generationManifestSha256) {
+          await runCommand(commands[0])
+          await verifyGenerationBoundR2Inventory({
+            database,
+            d1File,
+            inventoryKeys: objectDiscovery.keys,
+            options,
+            outDir,
+          })
+          await runCommands(commands.slice(1))
+        } else {
+          await runCommands(commands)
+        }
+        await addManifestHashes(outDir, manifest)
+        if (generationManifestSha256) {
+          manifest.credentialGeneration = deriveCredentialGenerationBinding({
+            lifecycleManifestSha256: generationManifestSha256,
+            manifest,
+          })
+        }
+        await writeManifest(outDir, manifest)
+      }
+      const manifestPath = join(outDir, manifestFileName)
 
-  writeJson({
-    action: 'export',
-    audit: await buildBackupAuditPacket({
-      name: 'backup.export',
-      manifestPath,
-      resultStatus: execute ? 'executed' : 'planned',
-    }),
-    executed: execute,
-    manifest: manifestPath,
-    commands,
-  })
+      return {
+        action: 'export',
+        audit: await buildBackupAuditPacket({
+          name: 'backup.export',
+          manifestPath,
+          resultStatus: execute ? 'executed' : 'planned',
+        }),
+        executed: execute,
+        manifest: manifestPath,
+        commands,
+      }
+    },
+  )
+  writeJson(result)
 }
 
 async function runRestore(options) {
+  rejectUnsupportedBindingOptions('restore', options)
   const fromDir = resolveRequiredPath(options.from, '--from')
-  const manifest = await readManifest(fromDir)
+  const expectedManifestSha256 = validateOptionalSha256(
+    options.expectedManifestSha256,
+    '--expected-manifest-sha256',
+  )
+  const expectedGenerationManifestSha256 = validateOptionalSha256(
+    options.expectedGenerationManifestSha256,
+    '--expected-generation-manifest-sha256',
+  )
+  if (expectedGenerationManifestSha256 && !expectedManifestSha256) {
+    throw new Error(
+      '--expected-generation-manifest-sha256 requires --expected-manifest-sha256',
+    )
+  }
+  const { manifest, manifestSha256 } = await readManifestWithIdentity(fromDir)
+  requireBoundRestoreApprovalPins({
+    manifest,
+    execute: Boolean(options.execute),
+    expectedManifestSha256,
+    expectedGenerationManifestSha256,
+  })
+  verifyExpectedRestoreBinding({
+    manifest,
+    manifestSha256,
+    expectedManifestSha256,
+    expectedGenerationManifestSha256,
+  })
   const database = options.database ?? manifest.database
   const bucket = options.bucket ?? manifest.bucket
   const mode = parseMode(options.mode ?? manifest.mode)
@@ -154,6 +244,7 @@ async function runRestore(options) {
     audit: await buildBackupAuditPacket({
       name: 'backup.restore',
       manifestPath,
+      manifestSha256,
       resultStatus: execute ? 'executed' : 'planned',
     }),
     executed: execute,
@@ -163,14 +254,14 @@ async function runRestore(options) {
 }
 
 async function runEvidence(options) {
+  rejectUnsupportedBindingOptions('evidence', options)
   const fromDir = resolveRequiredPath(options.from, '--from')
   const outPath = options.out ? resolve(options.out) : undefined
   const sourceCommit = validateOptionalSourceCommit(options.sourceCommit)
   const runUrl = validateOptionalRunUrl(options.runUrl)
-  const manifest = await readManifest(fromDir)
+  const { manifest, manifestSha256 } = await readManifestWithIdentity(fromDir)
   await verifyBackupFiles(fromDir, manifest)
 
-  const manifestPath = join(fromDir, manifestFileName)
   const d1Path = join(fromDir, manifest.d1.file)
   const d1Stats = await stat(d1Path)
   const objectEvidence = await buildR2Evidence(fromDir, manifest)
@@ -183,7 +274,12 @@ async function runEvidence(options) {
     runUrl,
     mode: manifest.mode,
     createdAt: manifest.createdAt,
-    manifestId: `sha256:${await sha256File(manifestPath)}`,
+    manifestId: `sha256:${manifestSha256}`,
+    credentialGeneration: manifest.credentialGeneration
+      ? {
+          manifestSha256: manifest.credentialGeneration.manifestSha256,
+        }
+      : null,
     d1: {
       sha256: manifest.d1.sha256,
       sizeBytes: d1Stats.size,
@@ -225,11 +321,16 @@ async function buildR2Evidence(fromDir, manifest) {
   }
 }
 
-async function buildBackupAuditPacket({ name, manifestPath, resultStatus }) {
+async function buildBackupAuditPacket({
+  name,
+  manifestPath,
+  manifestSha256,
+  resultStatus,
+}) {
   return {
     name,
     outcome: 'success',
-    manifestId: `sha256:${await sha256File(manifestPath)}`,
+    manifestId: `sha256:${manifestSha256 ?? (await sha256File(manifestPath))}`,
     resultStatus,
   }
 }
@@ -245,6 +346,7 @@ function buildD1ExportCommand({ database, d1File, mode, options }) {
     d1File,
     '--skip-confirmation',
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
   ]
 }
 
@@ -259,6 +361,7 @@ function buildD1ImportCommand({ database, d1File, mode, options }) {
     d1File,
     '--yes',
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
     ...localPersistenceFlags(options),
   ]
 }
@@ -274,6 +377,7 @@ function buildR2GetCommand({ bucket, key, file, mode, options }) {
     '--file',
     file,
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
     ...localPersistenceFlags(options),
   ]
 }
@@ -289,6 +393,7 @@ function buildR2PutCommand({ bucket, key, file, mode, options }) {
     '--file',
     file,
     ...wranglerEnvFlags(options),
+    ...wranglerConfigFlags(options),
     ...localPersistenceFlags(options),
   ]
 }
@@ -301,6 +406,10 @@ function wranglerEnvFlags(options) {
   }
 
   return flags
+}
+
+function wranglerConfigFlags(options) {
+  return options.config ? ['--config', resolve(options.config)] : []
 }
 
 function localPersistenceFlags(options) {
@@ -322,7 +431,7 @@ async function runCommands(commands) {
 function runCommand(command) {
   return new Promise((resolveCommand, rejectCommand) => {
     const child = spawn(command[0], command.slice(1), {
-      stdio: 'inherit',
+      stdio: ['inherit', process.stderr, process.stderr],
       shell: process.platform === 'win32',
     })
 
@@ -340,6 +449,53 @@ function runCommand(command) {
     })
 
     child.on('error', rejectCommand)
+  })
+}
+
+function runJsonCommand(command) {
+  return new Promise((resolveCommand, rejectCommand) => {
+    const child = spawn(command[0], command.slice(1), {
+      stdio: ['inherit', 'pipe', process.stderr],
+      shell: process.platform === 'win32',
+    })
+    let stdout = ''
+    let stdoutBytes = 0
+    let settled = false
+
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      if (settled) return
+      stdoutBytes += Buffer.byteLength(chunk)
+      if (stdoutBytes > maxCapturedCommandBytes) {
+        settled = true
+        child.kill('SIGTERM')
+        rejectCommand(new Error('Wrangler JSON output exceeded 16 MiB'))
+        return
+      }
+      stdout += chunk
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      if (code !== 0) {
+        rejectCommand(
+          new Error(
+            `Command failed with exit code ${code}: ${command.join(' ')}`,
+          ),
+        )
+        return
+      }
+      try {
+        resolveCommand(JSON.parse(stdout))
+      } catch {
+        rejectCommand(new Error('Wrangler returned invalid JSON'))
+      }
+    })
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      rejectCommand(error)
+    })
   })
 }
 
@@ -668,9 +824,10 @@ async function writeManifest(outDir, manifest) {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
-async function readManifest(fromDir) {
+async function readManifestWithIdentity(fromDir) {
   const manifestPath = join(fromDir, manifestFileName)
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  const contents = await readFile(manifestPath)
+  const manifest = JSON.parse(contents.toString('utf8'))
 
   if (
     manifest?.schemaVersion !== manifestSchemaVersion ||
@@ -682,6 +839,8 @@ async function readManifest(fromDir) {
   ) {
     throw new Error(`Invalid backup manifest: ${manifestPath}`)
   }
+
+  assertCredentialGenerationShape(manifest.credentialGeneration, manifestPath)
 
   assertSafeManifestPath(manifest.d1.file, 'd1.file')
 
@@ -699,7 +858,12 @@ async function readManifest(fromDir) {
     assertManifestObjectFileMatchesKey(object, index)
   }
 
-  return manifest
+  verifyCredentialGenerationBinding(manifest, manifestPath)
+
+  return {
+    manifest,
+    manifestSha256: sha256Hex(contents),
+  }
 }
 
 function objectFileName(key) {
@@ -738,7 +902,11 @@ function parseOptions(args) {
       case '--r2-account-id':
       case '--r2-region':
       case '--env':
+      case '--config':
       case '--persist-to':
+      case '--generation-manifest-sha256':
+      case '--expected-manifest-sha256':
+      case '--expected-generation-manifest-sha256':
       case '--source-commit':
       case '--run-url': {
         const value = args[index + 1]
@@ -769,6 +937,434 @@ function rejectRemotePersistence(mode, options) {
   if (mode === 'remote' && options.persistTo) {
     throw new Error('--persist-to can only be used with --mode local')
   }
+}
+
+async function enforceUnboundLocalExportSource({
+  generationManifestSha256,
+  mode,
+  options,
+  execute,
+}) {
+  if (generationManifestSha256 || mode !== 'local' || !options.persistTo) {
+    return
+  }
+  if (!options.config) {
+    throw new Error(
+      'local export --persist-to requires --config so D1 and R2 share one source',
+    )
+  }
+
+  const configPath = resolve(options.config)
+  const persistenceRoot = resolve(options.persistTo)
+  const expectedPersistenceRoot = join(
+    dirname(configPath),
+    '.wrangler',
+    'state',
+  )
+  if (persistenceRoot !== expectedPersistenceRoot) {
+    throw new Error(
+      'local export --persist-to must equal <config-directory>/.wrangler/state',
+    )
+  }
+  if (!execute) {
+    return
+  }
+
+  let canonicalConfigPath
+  let canonicalPersistenceRoot
+  try {
+    ;[canonicalConfigPath, canonicalPersistenceRoot] = await Promise.all([
+      realpath(configPath),
+      realpath(persistenceRoot),
+    ])
+  } catch (error) {
+    throw new Error('local export source paths must exist', { cause: error })
+  }
+  if (
+    canonicalConfigPath !== configPath ||
+    canonicalPersistenceRoot !== persistenceRoot
+  ) {
+    throw new Error(
+      'local export source paths must be canonical and symlink-free',
+    )
+  }
+}
+
+async function enforceGenerationBoundExportSource({
+  generationManifestSha256,
+  mode,
+  options,
+  execute,
+}) {
+  if (!generationManifestSha256) {
+    return
+  }
+
+  if (mode !== 'local') {
+    throw new Error('--generation-manifest-sha256 requires --mode local')
+  }
+  if (!options.config) {
+    throw new Error('--generation-manifest-sha256 requires --config')
+  }
+  if (!options.persistTo) {
+    throw new Error('--generation-manifest-sha256 requires --persist-to')
+  }
+
+  const configPath = resolve(options.config)
+  const expectedPersistenceRoot = join(
+    dirname(configPath),
+    '.wrangler',
+    'state',
+  )
+  if (resolve(options.persistTo) !== expectedPersistenceRoot) {
+    throw new Error(
+      '--persist-to must equal <config-directory>/.wrangler/state for a generation-bound export',
+    )
+  }
+  if (!options.r2Objects) {
+    throw new Error('--generation-manifest-sha256 requires --r2-objects')
+  }
+  if (!execute) {
+    throw new Error('--generation-manifest-sha256 requires --execute')
+  }
+
+  await assertOwnedGenerationBoundSource({
+    configPath,
+    generationManifestSha256,
+    persistenceRoot: expectedPersistenceRoot,
+  })
+}
+
+async function assertOwnedGenerationBoundSource({
+  configPath,
+  generationManifestSha256,
+  persistenceRoot,
+}) {
+  let canonicalConfigPath
+  let canonicalPersistenceRoot
+  try {
+    ;[canonicalConfigPath, canonicalPersistenceRoot] = await Promise.all([
+      realpath(configPath),
+      realpath(persistenceRoot),
+    ])
+  } catch (error) {
+    throw new Error('generation-bound source paths must exist', {
+      cause: error,
+    })
+  }
+
+  if (
+    canonicalConfigPath !== configPath ||
+    canonicalPersistenceRoot !== persistenceRoot
+  ) {
+    throw new Error(
+      'generation-bound source paths must be canonical and symlink-free',
+    )
+  }
+
+  const configStats = await lstat(configPath)
+  if (
+    configStats.isSymbolicLink() ||
+    !configStats.isFile() ||
+    !isOwnedByCurrentUser(configStats)
+  ) {
+    throw new Error(
+      'generation-bound --config must be a regular file owned by the current user',
+    )
+  }
+
+  for (const directory of [
+    dirname(configPath),
+    dirname(persistenceRoot),
+    persistenceRoot,
+  ]) {
+    const directoryStats = await lstat(directory)
+    if (
+      directoryStats.isSymbolicLink() ||
+      !directoryStats.isDirectory() ||
+      (directoryStats.mode & 0o777) !== 0o700 ||
+      !isOwnedByCurrentUser(directoryStats)
+    ) {
+      throw new Error(
+        'generation-bound source directories must be owned by the current user with mode 0700',
+      )
+    }
+  }
+
+  const markerPath = join(
+    persistenceRoot,
+    credentialLifecycleStateOwnershipMarker,
+  )
+  try {
+    const markerStats = await lstat(markerPath)
+    if (
+      markerStats.isSymbolicLink() ||
+      !markerStats.isFile() ||
+      (markerStats.mode & 0o777) !== 0o600 ||
+      !isOwnedByCurrentUser(markerStats) ||
+      (await readFile(markerPath, 'utf8')) !==
+        credentialLifecycleStateOwnershipMarkerBody
+    ) {
+      throw new Error('invalid marker')
+    }
+  } catch (error) {
+    throw new Error(
+      'generation-bound persistence ownership marker is invalid',
+      { cause: error },
+    )
+  }
+
+  await assertCredentialLifecycleCompletionAttestation(
+    persistenceRoot,
+    generationManifestSha256,
+  )
+}
+
+async function withGenerationBoundOutputClaim(
+  { generationManifestSha256, outDir },
+  operation,
+) {
+  if (!generationManifestSha256) {
+    return operation()
+  }
+
+  const claimPath = await claimFreshGenerationBoundOutput(outDir)
+  try {
+    return await operation()
+  } finally {
+    await rm(claimPath, { force: true })
+  }
+}
+
+async function claimFreshGenerationBoundOutput(outDir) {
+  await mkdir(outDir, { recursive: true, mode: 0o700 })
+
+  const outputStats = await lstat(outDir)
+  if (!outputStats.isDirectory()) {
+    throw new Error(
+      '--out must be missing or an empty directory for a generation-bound export',
+    )
+  }
+  if (
+    (outputStats.mode & 0o777) !== 0o700 ||
+    !isOwnedByCurrentUser(outputStats)
+  ) {
+    throw new Error(
+      'generation-bound --out must be owned by the current user with mode 0700',
+    )
+  }
+
+  const claimPath = join(outDir, generationBoundExportClaimFileName)
+  try {
+    await writeFile(claimPath, '', { flag: 'wx', mode: 0o600 })
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new Error('generation-bound output is already claimed', {
+        cause: error,
+      })
+    }
+    throw error
+  }
+
+  try {
+    const entries = await readdir(outDir)
+    if (
+      entries.length !== 1 ||
+      entries[0] !== generationBoundExportClaimFileName
+    ) {
+      throw new Error(
+        '--out must be missing or an empty directory for a generation-bound export',
+      )
+    }
+    return claimPath
+  } catch (error) {
+    await rm(claimPath, { force: true })
+    throw error
+  }
+}
+
+function isOwnedByCurrentUser(stats) {
+  return typeof process.getuid !== 'function' || stats.uid === process.getuid()
+}
+
+async function verifyGenerationBoundR2Inventory({
+  database,
+  d1File,
+  inventoryKeys,
+  options,
+  outDir,
+}) {
+  const validationRoot = join(outDir, inventoryValidationDirectoryName)
+  await mkdir(validationRoot, { recursive: true, mode: 0o700 })
+
+  try {
+    let executions
+    try {
+      await runCommand(
+        buildD1ImportCommand({
+          database,
+          d1File,
+          mode: 'local',
+          options: { ...options, persistTo: validationRoot },
+        }),
+      )
+      executions = await runJsonCommand([
+        'wrangler',
+        'd1',
+        'execute',
+        database,
+        '--local',
+        '--command',
+        'SELECT object_key AS objectKey FROM cipher_attachments ORDER BY object_key;',
+        '--yes',
+        '--json',
+        ...wranglerEnvFlags(options),
+        ...wranglerConfigFlags(options),
+        '--persist-to',
+        validationRoot,
+      ])
+    } catch {
+      throw new Error(
+        'Generation-bound D1 export could not be validated for R2 attachment coverage',
+      )
+    }
+
+    if (
+      !Array.isArray(executions) ||
+      executions.length !== 1 ||
+      !Array.isArray(executions[0]?.results)
+    ) {
+      throw new Error(
+        'Generation-bound D1 export returned invalid attachment coverage evidence',
+      )
+    }
+
+    const referencedKeys = executions[0].results.map((row) => row?.objectKey)
+    if (
+      referencedKeys.some((key) => typeof key !== 'string') ||
+      new Set(referencedKeys).size !== referencedKeys.length
+    ) {
+      throw new Error(
+        'Generation-bound D1 export returned invalid attachment object keys',
+      )
+    }
+    for (const key of referencedKeys) validateObjectKey(key)
+
+    const inventory = new Set(inventoryKeys)
+    const missingCount = referencedKeys.filter(
+      (key) => !inventory.has(key),
+    ).length
+    if (missingCount !== 0) {
+      throw new Error(
+        `Generation-bound R2 inventory is missing ${missingCount} D1 attachment object${missingCount === 1 ? '' : 's'}`,
+      )
+    }
+  } finally {
+    await rm(validationRoot, { recursive: true, force: true })
+  }
+}
+
+function deriveCredentialGenerationBinding({
+  lifecycleManifestSha256,
+  manifest,
+}) {
+  if (
+    !isSha256(lifecycleManifestSha256) ||
+    !isSha256(manifest.d1?.sha256) ||
+    !Array.isArray(manifest.r2?.objects) ||
+    manifest.r2.objects.some((object) => !isSha256(object.sha256))
+  ) {
+    throw new Error(
+      'Credential generation binding requires complete D1 and R2 checksums',
+    )
+  }
+
+  const sourceStateSha256 = sha256Hex(
+    JSON.stringify({
+      domain: backupSourceDomain,
+      d1: { sha256: manifest.d1.sha256 },
+      r2: {
+        objects: [...manifest.r2.objects]
+          .sort(compareObjectKeys)
+          .map((object) => ({
+            key: object.key,
+            sha256: object.sha256,
+          })),
+      },
+    }),
+  )
+  const manifestSha256 = sha256Hex(
+    JSON.stringify({
+      domain: credentialGenerationDomain,
+      lifecycleManifestSha256,
+      sourceStateSha256,
+    }),
+  )
+
+  return {
+    schemaVersion: credentialGenerationSchemaVersion,
+    lifecycleManifestSha256,
+    sourceStateSha256,
+    manifestSha256,
+  }
+}
+
+function assertCredentialGenerationShape(credentialGeneration, manifestPath) {
+  if (credentialGeneration === undefined) {
+    return
+  }
+
+  if (
+    !credentialGeneration ||
+    typeof credentialGeneration !== 'object' ||
+    Array.isArray(credentialGeneration) ||
+    Object.keys(credentialGeneration).length !== 4 ||
+    credentialGeneration.schemaVersion !== credentialGenerationSchemaVersion ||
+    !Object.hasOwn(credentialGeneration, 'lifecycleManifestSha256') ||
+    !isSha256(credentialGeneration.lifecycleManifestSha256) ||
+    !Object.hasOwn(credentialGeneration, 'sourceStateSha256') ||
+    !isSha256(credentialGeneration.sourceStateSha256) ||
+    !Object.hasOwn(credentialGeneration, 'manifestSha256') ||
+    !isSha256(credentialGeneration.manifestSha256)
+  ) {
+    throw new Error(
+      `Invalid backup manifest credential generation: ${manifestPath}`,
+    )
+  }
+}
+
+function verifyCredentialGenerationBinding(manifest, manifestPath) {
+  if (!manifest.credentialGeneration) {
+    return
+  }
+
+  let expected
+  try {
+    expected = deriveCredentialGenerationBinding({
+      lifecycleManifestSha256:
+        manifest.credentialGeneration.lifecycleManifestSha256,
+      manifest,
+    })
+  } catch {
+    throw new Error(
+      `Invalid backup manifest credential generation: ${manifestPath}`,
+    )
+  }
+
+  if (
+    expected.sourceStateSha256 !==
+      manifest.credentialGeneration.sourceStateSha256 ||
+    expected.manifestSha256 !== manifest.credentialGeneration.manifestSha256
+  ) {
+    throw new Error(
+      `Backup credential generation binding mismatch: ${manifestPath}`,
+    )
+  }
+}
+
+function compareObjectKeys(left, right) {
+  if (left.key === right.key) return 0
+  return left.key < right.key ? -1 : 1
 }
 
 function requireFreshTargetConfirmation(options) {
@@ -808,6 +1404,88 @@ function validateOptionalRunUrl(value) {
   }
 
   return url.toString()
+}
+
+function validateOptionalSha256(value, flagName) {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (!isSha256(value)) {
+    throw new Error(`${flagName} must be a lowercase SHA-256`)
+  }
+
+  return value
+}
+
+function rejectUnsupportedBindingOptions(command, options) {
+  const ownership = [
+    {
+      option: 'generationManifestSha256',
+      flag: '--generation-manifest-sha256',
+      command: 'export',
+    },
+    {
+      option: 'expectedManifestSha256',
+      flag: '--expected-manifest-sha256',
+      command: 'restore',
+    },
+    {
+      option: 'expectedGenerationManifestSha256',
+      flag: '--expected-generation-manifest-sha256',
+      command: 'restore',
+    },
+  ]
+
+  for (const owner of ownership) {
+    if (options[owner.option] !== undefined && command !== owner.command) {
+      throw new Error(`${owner.flag} is only supported by ${owner.command}`)
+    }
+  }
+}
+
+function verifyExpectedRestoreBinding({
+  manifest,
+  manifestSha256,
+  expectedManifestSha256,
+  expectedGenerationManifestSha256,
+}) {
+  if (expectedManifestSha256 && manifestSha256 !== expectedManifestSha256) {
+    throw new Error(
+      `Backup manifest SHA-256 mismatch: expected ${expectedManifestSha256}, received ${manifestSha256}`,
+    )
+  }
+
+  if (!expectedGenerationManifestSha256) {
+    return
+  }
+
+  const actualGenerationManifestSha256 =
+    manifest.credentialGeneration?.manifestSha256
+  if (!actualGenerationManifestSha256) {
+    throw new Error('Backup manifest is missing credential generation binding')
+  }
+  if (actualGenerationManifestSha256 !== expectedGenerationManifestSha256) {
+    throw new Error(
+      `Backup credential generation SHA-256 mismatch: expected ${expectedGenerationManifestSha256}, received ${actualGenerationManifestSha256}`,
+    )
+  }
+}
+
+function requireBoundRestoreApprovalPins({
+  manifest,
+  execute,
+  expectedManifestSha256,
+  expectedGenerationManifestSha256,
+}) {
+  if (!execute || !manifest.credentialGeneration) {
+    return
+  }
+  if (!expectedManifestSha256 || !expectedGenerationManifestSha256) {
+    throw new Error(
+      'bound restore --execute requires both approval SHA-256 pins',
+    )
+  }
 }
 
 function modeFlag(mode) {
@@ -973,9 +1651,11 @@ function writeJson(value) {
 
 function printUsage() {
   process.stderr.write(`Usage:
-  node scripts/honowarden-backup.mjs export --out <dir> --database <name> --bucket <name> [--r2-objects <file> | --r2-list] [--r2-prefix <prefix>] [--r2-list-page-size <1-1000>] [--mode local|remote] [--execute]
-  node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--execute --confirm-fresh-target]
+  node scripts/honowarden-backup.mjs export --out <dir> --database <name> --bucket <name> [--r2-objects <file> | --r2-list] [--r2-prefix <prefix>] [--r2-list-page-size <1-1000>] [--mode local|remote] [--config <file>] [--persist-to <dir>] [--generation-manifest-sha256 <sha256>] [--execute]
+  node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--config <file>] [--expected-manifest-sha256 <sha256>] [--expected-generation-manifest-sha256 <sha256>] [--execute --confirm-fresh-target]
   node scripts/honowarden-backup.mjs evidence --from <dir> [--out <file>] [--source-commit <sha>] [--run-url <url>]
+
+Generation-bound export is execute-only and requires --mode local, --config <file>, --persist-to <config-directory>/.wrangler/state, and --r2-objects <file>.
 `)
 }
 

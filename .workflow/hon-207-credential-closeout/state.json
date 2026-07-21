@@ -24,15 +24,36 @@
     },
     {
       "id": "02-credential-lifecycle",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-220",
       "result": "results/02-credential-lifecycle.md"
     },
     {
       "id": "03-recovery-restore",
-      "status": "pending",
+      "status": "in_progress",
       "linear": "HON-221",
-      "result": null
+      "result": "results/03-recovery-restore.md",
+      "subpackets": [
+        {
+          "id": "03a-generation-bound-backup",
+          "key": "RECOVERY-1A",
+          "status": "in_progress",
+          "linear": "HON-224",
+          "result": "results/03a-generation-bound-backup.md"
+        },
+        {
+          "id": "03b-fresh-restore",
+          "key": "RECOVERY-1B",
+          "status": "pending",
+          "linear": "HON-225"
+        },
+        {
+          "id": "03c-disable-forward-recovery",
+          "key": "RECOVERY-1C",
+          "status": "pending",
+          "linear": "HON-226"
+        }
+      ]
     },
     {
       "id": "04-compatibility-evidence",
@@ -48,7 +69,7 @@
     }
   ],
   "verification": {
-    "status": "credential_lifecycle_all_local_gates_passed_final_reviews_pending",
+    "status": "recovery_1a_exact_reviews_passed_pr_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -56,7 +77,7 @@
       "nativeCli": "passed_effective_loopback_endpoint_preflight_and_version_capture",
       "focused": "passed_23_tests_in_worktree_and_clean_tracked_copy",
       "linearPlanAudit": "passed_7_node_tests_and_live_4_of_4_exact_relations",
-      "fullSuite": "passed_1261_tests_across_99_files_serial",
+      "fullSuite": "passed_1263_tests_across_99_files_serial",
       "legacyLifecycleProcessCleanup": "passed_4_real_lifecycle_scripts_zero_residual_processes",
       "qualityGates": "passed_typecheck_eslint_prettier_brand_scan_release_gate_11_of_11",
       "secretOutput": "passed_zero_crypto_stdout_stderr",
@@ -64,10 +85,10 @@
       "reviewRemediation": "passed_nullable_bootstrap_network_observation_shared_cleanup_and_query_budget_reproductions",
       "standardReview": "passed_independent_opus_exact_diff_0_actionable_p0_p1_p2_codex_unavailable_usage_limit",
       "fiveAxisReview": "passed_all_5_axes_0_blocking_3_nonblocking_p3",
-      "headCi": "passed_pr_107",
-      "merge": "squash_1b7258da9a995648354cf2ca453210026ceada98_tree_equal",
-      "mainCi": "passed_run_29733825954",
-      "linearCloseout": "hon_219_done_archived_hon_220_in_progress",
+      "headCi": "passed_pr_111_run_29800997412_exact_bc51cbdc9b89c365fdcc36e542e1ebff63615770",
+      "merge": "squash_7443d3daee70d09b015c864da6033ff3246d0f75_tree_equal_614859fad0ca5367484ea75e2249d8c9f8c924b8",
+      "mainCi": "passed_run_29801134040_exact_7443d3daee70d09b015c864da6033ff3246d0f75",
+      "linearCloseout": "hon_220_done_archived_hon_221_in_progress",
       "credentialLifecycleFocused": "passed_78_final_review_regressions_and_467_impact_tests",
       "credentialLifecycleIntegrated": "passed_11_checks_7_generations_10_isolated_profiles_4x4_old_generation_rejections_before_and_after_restart_final_wrapper_history_7",
       "credentialLifecycleManifest": "sha256_a894eb81bf721f57ce8f925fc024bc6024ee83a67ef24da566642ccf9ab7eab2",
@@ -76,10 +97,30 @@
       "credentialLifecycleBrowser": "passed_chrome_149_owned_ephemeral_cdp_5_routes_6_fields_0_runtime_0_unexpected_diagnostics_2_blocked_bootstrap_requests_0_external_responses",
       "credentialLifecycleCleanup": "passed_shared_inflight_browser_profile_clipboard_processes_cdp",
       "credentialLifecycleSecretScan": "passed_40_latest_fixture_values_1680_files_0_matches",
-      "credentialLifecycleQualityGates": "passed_typecheck_eslint_prettier_brand_scan_full_1261_release_gate_11_of_11",
+      "credentialLifecycleQualityGates": "passed_typecheck_eslint_prettier_brand_scan_full_1263_release_gate_11_of_11",
       "credentialLifecycleInitialStandardReview": "request_changes_3_p2_1_p3_all_reproduced_and_remediated",
       "credentialLifecycleInitialFiveAxisReview": "passed_all_5_axes_0_blocking_before_standard_review_remediation",
-      "credentialLifecycleFinalReviews": "af6cc2_raw_encstring_history_alias_and_unexpected_idle_cdp_close_reproduced_and_fixed_full_and_integrated_gates_passed_rollout_compatibility_p1_withdrawn_new_exact_head_codex_and_opus_reruns_pending"
+      "credentialLifecycleFinalReviews": "exact_bc51cbd_native_codex_approved_and_independent_opus_five_axis_approved_0_actionable_p1_p2_p3",
+      "credentialLifecycleReviewedHead": "bc51cbdc9b89c365fdcc36e542e1ebff63615770",
+      "credentialLifecycleAggregate": "11_of_11_checks_99_files_1263_tests_output_sha256_532a1ef7b9cbec83c4c4d188b391f198fbbf6751e36e6ca2088ed91f7b4757bc_manifest_sha256_3cf45a41f1508a4024f7115169252ee61693f19253437b559d3d518f8fae3701",
+      "recoveryRestorePlan": "hon_224_in_progress_blocks_hon_225_todo_blocks_hon_226_todo_exact_live_readback",
+      "recoveryRestoreLinearCheckpoint": "comment_77d93627_2ae0_44d0_8e85_69b82715dfee_sha256_97e1e2d64cec44811af3fa8bf5ffffb532dcc08a458f0879231bb6b89fdad20b",
+      "recovery1aFocused": "passed_46_backup_cli_tests_including_real_local_wrangler_d1_export_large_retained_wal_completion_attestation_owned_source_marker_symlink_rejection_private_output_attachment_inventory_validation_atomic_output_claim_derived_generation_binding_fresh_output_and_bound_restore_execute_success",
+      "recovery1aImpact": "passed_50_backup_scheduled_workflow_tests_and_65_backup_credential_lifecycle_combined_tests",
+      "recovery1aPreSpawn": "passed_manifest_historical_generation_remote_ambient_split_unbound_no_config_or_mismatched_persistence_unowned_incomplete_or_drifted_source_symlinked_config_symlinked_persistence_omitted_r2_dry_run_reused_output_public_output_and_bound_restore_missing_pin_rejections_zero_wrangler_spawn",
+      "recovery1aCompletionAttestation": "passed_mode_0600_current_owner_closed_schema_lifecycle_digest_and_durable_state_tree_binding_sqlite_shm_read_noise_ignored_sqlite_wal_and_d1_changes_rejected_same_state_repeat_stable_retained_wal_over_8_mib_unchanged_across_two_real_exports",
+      "recovery1aUnboundRouting": "passed_persist_to_requires_config_relative_matching_state_execute_requires_canonical_symlink_free_paths_matching_d1_r2_export_succeeds_split_sources_fail_before_output_and_spawn",
+      "recovery1aBoundRestoreExecute": "passed_both_approval_pins_d1_import_r2_put_executed_audit_missing_either_pin_zero_spawn",
+      "recovery1aInventoryCoverage": "passed_exact_exported_d1_restore_query_all_cipher_attachment_object_keys_incomplete_inventory_rejected_before_r2_get_verified_empty_pair_passed_temporary_state_removed",
+      "recovery1aOutputOwnership": "passed_current_user_mode_0700_required_atomic_same_output_claim_exactly_one_coherent_success_competitor_and_public_output_rejected_before_wrangler_claim_removed_after_success_and_handled_failure",
+      "recovery1aArtifact": "completion_state_sha256_a669352361a38e828bfb3fae5d881f4b4fec6b440e6fbbeab0080dd9c52e23fe_manifest_sha256_7e49c9bfb4bf42d39ac7509a90dda07e7bec7e3715a00d162d30db7756967e41_lifecycle_sha256_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff_source_sha256_572419a2ea56b346410f4a22223a492cb63cde318c524c1c4fa147cd8d2968da_binding_sha256_9ccf85631b112761a613eb8e1735c26f765650de86e2d5a673144759fa99125c_d1_sha256_04205ace0c1dfbf82fa413f6bf413a14dac04be28ee3a6aa8954c38775d79fda_r2_count_1_body_sha256_8b1b6f2f4db078d0efee07cac02495d904f02cb8a838e2818a2c42a627717549_output_mode_0700_repeat_binding_stable_post_completion_d1_change_rejected_no_changed_manifest_claim_removed_inventory_validation_removed",
+      "recovery1aFullSuite": "passed_1297_tests_across_99_files",
+      "recovery1aQuality": "passed_typecheck_eslint_prettier_compatibility_105_brand_scan_dependency_audit_release_gate_11_of_11_plan_tests_11_git_diff_check",
+      "recovery1aReviewedHead": "75b3b5c7f63fba310f520060e4a72e4f578eaf2a",
+      "recovery1aReviewedTree": "68d7fe97ab8c68a34909beb47602305254dd4944",
+      "recovery1aFinalStandardReview": "exact_75b3b5c_independent_opus_0_actionable_p1_p2_p3_previous_split_source_restore_execute_and_large_wal_findings_verified_remediated",
+      "recovery1aFinalFiveAxisReview": "exact_75b3b5c_independent_opus_0_actionable_p1_p2_p3_problem_framing_a_diagnosis_a_design_a_architecture_a_minus_solution_a_minus_merge_ready_subject_to_ci",
+      "recovery1aReviews": "exact_f763ee4_native_codex_request_changes_1_p1_source_routing_remediated_exact_f4b74e0_native_codex_request_changes_2_p1_self_asserted_binding_and_omitted_r2_remediated_exact_42036cb_native_codex_request_changes_1_p1_incomplete_d1_referenced_r2_inventory_remediated_exact_ae7bf7e_native_codex_request_changes_1_p1_non_atomic_output_claim_remediated_exact_9cec7c4_native_codex_request_changes_1_p1_unowned_source_and_1_p2_public_output_remediated_exact_9fa2b3a_native_codex_request_changes_2_p1_unpinned_bound_restore_and_preparation_only_marker_remediated_exact_9bb5c55_independent_opus_standard_review_no_p1_1_p2_unbound_split_source_2_p3_restore_execute_coverage_and_large_wal_remediated_exact_75b3b5c_standard_and_five_axis_independent_opus_0_actionable_p1_p2_p3_native_codex_usage_limit_before_inspection"
     },
     "checks": [
       "linear_plan_unit",

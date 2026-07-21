@@ -39,13 +39,18 @@ and `executed` only after `--execute` commands complete. The audit packet does
 not include database names, bucket names, object keys, command arguments, or
 backup file contents.
 
+Stdout remains one machine-readable JSON document in both planned and executed
+mode. Child Wrangler output is routed to stderr so progress banners and command
+diagnostics cannot corrupt the final audit JSON. A non-zero child exit still
+fails the wrapper loudly and suppresses a false success packet.
+
 ## What The Backup Contains
 
 The backup directory contains:
 
 - `backup-manifest.json`: schema version, source resource names, object list
-  source, object list, planned commands, and file checksums after an executed
-  export
+  source, object list, planned commands, optional derived credential-generation
+  binding, and file checksums after an executed export
 - `d1.sql`: D1 SQL export
 - `r2/`: object files named by base64url-encoded object keys
 
@@ -101,7 +106,7 @@ partial writes and can be retried after the underlying D1 issue is resolved.
 ## R2 Object Discovery
 
 Wrangler's `r2 object get` and `put` commands operate on a single object path.
-Wrangler 4.107 does not expose an `r2 object list` command, so the wrapper has
+Wrangler 4.112 does not expose an `r2 object list` command, so the wrapper has
 two object discovery modes:
 
 1. `--r2-objects <file>` for local/offline drills with a reviewed object key
@@ -193,9 +198,122 @@ After an executed export, the script rewrites the manifest with SHA-256 hashes
 for `d1.sql` and each listed R2 object file. Restore execution requires these
 hashes.
 
-Wrangler 4.107 accepts `--persist-to` for `d1 execute` and `r2 object`, but not
-for `d1 export`. The wrapper therefore does not pass `--persist-to` to D1 export.
-If a future Wrangler version adds support, update tests before changing this.
+Wrangler 4.112 accepts `--persist-to` for `d1 execute` and `r2 object`, but does
+not accept it for `d1 export`. The wrapper therefore does not pass
+`--persist-to` to D1 export. Instead, local D1 export resolves its state
+relative to the selected `--config` file. To export one exact isolated source,
+put an owned temporary `wrangler.jsonc` directly under the source root and use
+that root's `.wrangler/state` for commands that accept `--persist-to`:
+
+```sh
+SOURCE_ROOT=test/.tmp/credential-lifecycle/source
+LIFECYCLE_MANIFEST_SHA256=<approved-credential-lifecycle-manifest-sha256>
+
+pnpm backup:export -- \
+  --out backups/final-generation \
+  --database honowarden \
+  --bucket honowarden-vault-objects \
+  --mode local \
+  --config "$SOURCE_ROOT/wrangler.jsonc" \
+  --persist-to "$SOURCE_ROOT/.wrangler/state" \
+  --generation-manifest-sha256 "$LIFECYCLE_MANIFEST_SHA256" \
+  --r2-objects object-keys.txt \
+  --execute
+```
+
+`--persist-to` alone does not select the D1 export source. Every local export
+that supplies it must also supply `--config`, and the persistence root must
+equal `<config-directory>/.wrangler/state`. During execute, both paths must
+exist and resolve to their exact supplied paths; config or persistence symlinks
+are rejected before output creation or Wrangler spawn. This prevents even an
+unbound backup from combining D1 from config-relative or ambient state with R2
+from a different persistence root. Omitting both options retains the existing
+ambient local behavior.
+
+A generation-bound export adds stricter gates: it is execute-only and requires
+local mode, explicit source paths, and an explicit `--r2-objects` inventory.
+This prevents a remote or ambient source from being labeled as the approved
+generation and prevents an omitted R2 inventory from silently producing a
+D1-only recovery artifact. An explicitly empty inventory file is reserved for
+a reviewed source known to contain no R2 objects.
+
+For a generation-bound export, the config file and the config, `.wrangler`, and
+state directories must also be owned by the current user, with all three
+directories at mode `0700`. The persistence root must contain the mode-`0600`
+lifecycle ownership marker written by `account:credential-lifecycle`. A
+structurally matching but ambient or unmarked operator-created local state
+therefore cannot receive a generation binding accidentally.
+
+The ownership marker proves only that the lifecycle prepared the directory; it
+does not prove that a credential generation completed. A successful lifecycle
+run with retained state writes the current-user-owned, mode-`0600`
+`.honowarden-credential-lifecycle-complete.json` attestation only after all
+lifecycle checks and owned process cleanup succeed. Its closed schema binds the
+approved lifecycle-manifest digest to a domain-separated digest of the retained
+durable state tree. A missing attestation, a different lifecycle digest, or any
+later durable-state change rejects export before the output claim or a Wrangler
+process can start.
+
+The state-tree digest includes relative file names and contents, including
+SQLite database and `*.sqlite-wal` files. It excludes only the two lifecycle
+marker files and `*.sqlite-shm`: SQLite rewrites that non-durable shared-memory
+index during reads even when the database and WAL remain unchanged. Symlinks
+and non-regular state entries are rejected rather than omitted. This permits a
+repeat export of the same completed state while still rejecting committed or
+uncheckpointed WAL changes.
+
+After exporting D1, the wrapper restores that exact `d1.sql` into a private,
+temporary local validation database and queries every
+`cipher_attachments.object_key`. Every referenced key must be present in the
+explicit inventory before any R2 download starts. An empty inventory therefore
+succeeds only when the exported D1 attachment-reference set is also empty. The
+validation persistence is removed on success or failure and never enters the
+backup manifest. The config is passed to every Wrangler command, while the
+source `--persist-to` remains limited to supported local D1 and R2 commands.
+Unbound backups retain their existing remote and dry-run behavior; unsafe split
+local source routing now fails closed.
+
+The bound `--out` path must be missing or an empty directory owned by the
+current user at mode `0700`. A newly created output receives that mode; an
+existing public or foreign output is rejected instead of being silently
+re-permissioned. Reusing a prior output is rejected before Wrangler starts, so
+a failed replacement cannot leave an older bound manifest next to partially
+overwritten D1 or R2 files. Use a new run-owned output directory for every
+generation-bound export.
+
+Before any Wrangler process starts, the wrapper atomically creates
+`.generation-bound-export.lock` inside the output directory. It holds that
+exclusive claim through D1/R2 hashing and the final manifest write, then removes
+it on success or a handled failure. A concurrent export to the same output is
+rejected before spawn. If the process is interrupted before cleanup, treat the
+remaining claim and any adjacent files as one incomplete artifact and choose a
+new output directory; do not remove the claim to reuse the partial output.
+
+`--generation-manifest-sha256` supplies the approved credential-lifecycle
+manifest digest; it is not copied into the final generation identity. After all
+D1 and R2 export commands succeed, the wrapper hashes the actual D1 SQL and each
+sorted R2 key/body checksum into the domain-separated
+`honowarden.backup-source.v1` source identity. It then derives the
+`honowarden.credential-generation-binding.v1` manifest identity from the
+lifecycle digest and source identity:
+
+```json
+{
+  "schemaVersion": 1,
+  "lifecycleManifestSha256": "<approved-lifecycle-manifest-sha256>",
+  "sourceStateSha256": "<derived-d1-r2-source-sha256>",
+  "manifestSha256": "<derived-generation-binding-sha256>"
+}
+```
+
+This object is written as `credentialGeneration` only after a successful
+executed export. The same source and lifecycle digest produce the same binding;
+any D1 content, R2 inventory, object body, or lifecycle digest change produces a
+different binding. A failed or planned export cannot leave a falsely bound
+manifest. All fields are redaction-safe digests or a schema version, not a
+password, token, key, ciphertext, vault value, or client profile. Omitting the
+flag preserves the existing unbound backup schema and scheduled-backup
+behavior.
 
 ## Remote Backup
 
@@ -280,11 +398,12 @@ pnpm backup:evidence -- \
   --run-url <github-actions-run-url>
 ```
 
-The evidence command verifies manifest checksums before emitting a JSON packet.
-It records only aggregate fields such as manifest id, D1 SQL checksum and byte
-size, R2 object count, R2 object digest id, and total R2 byte size. It does not
-emit database names, bucket names, object keys, SQL contents, object bodies, or
-secret values.
+The evidence command verifies the nested generation binding and file checksums
+before emitting a JSON packet. It records only aggregate fields such as manifest
+id, optional derived credential-generation binding digest, D1 SQL checksum and
+byte size, R2 object count, R2 object digest id, and total R2 byte size. It does
+not emit the lifecycle digest, source-state digest, database names, bucket names,
+object keys, SQL contents, object bodies, or secret values.
 
 Failure handling:
 
@@ -320,6 +439,30 @@ pnpm backup:restore -- \
   --mode local
 ```
 
+Credential recovery must additionally pin both the exact executed backup
+manifest and the credential-generation manifest recorded during export:
+
+```sh
+MANIFEST_SHA256=<backup-manifest-sha256>
+GENERATION_BINDING_SHA256=<credentialGeneration.manifestSha256>
+
+pnpm backup:restore -- \
+  --from backups/final-generation \
+  --database honowarden-restore \
+  --bucket honowarden-restore-vault-objects \
+  --mode local \
+  --expected-manifest-sha256 "$MANIFEST_SHA256" \
+  --expected-generation-manifest-sha256 "$GENERATION_BINDING_SHA256"
+```
+
+The generation expectation is accepted only together with an exact manifest
+expectation. Dry-run inspection may omit both expectations, but executing any
+manifest that contains `credentialGeneration` requires both approval pins even
+when the operator did not supply either one. That gate runs before restore
+command construction. A generic unbound backup remains restorable when neither
+option is provided, and an exact manifest expectation may be used by itself for
+an unbound backup.
+
 Execute after creating fresh target resources and reviewing the plan:
 
 ```sh
@@ -332,8 +475,32 @@ pnpm backup:restore -- \
   --confirm-fresh-target
 ```
 
+For a generation-bound backup, retain both approval pins in the executed
+command:
+
+```sh
+pnpm backup:restore -- \
+  --from backups/final-generation \
+  --database honowarden-restore \
+  --bucket honowarden-restore-vault-objects \
+  --mode local \
+  --expected-manifest-sha256 "$MANIFEST_SHA256" \
+  --expected-generation-manifest-sha256 "$GENERATION_BINDING_SHA256" \
+  --execute \
+  --confirm-fresh-target
+```
+
 Before executing any Wrangler command, restore checks:
 
+- a generation-bound execution supplied both the exact manifest and generation
+  approval pins
+- the raw manifest bytes match `--expected-manifest-sha256`, when provided
+- `credentialGeneration.manifestSha256` matches
+  `--expected-generation-manifest-sha256`, when provided
+- the nested source-state digest recomputes from the manifest's D1 checksum and
+  sorted R2 key/body checksums
+- the nested generation-manifest digest recomputes from the approved lifecycle
+  digest and source-state digest
 - manifest schema version and required fields
 - manifest file paths are relative and cannot escape the backup directory
 - R2 object files stay under `r2/`
@@ -341,6 +508,12 @@ Before executing any Wrangler command, restore checks:
   object keys
 - every required file exists
 - every required SHA-256 hash exists and matches the local file
+
+Manifest identity and generation binding are read and hashed from the same byte
+buffer. Both checks run in dry-run and execute modes before any restore command
+is constructed, so a mismatched or historical source cannot start D1 import or
+R2 upload. File-content checks continue to run immediately before command spawn
+in `--execute` mode.
 
 ## Recovery And Rollback
 

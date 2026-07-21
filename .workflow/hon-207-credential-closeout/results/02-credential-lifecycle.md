@@ -1,7 +1,6 @@
 # CLIENT-2: Single-Account Credential Lifecycle
 
-Status: integrated lifecycle, clean-profile browser verification, and local
-gates passed; corrected exact-head review reruns remain pending
+Status: completed, merged, exact-main CI passed, Linear Done and archived
 
 Linear issue: HON-220
 
@@ -309,12 +308,28 @@ migration/release docs focused suite: passed
 release gate: 11 passed, 0 manual, 0 blocked
 ```
 
-## Remaining Gate
+## Completion Readback
 
-HON-220 remains in progress until corrected exact-head reviews, PR head CI,
-merge/main CI, and Linear closeout pass. The native Codex run against candidate
-`0ce7867` found a real URL-redaction defect and was stopped after the candidate
-became invalid; it is evidence of remediation, not a passing review. The
-independent tool-free Opus standard and five-axis reviews must also be rerun
-against the corrected publication head. Backup generation binding, restore
-equality, disable semantics, and forward recovery remain scoped to HON-221.
+- Reviewed candidate: `bc51cbdc9b89c365fdcc36e542e1ebff63615770`.
+- Native Codex exact-head review: no actionable correctness regression.
+- Independent Opus five-axis exact-head review: all five axes passed with zero
+  actionable P1/P2/P3 findings.
+- Exact aggregate: 11/11 checks, 99 files, 1,263 tests, 105 compatibility
+  tests, and release gate 11/11.
+- Aggregate output SHA-256:
+  `532a1ef7b9cbec83c4c4d188b391f198fbbf6751e36e6ca2088ed91f7b4757bc`.
+- Aggregate manifest SHA-256:
+  `3cf45a41f1508a4024f7115169252ee61693f19253437b559d3d518f8fae3701`.
+- PR: `#111`; exact-head CI run `29800997412` passed.
+- Admin squash merge:
+  `7443d3daee70d09b015c864da6033ff3246d0f75` at
+  `2026-07-21T04:23:48Z`.
+- Candidate and merge tree:
+  `614859fad0ca5367484ea75e2249d8c9f8c924b8`.
+- Merged-main CI run `29801134040` passed for the exact merge SHA.
+- HON-220 moved to Done, received the managed completion comment and PR
+  attachment, then archived with `trash:false`.
+
+Backup generation binding, fresh-target restore equality, disable semantics,
+and forward recovery remain scoped to HON-221 and its three serialized child
+packets.

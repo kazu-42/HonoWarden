@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import {
   access,
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
@@ -27,6 +28,10 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const lifecycleScript = join(
   repoRoot,
   'scripts/honowarden-credential-lifecycle.mjs',
+)
+const lifecycleStateScript = join(
+  repoRoot,
+  'scripts/honowarden-credential-lifecycle-state.mjs',
 )
 const browserReadbackScript = join(
   repoRoot,
@@ -666,6 +671,74 @@ describe('aggregate official-client credential lifecycle', () => {
       await expect(
         prepareCredentialLifecyclePersistPath(foreign),
       ).rejects.toThrow('persist-to directory must be empty')
+    } finally {
+      await rm(parent, { recursive: true, force: true })
+    }
+  })
+
+  it('attests completed state, ignores SQLite shared memory, and rejects durable drift', async () => {
+    const {
+      assertCredentialLifecycleCompletionAttestation,
+      writeCredentialLifecycleCompletionAttestation,
+    } = await import(pathToFileURL(lifecycleStateScript).href)
+    const parent = await makeRepoFixtureDirectory('hon220-completion-state-')
+    const state = join(parent, 'state')
+    const generationManifestSha256 = 'a'.repeat(64)
+    try {
+      await mkdir(state, { mode: 0o700 })
+      await writeFile(join(state, 'state.sqlite'), 'completed-state', {
+        mode: 0o600,
+      })
+      await writeFile(join(state, 'state.sqlite-shm'), 'runtime-index-a', {
+        mode: 0o600,
+      })
+
+      const attestation = await writeCredentialLifecycleCompletionAttestation(
+        state,
+        generationManifestSha256,
+      )
+      expect(attestation).toEqual({
+        schemaVersion: 1,
+        generationManifestSha256,
+        stateTreeSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      })
+      expect(
+        (
+          await lstat(
+            join(state, '.honowarden-credential-lifecycle-complete.json'),
+          )
+        ).mode & 0o777,
+      ).toBe(0o600)
+      await expect(
+        assertCredentialLifecycleCompletionAttestation(
+          state,
+          generationManifestSha256,
+        ),
+      ).resolves.toEqual(attestation)
+
+      await expect(
+        assertCredentialLifecycleCompletionAttestation(state, 'b'.repeat(64)),
+      ).rejects.toThrow(
+        'credential lifecycle completion manifest digest mismatch',
+      )
+
+      await writeFile(join(state, 'state.sqlite-shm'), 'runtime-index-b')
+      await expect(
+        assertCredentialLifecycleCompletionAttestation(
+          state,
+          generationManifestSha256,
+        ),
+      ).resolves.toEqual(attestation)
+
+      await writeFile(join(state, 'state.sqlite-wal'), 'durable-wal-state', {
+        mode: 0o600,
+      })
+      await expect(
+        assertCredentialLifecycleCompletionAttestation(
+          state,
+          generationManifestSha256,
+        ),
+      ).rejects.toThrow('credential lifecycle completion state digest mismatch')
     } finally {
       await rm(parent, { recursive: true, force: true })
     }
