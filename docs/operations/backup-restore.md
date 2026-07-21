@@ -240,6 +240,24 @@ root must also contain the mode-`0600` lifecycle ownership marker written by
 unmarked operator-created local state therefore cannot receive a generation
 binding accidentally.
 
+The ownership marker proves only that the lifecycle prepared the directory; it
+does not prove that a credential generation completed. A successful lifecycle
+run with retained state writes the current-user-owned, mode-`0600`
+`.honowarden-credential-lifecycle-complete.json` attestation only after all
+lifecycle checks and owned process cleanup succeed. Its closed schema binds the
+approved lifecycle-manifest digest to a domain-separated digest of the retained
+durable state tree. A missing attestation, a different lifecycle digest, or any
+later durable-state change rejects export before the output claim or a Wrangler
+process can start.
+
+The state-tree digest includes relative file names and contents, including
+SQLite database and `*.sqlite-wal` files. It excludes only the two lifecycle
+marker files and `*.sqlite-shm`: SQLite rewrites that non-durable shared-memory
+index during reads even when the database and WAL remain unchanged. Symlinks
+and non-regular state entries are rejected rather than omitted. This permits a
+repeat export of the same completed state while still rejecting committed or
+uncheckpointed WAL changes.
+
 After exporting D1, the wrapper restores that exact `d1.sql` into a private,
 temporary local validation database and queries every
 `cipher_attachments.object_key`. Every referenced key must be present in the
@@ -433,9 +451,12 @@ pnpm backup:restore -- \
 ```
 
 The generation expectation is accepted only together with an exact manifest
-expectation. A generic unbound backup remains restorable when neither option is
-provided. An exact manifest expectation may be used by itself for an unbound
-backup.
+expectation. Dry-run inspection may omit both expectations, but executing any
+manifest that contains `credentialGeneration` requires both approval pins even
+when the operator did not supply either one. That gate runs before restore
+command construction. A generic unbound backup remains restorable when neither
+option is provided, and an exact manifest expectation may be used by itself for
+an unbound backup.
 
 Execute after creating fresh target resources and reviewing the plan:
 
@@ -449,8 +470,25 @@ pnpm backup:restore -- \
   --confirm-fresh-target
 ```
 
+For a generation-bound backup, retain both approval pins in the executed
+command:
+
+```sh
+pnpm backup:restore -- \
+  --from backups/final-generation \
+  --database honowarden-restore \
+  --bucket honowarden-restore-vault-objects \
+  --mode local \
+  --expected-manifest-sha256 "$MANIFEST_SHA256" \
+  --expected-generation-manifest-sha256 "$GENERATION_BINDING_SHA256" \
+  --execute \
+  --confirm-fresh-target
+```
+
 Before executing any Wrangler command, restore checks:
 
+- a generation-bound execution supplied both the exact manifest and generation
+  approval pins
 - the raw manifest bytes match `--expected-manifest-sha256`, when provided
 - `credentialGeneration.manifestSha256` matches
   `--expected-generation-manifest-sha256`, when provided

@@ -14,10 +14,13 @@ manifest whose content or generation identity differs from the approved input.
 - Extend the backup manifest with an optional, redaction-safe credential
   generation binding.
 - Add explicit expected manifest and expected generation SHA-256 gates to
-  restore.
+  restore, and require both pins for every bound restore execution.
 - Route local D1 export through an owned temporary Wrangler config so export
   reads the same source persistence as the credential lifecycle. Preserve
   existing generic backup behavior when generation binding is not requested.
+- Require a completion attestation written only after a successful retained
+  lifecycle. Bind it to the lifecycle digest and durable source-state tree so a
+  preparation marker or later-mutated state cannot be mislabeled as complete.
 - Add focused tests for correct binding, content tampering, historical
   generation input, malformed digests, local source routing, and secret-safe
   evidence.
@@ -31,11 +34,12 @@ manifest whose content or generation identity differs from the approved input.
 - Local D1 export must not silently fall back to the repository's ambient
   `.wrangler/state`; the selected source state is explicit and owned.
 - Config and persistence paths must be canonical and symlink-free. The selected
-  private persistence must carry the credential-lifecycle ownership marker, and
-  the run-owned output must be private before any Wrangler process starts.
+  private persistence must carry both the credential-lifecycle ownership marker
+  and a matching completion attestation, and the run-owned output must be
+  private before any Wrangler process starts.
 - Existing unbound scheduled/operator backups remain readable. Restore only
-  requires a generation binding when the operator supplies the corresponding
-  expectation.
+  requires both approval pins automatically when executing a bound manifest;
+  unbound compatibility remains unchanged.
 
 ## Exit Gate
 

@@ -18,6 +18,7 @@ import { Buffer } from 'node:buffer'
 import { createHash, createHmac } from 'node:crypto'
 
 import {
+  assertCredentialLifecycleCompletionAttestation,
   credentialLifecycleStateOwnershipMarker,
   credentialLifecycleStateOwnershipMarkerBody,
 } from './honowarden-credential-lifecycle-state.mjs'
@@ -194,6 +195,12 @@ async function runRestore(options) {
     )
   }
   const { manifest, manifestSha256 } = await readManifestWithIdentity(fromDir)
+  requireBoundRestoreApprovalPins({
+    manifest,
+    execute: Boolean(options.execute),
+    expectedManifestSha256,
+    expectedGenerationManifestSha256,
+  })
   verifyExpectedRestoreBinding({
     manifest,
     manifestSha256,
@@ -966,12 +973,14 @@ async function enforceGenerationBoundExportSource({
 
   await assertOwnedGenerationBoundSource({
     configPath,
+    generationManifestSha256,
     persistenceRoot: expectedPersistenceRoot,
   })
 }
 
 async function assertOwnedGenerationBoundSource({
   configPath,
+  generationManifestSha256,
   persistenceRoot,
 }) {
   let canonicalConfigPath
@@ -1047,6 +1056,11 @@ async function assertOwnedGenerationBoundSource({
       { cause: error },
     )
   }
+
+  await assertCredentialLifecycleCompletionAttestation(
+    persistenceRoot,
+    generationManifestSha256,
+  )
 }
 
 async function withGenerationBoundOutputClaim(
@@ -1397,6 +1411,22 @@ function verifyExpectedRestoreBinding({
   if (actualGenerationManifestSha256 !== expectedGenerationManifestSha256) {
     throw new Error(
       `Backup credential generation SHA-256 mismatch: expected ${expectedGenerationManifestSha256}, received ${actualGenerationManifestSha256}`,
+    )
+  }
+}
+
+function requireBoundRestoreApprovalPins({
+  manifest,
+  execute,
+  expectedManifestSha256,
+  expectedGenerationManifestSha256,
+}) {
+  if (!execute || !manifest.credentialGeneration) {
+    return
+  }
+  if (!expectedManifestSha256 || !expectedGenerationManifestSha256) {
+    throw new Error(
+      'bound restore --execute requires both approval SHA-256 pins',
     )
   }
 }

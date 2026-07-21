@@ -42,6 +42,7 @@ import {
 import {
   credentialLifecycleStateOwnershipMarker as stateOwnershipMarker,
   credentialLifecycleStateOwnershipMarkerBody as stateOwnershipMarkerBody,
+  writeCredentialLifecycleCompletionAttestation,
 } from './honowarden-credential-lifecycle-state.mjs'
 
 const schemaVersion = 1
@@ -227,6 +228,7 @@ async function executeLifecycle(options, generatedAt) {
     )
   })
   const removeSignalCleanup = installSignalCleanup(cleanup)
+  let result
 
   try {
     const fixture = await generateOfficialCredentialFixture(harnessRoot, {
@@ -253,7 +255,7 @@ async function executeLifecycle(options, generatedAt) {
     })
     let officialBaseUrl = `https://localhost:${ports[2]}`
 
-    const result = await runGenerationSequence({
+    result = await runGenerationSequence({
       baseUrl,
       caPath: tls.certificatePath,
       commandProcesses,
@@ -310,7 +312,6 @@ async function executeLifecycle(options, generatedAt) {
         return { baseUrl, officialBaseUrl }
       },
     })
-    return result
   } finally {
     try {
       await cleanup()
@@ -318,6 +319,14 @@ async function executeLifecycle(options, generatedAt) {
       removeSignalCleanup()
     }
   }
+
+  if (options.keepState) {
+    await writeCredentialLifecycleCompletionAttestation(
+      persistTo,
+      result.generationManifestSha256,
+    )
+  }
+  return result
 }
 
 export function buildCredentialLifecycleProfiles(runId) {

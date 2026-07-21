@@ -14,7 +14,7 @@ import {
   type ServerResponse,
 } from 'node:http'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
@@ -495,7 +495,7 @@ describe('backup CLI', () => {
     const staleManifest = '{"stale":true}\n'
     const fakeWrangler = await createFakeWrangler(workDir)
     await mkdir(sourceDir, { recursive: true })
-    await prepareOwnedGenerationState(sourceDir)
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
     await mkdir(outDir, { recursive: true, mode: 0o700 })
     await chmod(outDir, 0o700)
     await writeFile(configPath, '{}\n')
@@ -550,7 +550,7 @@ describe('backup CLI', () => {
     const outDir = join(workDir, 'backup')
     const fakeWrangler = await createConcurrentExportFakeWrangler(workDir)
     await mkdir(sourceDir, { recursive: true })
-    await prepareOwnedGenerationState(sourceDir)
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
     await writeFile(configPath, '{}\n')
     await writeFile(objectList, `${objectOneKey}\n`)
 
@@ -573,7 +573,7 @@ describe('backup CLI', () => {
           '--persist-to',
           persistDir,
           '--generation-manifest-sha256',
-          runId === 'A' ? 'a'.repeat(64) : 'b'.repeat(64),
+          'a'.repeat(64),
           '--r2-objects',
           objectList,
           '--execute',
@@ -620,7 +620,7 @@ describe('backup CLI', () => {
     expect(runId).toMatch(/^[AB]$/u)
     expect(body).toBe(`BODY-${runId}`)
     expect(manifest.credentialGeneration.lifecycleManifestSha256).toBe(
-      runId === 'A' ? 'a'.repeat(64) : 'b'.repeat(64),
+      'a'.repeat(64),
     )
     expect(await readdir(outDir)).not.toContain('.generation-bound-export.lock')
   })
@@ -638,7 +638,7 @@ describe('backup CLI', () => {
       ['attachments/missing-body'],
     )
     await mkdir(sourceDir, { recursive: true })
-    await prepareOwnedGenerationState(sourceDir)
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
     await writeFile(configPath, '{}\n')
     await writeFile(objectList, `${objectOneKey}\n`)
 
@@ -695,7 +695,7 @@ describe('backup CLI', () => {
       [],
     )
     await mkdir(sourceDir, { recursive: true })
-    await prepareOwnedGenerationState(sourceDir)
+    await prepareOwnedGenerationState(sourceDir, 'a'.repeat(64))
     await writeFile(configPath, '{}\n')
     await writeFile(objectList, '')
 
@@ -868,6 +868,75 @@ describe('backup CLI', () => {
     })
   })
 
+  it.each([
+    {
+      label: 'missing completion attestation',
+      prepare: async (persistDir: string) => {
+        void persistDir
+      },
+      error: 'credential lifecycle completion attestation is invalid',
+    },
+    {
+      label: 'different lifecycle digest',
+      prepare: async (persistDir: string) => {
+        await completeOwnedGenerationState(persistDir, 'b'.repeat(64))
+      },
+      error: 'credential lifecycle completion manifest digest mismatch',
+    },
+    {
+      label: 'state changed after completion',
+      prepare: async (persistDir: string) => {
+        await completeOwnedGenerationState(persistDir, 'a'.repeat(64))
+        await writeFile(join(persistDir, 'post-completion-change'), 'changed')
+      },
+      error: 'credential lifecycle completion state digest mismatch',
+    },
+  ])(
+    'rejects a generation source with $label before Wrangler spawn',
+    async ({ prepare, error }) => {
+      const workDir = await fixtureDir('export-incomplete-generation-source')
+      const sourceDir = join(workDir, 'source')
+      const configPath = join(sourceDir, 'wrangler.jsonc')
+      const persistDir = await prepareOwnedGenerationState(sourceDir)
+      const objectList = join(workDir, 'objects.txt')
+      const fakeWrangler = await createFakeWrangler(workDir)
+      await prepare(persistDir)
+      await writeFile(configPath, '{}\n')
+      await writeFile(objectList, `${objectOneKey}\n`)
+
+      await expect(
+        execFileAsync(
+          'node',
+          [
+            backupScript,
+            'export',
+            '--out',
+            join(workDir, 'backup'),
+            '--database',
+            'honowarden',
+            '--bucket',
+            'honowarden-vault-objects',
+            '--mode',
+            'local',
+            '--config',
+            configPath,
+            '--persist-to',
+            persistDir,
+            '--generation-manifest-sha256',
+            'a'.repeat(64),
+            '--r2-objects',
+            objectList,
+            '--execute',
+          ],
+          { env: fakeWrangler.env },
+        ),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining(error) })
+      await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      )
+    },
+  )
+
   it.each(['config', 'persistence'] as const)(
     'rejects a generation source with a symlinked %s path before Wrangler spawn',
     async (symlinkedPath) => {
@@ -940,7 +1009,10 @@ describe('backup CLI', () => {
     const workDir = await fixtureDir('export-public-generation-output')
     const sourceDir = join(workDir, 'source')
     const configPath = join(sourceDir, 'wrangler.jsonc')
-    const persistDir = await prepareOwnedGenerationState(sourceDir)
+    const persistDir = await prepareOwnedGenerationState(
+      sourceDir,
+      'a'.repeat(64),
+    )
     const objectList = join(workDir, 'objects.txt')
     const outDir = join(workDir, 'backup')
     const fakeWrangler = await createFakeWrangler(workDir)
@@ -1060,6 +1132,7 @@ describe('backup CLI', () => {
         '--file',
         objectBodyPath,
       ])
+      await completeOwnedGenerationState(persistDir, generationManifestSha256)
 
       const runBoundExport = (target: string) =>
         execFileAsync(
@@ -1157,35 +1230,14 @@ describe('backup CLI', () => {
         '--yes',
       ])
       const changedOutDir = join(workDir, 'changed-backup')
-      await runBoundExport(changedOutDir)
-      const changedManifest = JSON.parse(
-        await readFile(join(changedOutDir, 'backup-manifest.json'), 'utf8'),
-      ) as { credentialGeneration: CredentialGenerationBinding }
-      expect(changedManifest.credentialGeneration.lifecycleManifestSha256).toBe(
-        generationManifestSha256,
-      )
-      expect(changedManifest.credentialGeneration.manifestSha256).not.toBe(
-        manifest.credentialGeneration.manifestSha256,
-      )
-      const changedManifestSha256 = await sha256FilePath(
-        join(changedOutDir, 'backup-manifest.json'),
-      )
-      await expect(
-        execFileAsync('node', [
-          backupScript,
-          'restore',
-          '--from',
-          changedOutDir,
-          '--expected-manifest-sha256',
-          changedManifestSha256,
-          '--expected-generation-manifest-sha256',
-          manifest.credentialGeneration.manifestSha256,
-        ]),
-      ).rejects.toMatchObject({
+      await expect(runBoundExport(changedOutDir)).rejects.toMatchObject({
         stderr: expect.stringContaining(
-          'Backup credential generation SHA-256 mismatch',
+          'credential lifecycle completion state digest mismatch',
         ),
       })
+      await expect(
+        readFile(join(changedOutDir, 'backup-manifest.json'), 'utf8'),
+      ).rejects.toMatchObject({ code: 'ENOENT' })
     },
   )
 
@@ -1380,6 +1432,51 @@ describe('backup CLI', () => {
     expect(output.manifest).toBe(join(fromDir, 'backup-manifest.json'))
     expect(output.audit.manifestId).toBe(`sha256:${manifestSha256}`)
   })
+
+  it.each([
+    { label: 'both approval pins', includeManifestPin: false },
+    { label: 'the generation approval pin', includeManifestPin: true },
+  ])(
+    'requires $label before executing a bound restore',
+    async ({ includeManifestPin }) => {
+      const workDir = await fixtureDir('restore-bound-requires-pins')
+      const fromDir = join(workDir, 'backup')
+      const fakeWrangler = await createFakeWrangler(workDir)
+      await writeSafeBackupFixture(fromDir, {
+        d1Sha256: await sha256('create table users(id text);\n'),
+        objectSha256: await sha256('object-body'),
+        generationManifestSha256: 'b'.repeat(64),
+      })
+      const manifestSha256 = await sha256FilePath(
+        join(fromDir, 'backup-manifest.json'),
+      )
+
+      await expect(
+        execFileAsync(
+          'node',
+          [
+            backupScript,
+            'restore',
+            '--from',
+            fromDir,
+            ...(includeManifestPin
+              ? ['--expected-manifest-sha256', manifestSha256]
+              : []),
+            '--execute',
+            '--confirm-fresh-target',
+          ],
+          { env: fakeWrangler.env },
+        ),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          'bound restore --execute requires both approval SHA-256 pins',
+        ),
+      })
+      await expect(readFile(fakeWrangler.marker, 'utf8')).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      )
+    },
+  )
 
   it('rejects export-only generation binding during restore', async () => {
     const workDir = await fixtureDir('restore-export-only-binding')
@@ -1810,6 +1907,11 @@ describe('backup CLI', () => {
     expect(runbook).toContain('execute-only')
     expect(runbook).toContain('explicit `--r2-objects` inventory')
     expect(runbook).toContain('cipher_attachments.object_key')
+    expect(runbook).toContain('.honowarden-credential-lifecycle-complete.json')
+    expect(runbook).toContain('*.sqlite-shm')
+    expect(runbook).toMatch(
+      /executing any\s+manifest that contains `credentialGeneration` requires both approval pins/,
+    )
     expect(runbook).toMatch(/before any restore command\s+is constructed/)
     expect(runbook).toContain('Child Wrangler output is routed to stderr')
   })
@@ -1826,14 +1928,40 @@ async function fixtureDir(label: string): Promise<string> {
   return dir
 }
 
-async function prepareOwnedGenerationState(sourceDir: string): Promise<string> {
+async function prepareOwnedGenerationState(
+  sourceDir: string,
+  generationManifestSha256?: string,
+): Promise<string> {
   await mkdir(sourceDir, { recursive: true, mode: 0o700 })
   await chmod(sourceDir, 0o700)
   const wranglerDir = join(sourceDir, '.wrangler')
   const persistDir = join(wranglerDir, 'state')
   await mkdir(wranglerDir, { mode: 0o700 })
   await prepareOwnedStateDirectory(persistDir)
+  if (generationManifestSha256) {
+    await completeOwnedGenerationState(persistDir, generationManifestSha256)
+  }
   return persistDir
+}
+
+async function completeOwnedGenerationState(
+  persistDir: string,
+  generationManifestSha256: string,
+): Promise<void> {
+  const stateModule = (await import(
+    pathToFileURL(
+      join(repoRoot, 'scripts/honowarden-credential-lifecycle-state.mjs'),
+    ).href
+  )) as {
+    writeCredentialLifecycleCompletionAttestation: (
+      path: string,
+      digest: string,
+    ) => Promise<unknown>
+  }
+  await stateModule.writeCredentialLifecycleCompletionAttestation(
+    persistDir,
+    generationManifestSha256,
+  )
 }
 
 async function prepareOwnedStateDirectory(path: string): Promise<void> {
