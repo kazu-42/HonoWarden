@@ -41,7 +41,33 @@ const defaultRepoRoot = resolve(dirname(scriptPath), '..')
 const registryRelativePath = 'compat/credential-evidence.json'
 const schemaRelativePath = 'compat/credential-evidence.schema.json'
 const maximumInputBytes = 1024 * 1024
-const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+const highRiskSecretFieldWords = new Set([
+  'password',
+  'passwords',
+  'token',
+  'tokens',
+  'secret',
+  'secrets',
+  'credential',
+  'credentials',
+  'key',
+  'keys',
+])
+const secretFieldSuffixWords = new Set([
+  'hash',
+  'hashes',
+  'signature',
+  'signatures',
+  'value',
+  'values',
+])
+const compactSecretFieldPattern =
+  /(?:password(?:hash)?|(?:api|access|refresh|auth|id|session|bearer)tokens?|(?:api|client|auth)secrets?|api(?:keys?|credentials?)|(?:auth|client|service)credentials?)(?:hash|signature|value|v[0-9]+)*$/
+const vaultCiphertextPartPattern = '[A-Za-z0-9+/_-]{20,}={0,2}'
+const vaultCiphertextPattern = new RegExp(
+  `(?:^|[^A-Za-z0-9+/_=-])(?:[0347]\\.${vaultCiphertextPartPattern}|[056]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}|[12]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern})(?=$|[^A-Za-z0-9+/_=|-])`,
+)
 
 export const credentialCloseoutPacketPath =
   'compat/credential-closeout-packet.json'
@@ -487,11 +513,7 @@ function unsafeCredentialCloseoutContent(content) {
   ) {
     return true
   }
-  if (
-    /(?:^|[^A-Za-z0-9+/_=-])[012]\.[A-Za-z0-9+/_-]{20,}={0,2}(?:\|[A-Za-z0-9+/_-]{20,}={0,2}){1,2}(?=$|[^A-Za-z0-9+/_=|-])/.test(
-      content,
-    )
-  ) {
+  if (vaultCiphertextPattern.test(content)) {
     return true
   }
   for (const match of content.matchAll(
@@ -532,10 +554,11 @@ function hasSecretLikeAssignment(content) {
 }
 
 function hasEmbeddedSecretLikePair(content) {
-  // The lookahead permits overlapping matches so a safe outer field cannot
-  // hide a sensitive pair nested later on the same line.
+  // Overlapping matches keep an outer field from hiding a nested pair. The
+  // bounded value prefix prevents repeated delimiters from causing quadratic
+  // scans across the remainder of a maximum-sized line.
   const pairPattern =
-    /(?=(?:^|[?&;,\s>{])(["'`]?)([A-Za-z][A-Za-z0-9_. -]{0,80})\1\s*[:=]\s*([^\r\n]+))/gm
+    /(?=(?:^|[?&;,\s>{|=])(["'`]?)([A-Za-z][A-Za-z0-9_. -]{0,80})\1\s*[:=]\s*([^\r\n]{1,256}))/gm
   for (const match of content.matchAll(pairPattern)) {
     if (
       isSecretLikeFieldName(match[2] ?? '') &&
@@ -552,26 +575,9 @@ function isSecretLikeFieldName(value) {
   const normalized = words.join('')
   const last = words.at(-1) ?? ''
   if (
-    ['password', 'passwords', 'passwordhash', 'passwordhashes'].includes(
-      normalized,
-    ) ||
-    ['masterpassword', 'masterpasswordhash'].includes(normalized) ||
-    [
-      'password',
-      'passwords',
-      'token',
-      'tokens',
-      'secret',
-      'secrets',
-      'credential',
-      'credentials',
-      'key',
-      'keys',
-      'identity',
-      'identities',
-      'profile',
-      'profiles',
-    ].includes(last)
+    hasHighRiskSecretWordSequence(words) ||
+    compactSecretFieldPattern.test(normalized) ||
+    ['identity', 'identities', 'profile', 'profiles'].includes(last)
   ) {
     return true
   }
@@ -595,6 +601,19 @@ function isSecretLikeFieldName(value) {
   return (
     wordSet.has('raw') &&
     ['payload', 'request', 'response', 'body'].some((word) => wordSet.has(word))
+  )
+}
+
+function hasHighRiskSecretWordSequence(words) {
+  return words.some(
+    (word, index) =>
+      highRiskSecretFieldWords.has(word) &&
+      words
+        .slice(index + 1)
+        .every(
+          (suffix) =>
+            secretFieldSuffixWords.has(suffix) || /^v[0-9]+$/.test(suffix),
+        ),
   )
 }
 

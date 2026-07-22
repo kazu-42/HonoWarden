@@ -1,6 +1,6 @@
 # EVIDENCE-1B: Canonical Closeout Packet And Secret Scan
 
-Status: implementation in progress; broad gates and exact-head reviews pending
+Status: review remediation complete; fresh exact-head reviews pending
 
 Linear issue: HON-228
 
@@ -53,24 +53,51 @@ paths are now mapped from the requested root to its canonical root before the
 same containment and symlink checks run. A later red phase proved that a safe
 outer `Set-Cookie:` or metadata field could consume a regex match and hide an
 inner token/password pair. Pair scanning now uses bounded overlapping matches,
-so outer metadata cannot mask nested secret-bearing assignments. The focused
-suite passes all 39 tests.
+so outer metadata cannot mask nested secret-bearing assignments.
 
-Positive leak fixtures cover passwords, raw access and refresh tokens, wrapped
-and unwrapped keys, encrypted item bodies, identity payloads, provider
-payloads, profiles, secret-like schema fields, Authorization credentials,
-JWTs, vault ciphertext, private-key blocks, and personal email identities.
-Approved digests, versions, counts, enums, source refs, repository paths,
-limitation text, empty secret counts, and reserved example identities remain
-accepted.
+The first exact implementation-head reviews at `e97fc52` then identified
+concrete scanner gaps. A read-only Opus standard review in session
+`7fd0aabe-9389-48d3-9378-8a31e15b094f` found one P3: a secret pair immediately
+after `|` was not considered. A separate Opus five-axis review in session
+`fcfb6505-6218-47b3-8728-e22b558053f8` found one P2 plus P3 hardening gaps:
+`newMasterPasswordHash` and compact field names, EncString types 3-7, direct
+size/UTF-8/digest tests, and an unbounded repeated-delimiter scan. Native Codex
+session `019f896f-24f2-74a1-a503-a456d741d920` reached the usage limit before
+inspection and produced no verdict.
+
+The first remediation red run passed 39 of 49 tests and reproduced all nine
+scanner examples plus a byte-order-mark drift that violated exact packet bytes.
+After that fix, an expanded `keyHash` fixture produced the only failure in a
+59-test run. The final implementation:
+
+- detects high-risk password, token, secret, credential, and key field
+  sequences without treating `credential proof: passed`, key digests, or
+  colon-delimited package scripts as secrets;
+- detects compact API/access/auth token forms and all repository-supported
+  EncString types 0-7 with their exact one-, two-, or three-part shapes;
+- preserves a UTF-8 BOM during decode so byte-exact verification rejects it;
+- bounds each overlapping value prefix to 256 characters while a maximum-sized
+  delimiter-heavy regression proves a trailing secret is still found; and
+- directly pins oversized, invalid UTF-8, and registry source-digest failures.
+
+The focused suite now passes all 60 tests.
+
+Positive leak fixtures cover passwords and password hashes, raw/compact access
+and refresh tokens, key/secret hashes, token signatures, wrapped and unwrapped
+keys, encrypted item bodies, identity payloads, provider payloads, profiles,
+secret-like schema fields, Authorization credentials, JWTs, EncString types
+0-7, private-key blocks, and personal email identities. Approved digests,
+versions, counts, enums, source refs, repository paths, limitation text, empty
+secret counts, verification markers, package scripts, and reserved example
+identities remain accepted.
 
 ## Current Verification
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 39/39 passed                                                                             |
-| Compatibility impact        | 180/180 across 5 files passed                                                            |
-| Full suite                  | 1,410/1,410 across 104 files passed serially                                             |
+| Focused generator/scanner   | 60/60 passed                                                                             |
+| Compatibility impact        | 201/201 across 5 files passed                                                            |
+| Full suite                  | 1,431/1,431 across 104 files passed serially                                             |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |
@@ -86,11 +113,11 @@ accepted.
 
 ## Remaining Gates
 
-Exact-head standard review, independent five-axis review, PR/head CI, zero
-unresolved threads, squash tree equality, merged-main CI, and Linear
-Done/archive remain required before HON-229 starts. The parent dynamic-workflow
-verifier remains intentionally incomplete only because `final-report.md` is
-reserved for EVIDENCE-1C and CLOSE-1 completion.
+Fresh exact-head standard and independent five-axis reviews of the remediation,
+PR/head CI, zero unresolved threads, squash tree equality, merged-main CI, and
+Linear Done/archive remain required before HON-229 starts. The parent
+dynamic-workflow verifier remains intentionally incomplete only because
+`final-report.md` is reserved for EVIDENCE-1C and CLOSE-1 completion.
 
 No deployment, remote mutation, real credential, production or staging
 activation, destructive operation, paid action, normal browser profile, or

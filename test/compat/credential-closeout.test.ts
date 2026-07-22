@@ -227,8 +227,26 @@ describe('credential closeout packet', () => {
       'nested password assignment',
       'Wrapper: password: do-not-print-nested-password',
     ],
+    [
+      'pipe-delimited password assignment',
+      'metadata=verified|password=do-not-print-pipe-password',
+    ],
+    [
+      'new master password hash',
+      '{"newMasterPasswordHash":"do-not-print-next-master-password-hash"}',
+    ],
+    [
+      'versioned password hash',
+      '{"passwordHashV2":"do-not-print-versioned-password-hash"}',
+    ],
+    ['key hash', '{"keyHash":"do-not-print-key-hash"}'],
+    ['secret hash', '{"secretHash":"do-not-print-secret-hash"}'],
+    ['token signature', '{"tokenSignature":"do-not-print-token-signature"}'],
     ['raw access token', 'access_token=do-not-print-access-token'],
     ['camel access token', 'accessToken: do-not-print-camel-access-token'],
+    ['compact API key', 'apikey=do-not-print-compact-api-key'],
+    ['compact access token', 'accesstoken=do-not-print-compact-access-token'],
+    ['compact auth token', 'authtoken=do-not-print-compact-auth-token'],
     [
       'raw refresh token',
       'Set-Cookie: refresh_token=do-not-print-refresh-token; HttpOnly',
@@ -262,6 +280,34 @@ describe('credential closeout packet', () => {
       '2.dGhpc2lzMTZieXRlc2l2IQ==|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM=',
     ],
     [
+      'type 0 two-part vault ciphertext',
+      '0.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM=',
+    ],
+    [
+      'type 1 three-part vault ciphertext',
+      '1.dGhpc2lzMTZieXRlc2l2IQ==|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM=',
+    ],
+    [
+      'type 3 single-part vault ciphertext',
+      '3.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=',
+    ],
+    [
+      'type 4 single-part vault ciphertext',
+      '4.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=',
+    ],
+    [
+      'type 5 two-part vault ciphertext',
+      '5.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM=',
+    ],
+    [
+      'type 6 two-part vault ciphertext',
+      '6.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM=',
+    ],
+    [
+      'type 7 single-part vault ciphertext',
+      '7.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=',
+    ],
+    [
       'private key',
       '-----BEGIN PRIVATE KEY-----\ndo-not-print-private-key\n-----END PRIVATE KEY-----',
     ],
@@ -281,6 +327,18 @@ describe('credential closeout packet', () => {
     expect((thrown as Error).message).not.toContain(unsafeContent)
   })
 
+  it('finds a trailing secret in a maximum-sized delimiter-heavy line', () => {
+    const suffix = '|password=do-not-print-bounded-scan'
+    const unsafeContent = `${'field=ok|'.repeat(
+      Math.floor((1024 * 1024 - suffix.length) / 9),
+    )}${suffix}`
+
+    expect(Buffer.byteLength(unsafeContent)).toBeLessThanOrEqual(1024 * 1024)
+    expect(() => assertCredentialCloseoutContentSafe(unsafeContent)).toThrow(
+      'credential closeout content is unsafe',
+    )
+  })
+
   it.each([
     ['digest', `sha256: ${'a'.repeat(64)}`],
     ['version', 'client version: 2026.6.1'],
@@ -297,6 +355,12 @@ describe('credential closeout packet', () => {
     ],
     ['empty secret count', 'Real secrets: none'],
     ['reserved identity', 'Contact: operator@example.test'],
+    [
+      'credential proof marker',
+      'real aggregate source -> backup -> fresh restore -> credential proof: passed',
+    ],
+    ['colon-delimited package script', 'pnpm account:keys:lifecycle'],
+    ['key digest metadata', `key digest: sha256:${'c'.repeat(64)}`],
   ])('accepts approved %s metadata', (_name, safeContent) => {
     expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
   })
@@ -384,6 +448,32 @@ describe('credential closeout packet', () => {
     expect((thrown as Error).message).not.toContain(secret)
   })
 
+  it('rejects oversized, invalid UTF-8, and source-digest-drift inputs', () => {
+    const oversized = createFixture()
+    writeFileSync(
+      join(oversized.root, credentialCloseoutArtifactPaths[0]),
+      Buffer.alloc(1024 * 1024 + 1, 0x61),
+    )
+    expect(() => scanCredentialCloseoutArtifacts(oversized.options)).toThrow(
+      /input exceeds the size limit/,
+    )
+
+    const invalidUtf8 = createFixture()
+    writeFileSync(
+      join(invalidUtf8.root, credentialCloseoutArtifactPaths[0]),
+      Buffer.from([0xc3, 0x28]),
+    )
+    expect(() => scanCredentialCloseoutArtifacts(invalidUtf8.options)).toThrow(
+      /input is not UTF-8 text/,
+    )
+
+    const sourceDrift = createFixture()
+    appendFileSync(sourceDrift.options.registryPath, '\n')
+    expect(() => buildCredentialCloseoutPacket(sourceDrift.options)).toThrow(
+      /source digest mismatch/,
+    )
+  })
+
   it('rejects stale or noncanonical packet bytes and unsafe packet paths', () => {
     const nondeterministic = createFixture({ includePacket: true })
     const packet = buildCredentialCloseoutPacket(
@@ -437,6 +527,21 @@ describe('credential closeout packet', () => {
         packetPath: symlinked.packetPath,
       }),
     ).toThrow(/packet path is unsafe/)
+
+    const byteOrderMarked = createFixture({ includePacket: true })
+    writeFileSync(
+      byteOrderMarked.packetPath,
+      Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        readFileSync(byteOrderMarked.packetPath),
+      ]),
+    )
+    expect(() =>
+      verifyCredentialCloseoutPacket({
+        ...byteOrderMarked.options,
+        packetPath: byteOrderMarked.packetPath,
+      }),
+    ).toThrow(/packet (?:JSON is invalid|is stale or noncanonical)/)
   })
 
   it('accepts an equivalent CRLF checkout but rejects lone CR bytes', () => {
