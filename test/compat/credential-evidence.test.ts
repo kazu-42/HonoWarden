@@ -148,7 +148,12 @@ describe('credential evidence contract', () => {
       additionalProperties: boolean
       required: string[]
       properties: {
-        evidenceLevels: { items: { properties: { id: { enum: string[] } } } }
+        evidenceLevels: {
+          prefixItems: Array<{
+            const: { id: string; rank: number; scope: string }
+          }>
+          items: boolean
+        }
         claims: {
           items: {
             additionalProperties: boolean
@@ -175,9 +180,10 @@ describe('credential evidence contract', () => {
       'sources',
       'claims',
     ])
-    expect(schema.properties.evidenceLevels.items.properties.id.enum).toEqual(
-      credentialEvidenceLevels.map((level: { id: string }) => level.id),
-    )
+    expect(
+      schema.properties.evidenceLevels.prefixItems.map((item) => item.const),
+    ).toEqual(credentialEvidenceLevels)
+    expect(schema.properties.evidenceLevels.items).toBe(false)
     expect(schema.properties.claims.items.properties.operation.enum).toEqual(
       credentialOperations,
     )
@@ -192,6 +198,86 @@ describe('credential evidence contract', () => {
     expect(schema.$defs.artifact.properties.contentSha256.$ref).toBe(
       '#/$defs/sha256',
     )
+  })
+
+  it('pins canonical level tuples and claim identities at the JSON schema boundary', async () => {
+    const schema = JSON.parse(await readFile(schemaPath, 'utf8'))
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(
+      schema,
+    )
+    const registry = loadCredentialEvidenceRegistry({ repoRoot }) as Registry
+    const mutations: Array<[string, (candidate: Registry) => void]> = [
+      [
+        'duplicate evidence-level tuples',
+        (candidate) => {
+          const level = candidate.evidenceLevels[0]
+          if (!level) throw new Error('evidence-level fixture missing')
+          candidate.evidenceLevels = Array.from({ length: 5 }, () =>
+            structuredClone(level),
+          )
+        },
+      ],
+      [
+        'evidence-level rank drift',
+        (candidate) => {
+          const level = candidate.evidenceLevels[0]
+          if (!level) throw new Error('evidence-level fixture missing')
+          level.rank = 1
+        },
+      ],
+      [
+        'evidence-level scope drift',
+        (candidate) => {
+          const level = candidate.evidenceLevels[0]
+          if (!level) throw new Error('evidence-level fixture missing')
+          level.scope = 'different_scope'
+        },
+      ],
+      [
+        'evidence-level order drift',
+        (candidate) => {
+          const first = candidate.evidenceLevels[0]
+          const second = candidate.evidenceLevels[1]
+          if (!first || !second)
+            throw new Error('evidence-level fixture missing')
+          candidate.evidenceLevels[0] = second
+          candidate.evidenceLevels[1] = first
+        },
+      ],
+      [
+        'duplicate credential operation',
+        (candidate) => {
+          requiredClaim(candidate, 1).operation = requiredClaim(
+            candidate,
+            0,
+          ).operation
+        },
+      ],
+      [
+        'duplicate canonical claim id',
+        (candidate) => {
+          requiredClaim(candidate, 1).id = requiredClaim(candidate, 0).id
+        },
+      ],
+      [
+        'canonical claim order drift',
+        (candidate) => {
+          const first = requiredClaim(candidate, 0)
+          const second = requiredClaim(candidate, 1)
+          candidate.claims[0] = second
+          candidate.claims[1] = first
+        },
+      ],
+    ]
+
+    expect(validate(registry), JSON.stringify(validate.errors)).toBe(true)
+    const accepted = []
+    for (const [label, mutate] of mutations) {
+      const candidate = structuredClone(registry)
+      mutate(candidate)
+      if (validate(candidate)) accepted.push(label)
+    }
+    expect(accepted).toEqual([])
   })
 
   it('rejects level-inconsistent claims at the JSON schema boundary', async () => {
@@ -884,6 +970,7 @@ describe('credential evidence contract', () => {
 })
 
 type Registry = {
+  evidenceLevels: Array<{ id: string; rank: number; scope: string }>
   sources: {
     repository: { programBaseCommit: string }
     clients: Array<{

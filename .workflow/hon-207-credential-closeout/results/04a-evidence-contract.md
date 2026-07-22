@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: seventh-review remediation source-ready; final exact-head reviews and publication pending
+Status: eighth-review remediation source-ready; final exact-head reviews and publication pending
 
 Linear issue: HON-227
 
@@ -54,16 +54,16 @@ marker error disclosure were accepted. A final red phase proved that standard
 escape-equivalent nested names. The fourth review red phase proved that unknown
 operation and object-field values reached verifier errors and CLI stderr, and
 that digest-bound checkout bytes had no cross-platform LF contract. The focused
-suite now passes all 35 positive and negative cases, including those exact
-adversarial mutations and a schema-only level-consistency gate.
+suite now passes all 36 positive and negative cases, including those exact
+adversarial mutations plus schema-only level, tuple, and claim-identity gates.
 
 ## Verification
 
 | Gate                      | Readback                                      |
 | ------------------------- | --------------------------------------------- |
-| Evidence contract         | 35/35 tests passed                            |
-| Compatibility impact      | 140/140 tests across 4 files passed           |
-| Full suite                | 1,370/1,370 tests across 103 files passed     |
+| Evidence contract         | 36/36 tests passed                            |
+| Compatibility impact      | 141/141 tests across 4 files passed           |
+| Full suite                | 1,371/1,371 tests across 103 files passed     |
 | HON-222 plan unit         | 4/4 Node tests passed                         |
 | Linear repo/live equality | HON-222 plus 3 children, 2 relations, 0 error |
 | TypeScript                | `tsc --noEmit` passed                         |
@@ -81,7 +81,7 @@ Artifact SHA-256 values at source-ready state:
 - registry:
   `53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169`
 - schema:
-  `5144b1aa8eb5262632f72f57b920128a5d226971a43e3fa2bbcb0e595af9c23a`
+  `1640608cb08c4fdac43d6ac94bfdc4b06e5af6fe10e6c1473a6d459a3f02c32f`
 - verifier:
   `7beb3a48f96903f7c8168c7cf84388b4f18d013aa778676b6e4311bcecf1e106`
 - lockfile:
@@ -251,6 +251,37 @@ unchanged serial suite then passed all 1,370 tests across 103 files in 148
 seconds. TypeScript, ESLint, Prettier, brand scan, dependency audit, frozen
 offline install, release gate, alpha completion audit, verifier, and HON-222
 plan tests also passed after the remediation.
+
+That remediation proceeded to the exact-head reviews below.
+
+## Exact D7B Five-Axis Review
+
+Independent Opus review inspected exact head
+`d7b7d93077d1a3ff5800b271166eaded4dc3e36f` in read-only session
+`11350ece-1202-46ad-9b38-b58502c48bfc`. It returned no actionable P0-P3,
+graded the five axes A, A, A, A-, and A-, and approved. Its non-blocking residual
+risks were direct tests for currently redundant deep symlink guards, a positive
+live-claim path when live evidence is eventually introduced, and maintenance
+tooling for intentionally manual digest-pin updates.
+
+## Eighth Standard Review And Remediation
+
+Native Codex standard review independently inspected the same exact head in
+session `019f88fa-3abe-79a2-b0bd-c4a877d2f5a5` and returned two P2 findings.
+A schema-only Ajv consumer could accept:
+
+- five duplicate or reordered evidence-level entries with incorrect rank and
+  scope values; and
+- duplicate or reordered claims that omitted required credential operations.
+
+All seven tuple, rank, scope, operation, claim-ID, and order mutations were
+reproduced as accepted before remediation. The schema now pins the five exact
+`{id, rank, scope}` tuples and all 11 canonical `{id, operation}` identities in
+order with strict Draft 2020-12 `prefixItems`; tuple-local item counts and
+`items: false` make both sequences closed. The canonical registry passes while
+all seven mutations fail. Focused tests pass 36/36, compatibility passes
+141/141, and the serial full suite passes 1,371/1,371 across 103 files. All
+static, dependency, release, verifier, and HON-222 plan gates also pass.
 
 Final exact-head standard and five-axis review of this remediation remain
 pending.
