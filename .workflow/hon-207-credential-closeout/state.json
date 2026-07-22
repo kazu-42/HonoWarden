@@ -3,6 +3,7 @@
   "slug": "hon-207-credential-closeout",
   "created_at": "2026-07-20T04:50:00Z",
   "status": "in_progress",
+  "active_packet": "04a-evidence-contract",
   "approval": {
     "required": false,
     "granted": true,
@@ -30,7 +31,7 @@
     },
     {
       "id": "03-recovery-restore",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-221",
       "result": "results/03-recovery-restore.md",
       "subpackets": [
@@ -51,7 +52,7 @@
         {
           "id": "03c-disable-forward-recovery",
           "key": "RECOVERY-1C",
-          "status": "in_progress",
+          "status": "completed",
           "linear": "HON-226",
           "result": "results/03c-disable-forward-recovery.md"
         }
@@ -59,9 +60,32 @@
     },
     {
       "id": "04-compatibility-evidence",
-      "status": "pending",
+      "status": "in_progress",
       "linear": "HON-222",
-      "result": null
+      "result": null,
+      "subpackets": [
+        {
+          "id": "04a-evidence-contract",
+          "key": "EVIDENCE-1A",
+          "status": "in_progress",
+          "linear": "HON-227",
+          "result": "results/04a-evidence-contract.md"
+        },
+        {
+          "id": "04b-closeout-packet-secret-scan",
+          "key": "EVIDENCE-1B",
+          "status": "pending",
+          "linear": "HON-228",
+          "result": null
+        },
+        {
+          "id": "04c-docs-index-reconciliation",
+          "key": "EVIDENCE-1C",
+          "status": "pending",
+          "linear": "HON-229",
+          "result": null
+        }
+      ]
     },
     {
       "id": "05-review-closeout",
@@ -71,7 +95,7 @@
     }
   ],
   "verification": {
-    "status": "recovery_1c_implementation_reviews_passed_publication_pending",
+    "status": "evidence_1a_source_ready_review_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -90,7 +114,7 @@
       "headCi": "passed_pr_111_run_29800997412_exact_bc51cbdc9b89c365fdcc36e542e1ebff63615770",
       "merge": "squash_7443d3daee70d09b015c864da6033ff3246d0f75_tree_equal_614859fad0ca5367484ea75e2249d8c9f8c924b8",
       "mainCi": "passed_run_29801134040_exact_7443d3daee70d09b015c864da6033ff3246d0f75",
-      "linearCloseout": "hon_220_done_archived_hon_221_in_progress",
+      "linearCloseout": "hon_221_done_archived_hon_222_in_progress",
       "credentialLifecycleFocused": "passed_78_final_review_regressions_and_467_impact_tests",
       "credentialLifecycleIntegrated": "passed_11_checks_7_generations_10_isolated_profiles_4x4_old_generation_rejections_before_and_after_restart_final_wrapper_history_7",
       "credentialLifecycleManifest": "sha256_a894eb81bf721f57ce8f925fc024bc6024ee83a67ef24da566642ccf9ab7eab2",
@@ -105,8 +129,8 @@
       "credentialLifecycleFinalReviews": "exact_bc51cbd_native_codex_approved_and_independent_opus_five_axis_approved_0_actionable_p1_p2_p3",
       "credentialLifecycleReviewedHead": "bc51cbdc9b89c365fdcc36e542e1ebff63615770",
       "credentialLifecycleAggregate": "11_of_11_checks_99_files_1263_tests_output_sha256_532a1ef7b9cbec83c4c4d188b391f198fbbf6751e36e6ca2088ed91f7b4757bc_manifest_sha256_3cf45a41f1508a4024f7115169252ee61693f19253437b559d3d518f8fae3701",
-      "recoveryRestorePlan": "hon_224_and_hon_225_done_archived_hon_226_in_progress_exact_live_readback",
-      "recoveryRestoreLinearCheckpoint": "comment_77d93627_2ae0_44d0_8e85_69b82715dfee_sha256_97e1e2d64cec44811af3fa8bf5ffffb532dcc08a458f0879231bb6b89fdad20b",
+      "recoveryRestorePlan": "hon_224_hon_225_hon_226_and_parent_hon_221_done_archived_exact_live_readback",
+      "recoveryRestoreLinearCheckpoint": "closeout_comment_9aa10233_f083_48a0_8f1b_2c7ca594a674_parent_archived_2026_07_22t02_41_53_724z",
       "recovery1aFocused": "passed_46_backup_cli_tests_including_real_local_wrangler_d1_export_large_retained_wal_completion_attestation_owned_source_marker_symlink_rejection_private_output_attachment_inventory_validation_atomic_output_claim_derived_generation_binding_fresh_output_and_bound_restore_execute_success",
       "recovery1aImpact": "passed_50_backup_scheduled_workflow_tests_and_65_backup_credential_lifecycle_combined_tests",
       "recovery1aPreSpawn": "passed_manifest_historical_generation_remote_ambient_split_unbound_no_config_or_mismatched_persistence_unowned_incomplete_or_drifted_source_symlinked_config_symlinked_persistence_omitted_r2_dry_run_reused_output_public_output_and_bound_restore_missing_pin_rejections_zero_wrangler_spawn",
@@ -163,7 +187,20 @@
       "recovery1cQuality": "passed_typecheck_eslint_prettier_compatibility_105_brand_scan_dependency_audit_0_release_gate_11_of_11_frozen_install_git_diff_check",
       "recovery1cSecretOutput": "passed_secret_safe_packets_and_constant_unknown_option_error_without_rejected_value_reflection",
       "recovery1cDependencyOverride": "temporary_sharp_0_35_3_override_for_ghsa_f88m_g3jw_g9cj_lock_sha256_bf56db979676ada307ab2fcd0c36e2f480ecbb4fdfdee10e2ab009280e2d701d_remove_after_miniflare_patch_and_same_gates",
-      "recovery1cCleanup": "passed_integrated_run_root_removed_official_harness_root_removed_clipboard_cleared_retained_secret_files_0_residual_wrangler_workerd_runner_processes_0"
+      "recovery1cCleanup": "passed_integrated_run_root_removed_official_harness_root_removed_clipboard_cleared_retained_secret_files_0_residual_wrangler_workerd_runner_processes_0",
+      "recovery1cPublication": "pr_114_head_b28dd12a_ci_29885967723_squash_13f4e895_tree_equal_28c8403a_main_ci_29886146230_zero_unresolved_threads",
+      "recovery1cLinearCloseout": "hon_226_done_archived_2026_07_22t02_39_04_165z",
+      "recoveryParentCloseout": "hon_221_done_after_3_of_3_children_done_archived_2026_07_22t02_41_53_724z",
+      "evidencePlan": "hon_227_in_progress_hon_228_todo_hon_229_todo_relations_exact_active_96_total_229",
+      "evidencePlanCheckpoint": "comment_0aead33f_61bd_4223_afd3_cb1c4a382008_verified_2026_07_22t02_47_07_510z",
+      "evidence1aContract": "passed_schema_registry_verifier_11_claims_5_levels_8_artifacts_staging_production_0",
+      "evidence1aFocused": "passed_19_contract_tests_including_source_pin_level_inflation_live_environment_path_and_marker_rejections",
+      "evidence1aCompatibility": "passed_124_tests_across_4_files",
+      "evidence1aFullSuite": "passed_1354_tests_across_103_files_serial",
+      "evidence1aQuality": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_frozen_offline_install_git_diff_check",
+      "evidence1aLinearReadback": "passed_repo_rendered_hon_222_hon_227_hon_228_hon_229_descriptions_checkpoint_2_relations_0_errors",
+      "evidence1aArtifacts": "registry_sha256_1d55ae4f26f8b78fcb0f821960da44984cf12b732772ef392ab4bf55563503a5_schema_sha256_f3f89db4643b7f5ef7b61e5567422d7d8f7e96027f0db5bbe5e21aff50dd7f2c_verifier_sha256_97e50c14f782e6cf359a84d8f567de00fb80d5e60783b901a353ebef2e739e91",
+      "evidence1aWorkflowVerifier": "expected_incomplete_missing_final_report_until_evidence_1b_evidence_1c_and_close_1_complete"
     },
     "checks": [
       "linear_plan_unit",
@@ -174,6 +211,7 @@
       "backup_restore",
       "disable_state_equality",
       "forward_recovery",
+      "credential_evidence_contract",
       "secret_scan",
       "focused",
       "full",

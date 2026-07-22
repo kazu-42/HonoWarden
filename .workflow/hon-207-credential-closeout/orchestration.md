@@ -4,7 +4,8 @@
 
 ```text
 CLIENT-1 -> CLIENT-2 -> RECOVERY-1 -> EVIDENCE-1 -> CLOSE-1
-                         |
+                         |             |
+                         |             +-> EVIDENCE-1A -> EVIDENCE-1B -> EVIDENCE-1C
                          +-> RECOVERY-1A -> RECOVERY-1B -> RECOVERY-1C
 ```
 
@@ -47,12 +48,19 @@ is merged, archived, and read back from exact main.
 
 ### EVIDENCE-1
 
-Owns compatibility evidence levels, client matrix changes, current-state and
-security documentation, audit/retention and backup/restore reconciliation,
-operator recovery instructions, release indexes, and secret scans.
+Acts as the integration parent for three separately reviewed changes:
+
+- `EVIDENCE-1A` owns the evidence-level contract, source/client pins, claim
+  registry, tracked-artifact markers, path ownership, and validation tests.
+- `EVIDENCE-1B` owns deterministic closeout-packet generation, allowlisted
+  output, secret scanning, and stale/extra/input-drift rejection.
+- `EVIDENCE-1C` owns client-matrix, current-state, security, audit/retention,
+  backup/restore, rollback, operator, release, and review-index reconciliation.
 
 It must distinguish official-client crypto, official CLI public commands,
-API-only route evidence, local runtime, staging, and production.
+API-only route evidence, local runtime, staging, and production. A later
+subpacket cannot start until its predecessor is merged, archived, and read back
+from exact main.
 
 ### CLOSE-1
 
