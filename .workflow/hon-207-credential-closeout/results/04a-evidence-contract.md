@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: implementation exact-head reviews passed; final evidence-head review and publication pending
+Status: completed, merged, verified on main, and archived
 
 Linear issue: HON-227
 
@@ -312,11 +312,20 @@ pnpm registry-signature/network friction. Direct Node/Vitest execution and the
 host pnpm gates passed; no source failure was attributed to those environment
 messages.
 
-## Remaining Publication Gate
+## Publication And Linear Closeout
 
-Final no-change review of the evidence-only commit, PR/head CI, zero unresolved
-threads, squash tree equality, merged-main CI, and HON-227 Done/archive remain.
-EVIDENCE-1B must not start before that closeout.
+The final evidence head
+`1fe26a78a9f4f550e3d4cc868c5e7272e51d8cb2` passed native Codex standard
+review in session `019f893b-1273-7d03-b6e4-b4f01f70b086` and independent
+Opus five-axis review in session `0af051cd-6e40-4c4a-8c8e-818255ebd9b0`
+with no actionable P0-P3 finding. PR #115 head CI run `29910422454` passed.
+
+PR #115 was admin squash-merged as
+`5b67fbdcf6d32942e5786f4cc49684c479778de8`. The reviewed branch tree and
+squash tree both equal `0297ca848869817cbec3e8f077cd61d313faf239`.
+Merged-main CI run `29910713312` passed on that exact commit, with zero
+unresolved review threads. HON-227 moved to Done and was archived at
+`2026-07-22T10:11:52.647Z`; only then was HON-228 moved to In Progress.
 
 No deployment, remote mutation, real credential, production or staging
 activation, destructive operation, paid action, browser-profile access, or

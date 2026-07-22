@@ -5,3 +5,5 @@ dist
 test/.tmp
 worker-configuration.d.ts
 pnpm-lock.yaml
+# Generated and byte-verified by honowarden-credential-closeout.mjs.
+compat/credential-closeout-packet.json
