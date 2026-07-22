@@ -39,6 +39,7 @@ describe('security review materials', () => {
     const dependencyAudit = readSecurityDoc('dependency-audit.md')
 
     expect(workspacePolicy).toMatch(/overrides:\s+sharp: 0\.35\.3/)
+    expect(workspacePolicy).toContain('docs/security/dependency-audit.md')
     expect(dependencyAudit).toContain('GHSA-f88m-g3jw-g9cj')
     expect(dependencyAudit).toContain('temporary `overrides` policy')
     expect(dependencyAudit).toContain('Images binding')

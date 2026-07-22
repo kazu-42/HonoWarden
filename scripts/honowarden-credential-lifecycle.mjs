@@ -1060,7 +1060,11 @@ export async function verifyCredentialForwardRecovery({
         forwardOfficial.itemRead && forwardRestartOfficial.itemRead,
       ),
       check('forward_recovery_preserves_r2', r2After.equals(r2Before)),
-      check('forward_recovery_foreign_keys_remain_valid', true),
+      check(
+        'forward_recovery_foreign_keys_remain_valid',
+        forwardState.d1.foreignKeyViolations === 0 &&
+          finalState.d1.foreignKeyViolations === 0,
+      ),
     ]
     if (checks.some((entry) => entry.status !== 'pass')) {
       throw new Error('credential forward-recovery checks failed')

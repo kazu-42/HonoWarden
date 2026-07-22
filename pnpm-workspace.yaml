@@ -11,5 +11,6 @@ minimumReleaseAgeExclude:
   - '@vitest/spy@4.1.10'
   - '@vitest/utils@4.1.10'
   - vitest@4.1.10
+# Remove only through the gate in docs/security/dependency-audit.md.
 overrides:
   sharp: 0.35.3

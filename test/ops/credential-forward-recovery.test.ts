@@ -132,6 +132,15 @@ describe('credential forward-recovery lifecycle', () => {
     expect(lifecycleSource).not.toContain(
       "check('all_five_prior_generations_remain_rejected', true)",
     )
+    expect(lifecycleSource).not.toContain(
+      "check('forward_recovery_foreign_keys_remain_valid', true)",
+    )
+    expect(lifecycleSource).toContain(
+      'forwardState.d1.foreignKeyViolations === 0',
+    )
+    expect(lifecycleSource).toContain(
+      'finalState.d1.foreignKeyViolations === 0',
+    )
     expect(harnessDocs).toContain('account:credential-forward-recovery')
     expect(harnessDocs).toContain('same restored target')
     expect(harnessDocs).toContain('HON-226')
