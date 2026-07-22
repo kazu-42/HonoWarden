@@ -71,7 +71,7 @@
     }
   ],
   "verification": {
-    "status": "recovery_1c_local_proof_passed_reviews_publication_pending",
+    "status": "recovery_1c_implementation_reviews_passed_publication_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -153,6 +153,10 @@
       "recovery1cOfficialClient": "passed_forward_generation_item_read_before_and_after_restart_bridge_af6214f87853023a86045bb4fc468cd953594e2e357a0ca66e2d52727f467b46_runtime_b45b4cd4b8bc1ec149f7d948867968ae5171190dab164c0c50f865aac34330e3",
       "recovery1cFinalIntegrated": "passed_source_lifecycle_1d4043c20d628b9be5bda5e12208074a4fb22cc6a94c24b381efe3ded2d50551_backup_manifest_22a2bee51eeb5f4f812352fa65253eed02fac4ad456e5863c8edfc70d44d7b61_generation_binding_a7f4f0872179df771b3f8ca4e98bb8a339f694ca0794ce5d1e3c3c6571f87d3d_source_state_740e5fc2ebb8d8059cf7f0f9442ca2e0833086caec2cf5f3aba99abbe5c1539a_d1_135cc76934e4805d0397d86e659027a8ccf676cc1a3e0c5bd0c0e0a9989f4765_concurrent_200_401_5_profiles_after_restart_8_of_8_forward_checks_6_of_6_aggregate_checks",
       "recovery1cReviewRemediation": "native_exact_9342621_p2_fixed_complete_r2_bucket_inventory_red_omitted_key_contract_then_green_integrated_rerun_passed_initial_attestation_mismatch_failed_closed_and_cleaned",
+      "recovery1cImplementationReviewedHead": "517e4100b91059f3302c17e6080dd9a4e77309e2",
+      "recovery1cImplementationReviewedTree": "5bf05342bd08774c9347b7df264f4d60e987163b",
+      "recovery1cFinalStandardReview": "exact_517e410_native_codex_gpt_5_6_sol_session_019f878f_4067_7612_bef5_91f09c742fbd_0_actionable_p0_p1_p2_p3_approve_prior_complete_r2_inventory_p2_verified_remediated",
+      "recovery1cFinalFiveAxisReview": "exact_517e410_independent_opus_0_actionable_p0_p1_p2_p3_problem_framing_a_diagnosis_a_design_a_minus_architecture_a_minus_craft_a_minus_approve",
       "recovery1cFocused": "passed_420_tests_across_10_route_lifecycle_r2_inventory_fixture_documentation_and_contract_files",
       "recovery1cPasswordLifecycleSmoke": "passed_real_local_wrangler_d1_r2_lifecycle_15_of_15_checks_with_sharp_0_35_3_override",
       "recovery1cFullSuite": "passed_1335_tests_across_102_files",

@@ -1,7 +1,7 @@
 # RECOVERY-1C: Default-Off Writers And Forward Recovery
 
-Status: local implementation and integrated proof passed; exact-head review and
-repository publication remain
+Status: local implementation, integrated proof, and implementation-head reviews
+passed; repository publication remains
 
 Linear issue: HON-226
 
@@ -128,6 +128,25 @@ The first post-review attempt failed closed at the source completion-attestation
 digest gate and removed its run root. The immediate isolated rerun above passed;
 no mismatch was ignored or converted into success.
 
+## Implementation-Head Reviews
+
+Implementation head `517e4100b91059f3302c17e6080dd9a4e77309e2`, tree
+`5bf05342bd08774c9347b7df264f4d60e987163b`, passed both independent review
+gates:
+
+- native Codex `gpt-5.6-sol` review session
+  `019f878f-4067-7612-bef5-91f09c742fbd`: zero actionable P0-P3 and approve;
+- independent Opus five-axis review: zero actionable P0-P3 and approve, with
+  Problem Framing A, Diagnosis A, Design A-, Architecture A-, and Craft A-.
+
+Both reviews explicitly rechecked the prior sentinel-only R2 P2. They confirmed
+that all `R2Bucket.list()` pages feed exact inventory-to-manifest key equality,
+every object has a SHA-256, omitted unexpected keys fail closed, and the
+regression covers that escape path. Native-review full-suite retries encountered
+only sandbox package-signature and loopback timeouts; its focused 420 tests,
+typecheck, ESLint, and Prettier passed. The same committed head independently
+passed the full 1,335-test suite on the host.
+
 ## Quality And Cleanup Readback
 
 - focused route, lifecycle, fixture, documentation, and contract matrix:
@@ -150,7 +169,8 @@ no mismatch was ignored or converted into success.
 
 ## Current Gate
 
-The final integrated proof and complete local quality matrix pass. Remaining
-gates are exact-head standard and five-axis review, PR publication and head CI,
-squash tree equality, merged-main CI, and HON-226 Done/archive. No tracked
-writer may be enabled by this packet.
+The final integrated proof, complete local quality matrix, and both
+implementation-head reviews pass. Remaining gates are a no-change review of the
+review-evidence commit, PR publication and head CI, squash tree equality,
+merged-main CI, and HON-226 Done/archive. No tracked writer may be enabled by
+this packet.
