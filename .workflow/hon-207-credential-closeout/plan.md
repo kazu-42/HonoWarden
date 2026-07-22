@@ -93,6 +93,24 @@ Each subpacket has its own focused tests, PR/head CI, exact-head reviews,
 merged-main CI, and Linear closeout. `RECOVERY-1` closes only after all three
 subpackets and the integrated recovery run pass.
 
+`EVIDENCE-1` is also an integration parent. It is serialized into three
+reviewable subpackets so the machine contract is stable before packet generation
+and documentation reconciliation:
+
+1. `EVIDENCE-1A`: define the closed evidence-level model and a canonical claim
+   registry that binds every credential operation to exact source generations,
+   tracked artifacts, official-client pins, and limitations.
+2. `EVIDENCE-1B`: generate one deterministic credential-closeout packet and
+   reject secret-bearing, stale, untracked, non-regular, or path-escaping
+   evidence inputs.
+3. `EVIDENCE-1C`: reconcile compatibility, current-state, security,
+   audit/retention, backup/restore, rollback, operator, release, and review
+   indexes against the canonical packet.
+
+Each evidence subpacket has its own focused tests, PR/head CI, exact-head
+reviews, merged-main CI, and Linear closeout. `EVIDENCE-1` closes only after all
+three subpackets agree on the same conservative registry and packet.
+
 ## Design Decisions
 
 - Official release assets are downloaded by exact tag, size, and SHA-256.

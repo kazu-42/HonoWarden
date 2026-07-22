@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-07-22T02:47:07.510Z",
+  "status": "exact",
+  "parent": {
+    "id": "0879badf-b4b1-4c56-9da5-64d6fb71a994",
+    "identifier": "HON-222",
+    "state": "In Progress",
+    "archivedAt": null
+  },
+  "capacity": {
+    "totalIncludingArchived": 229,
+    "archived": 131,
+    "activeUnarchived": 96,
+    "completedUnarchived": 2
+  },
+  "issues": [
+    {
+      "key": "EVIDENCE-1A",
+      "id": "71dc5d6f-e42e-4519-844e-b4b96add30ed",
+      "identifier": "HON-227",
+      "state": "In Progress",
+      "archivedAt": null
+    },
+    {
+      "key": "EVIDENCE-1B",
+      "id": "48f5b632-fdb5-4cb2-8702-edb0f893a622",
+      "identifier": "HON-228",
+      "state": "Todo",
+      "archivedAt": null
+    },
+    {
+      "key": "EVIDENCE-1C",
+      "id": "672786f1-e7ab-4337-846a-c8dcd8c46fa5",
+      "identifier": "HON-229",
+      "state": "Todo",
+      "archivedAt": null
+    }
+  ],
+  "relations": [
+    {
+      "id": "16e4aae4-3dcd-4912-b05f-f9e5871d5972",
+      "type": "blocks",
+      "blocker": "HON-227",
+      "blocked": "HON-228"
+    },
+    {
+      "id": "78b340f2-a8e9-48c6-9352-98411b6888fd",
+      "type": "blocks",
+      "blocker": "HON-228",
+      "blocked": "HON-229"
+    }
+  ],
+  "checkpoint": {
+    "id": "0aead33f-61bd-4223-afd3-cb1c4a382008",
+    "createdAt": "2026-07-22T02:46:54.160Z"
+  },
+  "verificationErrors": []
+}

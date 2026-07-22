@@ -40,6 +40,7 @@
     "client:auth-fixture": "node scripts/honowarden-client-auth-fixture.mjs",
     "client:browser-profile": "node scripts/honowarden-browser-profile.mjs",
     "client:official-harness": "node scripts/honowarden-official-client-harness.mjs",
+    "credential:evidence:verify": "node scripts/honowarden-credential-evidence.mjs",
     "db:migrate:local": "wrangler d1 migrations apply honowarden --local",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
@@ -82,6 +83,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.1",
+    "ajv": "8.20.0",
     "eslint": "^10.7.0",
     "jsonc-parser": "^3.3.1",
     "miniflare": "4.20260714.0",

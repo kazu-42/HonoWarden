@@ -1,7 +1,6 @@
 # RECOVERY-1C: Default-Off Writers And Forward Recovery
 
-Status: local implementation, integrated proof, and implementation-head reviews
-passed; repository publication remains
+Status: completed, merged, exact-main CI passed, Linear Done and archived
 
 Linear issue: HON-226
 
@@ -167,10 +166,25 @@ passed the full 1,335-test suite on the host.
 - retained secret files: 0; residual Wrangler, workerd, or recovery runner
   processes: 0
 
-## Current Gate
+## Publication Closeout
 
-The final integrated proof, complete local quality matrix, and both
-implementation-head reviews pass. Remaining gates are a no-change review of the
-review-evidence commit, PR publication and head CI, squash tree equality,
-merged-main CI, and HON-226 Done/archive. No tracked writer may be enabled by
-this packet.
+- PR #114 head `b28dd12aafd91dac911e58d9fab8f55b08988d8a` passed CI run
+  `29885967723`.
+- Squash commit `13f4e895d69b2c2485a10a82d1793cf60e148024` has the same tree
+  `28c8403a009d5d2cfbdacbc32b64490b51cfa210` as the final branch head.
+- Merged-main CI run `29886146230` passed the full test, compatibility,
+  typecheck, lint, release, brand, and format workflow.
+- GitHub review-thread readback returned zero unresolved threads. The only PR
+  comment reported that an optional third-party review bot was disabled; it was
+  not a source finding.
+- HON-226 moved to Done and was archived at
+  `2026-07-22T02:39:04.165Z` after the merge and main-CI readback.
+- Parent HON-221 was closed only after HON-224, HON-225, and HON-226 were all
+  Done and archived; it was archived at `2026-07-22T02:41:53.724Z`.
+- The completed worktree and local branch were removed only after final tree
+  equality and clean tracked-state checks. The remote branch was already
+  removed by the merge flow.
+
+No tracked writer was enabled, and no deployment, remote resource, real
+account, production or staging mutation, destructive operation, paid action,
+or third-party contact occurred.

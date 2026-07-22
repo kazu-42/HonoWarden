@@ -1,7 +1,7 @@
 # RECOVERY-1: Restore, Disable, And Forward Recovery
 
-Status: RECOVERY-1A and RECOVERY-1B merged and archived; RECOVERY-1C local proof
-passed and is pending exact-head review/publication
+Status: completed; all three subpackets merged, verified on exact main, Done,
+and archived
 
 Linear parent: HON-221
 
@@ -43,17 +43,30 @@ merged-main CI, and Linear Done/archive before the next child starts.
   equality, stale credential/session rejection, and pinned official-client
   decrypt readback before forward recovery begins.
 
-## Current Gate
+## Completion Readback
 
-HON-224 was merged through PR #112. HON-225 was merged through PR #113 at
-`c1e2f7c8befb4c85030d48e9b7171fb5599761c2`; its squash tree matches reviewed
-head `2e5a010833ddb69d4a0071de450318c78402bfe0`, main CI run 29874991552 passed,
-and Linear is Done/archived. HON-226 now has a complete local same-target proof:
-all four disabled writers return D1-free 501 with canonical D1/R2 identity
-unchanged, one concurrent forward password generation commits, replay and all
-five prior generations remain rejected, and pinned official CLI decrypt works
-before and after restart. Exact-head standard/five-axis review, PR/head CI,
-merge/main CI, and Linear Done/archive remain.
+- HON-224 / PR #112 merged as
+  `27388e56e54c8b7bd67249bc9cf4fea5401d3a7a`; merged-main CI run
+  `29817789762` passed; Linear Done and archived.
+- HON-225 / PR #113 merged as
+  `c1e2f7c8befb4c85030d48e9b7171fb5599761c2`; merged-main CI run
+  `29874991552` passed; Linear Done and archived.
+- HON-226 / PR #114 merged as
+  `13f4e895d69b2c2485a10a82d1793cf60e148024`; merged-main CI run
+  `29886146230` passed; Linear Done and archived.
+- All three squash merge trees matched their final branch trees, and each
+  child had zero unresolved GitHub review threads before closeout.
+- The integrated same-target proof keeps all four writers D1-free while
+  disabled, preserves complete D1/R2 identity, commits exactly one forward
+  generation, rejects replay and all five prior generations, and completes
+  pinned official CLI item readback before and after restart.
+- HON-221 moved to Done only after all three children were Done and archived;
+  it was archived at `2026-07-22T02:41:53.724Z` with an aggregate evidence
+  checkpoint.
+
+No deployment, remote mutation, real credential, production or staging
+activation, destructive operation, paid action, or third-party contact was
+performed.
 
 ## Linear Plan Readback
 
@@ -72,11 +85,12 @@ merge/main CI, and Linear Done/archive remain.
   `97e1e2d64cec44811af3fa8bf5ffffb532dcc08a458f0879231bb6b89fdad20b`
 - API verification errors: 0
 
-## Current Linear Readback
+## Final Linear Readback
 
-- synchronized at `2026-07-22T08:47:17+09:00`
+- synchronized at `2026-07-22T11:41:53+09:00`
 - HON-224: Done and archived at `2026-07-21T09:22:10.453Z`
 - HON-225: Done and archived at `2026-07-21T22:53:21.567Z`
-- HON-226: In Progress and non-archived
+- HON-226: Done and archived at `2026-07-22T02:39:04.165Z`
+- HON-221: Done and archived at `2026-07-22T02:41:53.724Z`
 - parent relation: all three remain direct children of HON-221
 - serialization remains HON-224 -> HON-225 -> HON-226

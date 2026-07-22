@@ -1,2 +1,12 @@
 # Wrangler emits a trailing space in its generated runtime version header.
 worker-configuration.d.ts whitespace=-blank-at-eol
+
+# Credential evidence digests bind canonical repository bytes across platforms.
+.workflow/hon-207-credential-closeout/results/02-credential-lifecycle.md text eol=lf
+.workflow/hon-207-credential-closeout/results/03a-generation-bound-backup.md text eol=lf
+.workflow/hon-207-credential-closeout/results/03b-fresh-restore.md text eol=lf
+.workflow/hon-207-credential-closeout/results/03c-disable-forward-recovery.md text eol=lf
+docs/release/account-kdf-change-local-evidence.md text eol=lf
+docs/release/account-key-initialization-local-evidence.md text eol=lf
+docs/release/account-password-change-local-evidence.md text eol=lf
+docs/release/user-key-rotation-local-evidence.md text eol=lf
