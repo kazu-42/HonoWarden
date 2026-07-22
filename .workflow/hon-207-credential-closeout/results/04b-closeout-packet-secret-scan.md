@@ -188,6 +188,27 @@ same ceiling; a direct post-fix probe measured about 38.5 ms. Focused,
 compatibility, and full serial suites now pass 127, 268, and 1,498 tests
 respectively without changing the canonical packet.
 
+Native Codex exact-head review session
+`019f8a87-5411-7620-95d1-1853f5253937` then inspected commit `838bb7d` and
+returned three P1 findings. Direct probes showed that URL userinfo could be
+hidden behind an allowlisted public address, valid GFM tables without outer
+pipes skipped field scanning, and Markdown-wrapped or table-formatted
+Authorization labels bypassed the raw-header matcher.
+
+The sixth remediation red run passed 132 of 138 focused tests and reproduced
+all six representative fail-open inputs. URL authorities are now scanned before
+identity allowlisting with the standard URL parser, including protocol-relative
+and malformed URL-like inputs. Markdown pair classification now routes both
+secret-like fields and Authorization labels through their strict value checks,
+while a delimiter-row state machine scans outer-pipe-free GFM tables once.
+
+An initial URL regex implementation caused the existing dotted-input performance
+test to take about 2.17 seconds. It was replaced before commit with a monotonic
+literal-`//` authority scan; a new near-limit repeated-separator regression and
+the existing dotted, adjacent-`@`, large-field, and Markdown-table regressions
+all remain below 250 ms. Focused, compatibility, and full serial suites now pass
+141, 282, and 1,512 tests respectively without changing the canonical packet.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact access and refresh tokens, key/secret hashes and material, token
 signatures and bearer fields, wrapped and unwrapped keys, encrypted item bodies,
@@ -203,9 +224,9 @@ package scripts, and reserved example identities remain accepted.
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 127/127 passed                                                                           |
-| Compatibility impact        | 268/268 across 5 files passed                                                            |
-| Full suite                  | 1,498/1,498 across 104 files passed serially                                             |
+| Focused generator/scanner   | 141/141 passed                                                                           |
+| Compatibility impact        | 282/282 across 5 files passed                                                            |
+| Full suite                  | 1,512/1,512 across 104 files passed serially                                             |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |

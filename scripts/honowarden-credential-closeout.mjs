@@ -23,7 +23,7 @@ import {
 } from 'node:path'
 import process from 'node:process'
 import { TextDecoder } from 'node:util'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL, URL } from 'node:url'
 
 import { parseTree } from 'jsonc-parser'
 
@@ -117,6 +117,17 @@ const identityTokenBoundaryCharacters = new Set([
   '」',
   '【',
   '】',
+])
+const urlAuthorityBoundaryCharacters = new Set([
+  '/',
+  '\\',
+  '?',
+  '#',
+  '<',
+  '>',
+  '"',
+  "'",
+  '`',
 ])
 const vaultCiphertextPartPattern = '[A-Za-z0-9+/_-]{20,}={0,2}'
 const vaultCiphertextPattern = new RegExp(
@@ -565,7 +576,42 @@ function unsafeCredentialCloseoutContent(content) {
   if (vaultCiphertextPattern.test(content)) {
     return true
   }
+  if (hasUrlUserInfo(content)) return true
   return hasDisallowedIdentity(content)
+}
+
+function hasUrlUserInfo(content) {
+  let separatorIndex = content.indexOf('//')
+  while (separatorIndex !== -1) {
+    let authorityEnd = separatorIndex + 2
+    while (
+      authorityEnd < content.length &&
+      isUrlAuthorityCharacter(content[authorityEnd])
+    ) {
+      authorityEnd += 1
+    }
+    const authority = content.slice(separatorIndex + 2, authorityEnd)
+    const atIndex = authority.lastIndexOf('@')
+    if (atIndex !== -1) {
+      try {
+        const url = new URL(`https://${authority}`)
+        if (url.username || url.password) return true
+      } catch {
+        if (atIndex > 0) return true
+      }
+    }
+    const nextIndex = Math.max(separatorIndex + 2, authorityEnd)
+    separatorIndex = content.indexOf('//', nextIndex)
+  }
+  return false
+}
+
+function isUrlAuthorityCharacter(character) {
+  return (
+    character !== undefined &&
+    !/\s/u.test(character) &&
+    !urlAuthorityBoundaryCharacters.has(character)
+  )
 }
 
 function hasDisallowedIdentity(content) {
@@ -743,9 +789,7 @@ function hasMarkdownSecretLikePair(content) {
     for (const match of content.matchAll(pattern)) {
       const field = match[fieldIndex] ?? ''
       const value = match[valueIndex] ?? ''
-      if (isSecretLikeFieldName(field) && !isSafeSecretLikePair(field, value)) {
-        return true
-      }
+      if (isUnsafeMarkdownPair(field, value)) return true
     }
   }
   return hasMarkdownTableSecretLikePair(content)
@@ -753,19 +797,72 @@ function hasMarkdownSecretLikePair(content) {
 
 function hasMarkdownTableSecretLikePair(content) {
   if (!content.includes('|')) return false
-  for (const line of content.split('\n')) {
+  const lines = content.split('\n')
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]
     const trimmed = line.trim()
-    if (!trimmed.startsWith('|') && !trimmed.endsWith('|')) continue
-    const cells = trimmed.split('|')
-    for (let index = 0; index + 1 < cells.length; index += 1) {
-      const field = unwrapMarkdownField(cells[index] ?? '')
-      const value = (cells[index + 1] ?? '').trim()
-      if (isSecretLikeFieldName(field) && !isSafeSecretLikePair(field, value)) {
-        return true
-      }
+    const hasOuterPipe = trimmed.startsWith('|') || trimmed.endsWith('|')
+    if (hasOuterPipe && hasUnsafeMarkdownTableRow(line)) return true
+
+    if (
+      !line.includes('|') ||
+      !isMarkdownTableDelimiter(lines[lineIndex + 1] ?? '')
+    ) {
+      continue
+    }
+
+    if (hasUnsafeMarkdownTableRow(line)) return true
+    lineIndex += 1
+    while (
+      lineIndex + 1 < lines.length &&
+      isMarkdownTableDataRow(lines[lineIndex + 1])
+    ) {
+      lineIndex += 1
+      if (hasUnsafeMarkdownTableRow(lines[lineIndex])) return true
     }
   }
   return false
+}
+
+function hasUnsafeMarkdownTableRow(line) {
+  const cells = markdownTableCells(line)
+  for (let index = 0; index + 1 < cells.length; index += 1) {
+    const field = unwrapMarkdownField(cells[index] ?? '')
+    const value = (cells[index + 1] ?? '').trim()
+    if (isUnsafeMarkdownPair(field, value)) return true
+  }
+  return false
+}
+
+function markdownTableCells(line) {
+  const trimmed = line.trim()
+  const cells = trimmed.split('|')
+  if (trimmed.startsWith('|')) cells.shift()
+  if (trimmed.endsWith('|')) cells.pop()
+  return cells
+}
+
+function isMarkdownTableDelimiter(line) {
+  const cells = markdownTableCells(line)
+  return (
+    cells.length >= 2 && cells.every((cell) => /^:?-+:?$/.test(cell.trim()))
+  )
+}
+
+function isMarkdownTableDataRow(line) {
+  const trimmed = line.trim()
+  return trimmed.length > 0 && trimmed.includes('|')
+}
+
+function isUnsafeMarkdownPair(field, value) {
+  if (isAuthorizationFieldName(field)) {
+    return !isEmptyAuthorizationCredential(value)
+  }
+  return isSecretLikeFieldName(field) && !isSafeSecretLikePair(field, value)
+}
+
+function isAuthorizationFieldName(value) {
+  return /^(?:(?:[A-Za-z][A-Za-z0-9]*)_)*Authorization$/i.test(value.trim())
 }
 
 function unwrapMarkdownField(value) {

@@ -281,6 +281,10 @@ describe('credential closeout packet', () => {
       '| Evidence | Password | do-not-print-later-table-password |',
     ],
     [
+      'outer-pipe-free Markdown table password',
+      'Field | Value\n--- | ---\nPassword | do-not-print-outer-pipe-free-password',
+    ],
+    [
       'HTML-emphasized password',
       '<strong>Password</strong>: do-not-print-html-password',
     ],
@@ -358,6 +362,18 @@ describe('credential closeout packet', () => {
       'REDIRECT_HTTP_AUTHORIZATION=Bearer do-not-print-redirected-authorization',
     ],
     [
+      'bold Markdown authorization credential',
+      '**Authorization**: Bearer do-not-print-bold-authorization',
+    ],
+    [
+      'HTML-emphasized authorization credential',
+      '<strong>Authorization</strong>: Bearer do-not-print-html-authorization',
+    ],
+    [
+      'outer-pipe-free Markdown authorization table',
+      'Field | Value\n--- | ---\nAuthorization | Bearer do-not-print-table-authorization',
+    ],
+    [
       'JWT',
       'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkb250LXByaW50In0.c2lnbmF0dXJlLXZhbHVl',
     ],
@@ -421,6 +437,22 @@ describe('credential closeout packet', () => {
       'personal identity after an allowed identity',
       'Contacts: support@honowarden.com, person@real-company.dev',
     ],
+    [
+      'URL userinfo password on an allowed public host identity',
+      'https://user:admin@honowarden.com/private',
+    ],
+    [
+      'URL userinfo username on a reserved identity',
+      'https://operator@example.test/private',
+    ],
+    [
+      'protocol-relative URL userinfo',
+      '//user:do-not-print-protocol-relative@honowarden.com/private',
+    ],
+    [
+      'malformed URL-like userinfo',
+      'https://user:do-not-print-malformed@/private',
+    ],
   ])('rejects %s without reflecting content', (_name, unsafeContent) => {
     let thrown: unknown
     try {
@@ -458,6 +490,15 @@ describe('credential closeout packet', () => {
 
   it('scans maximum-sized adjacent at signs in linear time', () => {
     const safeContent = 'a@'.repeat(500_000)
+    const startedAt = performance.now()
+
+    expect(Buffer.byteLength(safeContent)).toBeLessThan(1024 * 1024)
+    expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
+  it('scans maximum-sized URL separators in linear time', () => {
+    const safeContent = '//host/'.repeat(140_000)
     const startedAt = performance.now()
 
     expect(Buffer.byteLength(safeContent)).toBeLessThan(1024 * 1024)
@@ -517,6 +558,11 @@ describe('credential closeout packet', () => {
       'allowed public identity after Japanese punctuation',
       '連絡先：security@honowarden.com',
     ],
+    ['ordinary URL', 'Documentation: https://honowarden.com/docs'],
+    [
+      'ordinary outer-pipe-free Markdown table',
+      'Field | Value\n--- | ---\nDigest | sha256:abc123',
+    ],
     [
       'credential proof marker',
       'real aggregate source -> backup -> fresh restore -> credential proof: passed',
@@ -538,6 +584,18 @@ describe('credential closeout packet', () => {
       'Authorization: token [redacted]',
     ],
     ['redacted CGI authorization', 'HTTP_AUTHORIZATION=Bearer <redacted>'],
+    [
+      'redacted bold Markdown authorization',
+      '**Authorization**: Bearer <redacted>',
+    ],
+    [
+      'redacted HTML-emphasized authorization',
+      '<strong>Authorization</strong>: Bearer <redacted>',
+    ],
+    [
+      'redacted outer-pipe-free Markdown authorization table',
+      'Field | Value\n--- | ---\nAuthorization | Bearer <redacted>',
+    ],
     [
       'empty redirected CGI authorization',
       'REDIRECT_HTTP_AUTHORIZATION=Bearer',
