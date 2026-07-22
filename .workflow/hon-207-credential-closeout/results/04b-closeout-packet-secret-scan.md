@@ -240,6 +240,45 @@ tests respectively. The full suite completed across 104 files in 129.30 seconds.
 The canonical packet remains 14,398 bytes with SHA-256
 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
 
+Native Codex exact-head review session
+`019f8aac-6f2b-77f1-8828-663976d6a84d` then inspected commit `5bf3bf5` and
+returned three P1 plus one P2 finding. Direct probes showed that unrecognized
+structured suffixes such as `passwordInput` and `wrappedKeyData` remained
+fail-open, separators inside Markdown emphasis were not classified correctly,
+authentication cookies in Markdown lists or tables were missed, and dotless or
+address-literal personal identities were accepted. The reviewer passed all 155
+focused tests and five HON-222 plan tests. Its pnpm verifier attempt failed only
+because its isolated environment could not fetch signed pnpm registry metadata;
+the direct binaries and repository-controlled pnpm gates remained green.
+
+The eighth remediation red run passed 159 of 168 focused tests and reproduced
+the nine representative contract failures. The scanner now:
+
+- treats high-risk words in structured identifiers as secret-bearing without
+  relying on an exhaustive suffix list, while bounded JSON-scalar parsing
+  permits only exact password-policy, access-token-count, credential-proof, and
+  key-digest metadata forms;
+- parses Markdown and HTML field separators on either side of the closing
+  wrapper and keeps raw Authorization matching from reinterpreting a
+  wrapper-owned pair;
+- routes plain, list, emphasized, and table Cookie fields through one
+  authentication-cookie value classifier with exact redaction controls; and
+- rejects dotless and IPv4/IPv6 address-literal identities while preserving
+  explicit public/reserved addresses, version-at-commit source references, and
+  the canonical schema's source-reference regex.
+
+A final self-review caught an Authorization bypass introduced by unconditional
+wrapper stripping: raw values such as `**Bearer` or `_Bearer` could be mistaken
+for an empty scheme. The final implementation skips raw-header duplication only
+when the field itself has the matching Markdown or HTML wrapper, and direct
+positive/negative controls cover raw, CGI, Markdown, and HTML variants.
+
+Focused, compatibility, and full serial suites now pass 181, 322, and 1,552
+tests respectively. The full suite completed across 104 files in 137.11 seconds.
+All eight canonical artifacts pass independently, and the packet remains 14,398
+bytes with SHA-256
+`7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact/postfixed access and refresh tokens, standalone provider tokens,
 authentication cookies, key/secret hashes and material, token signatures and
@@ -257,9 +296,9 @@ remain accepted.
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 155/155 passed                                                                           |
-| Compatibility impact        | 296/296 across 5 files passed                                                            |
-| Full suite                  | 1,526/1,526 across 104 files passed serially in 129.30 seconds                           |
+| Focused generator/scanner   | 181/181 passed                                                                           |
+| Compatibility impact        | 322/322 across 5 files passed                                                            |
+| Full suite                  | 1,552/1,552 across 104 files passed serially in 137.11 seconds                           |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |

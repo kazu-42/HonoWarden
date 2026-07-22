@@ -662,6 +662,11 @@ function hasDisallowedIdentity(content) {
     while (start > 0 && isEmailLocalCharacter(content.charCodeAt(start - 1))) {
       start -= 1
     }
+    if (hasNonAsciiIdentityCandidate(content, atIndex)) return true
+
+    if (start < atIndex && hasAddressLiteralDomain(content, atIndex))
+      return true
+
     let end = atIndex + 1
     while (
       end < content.length &&
@@ -670,25 +675,36 @@ function hasDisallowedIdentity(content) {
       end += 1
     }
 
-    if (hasNonAsciiIdentityCandidate(content, atIndex)) return true
-
     while (end > atIndex + 1 && content[end - 1] === '.') end -= 1
+    if (start === atIndex || end === atIndex + 1) {
+      atIndex = content.indexOf('@', atIndex + 1)
+      continue
+    }
+
     const candidate = content.slice(start, end)
+    if (isVersionSourceReference(candidate)) {
+      atIndex = content.indexOf('@', atIndex + 1)
+      continue
+    }
     const match = /^([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,})$/i.exec(candidate)
     const address = match?.[0].toLowerCase()
     const domain = match?.[2].toLowerCase()
     if (address && domain && !isAllowedIdentity(address, domain)) return true
-    if (
-      !address &&
-      start < atIndex &&
-      candidate.slice(atIndex - start + 1).includes('.')
-    ) {
-      return true
-    }
+    if (!address) return true
 
     atIndex = content.indexOf('@', atIndex + 1)
   }
   return false
+}
+
+function hasAddressLiteralDomain(content, atIndex) {
+  return /^\[(?:IPv6:)?[0-9A-Fa-f:.]+\]/i.test(
+    content.slice(atIndex + 1, atIndex + 82),
+  )
+}
+
+function isVersionSourceReference(value) {
+  return /^(?:[A-Za-z0-9._-]+-)?v[0-9]+(?:\.[0-9]+)+@[0-9a-f]{40}$/i.test(value)
 }
 
 function hasNonAsciiIdentityCandidate(content, atIndex) {
@@ -705,7 +721,7 @@ function hasNonAsciiIdentityCandidate(content, atIndex) {
   const domain = content.slice(atIndex + 1, end)
   if (!local || !domain) return false
   const hasNonAscii = containsNonAscii(local) || containsNonAscii(domain)
-  return hasNonAscii && (domain.includes('.') || containsNonAscii(domain))
+  return hasNonAscii
 }
 
 function isIdentityTokenCharacter(character) {
@@ -761,35 +777,118 @@ function hasSecretLikeJsonField(content) {
     } catch {
       continue
     }
-    if (typeof name === 'string' && isSecretLikeFieldName(name)) return true
+    if (typeof name !== 'string' || !isSecretLikeJsonFieldName(name)) continue
+    const scalar = readBoundedJsonScalar(
+      content,
+      (match.index ?? 0) + match[0].length,
+    )
+    if (scalar !== undefined && isApprovedNonSecretSummary(name, scalar)) {
+      continue
+    }
+    return true
   }
   return false
+}
+
+function isSecretLikeJsonFieldName(value) {
+  return (
+    isSecretLikeFieldName(value) ||
+    fieldWords(value).some((word) => highRiskSecretFieldWords.has(word))
+  )
+}
+
+function readBoundedJsonScalar(content, valueIndex) {
+  while (/\s/u.test(content[valueIndex] ?? '')) valueIndex += 1
+  const candidate = content.slice(valueIndex, valueIndex + 512)
+  const match =
+    /^(?:"(?:\\.|[^"\\])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)/.exec(
+      candidate,
+    )
+  if (!match) return undefined
+  const trailing = content[valueIndex + match[0].length]
+  if (trailing !== undefined && !/[\s,}\]]/u.test(trailing)) return undefined
+  try {
+    const value = JSON.parse(match[0])
+    return value === null ? 'null' : String(value)
+  } catch {
+    return undefined
+  }
 }
 
 function hasAuthorizationCredential(content) {
   const pattern =
     /(?:^|[^A-Za-z0-9_])(?:(?:[A-Za-z][A-Za-z0-9]*_)+)?Authorization["'`]?\s*[:=]\s*([^\r\n]+)/gim
   for (const match of content.matchAll(pattern)) {
+    if (
+      isWrappedMarkdownAuthorization(
+        content,
+        match.index ?? 0,
+        match[0] ?? '',
+        match[1] ?? '',
+      )
+    ) {
+      continue
+    }
     if (!isEmptyAuthorizationCredential(match[1] ?? '')) return true
   }
   return false
 }
 
+function isWrappedMarkdownAuthorization(content, matchIndex, rawMatch, value) {
+  const fieldOffset = rawMatch.search(/authorization/i)
+  if (fieldOffset === -1) return false
+  const fieldIndex = matchIndex + fieldOffset
+  const lineStart = content.lastIndexOf('\n', matchIndex - 1) + 1
+  const prefix = content.slice(lineStart, fieldIndex).trimEnd()
+  const normalizedValue = value.trimStart()
+
+  for (const wrapper of ['**', '__', '~~', '*', '_', '`']) {
+    if (
+      prefix.endsWith(wrapper) &&
+      normalizedValue.startsWith(wrapper) &&
+      isMarkdownFieldPrefix(prefix.slice(0, -wrapper.length).trim())
+    ) {
+      return true
+    }
+  }
+
+  const html = /<(strong|b)>$/i.exec(prefix)
+  return Boolean(
+    html &&
+    normalizedValue.toLowerCase().startsWith(`</${html[1].toLowerCase()}>`) &&
+    isMarkdownFieldPrefix(prefix.slice(0, -(html[0]?.length ?? 0)).trim()),
+  )
+}
+
+function isMarkdownFieldPrefix(value) {
+  return (
+    value === '' ||
+    /^(?:#{1,6}|(?:[-*+>]|[0-9]+[.)])(?:[ \t]+\[[ xX]\])?)$/.test(value)
+  )
+}
+
 function hasAuthenticationCookie(content) {
   const pattern =
-    /(?:^|[\r\n])[ \t]*(Set-Cookie|Cookie)[ \t]*:[ \t]*([^\r\n]*)/gim
+    /(?:^|[\r\n])[ \t]*(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)*(Set-Cookie|Cookie)[ \t]*:[ \t]*([^\r\n]*)/gim
   for (const match of content.matchAll(pattern)) {
-    const pairs = (match[2] ?? '').split(';')
-    const relevantPairs =
-      match[1]?.toLowerCase() === 'set-cookie' ? pairs.slice(0, 1) : pairs
-    for (const pair of relevantPairs) {
-      const separator = pair.indexOf('=')
-      if (separator <= 0) continue
-      const name = normalizeCookieName(pair.slice(0, separator))
-      if (!authenticationCookieNames.has(name)) continue
-      const value = pair.slice(separator + 1).trim()
-      if (value && !isRedactedSecretSentinel(value)) return true
+    if (hasUnsafeAuthenticationCookieValue(match[1] ?? '', match[2] ?? '')) {
+      return true
     }
+  }
+  return false
+}
+
+function hasUnsafeAuthenticationCookieValue(headerName, headerValue) {
+  const pairs = headerValue.split(';')
+  const relevantPairs =
+    headerName.trim().toLowerCase() === 'set-cookie' ? pairs.slice(0, 1) : pairs
+  for (const pair of relevantPairs) {
+    const separator = pair.indexOf('=')
+    if (separator <= 0) continue
+    const name = normalizeCookieName(pair.slice(0, separator))
+    if (!authenticationCookieNames.has(name)) continue
+    const value = pair.slice(separator + 1).trim()
+    if (value && !isRedactedSecretSentinel(value)) return true
   }
   return false
 }
@@ -847,13 +946,13 @@ function hasMarkdownSecretLikePair(content) {
   const patterns = [
     {
       pattern:
-        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?(?:\*\*|__|~~|\*|_|`)[ \t]*([A-Za-z][A-Za-z0-9_. -]{0,80})[ \t]*(?:\*\*|__|~~|\*|_|`)\s*[:=]\s*([^\r\n]{1,256}))/gm,
-      fieldIndex: 1,
-      valueIndex: 2,
+        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?(\*\*|__|~~|\*|_|`)[ \t]*([A-Za-z][A-Za-z0-9_. -]{0,80})[ \t]*(?:\1\s*[:=]|[:=]\s*\1)\s*([^\r\n]{1,256}))/gm,
+      fieldIndex: 2,
+      valueIndex: 3,
     },
     {
       pattern:
-        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?<(strong|b)>[ \t]*([A-Za-z][A-Za-z0-9_. -]{0,80})[ \t]*<\/\1>\s*[:=]\s*([^\r\n]{1,256}))/gim,
+        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?<(strong|b)>[ \t]*([A-Za-z][A-Za-z0-9_. -]{0,80})[ \t]*(?:<\/\1>\s*[:=]|[:=]\s*<\/\1>)\s*([^\r\n]{1,256}))/gim,
       fieldIndex: 2,
       valueIndex: 3,
     },
@@ -932,11 +1031,18 @@ function isUnsafeMarkdownPair(field, value) {
   if (isAuthorizationFieldName(field)) {
     return !isEmptyAuthorizationCredential(value)
   }
+  if (isCookieHeaderFieldName(field)) {
+    return hasUnsafeAuthenticationCookieValue(field, value)
+  }
   return isSecretLikeFieldName(field) && !isSafeSecretLikePair(field, value)
 }
 
 function isAuthorizationFieldName(value) {
   return /^(?:(?:[A-Za-z][A-Za-z0-9]*)_)*Authorization$/i.test(value.trim())
+}
+
+function isCookieHeaderFieldName(value) {
+  return /^(?:Set-Cookie|Cookie)$/i.test(value.trim())
 }
 
 function unwrapMarkdownField(value) {
@@ -974,10 +1080,12 @@ function hasEmbeddedSecretLikePair(content) {
   // bounded value prefix prevents repeated delimiters from causing quadratic
   // scans across the remainder of a maximum-sized line.
   const pairPattern =
-    /(?=(?:^|\[|[?&;,\s>{|=])(["'`]?)([A-Za-z][A-Za-z0-9_. -]{0,80})\1\s*[:=]\s*([^\r\n]{1,256}))/gm
+    /(?=(?:^|\[|[?&;,\s>{|=])(["'`]?)([A-Za-z][A-Za-z0-9_. -]{0,80})\1\s*([:=])\s*([^\r\n]{1,256}))/gm
   for (const match of content.matchAll(pairPattern)) {
     const field = match[2] ?? ''
-    const value = match[3] ?? ''
+    const value = match[4] ?? ''
+    if (match[1] === '"' && match[3] === ':') continue
+    if (isWrappedHtmlPair(content, match.index ?? 0, value)) continue
     if (
       isSecretLikeFieldName(field) &&
       !isSafeSecretLikePair(field, value) &&
@@ -989,11 +1097,23 @@ function hasEmbeddedSecretLikePair(content) {
   return false
 }
 
+function isWrappedHtmlPair(content, matchIndex, value) {
+  const prefix = content.slice(Math.max(0, matchIndex - 16), matchIndex + 1)
+  const tag = /<(strong|b)>$/i.exec(prefix)
+  return Boolean(
+    tag &&
+    value.trimStart().toLowerCase().startsWith(`</${tag[1].toLowerCase()}>`),
+  )
+}
+
 function isSecretLikeFieldName(value) {
   const words = fieldWords(value)
   const normalized = words.join('')
   const last = words.at(-1) ?? ''
   if (
+    (isStructuredFieldIdentifier(value) &&
+      (words.some((word) => highRiskSecretFieldWords.has(word)) ||
+        hasCompactStructuredSecretMarker(normalized))) ||
     hasHighRiskSecretWordSequence(words) ||
     compactSecretFieldPattern.test(normalized) ||
     recoverySecretFieldPattern.test(normalized) ||
@@ -1021,6 +1141,16 @@ function isSecretLikeFieldName(value) {
   return (
     wordSet.has('raw') &&
     ['payload', 'request', 'response', 'body'].some((word) => wordSet.has(word))
+  )
+}
+
+function isStructuredFieldIdentifier(value) {
+  return /^[A-Za-z][A-Za-z0-9_.-]*$/.test(value.trim())
+}
+
+function hasCompactStructuredSecretMarker(value) {
+  return /(?:password|accesstoken|refreshtoken|authtoken|sessiontoken|bearertoken|apikey|wrappedkey|unwrappedkey|clientsecret|authsecret|servicecredential|seedphrase|mnemonic|recoverycode|totpseed|salt)/.test(
+    value,
   )
 }
 
@@ -1060,7 +1190,19 @@ function isApprovedNonSecretSummary(field, value) {
     (normalizedField === 'stalepasswordaccessrefreshprofile' &&
       /^[0-9]+ each before restart; [0-9]+ each after restart$/.test(
         normalizedValue,
-      ))
+      )) ||
+    (normalizedField === 'passwordpolicy' &&
+      /^minimum [0-9]+ characters$/.test(normalizedValue)) ||
+    (normalizedField === 'accesstokencount' &&
+      /^[0-9]+$/.test(normalizedValue)) ||
+    (normalizedField === 'credentialproof' && normalizedValue === 'passed') ||
+    (normalizedField === 'keydigest' &&
+      /^sha256:[0-9a-f]{64}$/.test(normalizedValue)) ||
+    ([
+      'honowardenaccountkeysenabled',
+      'honowardenuserkeyrotationenabled',
+    ].includes(normalizedField) &&
+      /^(?:true|false)(?:`|$)/i.test(value.trim()))
   )
 }
 

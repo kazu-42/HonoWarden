@@ -271,6 +271,22 @@ describe('credential closeout packet', () => {
       'postfixed access token copy',
       'accessTokenCopy=do-not-print-access-token-copy',
     ],
+    [
+      'unrecognized password input suffix',
+      '{"passwordInput":"do-not-print-password-input"}',
+    ],
+    [
+      'unrecognized access token data suffix',
+      '{"accessTokenData":"do-not-print-access-token-data"}',
+    ],
+    [
+      'unrecognized wrapped key data suffix',
+      '{"wrappedKeyData":"do-not-print-wrapped-key-data"}',
+    ],
+    [
+      'unrecognized password qualifier assignment',
+      'passwordForUser=do-not-print-password-for-user',
+    ],
     ['compact key material', 'keymaterial=do-not-print-compact-key-material'],
     ['bracket-wrapped password', '[password=do-not-print-bracket-password]'],
     [
@@ -346,6 +362,14 @@ describe('credential closeout packet', () => {
       'annotated authorization credential',
       'Authorization: Bearer <redacted> do-not-print-trailing-credential',
     ],
+    [
+      'Markdown-like prefix in raw authorization value',
+      'Authorization: **Bearer',
+    ],
+    [
+      'underscore-prefixed CGI authorization value',
+      'HTTP_AUTHORIZATION=_Bearer',
+    ],
     ['status-word password', 'password=disabled'],
     ['unchanged password', 'password=unchanged'],
     ['none password', 'password=none'],
@@ -383,6 +407,22 @@ describe('credential closeout packet', () => {
       'Field | Value\n--- | ---\nAuthorization | Bearer do-not-print-table-authorization',
     ],
     [
+      'separator inside bold Markdown password',
+      '**Password:** do-not-print-inside-bold-password',
+    ],
+    [
+      'separator inside bold Markdown authorization',
+      '**Authorization:** Bearer do-not-print-inside-bold-authorization',
+    ],
+    [
+      'separator inside HTML password',
+      '<strong>Password:</strong> do-not-print-inside-html-password',
+    ],
+    [
+      'separator inside HTML authorization',
+      '<strong>Authorization:</strong> Bearer do-not-print-inside-html-authorization',
+    ],
+    [
       'standalone GitHub personal access token',
       'ghp_0123456789abcdefghijklmnopqrstuvwxyzAB',
     ],
@@ -397,6 +437,14 @@ describe('credential closeout packet', () => {
     [
       'authentication Cookie header',
       'Cookie: theme=dark; sessionid=do-not-print-session; Path=/',
+    ],
+    [
+      'Markdown list authentication Cookie header',
+      '- Cookie: sessionid=do-not-print-list-session',
+    ],
+    [
+      'Markdown table authentication Cookie header',
+      '| Cookie | sessionid=do-not-print-table-session |',
     ],
     [
       'JWT',
@@ -439,6 +487,8 @@ describe('credential closeout packet', () => {
       '-----BEGIN PRIVATE KEY-----\ndo-not-print-private-key\n-----END PRIVATE KEY-----',
     ],
     ['personal identity', 'Contact: person@real-company.dev'],
+    ['dotless-domain personal identity', 'Contact: alice@corp'],
+    ['address-literal personal identity', 'Contact: alice@[192.0.2.1]'],
     ['Unicode local identity', 'Contact: ユーザー@real-company.dev'],
     ['Unicode domain identity', 'Contact: person@例え.テスト'],
     ['Unicode reserved-domain identity', 'Contact: 名@example.test'],
@@ -514,7 +564,7 @@ describe('credential closeout packet', () => {
   })
 
   it('scans maximum-sized adjacent at signs in linear time', () => {
-    const safeContent = 'a@'.repeat(500_000)
+    const safeContent = '@'.repeat(1_000_000)
     const startedAt = performance.now()
 
     expect(Buffer.byteLength(safeContent)).toBeLessThan(1024 * 1024)
@@ -591,10 +641,34 @@ describe('credential closeout packet', () => {
     ['password policy metadata', 'password policy: minimum 16 characters'],
     ['access token count metadata', 'access token count: 0'],
     [
+      'structured password policy metadata',
+      'passwordPolicy: minimum 16 characters',
+    ],
+    ['structured access token count metadata', 'accessTokenCount: 0'],
+    ['structured credential proof metadata', 'credentialProof: passed'],
+    ['structured key digest metadata', `keyDigest: sha256:${'d'.repeat(64)}`],
+    [
+      'approved JSON credential metadata',
+      JSON.stringify({
+        passwordPolicy: 'minimum 16 characters',
+        accessTokenCount: 0,
+        credentialProof: 'passed',
+        keyDigest: `sha256:${'d'.repeat(64)}`,
+      }),
+    ],
+    [
       'non-authentication cookie',
       'Set-Cookie: cookie_consent=accepted; SameSite=Lax',
     ],
     ['redacted authentication cookie', 'Cookie: sessionid=<redacted>'],
+    [
+      'redacted Markdown list authentication cookie',
+      '- Cookie: sessionid=<redacted>',
+    ],
+    [
+      'redacted Markdown table authentication cookie',
+      '| Cookie | sessionid=<redacted> |',
+    ],
     ['redacted provider-token example', 'GitHub token form: ghp_<redacted>'],
     [
       'credential proof marker',
@@ -604,6 +678,10 @@ describe('credential closeout packet', () => {
     ['key digest metadata', `key digest: sha256:${'c'.repeat(64)}`],
     ['redacted password assignment', 'password: <redacted>'],
     ['redacted bold Markdown password', '- ** Password **: <redacted>'],
+    [
+      'redacted separator inside bold Markdown password',
+      '**Password:** <redacted>',
+    ],
     ['redacted access token assignment', 'access_token=[redacted]'],
     ['redacted authorization', 'Authorization: <redacted>'],
     ['empty bearer authorization', 'Authorization: Bearer'],
@@ -620,6 +698,22 @@ describe('credential closeout packet', () => {
     [
       'redacted bold Markdown authorization',
       '**Authorization**: Bearer <redacted>',
+    ],
+    [
+      'redacted separator inside bold Markdown authorization',
+      '**Authorization:** Bearer <redacted>',
+    ],
+    [
+      'redacted lowercase separator inside bold Markdown authorization',
+      '**authorization:** Bearer <redacted>',
+    ],
+    [
+      'redacted separator inside HTML password',
+      '<strong>Password:</strong> <redacted>',
+    ],
+    [
+      'redacted separator inside HTML authorization',
+      '<strong>Authorization:</strong> Bearer <redacted>',
     ],
     [
       'redacted HTML-emphasized authorization',
