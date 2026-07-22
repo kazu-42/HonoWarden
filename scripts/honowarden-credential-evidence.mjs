@@ -433,7 +433,7 @@ function validateSources(value) {
     )
     assertIdentifier(client.id, `${label}.id`)
     if (clients.has(client.id)) {
-      throw new Error(`duplicate client source: ${client.id}`)
+      throw new Error(`${label} duplicates a client source`)
     }
     if (!clientOperationsBySurface.has(client.surface)) {
       throw new Error(`${label}.surface is unsupported`)
@@ -468,15 +468,15 @@ function validateClaim(claim, context) {
   assertExactKeys(claim, required, label, optional)
   assertIdentifier(claim.id, `${label}.id`)
   if (context.claimIds.has(claim.id)) {
-    throw new Error(`duplicate claim id: ${claim.id}`)
+    throw new Error(`${label} has a duplicate claim id`)
   }
   context.claimIds.add(claim.id)
 
   if (!operationSet.has(claim.operation)) {
-    throw new Error(`unknown operation: ${String(claim.operation)}`)
+    throw new Error(`${label} has an unknown operation`)
   }
   if (context.operations.has(claim.operation)) {
-    throw new Error(`duplicate operation: ${claim.operation}`)
+    throw new Error(`${label} has a duplicate operation`)
   }
   context.operations.add(claim.operation)
   assertNonEmptyString(claim.assertion, `${label}.assertion`)
@@ -545,7 +545,7 @@ function validateClaim(claim, context) {
     }
     const key = `${artifact.path}:${artifact.evidenceLevel}`
     if (artifactKeys.has(key)) {
-      throw new Error(`${label} has a duplicate artifact binding: ${key}`)
+      throw new Error(`${label} has a duplicate artifact binding`)
     }
     artifactKeys.add(key)
     artifactLevels.push(artifact.evidenceLevel)
@@ -646,9 +646,7 @@ function validateArtifact(artifact, context) {
     `${context.label}.requiredMarkers`,
   )
   if (!context.trackedPaths.has(artifact.path)) {
-    throw new Error(
-      `${context.label} artifact is not tracked: ${artifact.path}`,
-    )
+    throw new Error(`${context.label} artifact is not tracked`)
   }
   if (artifact.contentSha256 !== credentialArtifactDigests[artifact.path]) {
     throw new Error(`${context.label} artifact digest is not canonical`)
@@ -663,10 +661,11 @@ function validateArtifact(artifact, context) {
   if (!isWithin(context.repoRoot, resolvedArtifact)) {
     throw new Error(`${context.label} artifact resolves outside the repository`)
   }
-  const content = readFileSync(resolvedArtifact, 'utf8')
-  if (sha256Text(content) !== artifact.contentSha256) {
+  const contentBytes = readFileSync(resolvedArtifact)
+  if (sha256Bytes(contentBytes) !== artifact.contentSha256) {
     throw new Error(`${context.label} artifact content digest mismatch`)
   }
+  const content = contentBytes.toString('utf8')
   for (const marker of artifact.requiredMarkers) {
     if (!content.includes(marker)) {
       throw new Error(`${context.label} artifact marker is missing`)
@@ -686,18 +685,14 @@ function validateClientEvidence(entries, clients, claimLabel) {
       throw new Error(`${label} references an unknown client source`)
     }
     if (sourceIds.has(entry.sourceId)) {
-      throw new Error(
-        `${claimLabel} has duplicate client source ${entry.sourceId}`,
-      )
+      throw new Error(`${claimLabel} has a duplicate client source`)
     }
     sourceIds.add(entry.sourceId)
     assertUniqueNonEmptyStrings(entry.operations, `${label}.operations`)
     const allowed = clientOperationsBySurface.get(source.surface)
     for (const operation of entry.operations) {
       if (!allowed.has(operation)) {
-        throw new Error(
-          `${label} operation is unsupported for ${source.surface}`,
-        )
+        throw new Error(`${label} operation is unsupported for its source`)
       }
     }
   }
@@ -780,7 +775,7 @@ function assertExactKeys(value, required, label, optional = []) {
       throw new Error(`${label} is missing ${key}`)
   }
   for (const key of keys) {
-    if (!allowed.has(key)) throw new Error(`${label} has unknown field ${key}`)
+    if (!allowed.has(key)) throw new Error(`${label} has an unknown field`)
   }
 }
 
@@ -846,15 +841,11 @@ function isWithin(root, candidate) {
   )
 }
 
-function errorMessage(error) {
-  return error instanceof Error ? error.message : String(error)
-}
-
 function sha256Json(value) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
-function sha256Text(value) {
+function sha256Bytes(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
@@ -907,10 +898,8 @@ if (isMainModule()) {
     const registry = loadCredentialEvidenceRegistry()
     const report = validateCredentialEvidenceRegistry(registry)
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
-  } catch (error) {
-    process.stderr.write(
-      `credential evidence verification failed: ${errorMessage(error)}\n`,
-    )
+  } catch {
+    process.stderr.write('credential evidence verification failed\n')
     process.exitCode = 1
   }
 }

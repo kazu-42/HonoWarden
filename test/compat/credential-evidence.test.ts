@@ -192,6 +192,20 @@ describe('credential evidence contract', () => {
     )
   })
 
+  it('pins LF checkout bytes for every digest-bound artifact', async () => {
+    const attributes = new Set(
+      (await readFile(join(repoRoot, '.gitattributes'), 'utf8'))
+        .split(/\r?\n/)
+        .filter(Boolean),
+    )
+
+    expect(
+      Object.keys(credentialArtifactDigests).filter(
+        (path) => !attributes.has(`${path} text eol=lf`),
+      ),
+    ).toEqual([])
+  })
+
   it.each([
     [
       'unknown operation',
@@ -491,6 +505,38 @@ describe('credential evidence contract', () => {
     expect((thrown as Error).message).not.toContain(secretMarker)
   })
 
+  it.each([
+    {
+      name: 'unknown operation',
+      secret: 'SUPER-SECRET-OPERATION-DO-NOT-LOG',
+      mutate: (registry: Registry, secret: string) => {
+        requiredClaim(registry, 0).operation = secret
+      },
+      expected: /unknown operation/,
+    },
+    {
+      name: 'unknown object field',
+      secret: 'SUPER-SECRET-FIELD-DO-NOT-LOG',
+      mutate: (registry: Registry, secret: string) => {
+        Object.assign(requiredClaim(registry, 0), { [secret]: true })
+      },
+      expected: /unknown field/,
+    },
+  ])('does not reflect $name values in verifier errors', (fixture) => {
+    const registry = readRegistryFixture()
+    fixture.mutate(registry, fixture.secret)
+
+    let thrown
+    try {
+      validateCredentialEvidenceRegistry(registry, { repoRoot })
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).message).toMatch(fixture.expected)
+    expect((thrown as Error).message).not.toContain(fixture.secret)
+  })
+
   it('derives live-evidence limitations from validated claim levels', () => {
     const localOnly = summarizeCredentialEvidenceLimitations([
       { evidenceLevel: 'local_api' },
@@ -546,6 +592,47 @@ describe('credential evidence contract', () => {
     ])
     expect(stdout).not.toContain('requiredMarkers')
     expect(stdout).not.toContain('artifactContents')
+  })
+
+  it('prints a fixed non-disclosing CLI failure', async () => {
+    mkdirSync(join(repoRoot, 'test/.tmp'), { recursive: true })
+    const isolatedRoot = mkdtempSync(
+      join(repoRoot, 'test/.tmp/credential-evidence-cli-'),
+    )
+    const secret = 'SUPER-SECRET-CLI-OPERATION-DO-NOT-LOG'
+    try {
+      mkdirSync(join(isolatedRoot, 'scripts'), { recursive: true })
+      mkdirSync(join(isolatedRoot, 'compat'), { recursive: true })
+      copyFileSync(
+        join(repoRoot, 'scripts/honowarden-credential-evidence.mjs'),
+        join(isolatedRoot, 'scripts/honowarden-credential-evidence.mjs'),
+      )
+      const registry = readRegistryFixture()
+      requiredClaim(registry, 0).operation = secret
+      writeFileSync(
+        join(isolatedRoot, 'compat/credential-evidence.json'),
+        `${JSON.stringify(registry, null, 2)}\n`,
+      )
+      await execFileAsync('git', ['-C', isolatedRoot, 'init', '--quiet'])
+
+      let rejected: (Error & { stdout?: string; stderr?: string }) | undefined
+      try {
+        await execFileAsync(
+          process.execPath,
+          ['scripts/honowarden-credential-evidence.mjs'],
+          { cwd: isolatedRoot },
+        )
+      } catch (error) {
+        rejected = error as Error & { stdout?: string; stderr?: string }
+      }
+
+      expect(rejected).toBeDefined()
+      expect(rejected?.stdout).toBe('')
+      expect(rejected?.stderr).toBe('credential evidence verification failed\n')
+      expect(rejected?.stderr).not.toContain(secret)
+    } finally {
+      rmSync(isolatedRoot, { recursive: true, force: true })
+    }
   })
 })
 

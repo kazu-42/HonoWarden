@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: third-review remediation source-ready; final exact-head review and publication pending
+Status: fourth-review remediation source-ready; final exact-head review and publication pending
 
 Linear issue: HON-227
 
@@ -33,9 +33,12 @@ approved CLI and extension asset SHA-256 values.
   resolved path remains inside the repository.
 - Every artifact is bound to an independently pinned SHA-256 digest; preserving
   selected markers while changing any other artifact content fails closed.
+- Every digest-bound artifact has an explicit `text eol=lf` checkout contract,
+  and verification hashes the actual file bytes before decoding markers.
 - Unknown or duplicate operations, claim IDs, client sources, artifact
   bindings, fields, limitations, and marker values fail closed.
-- CLI output contains no artifact content or required marker values.
+- Validation errors retain structural coordinates without reflecting rejected
+  registry values, and CLI failure output is one fixed bounded line.
 
 ## TDD Readback
 
@@ -46,16 +49,19 @@ metadata. Review-driven red phases then proved that self-asserted provenance,
 claim-agnostic client operations, preserved-marker content drift, and missing
 marker error disclosure were accepted. A final red phase proved that standard
 `JSON.parse` materialization accepted duplicate object keys, including
-escape-equivalent nested names. The focused suite now passes all 29 positive
-and negative cases, including those exact adversarial mutations.
+escape-equivalent nested names. The fourth review red phase proved that unknown
+operation and object-field values reached verifier errors and CLI stderr, and
+that digest-bound checkout bytes had no cross-platform LF contract. The focused
+suite now passes all 33 positive and negative cases, including those exact
+adversarial mutations.
 
 ## Verification
 
 | Gate                      | Readback                                      |
 | ------------------------- | --------------------------------------------- |
-| Evidence contract         | 29/29 tests passed                            |
-| Compatibility impact      | 134/134 tests across 4 files passed           |
-| Full suite                | 1,364/1,364 tests across 103 files passed     |
+| Evidence contract         | 33/33 tests passed                            |
+| Compatibility impact      | 138/138 tests across 4 files passed           |
+| Full suite                | 1,368/1,368 tests across 103 files passed     |
 | HON-222 plan unit         | 4/4 Node tests passed                         |
 | Linear repo/live equality | HON-222 plus 3 children, 2 relations, 0 error |
 | TypeScript                | `tsc --noEmit` passed                         |
@@ -75,7 +81,7 @@ Artifact SHA-256 values at source-ready state:
 - schema:
   `1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534`
 - verifier:
-  `7deac66a15795903283b3e862218f7cb3d0e1eee7d0818296d420d5a02710d64`
+  `31be4e60cf2cab26fc3d735e85a641efd0ef5602607a03d0e72d0bb8c66ec013`
 
 The generic dynamic-workflow completion verifier still reports only the
 expected missing `final-report.md`. The parent workflow remains intentionally
@@ -87,6 +93,8 @@ here would falsely mark the larger workflow complete.
 - HON-222 and HON-227: In Progress and non-archived.
 - HON-228 and HON-229: Todo and non-archived.
 - HON-227 blocks HON-228; HON-228 blocks HON-229.
+- Team-wide WIP was normalized from 29 stale `In Progress` entries to exactly
+  HON-222 and HON-227; the other 27 entries were moved reversibly to Todo.
 - Managed parent checkpoint:
   `0aead33f-61bd-4223-afd3-cb1c4a382008`.
 - Repo-rendered descriptions and checkpoint matched live Linear byte-for-byte.
@@ -141,6 +149,28 @@ become equal only after JSON escape decoding. Loading now uses the repository's
 existing `jsonc-parser` dependency to build a strict JSON syntax tree before
 materialization, compares decoded keys independently within every object, and
 emits a fixed error that does not disclose the key. Both mutations now fail.
+
+## Fourth Standard Review Remediation
+
+Native Codex standard review inspected exact head
+`6da6d3a7eabf0e2cbf82e7200fa528c458009a5c` in session
+`019f884f-1983-7b40-b1fa-07a2294f0971` and returned one P1 plus one P2
+finding:
+
+- unknown registry field names, operations, duplicate identifiers, and related
+  rejected values could be reflected through verifier errors into CLI stderr;
+- artifact digests hashed decoded checkout text without pinning line endings,
+  so a standard CRLF checkout could reject canonical repository content.
+
+Both findings were reproduced before remediation. Internal errors now expose
+only fixed diagnostics and structural array coordinates, while the CLI emits a
+single fixed failure line regardless of the underlying exception. The verifier
+hashes actual file bytes, and `.gitattributes` pins `text eol=lf` for every one
+of the eight independently digest-bound artifacts. Regressions cover unknown
+operations, unknown object fields, end-to-end CLI stderr non-disclosure, and
+complete LF-attribute coverage. Git `check-attr` and `ls-files --eol` confirm
+`eol=lf`, index LF, and worktree LF for all eight paths.
+
 Final exact-head standard and five-axis review remain pending.
 
 The review process also reported unrelated Figma/MCP authentication and local
