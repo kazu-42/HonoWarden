@@ -5,6 +5,8 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { parseTree } from 'jsonc-parser'
+
 const scriptPath = fileURLToPath(import.meta.url)
 const defaultRepoRoot = resolve(dirname(scriptPath), '..')
 const defaultRegistryPath = resolve(
@@ -248,17 +250,62 @@ export function loadCredentialEvidenceRegistry({
   registryPath = resolve(repoRoot, 'compat/credential-evidence.json'),
   trackedPaths,
 } = {}) {
-  let registry
-  try {
-    registry = JSON.parse(readCredentialEvidenceRegistryText(registryPath))
-  } catch (error) {
-    throw new Error(
-      `credential evidence registry is not valid JSON: ${errorMessage(error)}`,
-      { cause: error },
-    )
-  }
+  const registry = parseCredentialEvidenceRegistry(
+    readCredentialEvidenceRegistryText(registryPath),
+  )
   validateCredentialEvidenceRegistry(registry, { repoRoot, trackedPaths })
   return registry
+}
+
+function parseCredentialEvidenceRegistry(text) {
+  const errors = []
+  const tree = parseTree(text, errors, {
+    allowEmptyContent: false,
+    allowTrailingComma: false,
+    disallowComments: true,
+  })
+  if (!tree || errors.length > 0) {
+    throw new Error('credential evidence registry is not valid JSON')
+  }
+  assertNoDuplicateJsonObjectKeys(tree)
+
+  try {
+    return JSON.parse(text)
+  } catch (error) {
+    throw new Error('credential evidence registry is not valid JSON', {
+      cause: error,
+    })
+  }
+}
+
+function assertNoDuplicateJsonObjectKeys(node) {
+  if (node.type === 'array') {
+    for (const child of node.children ?? []) {
+      assertNoDuplicateJsonObjectKeys(child)
+    }
+    return
+  }
+  if (node.type !== 'object') return
+
+  const keys = new Set()
+  for (const property of node.children ?? []) {
+    const [keyNode, valueNode] = property.children ?? []
+    if (
+      property.type !== 'property' ||
+      keyNode?.type !== 'string' ||
+      typeof keyNode.value !== 'string' ||
+      valueNode === undefined
+    ) {
+      throw new Error('credential evidence registry is not valid JSON')
+    }
+    if (keys.has(keyNode.value)) {
+      throw new Error(
+        'credential evidence registry contains a duplicate object key',
+      )
+    }
+    keys.add(keyNode.value)
+    assertNoDuplicateJsonObjectKeys(valueNode)
+  }
 }
 
 export function validateCredentialEvidenceRegistry(

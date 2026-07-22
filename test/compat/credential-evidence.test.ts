@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -396,6 +397,45 @@ describe('credential evidence contract', () => {
     expect(() =>
       validateCredentialEvidenceRegistry(registry, { repoRoot }),
     ).toThrow(expected)
+  })
+
+  it.each([
+    [
+      'top-level duplicate keys',
+      (text: string) =>
+        text.replace(
+          '  "schemaVersion": 1,',
+          '  "schemaVersion": 999,\n  "schemaVersion": 1,',
+        ),
+    ],
+    [
+      'escaped-equivalent nested duplicate keys',
+      (text: string) =>
+        text.replace(
+          '      "evidenceLevel": "local_api",',
+          '      "evidence\\u004cevel": "production",\n      "evidenceLevel": "local_api",',
+        ),
+    ],
+  ])('rejects %s before JSON materialization', (_name, mutate) => {
+    const isolatedRoot = mkdtempSync(join(tmpdir(), 'credential-registry-'))
+    const isolatedRegistry = join(isolatedRoot, 'registry.json')
+    try {
+      writeFileSync(
+        isolatedRegistry,
+        mutate(
+          credentialEvidence.readCredentialEvidenceRegistryText(registryPath),
+        ),
+      )
+
+      expect(() =>
+        loadCredentialEvidenceRegistry({
+          repoRoot,
+          registryPath: isolatedRegistry,
+        }),
+      ).toThrow(/duplicate object key/)
+    } finally {
+      rmSync(isolatedRoot, { recursive: true, force: true })
+    }
   })
 
   it('rejects tracked artifact content drift even when all markers remain', () => {

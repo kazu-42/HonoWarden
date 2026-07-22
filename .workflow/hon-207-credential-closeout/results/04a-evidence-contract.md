@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: second-review remediation source-ready; final exact-head review and publication pending
+Status: third-review remediation source-ready; final exact-head review and publication pending
 
 Linear issue: HON-227
 
@@ -44,16 +44,18 @@ second red phase proved that the pre-hardening contract accepted dot-component
 schema paths, impossible calendar timestamps, and unbound live-environment
 metadata. Review-driven red phases then proved that self-asserted provenance,
 claim-agnostic client operations, preserved-marker content drift, and missing
-marker error disclosure were accepted. The focused suite now passes all 27
-positive and negative cases, including those exact adversarial mutations.
+marker error disclosure were accepted. A final red phase proved that standard
+`JSON.parse` materialization accepted duplicate object keys, including
+escape-equivalent nested names. The focused suite now passes all 29 positive
+and negative cases, including those exact adversarial mutations.
 
 ## Verification
 
 | Gate                      | Readback                                      |
 | ------------------------- | --------------------------------------------- |
-| Evidence contract         | 27/27 tests passed                            |
-| Compatibility impact      | 132/132 tests across 4 files passed           |
-| Full suite                | 1,362/1,362 tests across 103 files passed     |
+| Evidence contract         | 29/29 tests passed                            |
+| Compatibility impact      | 134/134 tests across 4 files passed           |
+| Full suite                | 1,364/1,364 tests across 103 files passed     |
 | HON-222 plan unit         | 4/4 Node tests passed                         |
 | Linear repo/live equality | HON-222 plus 3 children, 2 relations, 0 error |
 | TypeScript                | `tsc --noEmit` passed                         |
@@ -73,7 +75,7 @@ Artifact SHA-256 values at source-ready state:
 - schema:
   `1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534`
 - verifier:
-  `dfe230c714ab5ef49c3b17999b26733d81506c7054e401c67a06cfea7dc394fd`
+  `7deac66a15795903283b3e862218f7cb3d0e1eee7d0818296d420d5a02710d64`
 
 The generic dynamic-workflow completion verifier still reports only the
 expected missing `final-report.md`. The parent workflow remains intentionally
@@ -125,6 +127,20 @@ Artifacts now carry schema-required content digests checked against an
 independent path-to-digest catalog and the actual tracked file bytes. Missing
 marker errors now identify only the artifact binding, never the marker value.
 Focused regressions prove both the content-drift rejection and non-disclosure.
+
+## Third Standard Review Remediation
+
+Native Codex standard review inspected exact head
+`580cfa9a40cd9e183c29d28314e7a090fe689240` in session
+`019f8843-fd62-7883-9559-7bb4915b113e` and returned one P2 finding: duplicate
+JSON object keys were accepted because `JSON.parse` silently kept the last
+value.
+
+The finding was reproduced for both a top-level duplicate and nested keys that
+become equal only after JSON escape decoding. Loading now uses the repository's
+existing `jsonc-parser` dependency to build a strict JSON syntax tree before
+materialization, compares decoded keys independently within every object, and
+emits a fixed error that does not disclose the key. Both mutations now fail.
 Final exact-head standard and five-axis review remain pending.
 
 The review process also reported unrelated Figma/MCP authentication and local
