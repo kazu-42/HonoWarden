@@ -624,6 +624,7 @@ function hasNonAsciiIdentityCandidate(content, atIndex) {
 function isIdentityTokenCharacter(character) {
   return (
     character !== undefined &&
+    character !== '@' &&
     !/\s/u.test(character) &&
     !identityTokenBoundaryCharacters.has(character)
   )

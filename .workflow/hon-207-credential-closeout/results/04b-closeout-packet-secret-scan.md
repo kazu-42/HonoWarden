@@ -173,6 +173,21 @@ boundary. Focused, compatibility, and full serial suites now pass 126, 267, and
 1,497 tests respectively. The canonical packet remains 14,398 bytes with SHA-256
 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
 
+Native Codex exact-head review session
+`019f8a7b-ad56-7923-b57c-498015d9b787` then inspected commit `70e9cc1` and
+returned one P2 finding. The Unicode identity helper treated every adjacent `@`
+as part of the same token and rescanned both sides for each candidate. A direct
+probe grew from about 85 ms at 2,000 repetitions to 5.52 seconds at 16,000,
+demonstrating quadratic behavior within an allowed input.
+
+The fifth remediation red run passed 126 of 127 focused tests and took about
+1.32 seconds for 8,192 repetitions against a 250 ms ceiling. `@` is now an
+identity-token boundary, so candidate scans cannot cross into adjacent
+candidates. The regression uses a 1,000,000-byte input and completes below the
+same ceiling; a direct post-fix probe measured about 38.5 ms. Focused,
+compatibility, and full serial suites now pass 127, 268, and 1,498 tests
+respectively without changing the canonical packet.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact access and refresh tokens, key/secret hashes and material, token
 signatures and bearer fields, wrapped and unwrapped keys, encrypted item bodies,
@@ -188,9 +203,9 @@ package scripts, and reserved example identities remain accepted.
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 126/126 passed                                                                           |
-| Compatibility impact        | 267/267 across 5 files passed                                                            |
-| Full suite                  | 1,497/1,497 across 104 files passed serially                                             |
+| Focused generator/scanner   | 127/127 passed                                                                           |
+| Compatibility impact        | 268/268 across 5 files passed                                                            |
+| Full suite                  | 1,498/1,498 across 104 files passed serially                                             |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |

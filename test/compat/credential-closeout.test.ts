@@ -456,6 +456,15 @@ describe('credential closeout packet', () => {
     expect(performance.now() - startedAt).toBeLessThan(250)
   })
 
+  it('scans maximum-sized adjacent at signs in linear time', () => {
+    const safeContent = 'a@'.repeat(500_000)
+    const startedAt = performance.now()
+
+    expect(Buffer.byteLength(safeContent)).toBeLessThan(1024 * 1024)
+    expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
   it('classifies a maximum-sized secret field in linear time', () => {
     const unsafeContent = `{"${Array.from(
       { length: 100_000 },
