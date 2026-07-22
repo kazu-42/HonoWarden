@@ -287,6 +287,22 @@ describe('credential closeout packet', () => {
       'unrecognized password qualifier assignment',
       'passwordForUser=do-not-print-password-for-user',
     ],
+    [
+      'parenthesized raw password qualifier',
+      'Password (raw): do-not-print-parenthesized-password',
+    ],
+    [
+      'parenthesized environment access token qualifier',
+      'Access token (production): do-not-print-production-access-token',
+    ],
+    [
+      'slash-delimited password qualifier',
+      'Password/raw: do-not-print-slash-password',
+    ],
+    [
+      'bracketed API key qualifier',
+      'API key [production]: do-not-print-production-api-key',
+    ],
     ['compact key material', 'keymaterial=do-not-print-compact-key-material'],
     ['bracket-wrapped password', '[password=do-not-print-bracket-password]'],
     [
@@ -447,6 +463,22 @@ describe('credential closeout packet', () => {
       '| Cookie | sessionid=do-not-print-table-session |',
     ],
     [
+      'JSON authentication Cookie header',
+      '{"Cookie":"sessionid=do-not-print-json-session"}',
+    ],
+    [
+      'JSON authentication Set-Cookie header',
+      '{"Set-Cookie":"connect.sid=do-not-print-json-session; HttpOnly"}',
+    ],
+    [
+      'embedded authentication Cookie header',
+      'Observed Cookie: sessionid=do-not-print-embedded-session',
+    ],
+    [
+      'qualified embedded authentication Cookie header',
+      'Observed headers.Cookie: sessionid=do-not-print-qualified-session',
+    ],
+    [
       'JWT',
       'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkb250LXByaW50In0.c2lnbmF0dXJlLXZhbHVl',
     ],
@@ -487,6 +519,35 @@ describe('credential closeout packet', () => {
       '-----BEGIN PRIVATE KEY-----\ndo-not-print-private-key\n-----END PRIVATE KEY-----',
     ],
     ['personal identity', 'Contact: person@real-company.dev'],
+    [
+      'JSON-escaped personal identity',
+      '{"email":"person\\u0040real-company.dev"}',
+    ],
+    [
+      'HTML decimal-entity personal identity',
+      'Contact: person&#64;real-company.dev',
+    ],
+    [
+      'HTML hexadecimal-entity personal identity',
+      'Contact: person&#x40;real-company.dev',
+    ],
+    [
+      'HTML named-entity personal identity',
+      'Contact: person&commat;real-company.dev',
+    ],
+    ['percent-encoded personal identity', 'Contact: person%40real-company.dev'],
+    [
+      'Markdown-escaped personal identity',
+      String.raw`Contact: person\@real-company.dev`,
+    ],
+    [
+      'quoted local-part personal identity',
+      'Contact: "person"@real-company.dev',
+    ],
+    [
+      'commented local-part personal identity',
+      'Contact: person(comment)@real-company.dev',
+    ],
     ['dotless-domain personal identity', 'Contact: alice@corp'],
     ['address-literal personal identity', 'Contact: alice@[192.0.2.1]'],
     ['Unicode local identity', 'Contact: ユーザー@real-company.dev'],
@@ -626,6 +687,20 @@ describe('credential closeout packet', () => {
     ['Markdown empty secret count', '| Real secrets | none |'],
     ['reserved identity', 'Contact: operator@example.test'],
     [
+      'JSON-escaped reserved identity',
+      '{"contact":"operator\\u0040example.test"}',
+    ],
+    ['HTML-encoded reserved identity', 'Contact: operator&#64;example.test'],
+    [
+      'percent-encoded allowed public identity',
+      'Contact: security%40honowarden.com',
+    ],
+    ['quoted reserved identity', 'Contact: "operator"@example.test'],
+    [
+      'commented reserved identity',
+      'Contact: operator(example fixture)@example.test',
+    ],
+    [
       'allowed public identities',
       'Contacts: security@honowarden.com, support@honowarden.com.',
     ],
@@ -662,6 +737,14 @@ describe('credential closeout packet', () => {
     ],
     ['redacted authentication cookie', 'Cookie: sessionid=<redacted>'],
     [
+      'redacted JSON authentication cookie',
+      '{"Cookie":"sessionid=<redacted>"}',
+    ],
+    [
+      'JSON non-authentication cookie',
+      '{"Set-Cookie":"cookie_consent=accepted; SameSite=Lax"}',
+    ],
+    [
       'redacted Markdown list authentication cookie',
       '- Cookie: sessionid=<redacted>',
     ],
@@ -677,12 +760,20 @@ describe('credential closeout packet', () => {
     ['colon-delimited package script', 'pnpm account:keys:lifecycle'],
     ['key digest metadata', `key digest: sha256:${'c'.repeat(64)}`],
     ['redacted password assignment', 'password: <redacted>'],
+    [
+      'redacted parenthesized password assignment',
+      'Password (raw): <redacted>',
+    ],
     ['redacted bold Markdown password', '- ** Password **: <redacted>'],
     [
       'redacted separator inside bold Markdown password',
       '**Password:** <redacted>',
     ],
     ['redacted access token assignment', 'access_token=[redacted]'],
+    [
+      'redacted bracketed access token assignment',
+      'Access token [production]: [redacted]',
+    ],
     ['redacted authorization', 'Authorization: <redacted>'],
     ['empty bearer authorization', 'Authorization: Bearer'],
     ['redacted bearer authorization', 'Authorization: Bearer <redacted>'],

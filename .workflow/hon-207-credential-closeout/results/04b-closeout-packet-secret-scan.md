@@ -279,26 +279,64 @@ All eight canonical artifacts pass independently, and the packet remains 14,398
 bytes with SHA-256
 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
 
+Native Codex exact-head review session
+`019f8ac1-9f8f-7ff2-a542-33c980c7d3ce` then inspected commit `11b2f82` and
+returned two P1 plus one P2 findings. Direct probes showed that parenthesized
+or bracketed qualifiers could hide otherwise secret-like labels, serialized
+JSON or embedded prose could hide authentication Cookie headers, and
+JSON-escaped or RFC quoted local-part identities bypassed the literal atom
+scanner. The reviewer independently passed the focused suite, HON-222 plan
+tests, typecheck, ESLint, Prettier, canonical verifier, and diff check. Its two
+pnpm-shim attempts failed only because the isolated review environment could
+not fetch signed registry metadata; direct repository binaries passed.
+
+The ninth remediation red run passed 185 of 195 focused tests and reproduced
+all ten representative fail-open forms, including both Cookie header variants
+and a commented RFC identity. The scanner now:
+
+- removes bounded parenthesized, bracketed, and slash qualifiers before
+  classifying a secret-like field while retaining the original value and exact
+  redaction checks;
+- routes JSON scalar and embedded prose Cookie fields through the same
+  authentication-cookie classifier used by plain, list, and table headers;
+- decodes bounded JSON string literals before identity classification and
+  recognizes quoted or commented local parts without changing the explicit
+  public/reserved identity allowlist; and
+- normalizes HTML numeric/named entities, percent encoding, and Markdown
+  escaping for the identity separator after a self-review reproduced those
+  equivalent representations.
+
+Explicit negative controls retain redacted qualified secrets, redacted or
+non-authentication JSON cookies, encoded public/reserved identities,
+version-at-commit source refs, and the canonical source-reference schema regex.
+Focused, compatibility, and full serial suites now pass 206, 347, and 1,577
+tests respectively. The full suite completed across 104 files in 145.40 seconds.
+All eight canonical artifacts pass independently, and the packet remains 14,398
+bytes with SHA-256
+`7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact/postfixed access and refresh tokens, standalone provider tokens,
-authentication cookies, key/secret hashes and material, token signatures and
-bearer fields, wrapped and unwrapped keys, encrypted item bodies, identity
-payloads, provider payloads, profiles, secret-like schema fields, Authorization
-credentials across headers and CGI variables, bracket-wrapped and
+authentication cookies across plain, Markdown, JSON, and embedded header
+representations, key/secret hashes and material, token signatures and bearer
+fields, wrapped and unwrapped keys, encrypted item bodies, identity payloads,
+provider payloads, profiles, secret-like schema fields, Authorization
+credentials across headers and CGI variables, qualified/bracket-wrapped and
 Markdown-formatted assignments, JWTs, EncString types 0-7, private-key blocks,
-and ASCII or Unicode personal identities. Approved digests, versions, counts,
-enums, source refs, repository paths, limitation text, exact non-secret count
-summaries, exact redactions, non-authentication cookies, malformed EncString
-shapes, verification markers, package scripts, and reserved example identities
-remain accepted.
+and literal, Unicode, quoted, commented, JSON-escaped, HTML-encoded,
+percent-encoded, or Markdown-escaped personal identities. Approved digests,
+versions, counts, enums, source refs, repository paths, limitation text, exact
+non-secret count summaries, exact redactions, non-authentication cookies,
+malformed EncString shapes, verification markers, package scripts, and public
+or reserved example identities remain accepted.
 
 ## Current Verification
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 181/181 passed                                                                           |
-| Compatibility impact        | 322/322 across 5 files passed                                                            |
-| Full suite                  | 1,552/1,552 across 104 files passed serially in 137.11 seconds                           |
+| Focused generator/scanner   | 206/206 passed                                                                           |
+| Compatibility impact        | 347/347 across 5 files passed                                                            |
+| Full suite                  | 1,577/1,577 across 104 files passed serially in 145.40 seconds                           |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |

@@ -618,6 +618,8 @@ function unsafeCredentialCloseoutContent(content) {
     return true
   }
   if (hasUrlUserInfo(content)) return true
+  if (hasDisallowedJsonStringIdentity(content)) return true
+  if (hasDisallowedEncodedIdentity(content)) return true
   return hasDisallowedIdentity(content)
 }
 
@@ -655,7 +657,32 @@ function isUrlAuthorityCharacter(character) {
   )
 }
 
+function hasDisallowedJsonStringIdentity(content) {
+  for (const match of content.matchAll(/"(?:\\.|[^"\\])*"/g)) {
+    if (!(match[0] ?? '').includes('\\')) continue
+    try {
+      const decoded = JSON.parse(match[0] ?? '')
+      if (typeof decoded === 'string' && hasDisallowedIdentity(decoded)) {
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+function hasDisallowedEncodedIdentity(content) {
+  const decoded = content.replace(
+    /\\u0*040|\\x40|&#0*64;|&#x0*40;|&commat;|%40|\\@/gi,
+    '@',
+  )
+  return decoded !== content && hasDisallowedIdentity(decoded)
+}
+
 function hasDisallowedIdentity(content) {
+  if (hasDisallowedDecoratedIdentity(content)) return true
+
   let atIndex = content.indexOf('@')
   while (atIndex !== -1) {
     let start = atIndex
@@ -695,6 +722,48 @@ function hasDisallowedIdentity(content) {
     atIndex = content.indexOf('@', atIndex + 1)
   }
   return false
+}
+
+function hasDisallowedDecoratedIdentity(content) {
+  for (const match of content.matchAll(/("(?:\\.|[^"\\\r\n]){1,128}")@/g)) {
+    let local
+    try {
+      local = JSON.parse(match[1] ?? '')
+    } catch {
+      return true
+    }
+    const atIndex = (match.index ?? 0) + (match[0]?.length ?? 1) - 1
+    if (isDisallowedDecoratedAddress(content, atIndex, local)) return true
+  }
+
+  const commentedLocalPattern =
+    /([A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64})\((?:\\.|[^()\r\n]){1,128}\)@/g
+  for (const match of content.matchAll(commentedLocalPattern)) {
+    const atIndex = (match.index ?? 0) + (match[0]?.length ?? 1) - 1
+    if (isDisallowedDecoratedAddress(content, atIndex, match[1] ?? '')) {
+      return true
+    }
+  }
+  return false
+}
+
+function isDisallowedDecoratedAddress(content, atIndex, local) {
+  if (!local) return false
+  if (hasAddressLiteralDomain(content, atIndex)) return true
+
+  let end = atIndex + 1
+  while (end < content.length && isIdentityTokenCharacter(content[end])) {
+    end += 1
+  }
+  while (end > atIndex + 1 && content[end - 1] === '.') end -= 1
+  const domain = content.slice(atIndex + 1, end)
+  if (!domain) return false
+  if (containsNonAscii(domain)) return true
+  if (!/^[A-Za-z0-9.-]+$/.test(domain)) return true
+
+  const normalizedDomain = domain.toLowerCase()
+  const normalizedAddress = `${local}@${normalizedDomain}`.toLowerCase()
+  return !isAllowedIdentity(normalizedAddress, normalizedDomain)
 }
 
 function hasAddressLiteralDomain(content, atIndex) {
@@ -777,11 +846,23 @@ function hasSecretLikeJsonField(content) {
     } catch {
       continue
     }
-    if (typeof name !== 'string' || !isSecretLikeJsonFieldName(name)) continue
+    if (typeof name !== 'string') continue
+    const secretLike = isSecretLikeJsonFieldName(name)
+    const cookieHeader = isCookieHeaderFieldName(name)
+    if (!secretLike && !cookieHeader) continue
     const scalar = readBoundedJsonScalar(
       content,
       (match.index ?? 0) + match[0].length,
     )
+    if (cookieHeader) {
+      if (
+        scalar === undefined ||
+        hasUnsafeAuthenticationCookieValue(name, scalar)
+      ) {
+        return true
+      }
+      continue
+    }
     if (scalar !== undefined && isApprovedNonSecretSummary(name, scalar)) {
       continue
     }
@@ -946,13 +1027,13 @@ function hasMarkdownSecretLikePair(content) {
   const patterns = [
     {
       pattern:
-        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?(\*\*|__|~~|\*|_|`)[ \t]*([A-Za-z][A-Za-z0-9_. -]{0,80})[ \t]*(?:\1\s*[:=]|[:=]\s*\1)\s*([^\r\n]{1,256}))/gm,
+        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?(\*\*|__|~~|\*|_|`)[ \t]*([A-Za-z][A-Za-z0-9_. ()[\]/-]{0,80})[ \t]*(?:\1\s*[:=]|[:=]\s*\1)\s*([^\r\n]{1,256}))/gm,
       fieldIndex: 2,
       valueIndex: 3,
     },
     {
       pattern:
-        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?<(strong|b)>[ \t]*([A-Za-z][A-Za-z0-9_. -]{0,80})[ \t]*(?:<\/\1>\s*[:=]|[:=]\s*<\/\1>)\s*([^\r\n]{1,256}))/gim,
+        /(?=(?:^|[|;,>\s])(?:#{1,6}[ \t]+)?(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)?<(strong|b)>[ \t]*([A-Za-z][A-Za-z0-9_. ()[\]/-]{0,80})[ \t]*(?:<\/\1>\s*[:=]|[:=]\s*<\/\1>)\s*([^\r\n]{1,256}))/gim,
       fieldIndex: 2,
       valueIndex: 3,
     },
@@ -1042,7 +1123,7 @@ function isAuthorizationFieldName(value) {
 }
 
 function isCookieHeaderFieldName(value) {
-  return /^(?:Set-Cookie|Cookie)$/i.test(value.trim())
+  return fieldWords(value).at(-1) === 'cookie'
 }
 
 function unwrapMarkdownField(value) {
@@ -1063,7 +1144,7 @@ function unwrapMarkdownField(value) {
 
 function hasSecretLikeAssignment(content) {
   const pattern =
-    /^[ \t]*(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)*(?:\[[ xX]\][ \t]+)?(?:\$[ \t]+)?(?:export[ \t]+)?`?([A-Za-z][A-Za-z0-9_. -]{0,80})`?\s*[:=]\s*(\S.*)$/gm
+    /^[ \t]*(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)*(?:\[[ xX]\][ \t]+)?(?:\$[ \t]+)?(?:export[ \t]+)?`?([A-Za-z][A-Za-z0-9_. ()[\]/-]{0,80})`?\s*[:=]\s*(\S.*)$/gm
   for (const match of content.matchAll(pattern)) {
     if (
       isSecretLikeFieldName(match[1] ?? '') &&
@@ -1080,16 +1161,24 @@ function hasEmbeddedSecretLikePair(content) {
   // bounded value prefix prevents repeated delimiters from causing quadratic
   // scans across the remainder of a maximum-sized line.
   const pairPattern =
-    /(?=(?:^|\[|[?&;,\s>{|=])(["'`]?)([A-Za-z][A-Za-z0-9_. -]{0,80})\1\s*([:=])\s*([^\r\n]{1,256}))/gm
+    /(?=(?:^|\[|[?&;,\s>{|=])(["'`]?)([A-Za-z][A-Za-z0-9_. ()[\]/-]{0,80})\1\s*([:=])\s*([^\r\n]{1,256}))/gm
   for (const match of content.matchAll(pairPattern)) {
     const field = match[2] ?? ''
     const value = match[4] ?? ''
     if (match[1] === '"' && match[3] === ':') continue
     if (isWrappedHtmlPair(content, match.index ?? 0, value)) continue
+    const secretLike = isSecretLikeFieldName(field)
     if (
-      isSecretLikeFieldName(field) &&
-      !isSafeSecretLikePair(field, value) &&
-      !isApprovedNestedNonSecretSummary(content, match.index ?? 0, field, value)
+      isUnsafeMarkdownPair(field, value) &&
+      !(
+        secretLike &&
+        isApprovedNestedNonSecretSummary(
+          content,
+          match.index ?? 0,
+          field,
+          value,
+        )
+      )
     ) {
       return true
     }
@@ -1107,11 +1196,12 @@ function isWrappedHtmlPair(content, matchIndex, value) {
 }
 
 function isSecretLikeFieldName(value) {
-  const words = fieldWords(value)
+  const unqualifiedValue = removeFieldQualifiers(value)
+  const words = fieldWords(unqualifiedValue)
   const normalized = words.join('')
   const last = words.at(-1) ?? ''
   if (
-    (isStructuredFieldIdentifier(value) &&
+    (isStructuredFieldIdentifier(unqualifiedValue) &&
       (words.some((word) => highRiskSecretFieldWords.has(word)) ||
         hasCompactStructuredSecretMarker(normalized))) ||
     hasHighRiskSecretWordSequence(words) ||
@@ -1142,6 +1232,19 @@ function isSecretLikeFieldName(value) {
     wordSet.has('raw') &&
     ['payload', 'request', 'response', 'body'].some((word) => wordSet.has(word))
   )
+}
+
+function removeFieldQualifiers(value) {
+  let normalized = value.trim()
+  for (let index = 0; index < 4; index += 1) {
+    const previous = normalized
+    normalized = normalized
+      .replace(/[ \t]*(?:\([^()\r\n]{1,40}\)|\[[^[\]\r\n]{1,40}\])[ \t]*$/, '')
+      .replace(/[ \t]*\/[ \t]*[A-Za-z0-9_.-]{1,40}[ \t]*$/, '')
+      .trim()
+    if (normalized === previous) break
+  }
+  return normalized
 }
 
 function isStructuredFieldIdentifier(value) {
