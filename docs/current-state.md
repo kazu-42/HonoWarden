@@ -1361,6 +1361,9 @@ Implemented:
 - disabled POST and Hono-derived HEAD checks for all four writers before auth,
   optional global quota, or D1 access, with a canonical D1/R2 identity snapshot
   compared after every request
+- complete local R2 bucket enumeration through a loopback-only helper using
+  every `R2Bucket.list()` page, followed by exact inventory-to-backup key-set
+  equality and per-object SHA-256 checks without reading Miniflare internals
 - re-enablement of the same restored persistence path without reset, followed
   by two concurrent password-generation requests that require exactly one
   commit and one rejected loser

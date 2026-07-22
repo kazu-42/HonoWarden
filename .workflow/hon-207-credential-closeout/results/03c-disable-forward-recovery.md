@@ -27,9 +27,13 @@ Linear issue: HON-226
 - Extended the official fixture with one forward password generation and kept
   all plaintext, tokens, keys, profiles, and ciphertext in process or ignored
   private state.
-- Added a same-target proof that snapshots canonical D1 and sorted R2 identity
-  after restore, compares it after every disabled writer, then re-enables the
-  same persistence path without reset.
+- Added a same-target proof that snapshots canonical D1 and complete sorted R2
+  identity after restore, compares it after every disabled writer, then
+  re-enables the same persistence path without reset.
+- Added a local-only, ephemeral-token inventory Worker that follows every
+  `R2Bucket.list()` page and requires exact equality between the complete key
+  set and the per-object SHA-256 backup manifest. It does not read Miniflare's
+  internal persistence schema.
 - Added exact lifecycle-to-backup digest binding verification. Public readback
   distinguishes the source `lifecycleManifestSha256` from the derived
   `generationBindingSha256`; the compatibility alias remains available.
@@ -85,11 +89,50 @@ five prior profiles, the final integrated rerun at
 - command exit 0, run root independently confirmed absent, and no residual
   Wrangler, workerd, or forward-recovery process
 
+## Exact-Head Review Remediation
+
+Native review of exact head `9342621` found one P2: canonical R2 identity reused
+the fixed generation-bound sentinel list, so an unexpected object under another
+key could escape the no-op proof. The regression first failed with an omitted
+unexpected key, then passed after complete local bucket enumeration and exact
+inventory-to-manifest equality were added.
+
+The exact-implementation integrated rerun at `2026-07-22T01:48:13.249Z`
+passed with:
+
+- source lifecycle manifest SHA-256
+  `1d4043c20d628b9be5bda5e12208074a4fb22cc6a94c24b381efe3ded2d50551`
+- generation-bound backup manifest SHA-256
+  `22a2bee51eeb5f4f812352fa65253eed02fac4ad456e5863c8edfc70d44d7b61`
+- source lifecycle binding SHA-256
+  `a7f4f0872179df771b3f8ca4e98bb8a339f694ca0794ce5d1e3c3c6571f87d3d`
+  and source-state SHA-256
+  `740e5fc2ebb8d8059cf7f0f9442ca2e0833086caec2cf5f3aba99abbe5c1539a`
+- restored D1 SHA-256
+  `135cc76934e4805d0397d86e659027a8ccf676cc1a3e0c5bd0c0e0a9989f4765`
+  and one exact R2 object
+- complete-bucket disabled D1 SHA-256
+  `632637d9b7e5d58a6b7b37e552ad7dfceaa6b2023bb54128e2b0e90f88ee945c`,
+  R2-set SHA-256
+  `73b50a1cec316410c836ed59684a3c5470e6b9f1af6252607273142682e6b7dc`,
+  and combined SHA-256
+  `e4e1eaa9646500ae0906bdcf2496b1ea1e7f92edbeae2ed25076fe353de8db0f`
+  unchanged for all four 501 checkpoints
+- concurrent responses 200/401, replay 401, five old generations and profiles
+  rejected after restart, eight of eight forward checks and six of six
+  aggregate checks passed
+- official CLI item read before and after restart, zero foreign-key violations,
+  run root removed, retained secret files 0, and no residual Worker process
+
+The first post-review attempt failed closed at the source completion-attestation
+digest gate and removed its run root. The immediate isolated rerun above passed;
+no mismatch was ignored or converted into success.
+
 ## Quality And Cleanup Readback
 
 - focused route, lifecycle, fixture, documentation, and contract matrix:
-  409 tests across 9 files
-- full suite: 1,331 tests across 101 files
+  420 tests across 10 files
+- full suite: 1,335 tests across 102 files
 - compatibility fixture replay: 105 tests
 - rejected CLI option values are not reflected to stderr; secret-safe packet
   validation remains mandatory before output

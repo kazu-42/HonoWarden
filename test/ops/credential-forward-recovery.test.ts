@@ -103,6 +103,7 @@ describe('credential forward-recovery lifecycle', () => {
       packageSource,
       harnessSource,
       lifecycleSource,
+      restoreSource,
       harnessDocs,
       currentState,
     ] = await Promise.all([
@@ -112,6 +113,7 @@ describe('credential forward-recovery lifecycle', () => {
         'utf8',
       ),
       readFile(credentialLifecycleScript, 'utf8'),
+      readFile(credentialRestoreLifecycleScript, 'utf8'),
       readFile(
         join(repoRoot, 'docs/operations/official-client-credential-harness.md'),
         'utf8',
@@ -141,8 +143,20 @@ describe('credential forward-recovery lifecycle', () => {
     expect(lifecycleSource).toContain(
       'finalState.d1.foreignKeyViolations === 0',
     )
+    expect(restoreSource).toContain(
+      'const completeObjectList = await writeCompleteLocalR2ObjectList',
+    )
+    expect(restoreSource).toMatch(/'--r2-objects',\s+completeObjectList\.path/)
+    expect(restoreSource).toContain("worker.once('error'")
+    expect(restoreSource).toContain('if (worker.spawnError)')
+    expect(restoreSource).not.toMatch(
+      /async function readCanonicalPersistenceIdentity\([\s\S]*?\n}\n[\s\S]*?'--r2-objects',\s+objectList/,
+    )
     expect(harnessDocs).toContain('account:credential-forward-recovery')
     expect(harnessDocs).toContain('same restored target')
+    expect(harnessDocs).toContain('R2Bucket.list()')
+    expect(harnessDocs).toContain('complete bucket')
+    expect(harnessDocs).toContain('Miniflare persistence schema')
     expect(harnessDocs).toContain('HON-226')
     expect(currentState).toContain('Disabled Writers And Forward Recovery')
     expect(currentState).toContain('canonical D1/R2 identity')
@@ -175,6 +189,28 @@ describe('credential forward-recovery lifecycle', () => {
         'KDF mutation',
       ),
     ).toThrow('KDF mutation canonical persistence identity was invalid')
+  })
+
+  it('fails closed when the backup omits any key from the complete R2 inventory', async () => {
+    const { assertCompleteCanonicalR2Inventory } = await import(
+      pathToFileURL(credentialRestoreLifecycleScript).href
+    )
+    const sentinel = 'attachments/hon220-immutable-ciphertext'
+    const unexpected = 'attachments/unexpected-writer-output'
+    const manifestObjects = [{ key: sentinel, sha256: 'a'.repeat(64) }]
+
+    expect(() =>
+      assertCompleteCanonicalR2Inventory(manifestObjects, [
+        sentinel,
+        unexpected,
+      ]),
+    ).toThrow('canonical R2 inventory export was incomplete')
+    expect(() =>
+      assertCompleteCanonicalR2Inventory(
+        [...manifestObjects, { key: unexpected, sha256: 'b'.repeat(64) }],
+        [sentinel, unexpected],
+      ),
+    ).not.toThrow()
   })
 
   it('binds the backup to the exact completed lifecycle manifest', async () => {

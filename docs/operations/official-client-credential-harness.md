@@ -273,6 +273,16 @@ restored target and commits exactly one authenticated forward password
 generation. The command is local-synthetic only and cannot select a remote
 resource.
 
+Each canonical R2 checkpoint starts a short-lived helper Worker on loopback
+with `--local`, the same `--persist-to` root, and an ephemeral bearer token. The
+helper follows every `R2Bucket.list()` page, writes the complete bucket key set
+to a private run-owned inventory, and requires the backup exporter to return
+the exact same key set with a SHA-256 for every object. Duplicate keys,
+repeated cursors, unrepresentable keys, omitted objects, and unexpected
+inventory shapes fail closed. This uses the public R2 binding contract and does
+not read the Miniflare persistence schema. The helper has no deploy command or
+remote-resource selector.
+
 ## Verified Readback
 
 The 2026-07-21 local run verified:
@@ -366,6 +376,34 @@ The 2026-07-22 HON-226 local run additionally verified:
   CLI generation decrypted the item before and after restart;
 - final foreign-key violations were zero, the run root was removed, and no
   secret-bearing file was retained inside it.
+
+The exact-implementation complete-bucket rerun at `2026-07-22T01:48:13.249Z`
+additionally verified:
+
+- source lifecycle manifest SHA-256
+  `1d4043c20d628b9be5bda5e12208074a4fb22cc6a94c24b381efe3ded2d50551`;
+- generation-bound backup manifest SHA-256
+  `22a2bee51eeb5f4f812352fa65253eed02fac4ad456e5863c8edfc70d44d7b61`,
+  generation binding
+  `a7f4f0872179df771b3f8ca4e98bb8a339f694ca0794ce5d1e3c3c6571f87d3d`,
+  and source-state SHA-256
+  `740e5fc2ebb8d8059cf7f0f9442ca2e0833086caec2cf5f3aba99abbe5c1539a`;
+- complete-bucket disabled D1 SHA-256
+  `632637d9b7e5d58a6b7b37e552ad7dfceaa6b2023bb54128e2b0e90f88ee945c`,
+  R2-set SHA-256
+  `73b50a1cec316410c836ed59684a3c5470e6b9f1af6252607273142682e6b7dc`,
+  and combined SHA-256
+  `e4e1eaa9646500ae0906bdcf2496b1ea1e7f92edbeae2ed25076fe353de8db0f`
+  remained identical after every disabled request;
+- the backup and restored target each contained one exact R2 object, while the
+  regression contract rejects a manifest that omits any key returned by the
+  complete inventory;
+- concurrent forward responses were 200 and 401, replay was 401, all five old
+  generations and cloned profiles remained rejected after restart, all eight
+  forward checks and all six aggregate checks passed, and the official CLI
+  decrypted the forward item before and after restart;
+- final foreign-key violations were zero, cleanup removed the run root, and no
+  secret-bearing file was retained.
 
 This remains `local_official_client` evidence. It does not activate a tracked
 writer or prove remote, staging, production, real-account, or browser-extension
