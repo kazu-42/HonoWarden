@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-19.
+Last updated: 2026-07-22.
 
 Rollback separates Worker code rollback from data rollback. Do not assume schema
 changes can be safely reversed in place.
@@ -36,6 +36,21 @@ pnpm wrangler deploy --env production
 ```
 
 5. Verify `/health`, `/health/db`, and synthetic login/sync.
+
+## Password Change Rollback
+
+Deploy complete password-generation readers with
+`HONOWARDEN_PASSWORD_CHANGE_ENABLED=false` and preserve that exact release as
+the reader-capable rollback target before exposing the writer. Disabling the
+flag is the immediate route rollback and must happen before authentication,
+quota, or D1 access; it does not undo a generation that already committed.
+
+After a password change commits, the prior hash, wrapped user key, access
+tokens, refresh tokens, devices, and auth requests are stale. Never restore
+those values in place. Reauthenticate with the current generation and roll
+forward, or use a separately reviewed recovery procedure. Keep migration
+`0016_user_key_rotation_wrapper_history.sql` because deleting its fingerprints
+would remove replay defense for later credential writes.
 
 ## KDF Mutation Rollback
 
@@ -107,11 +122,14 @@ Migration `0016` is forward-only. Keep
 `user_key_rotation_wrapper_history` in place during Worker rollback; older
 reader-capable code can ignore it, while deleting it would remove the durable
 replay-defense boundary for a later roll-forward. Disable
-`HONOWARDEN_KDF_MUTATION_ENABLED` and
-`HONOWARDEN_USER_KEY_ROTATION_ENABLED`, drain password-change requests, and do
+`HONOWARDEN_PASSWORD_CHANGE_ENABLED`, `HONOWARDEN_ACCOUNT_KEYS_ENABLED`,
+`HONOWARDEN_KDF_MUTATION_ENABLED`, and
+`HONOWARDEN_USER_KEY_ROTATION_ENABLED`, drain in-flight credential requests,
+and wait for active requests to finish; do
 not deploy a pre-reader Worker after any post-`0016` credential mutation.
-History is forward-looking; wrappers superseded before `0016` were never
-recorded and cannot be treated as replay-protected.
+History is forward-looking; wrappers
+superseded before `0016` were never recorded and cannot be treated as
+replay-protected.
 
 Never restore an old password hash, wrapped user key, wrapped private key,
 security stamp, encrypted vault snapshot, device session, or refresh token.

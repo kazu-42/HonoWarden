@@ -185,6 +185,16 @@ describe('wrangler deployment environments', () => {
     )
   })
 
+  it('keeps password change disabled in every tracked environment', () => {
+    expect(config.vars.HONOWARDEN_PASSWORD_CHANGE_ENABLED).toBe('false')
+    expect(config.env.staging.vars.HONOWARDEN_PASSWORD_CHANGE_ENABLED).toBe(
+      'false',
+    )
+    expect(config.env.production.vars.HONOWARDEN_PASSWORD_CHANGE_ENABLED).toBe(
+      'false',
+    )
+  })
+
   it('keeps account-key initialization disabled in every tracked environment', () => {
     expect(config.vars.HONOWARDEN_ACCOUNT_KEYS_ENABLED).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_ACCOUNT_KEYS_ENABLED).toBe(

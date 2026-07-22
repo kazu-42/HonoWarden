@@ -5,6 +5,7 @@ import {
   accountCredentialPolicy,
   fingerprintCredentialWrapper,
   isKdfMutationEnabled,
+  isPasswordChangeEnabled,
   matchesKdfChangeCredentialGeneration,
   matchesPasswordChangeCredentialGeneration,
   nextCredentialRevisionDate,
@@ -58,6 +59,14 @@ describe('account credential domain', () => {
     expect(isKdfMutationEnabled('false')).toBe(false)
     expect(isKdfMutationEnabled('yes')).toBe(false)
     expect(isKdfMutationEnabled(' TRUE ')).toBe(true)
+  })
+
+  it('keeps password change disabled unless the rollout flag is exact true', () => {
+    expect(isPasswordChangeEnabled(undefined)).toBe(false)
+    expect(isPasswordChangeEnabled('')).toBe(false)
+    expect(isPasswordChangeEnabled('false')).toBe(false)
+    expect(isPasswordChangeEnabled('yes')).toBe(false)
+    expect(isPasswordChangeEnabled(' TRUE ')).toBe(true)
   })
 
   it('parses the official camel-case and Pascal-case security-stamp proofs', () => {

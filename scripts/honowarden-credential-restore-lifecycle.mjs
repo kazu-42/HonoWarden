@@ -17,6 +17,7 @@ import { parse as parseJsonc } from 'jsonc-parser'
 
 import {
   executeCredentialLifecycleForRecovery,
+  verifyCredentialForwardRecovery,
   verifyRestoredCredentialGeneration,
 } from './honowarden-credential-lifecycle.mjs'
 import { assertCredentialLifecycleCompletionAttestation } from './honowarden-credential-lifecycle-state.mjs'
@@ -135,7 +136,30 @@ function buildPacket({ action, generatedAt, options, runRoot }) {
   }
 }
 
-async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
+export async function executeCredentialRestoreLifecycle({
+  generatedAt,
+  harnessRoot = defaultHarnessRoot,
+  runRoot,
+  timeoutMs = '120000',
+  forwardRecovery = false,
+}) {
+  if (typeof forwardRecovery !== 'boolean') {
+    throw new TypeError('forward recovery selection was invalid')
+  }
+  return executeRestoreLifecycle({
+    generatedAt: parseTimestamp(generatedAt),
+    options: { harnessRoot, timeoutMs },
+    runRoot: resolveRunRoot(requireValue(runRoot, '--run-root')),
+    forwardRecovery,
+  })
+}
+
+async function executeRestoreLifecycle({
+  generatedAt,
+  options,
+  runRoot,
+  forwardRecovery = false,
+}) {
   await prepareRunRoot(runRoot.absolute)
   const activeProcesses = new Set()
   const cleanup = createIdempotentCleanup(async () => {
@@ -220,7 +244,11 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
         const manifestPath = join(backupRoot, 'backup-manifest.json')
         const manifestBytes = await readFile(manifestPath)
         const manifest = JSON.parse(manifestBytes.toString('utf8'))
-        assertGenerationBoundExportPacket(exportPacket, manifest)
+        assertGenerationBoundExportPacket(
+          exportPacket,
+          manifest,
+          readback.generationManifestSha256,
+        )
         const manifestSha256 = sha256(manifestBytes)
         const target = await preparePersistenceRoot(
           join(runRoot.absolute, 'target'),
@@ -261,10 +289,37 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
           recoveryContext,
           timeoutMs: options.timeoutMs ?? '120000',
         })
+        let forward = null
+        if (forwardRecovery) {
+          let identityIndex = 0
+          forward = await verifyCredentialForwardRecovery({
+            persistTo: target.persistTo,
+            harnessRoot: options.harnessRoot ?? defaultHarnessRoot,
+            recoveryContext,
+            timeoutMs: options.timeoutMs ?? '120000',
+            readPersistenceIdentity: async (label) => {
+              const identity = await readCanonicalPersistenceIdentity({
+                activeProcesses,
+                config: target.config,
+                index: identityIndex,
+                label,
+                objectList,
+                persistTo: target.persistTo,
+                runRoot: runRoot.absolute,
+                timeoutMs: parseTimeout(options.timeoutMs ?? '120000'),
+              })
+              identityIndex += 1
+              return identity
+            },
+          })
+        }
         const recovery = {
           status: 'passed',
           backup: {
             manifestSha256,
+            lifecycleManifestSha256: readback.generationManifestSha256,
+            generationBindingSha256:
+              manifest.credentialGeneration.manifestSha256,
             generationManifestSha256:
               manifest.credentialGeneration.manifestSha256,
             sourceStateSha256: manifest.credentialGeneration.sourceStateSha256,
@@ -274,12 +329,21 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
           },
           restore: restorePacket.verification,
           credential,
+          ...(forward ? { forwardRecovery: forward } : {}),
           checks: [
             { name: 'source_completion_remained_attested', status: 'pass' },
             { name: 'restored_d1_r2_content_matches_source', status: 'pass' },
             { name: 'stale_generations_remain_rejected', status: 'pass' },
             { name: 'current_official_client_decrypts', status: 'pass' },
             { name: 'restart_preserves_restore_contract', status: 'pass' },
+            ...(forward
+              ? [
+                  {
+                    name: 'same_target_forward_recovery_passed',
+                    status: 'pass',
+                  },
+                ]
+              : []),
           ],
         }
         assertRecoveryContextAbsent(recovery, recoveryContext)
@@ -311,6 +375,77 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
     } finally {
       removeSignalCleanup()
     }
+  }
+}
+
+async function readCanonicalPersistenceIdentity({
+  activeProcesses,
+  config,
+  index,
+  label,
+  objectList,
+  persistTo,
+  runRoot,
+  timeoutMs,
+}) {
+  if (!Number.isInteger(index) || index < 0 || !/^[a-z0-9_]+$/.test(label)) {
+    throw new Error('canonical persistence identity coordinate was invalid')
+  }
+  const identityRoot = join(
+    runRoot,
+    `identity-${String(index).padStart(2, '0')}-${label}`,
+  )
+  const packet = await runBackupCommand(
+    [
+      'export',
+      '--out',
+      identityRoot,
+      '--database',
+      databaseName,
+      '--bucket',
+      bucketName,
+      '--mode',
+      'local',
+      '--config',
+      config,
+      '--persist-to',
+      persistTo,
+      '--r2-objects',
+      objectList,
+      '--execute',
+    ],
+    {
+      activeProcesses,
+      label: `canonical persistence identity ${label}`,
+      timeoutMs,
+    },
+  )
+  const manifest = JSON.parse(
+    await readFile(join(identityRoot, 'backup-manifest.json'), 'utf8'),
+  )
+  const objects = Array.isArray(manifest?.r2?.objects)
+    ? manifest.r2.objects
+        .map((object) => ({ key: object?.key, sha256: object?.sha256 }))
+        .sort((left, right) =>
+          String(left.key).localeCompare(String(right.key)),
+        )
+    : []
+  if (
+    packet?.action !== 'export' ||
+    packet?.executed !== true ||
+    packet?.audit?.resultStatus !== 'executed' ||
+    !isSha256(manifest?.d1?.sha256) ||
+    objects.length !== 1 ||
+    objects[0]?.key !== r2ObjectKey ||
+    !isSha256(objects[0]?.sha256)
+  ) {
+    throw new Error('canonical persistence identity export was incomplete')
+  }
+  const r2Sha256 = sha256(JSON.stringify(objects))
+  return {
+    d1Sha256: manifest.d1.sha256,
+    r2Sha256,
+    combinedSha256: sha256(`${manifest.d1.sha256}\n${r2Sha256}`),
   }
 }
 
@@ -361,11 +496,17 @@ function boundedDiagnostic(value) {
     .slice(-4000)
 }
 
-function assertGenerationBoundExportPacket(packet, manifest) {
+export function assertGenerationBoundExportPacket(
+  packet,
+  manifest,
+  expectedLifecycleManifestSha256,
+) {
   if (
     packet?.action !== 'export' ||
     packet?.executed !== true ||
     packet?.audit?.resultStatus !== 'executed' ||
+    !isSha256(expectedLifecycleManifestSha256) ||
+    !isSha256(manifest?.credentialGeneration?.lifecycleManifestSha256) ||
     !isSha256(manifest?.credentialGeneration?.manifestSha256) ||
     !isSha256(manifest?.credentialGeneration?.sourceStateSha256) ||
     !isSha256(manifest?.d1?.sha256) ||
@@ -373,6 +514,12 @@ function assertGenerationBoundExportPacket(packet, manifest) {
     manifest.r2.objects.some((object) => !isSha256(object?.sha256))
   ) {
     throw new Error('generation-bound export readback was incomplete')
+  }
+  if (
+    manifest.credentialGeneration.lifecycleManifestSha256 !==
+    expectedLifecycleManifestSha256
+  ) {
+    throw new Error('generation-bound export lifecycle digest mismatch')
   }
 }
 

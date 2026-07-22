@@ -8534,6 +8534,7 @@ describe('HonoWarden app', () => {
       {
         DB: database,
         HONOWARDEN_AUDIT_LOGS: 'true',
+        HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -8681,6 +8682,7 @@ describe('HonoWarden app', () => {
         },
         {
           DB: database,
+          HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
           HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
         },
       )
@@ -8714,6 +8716,7 @@ describe('HonoWarden app', () => {
       },
       {
         DB: database,
+        HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -8751,6 +8754,7 @@ describe('HonoWarden app', () => {
       },
       {
         DB: database,
+        HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -8788,6 +8792,7 @@ describe('HonoWarden app', () => {
       },
       {
         DB: database,
+        HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -8821,6 +8826,7 @@ describe('HonoWarden app', () => {
       {
         DB: database,
         HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -8856,6 +8862,7 @@ describe('HonoWarden app', () => {
           }),
         } as unknown as DurableObjectNamespace,
         HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'true',
+        HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
@@ -8912,6 +8919,7 @@ describe('HonoWarden app', () => {
       },
       {
         DB: database,
+        HONOWARDEN_PASSWORD_CHANGE_ENABLED: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )

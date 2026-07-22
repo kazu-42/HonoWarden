@@ -232,6 +232,25 @@ boundary. Rotating the secret or changing the stored population can remap an
 unknown-account decoy; neither changes a known account's exact projection or
 any stored KDF generation. The allowlist remains the primary prelogin boundary.
 
+## Password Change Rollout
+
+`HONOWARDEN_PASSWORD_CHANGE_ENABLED` is a non-secret, default-off rollout gate
+for `POST /api/accounts/password`. Only exact `true` after trimming and case
+normalization enables the writer. Missing, blank, false, or any other value
+makes disabled POST and Hono-derived HEAD return `501 unsupported_feature`
+before authentication, quota, or D1 access. The route-local GET handler exists
+only so Hono derives that HEAD result; an enabled GET or HEAD returns 405 with
+`Allow: POST`. `POST /api/accounts/verify-password` remains an authenticated,
+read-only proof route and is not activated by this writer flag.
+
+The tracked top-level, staging, and production values remain false. Deploy and
+verify complete password-generation readers, migration `0016` wrapper-history
+support, and a reader-capable rollback version before a later separately
+approved activation. Source merge and local synthetic lifecycle evidence do
+not activate the writer. Disabling the flag is the immediate route rollback;
+it does not restore a superseded password generation or revive revoked
+sessions.
+
 ## KDF Mutation Rollout
 
 `HONOWARDEN_KDF_MUTATION_ENABLED` is a non-secret, default-off rollout gate for

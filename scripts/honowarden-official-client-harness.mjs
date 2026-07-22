@@ -185,8 +185,8 @@ const officialRuntimeFileManifest = Object.freeze({
   'crypto/honowarden-bridge.cjs': Object.freeze({
     archive: null,
     entry: null,
-    bytes: 3_731_743,
-    sha256: '1a38398906d268c61ad40b79310d4810125f25d056052404fb0b8dfc23cd6601',
+    bytes: 3_732_013,
+    sha256: 'af6214f87853023a86045bb4fc468cd953594e2e357a0ca66e2d52727f467b46',
     mode: 0o700,
   }),
   'crypto/package.json': Object.freeze({
@@ -627,6 +627,7 @@ export async function generateOfficialCredentialFixture(root, options = {}) {
         baseline: randomBytes(32).toString('base64url'),
         passwordChange: randomBytes(32).toString('base64url'),
         userKeyRotation: randomBytes(32).toString('base64url'),
+        forwardRecovery: randomBytes(32).toString('base64url'),
       },
       plaintext: {
         folderName: `HON-220 ${randomBytes(12).toString('hex')}`,
@@ -1071,10 +1072,10 @@ function officialCryptoBridgeSource() {
     typeof email !== "string" ||
     !email.endsWith("@example.invalid") ||
     !passwords ||
-    !["baseline", "passwordChange", "userKeyRotation"].every(
+    !["baseline", "passwordChange", "userKeyRotation", "forwardRecovery"].every(
       (key) => typeof passwords[key] === "string" && passwords[key].length >= 24,
     ) ||
-    new Set(Object.values(passwords)).size !== 3 ||
+    new Set(Object.values(passwords)).size !== 4 ||
     !plaintext ||
     !plaintextFields.every(
       (key) => typeof plaintext[key] === "string" && plaintext[key].length >= 8,
@@ -1297,6 +1298,15 @@ function officialCryptoBridgeSource() {
       vault: rotatedVault,
       userKeyGeneration: 2,
     }),
+    makeCredentialStage({
+      id: "forward_recovery",
+      password: passwords.forwardRecovery,
+      kdf: pbkdf2,
+      userKey: rotatedUserKey,
+      accountKeys: rotatedAccountKeys,
+      vault: rotatedVault,
+      userKeyGeneration: 2,
+    }),
   ];
   const response = {
     schemaVersion: 1,
@@ -1379,6 +1389,7 @@ function validateCredentialFixtureResponse(response) {
     ['argon2id', 'argon2id', 1],
     ['pbkdf2_return', 'pbkdf2', 1],
     ['user_key_rotation', 'pbkdf2', 2],
+    ['forward_recovery', 'pbkdf2', 2],
   ]
   if (
     response?.schemaVersion !== schemaVersion ||
@@ -1449,6 +1460,7 @@ function validateCredentialFixtureResponse(response) {
     stages[1].password !== stages[2].password ||
     stages[2].password !== stages[3].password ||
     stages[3].password === stages[4].password ||
+    stages[4].password === stages[5].password ||
     stages
       .slice(0, 4)
       .some(
@@ -1461,7 +1473,14 @@ function validateCredentialFixtureResponse(response) {
     stages[4].accountKeys.accountPublicKey !==
       stages[0].accountKeys.accountPublicKey ||
     stages[4].accountKeys.userKeyEncryptedAccountPrivateKey ===
-      stages[0].accountKeys.userKeyEncryptedAccountPrivateKey
+      stages[0].accountKeys.userKeyEncryptedAccountPrivateKey ||
+    stages[5].digests.userKey !== stages[4].digests.userKey ||
+    stages[5].digests.vault !== stages[4].digests.vault ||
+    stages[5].digests.accountKeys !== stages[4].digests.accountKeys ||
+    stages[5].masterKeyEncryptedUserKey ===
+      stages[4].masterKeyEncryptedUserKey ||
+    stages[5].masterPasswordAuthenticationHash ===
+      stages[4].masterPasswordAuthenticationHash
   ) {
     throw new Error('official credential fixture generation chain was invalid')
   }

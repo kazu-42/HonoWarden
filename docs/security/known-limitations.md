@@ -69,7 +69,10 @@ inputs, not minor documentation notes.
 - current-password verification and existing master-password change are covered
   by compatibility fixtures and a synthetic local Wrangler/D1 lifecycle. No
   official client UI or production password-change run is recorded. Non-empty
-  password hints are rejected because hint persistence is not implemented.
+  password hints are rejected because hint persistence is not implemented. The
+  writer is default-off in every tracked environment; HON-226 proves only local
+  same-target disable-state equality and one forward official-CLI generation,
+  not deployment activation or browser-extension recovery.
 - existing-account PBKDF2/Argon2id KDF change is covered by focused tests and a
   synthetic local Wrangler/D1 lifecycle. No official client UI or production
   KDF-change run is recorded, and this local evidence does not promote a client

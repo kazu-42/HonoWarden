@@ -1116,6 +1116,9 @@ Implemented:
   client-derived authentication hash and the existing credential-proof defenses
 - authenticated `POST /api/accounts/password` with pinned structured,
   transitional legacy, and dual request variants
+- a tracked, non-secret `HONOWARDEN_PASSWORD_CHANGE_ENABLED` default-off gate;
+  disabled POST and Hono-derived HEAD bypass global quota and return a D1-free
+  501 before authentication in every tracked environment
 - fail-closed dual-payload consistency checks plus unchanged account salt and
   KDF generation checks
 - explicit rejection of non-empty password hints because HonoWarden does not
@@ -1135,6 +1138,8 @@ Not implemented:
 
 - password-hint persistence or migration; non-empty hints fail before mutation
 - official client UI or production password-change evidence
+- deployed writer activation; source merge and local lifecycle evidence leave
+  the top-level, staging, and production values false
 
 ## Week 26 Account KDF Change
 
@@ -1344,6 +1349,36 @@ Not implemented:
   still require an operator assertion and separately reviewed resource handling
 - browser-extension recovery readback; the current restore proof uses the
   pinned native official CLI
+
+## Week 26 Disabled Writers And Forward Recovery
+
+Implemented:
+
+- `pnpm account:credential-forward-recovery` plan and explicit-confirmation run
+  modes for one local synthetic, same-target recovery proof
+- one common tracked default-off boundary across password change, KDF mutation,
+  account-key initialization, and complete user-key rotation
+- disabled POST and Hono-derived HEAD checks for all four writers before auth,
+  optional global quota, or D1 access, with a canonical D1/R2 identity snapshot
+  compared after every request
+- re-enablement of the same restored persistence path without reset, followed
+  by two concurrent password-generation requests that require exactly one
+  commit and one rejected loser
+- exact one-generation security-stamp, revision, audit, and wrapper-history
+  advancement; unchanged R2 identity; rejected replay; and rejection of all
+  five prior password/access/refresh/profile generations
+- pinned official CLI login, lock, unlock, sync, and decrypted item read for the
+  forward generation before and after Worker restart
+- bounded cleanup that removes the run root and retains no secret-bearing file;
+  tracked evidence contains only statuses, counts, and digests
+
+Not implemented:
+
+- remote, staging, production, deployed, real-account, or browser-extension
+  forward-recovery evidence
+- automatic writer activation; every tracked environment remains default-off
+- backward credential restore or in-place partial-target repair; recovery after
+  a committed generation remains forward-only
 
 ## Week 26 Account Lifecycle Operator CLI
 

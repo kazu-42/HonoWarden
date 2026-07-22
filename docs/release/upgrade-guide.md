@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-20.
+Last updated: 2026-07-22.
 
 This guide covers upgrading an existing alpha environment. HonoWarden is
 pre-alpha, so operators should assume upgrades can require maintenance windows
@@ -62,11 +62,13 @@ pnpm backup:export -- \
   user-key wrapper history. The migration and canonical fingerprint writer are
   introduced in the same release; no earlier release writes this new table.
   Drain credential mutation requests across the migration/Worker activation
-  window because password change has no independent feature switch. Keep
+  window. Keep `HONOWARDEN_PASSWORD_CHANGE_ENABLED=false`,
   `HONOWARDEN_ACCOUNT_KEYS_ENABLED=false`,
-  `HONOWARDEN_KDF_MUTATION_ENABLED=false` and
+  `HONOWARDEN_KDF_MUTATION_ENABLED=false`, and
   `HONOWARDEN_USER_KEY_ROTATION_ENABLED=false` until `/health/db` reports the
-  table and a reader-capable rollback Worker has been verified. The migration
+  table, complete readers have been exercised, and a reader-capable rollback
+  Worker has been recorded. Enable writers only in a later reviewed rollout;
+  disable all four again before rollback. The migration
   cannot reconstruct wrappers superseded before `0016`.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.

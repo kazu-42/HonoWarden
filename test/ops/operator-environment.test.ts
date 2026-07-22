@@ -146,6 +146,19 @@ describe('operator environment policy', () => {
     expect(rollbackGuide).toMatch(/pre-reader\s+release/)
   })
 
+  it('documents the default-off password-change rollout boundary', () => {
+    const envExample = readRepoFile('.env.example')
+    const operatorDocs = readRepoFile('docs/operations/operator-environment.md')
+    const rollbackGuide = readRepoFile('docs/release/rollback-guide.md')
+
+    expect(envExample).toMatch(/^HONOWARDEN_PASSWORD_CHANGE_ENABLED=false$/m)
+    expect(operatorDocs).toContain('Password Change Rollout')
+    expect(operatorDocs).toContain('HONOWARDEN_PASSWORD_CHANGE_ENABLED')
+    expect(operatorDocs).toContain('Hono-derived HEAD')
+    expect(operatorDocs).toMatch(/before authentication, quota, or D1 access/)
+    expect(rollbackGuide).toContain('HONOWARDEN_PASSWORD_CHANGE_ENABLED')
+  })
+
   it('documents the default-off one-time account-key initialization boundary', () => {
     const envExample = readRepoFile('.env.example')
     const operatorDocs = readRepoFile('docs/operations/operator-environment.md')

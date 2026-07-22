@@ -1,7 +1,7 @@
 # RECOVERY-1: Restore, Disable, And Forward Recovery
 
-Status: RECOVERY-1A merged and archived; RECOVERY-1B local proof passed and is
-pending exact-head review/publication
+Status: RECOVERY-1A and RECOVERY-1B merged and archived; RECOVERY-1C local proof
+passed and is pending exact-head review/publication
 
 Linear parent: HON-221
 
@@ -45,13 +45,15 @@ merged-main CI, and Linear Done/archive before the next child starts.
 
 ## Current Gate
 
-HON-224 was merged through PR #112 with exact head CI, squash tree equality,
-merged-main CI, and Linear Done/archive. HON-225 now has a complete local
-source-to-fresh-target proof: generation-bound D1/R2 equality, four stale
-credential/profile generations rejected before and after restart, current
-official CLI decrypt accepted before and after restart, and bounded run-root
-cleanup. Exact-head standard/five-axis review, PR/head CI, merge/main CI, and
-Linear Done/archive remain before HON-226 can start.
+HON-224 was merged through PR #112. HON-225 was merged through PR #113 at
+`c1e2f7c8befb4c85030d48e9b7171fb5599761c2`; its squash tree matches reviewed
+head `2e5a010833ddb69d4a0071de450318c78402bfe0`, main CI run 29874991552 passed,
+and Linear is Done/archived. HON-226 now has a complete local same-target proof:
+all four disabled writers return D1-free 501 with canonical D1/R2 identity
+unchanged, one concurrent forward password generation commits, replay and all
+five prior generations remain rejected, and pinned official CLI decrypt works
+before and after restart. Exact-head standard/five-axis review, PR/head CI,
+merge/main CI, and Linear Done/archive remain.
 
 ## Linear Plan Readback
 
@@ -72,9 +74,9 @@ Linear Done/archive remain before HON-226 can start.
 
 ## Current Linear Readback
 
-- synchronized at `2026-07-21T12:34:17Z`
+- synchronized at `2026-07-22T08:47:17+09:00`
 - HON-224: Done and archived at `2026-07-21T09:22:10.453Z`
-- HON-225: In Progress and non-archived
-- HON-226: Todo and non-archived
+- HON-225: Done and archived at `2026-07-21T22:53:21.567Z`
+- HON-226: In Progress and non-archived
 - parent relation: all three remain direct children of HON-221
 - serialization remains HON-224 -> HON-225 -> HON-226

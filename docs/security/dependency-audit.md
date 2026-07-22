@@ -1,6 +1,6 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-07-20.
+Last scanned: 2026-07-22.
 
 This is a point-in-time dependency audit snapshot for the repository state used
 by the Week 24 security review materials. Re-run the command before every
@@ -18,11 +18,28 @@ pnpm audit --audit-level low
 No known vulnerabilities found
 ```
 
+## Sharp Advisory Remediation
+
+The 2026-07-22 rescan initially reported high advisory
+`GHSA-f88m-g3jw-g9cj` against `sharp 0.34.5`, inherited from both direct
+Miniflare and Wrangler's Miniflare dependency. The latest published Miniflare
+still pinned that vulnerable version at readback time, so a routine Wrangler
+upgrade could not remove it.
+
+HonoWarden requires Node.js 22.13 or newer and configures no Cloudflare Images
+binding. The repository therefore uses a temporary `overrides` policy in
+`pnpm-workspace.yaml` to pin `sharp 0.35.3`, then verifies package audit, the
+complete test suite, and a real local Wrangler D1/R2 lifecycle. Remove the
+override only after the published Miniflare dependency resolves to a patched
+sharp version and the same gates pass without it. Do not treat the override as
+approval to add an Images binding without a dedicated image-transform
+compatibility test.
+
 ## Lockfile Evidence
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `776bb18c8ab9750ace135083f04e95ff9a3e6e579c43f957fd30a6241449096e`
+  `bf56db979676ada307ab2fcd0c36e2f480ecbb4fdfdee10e2ab009280e2d701d`
 
 ## Scope
 

@@ -101,6 +101,7 @@ type FixtureReplayOptions = {
   tokenDeviceIdentifier?: string
   allowedEmails?: string
   accountKeysEnabled?: string
+  passwordChangeEnabled?: string
   totpSecret?: string
 }
 
@@ -223,6 +224,8 @@ export async function runCompatFixture(
     HONOWARDEN_TOTP_SECRET: options.totpSecret ?? tokenSecret,
     HONOWARDEN_ALLOWED_EMAILS: options.allowedEmails ?? 'person@example.test',
     HONOWARDEN_ACCOUNT_KEYS_ENABLED: options.accountKeysEnabled ?? 'false',
+    HONOWARDEN_PASSWORD_CHANGE_ENABLED:
+      options.passwordChangeEnabled ?? 'false',
   })
 
   const responseBody = await parseResponseBody(response)

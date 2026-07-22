@@ -64,6 +64,10 @@ export function isKdfMutationEnabled(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === 'true'
 }
 
+export function isPasswordChangeEnabled(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === 'true'
+}
+
 export async function fingerprintCredentialWrapper(
   value: string,
 ): Promise<string> {

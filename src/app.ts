@@ -39,6 +39,7 @@ import {
   accountCredentialKdfAlgorithmForType,
   accountCredentialKdfFromStoredGeneration,
   isKdfMutationEnabled,
+  isPasswordChangeEnabled,
   matchesKdfChangeCredentialGeneration,
   matchesPasswordChangeCredentialGeneration,
   nextCredentialRevisionDate,
@@ -503,6 +504,26 @@ function isRequestQuotaBypass(c: AppContext): boolean {
       c.req.method === 'HEAD' ||
       c.req.method === 'POST') &&
     !isAccountKeyInitializationEnabled(c.env?.HONOWARDEN_ACCOUNT_KEYS_ENABLED)
+  ) {
+    return true
+  }
+
+  if (
+    pathname === '/api/accounts/password' &&
+    (c.req.method === 'GET' ||
+      c.req.method === 'HEAD' ||
+      c.req.method === 'POST') &&
+    !isPasswordChangeEnabled(c.env?.HONOWARDEN_PASSWORD_CHANGE_ENABLED)
+  ) {
+    return true
+  }
+
+  if (
+    pathname === '/api/accounts/kdf' &&
+    (c.req.method === 'GET' ||
+      c.req.method === 'HEAD' ||
+      c.req.method === 'POST') &&
+    !isKdfMutationEnabled(c.env?.HONOWARDEN_KDF_MUTATION_ENABLED)
   ) {
     return true
   }
@@ -2904,8 +2925,30 @@ app.on(
   },
 )
 
+app.get('/api/accounts/password', (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!isPasswordChangeEnabled(c.env?.HONOWARDEN_PASSWORD_CHANGE_ENABLED)) {
+    return unsupportedFeatureResponse(
+      c,
+      'Password change is not activated on this server.',
+      true,
+    )
+  }
+
+  c.header('Allow', 'POST')
+  return c.body(null, 405)
+})
+
 app.post('/api/accounts/password', async (c) => {
   c.header('Cache-Control', 'no-store')
+  if (!isPasswordChangeEnabled(c.env?.HONOWARDEN_PASSWORD_CHANGE_ENABLED)) {
+    return unsupportedFeatureResponse(
+      c,
+      'Password change is not activated on this server.',
+      true,
+    )
+  }
+
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
@@ -3054,6 +3097,20 @@ app.post('/api/accounts/password', async (c) => {
       503,
     )
   }
+})
+
+app.get('/api/accounts/kdf', (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!isKdfMutationEnabled(c.env?.HONOWARDEN_KDF_MUTATION_ENABLED)) {
+    return unsupportedFeatureResponse(
+      c,
+      'KDF mutation is not activated on this server.',
+      true,
+    )
+  }
+
+  c.header('Allow', 'POST')
+  return c.body(null, 405)
 })
 
 app.post('/api/accounts/kdf', async (c) => {
