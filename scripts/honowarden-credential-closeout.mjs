@@ -61,12 +61,22 @@ const secretFieldSuffixWords = new Set([
   'signatures',
   'value',
   'values',
+  'plaintext',
+  'material',
+  'blob',
+  'clear',
+  'raw',
+  'bearer',
 ])
-const compactSecretFieldPattern =
-  /(?:password(?:hash)?|(?:api|access|refresh|auth|id|session|bearer)tokens?|(?:api|client|auth)secrets?|api(?:keys?|credentials?)|(?:auth|client|service)credentials?)(?:hash|signature|value|v[0-9]+)*$/
+const compactSecretFieldSuffixPattern = `(?:${[...secretFieldSuffixWords].join(
+  '|',
+)}|v[0-9]+)`
+const compactSecretFieldPattern = new RegExp(
+  `(?:password(?:hash)?|(?:api|access|refresh|auth|id|session|bearer)tokens?|(?:api|client|auth)secrets?|api(?:keys?|credentials?)|(?:auth|client|service)credentials?)(?:${compactSecretFieldSuffixPattern})*$|^(?:passwords?|tokens?|secrets?|credentials?|keys?)(?:${compactSecretFieldSuffixPattern})+$`,
+)
 const vaultCiphertextPartPattern = '[A-Za-z0-9+/_-]{20,}={0,2}'
 const vaultCiphertextPattern = new RegExp(
-  `(?:^|[^A-Za-z0-9+/_=-])(?:[0347]\\.${vaultCiphertextPartPattern}|[056]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}|[12]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern})(?=$|[^A-Za-z0-9+/_=|-])`,
+  `(?:^|[^A-Za-z0-9+/_=-])(?:[347]\\.${vaultCiphertextPartPattern}|[056]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}|[12]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern})(?=$|[^A-Za-z0-9+/_=|-])`,
 )
 
 export const credentialCloseoutPacketPath =
@@ -492,13 +502,7 @@ function unsafeCredentialCloseoutContent(content) {
   if (hasSecretLikeJsonField(content)) return true
   if (hasSecretLikeAssignment(content)) return true
   if (hasEmbeddedSecretLikePair(content)) return true
-  if (
-    /\bAuthorization["'`]?\s*[:=]\s*["'`]?\s*(?:Bearer|Basic)\s+(?!<?redacted>?\b|\[redacted\]\b)\S+/i.test(
-      content,
-    )
-  ) {
-    return true
-  }
+  if (hasAuthorizationCredential(content)) return true
   if (
     /-----BEGIN (?:PGP PRIVATE KEY BLOCK|(?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY)-----/i.test(
       content,
@@ -539,6 +543,32 @@ function hasSecretLikeJsonField(content) {
   return false
 }
 
+function hasAuthorizationCredential(content) {
+  const pattern = /\bAuthorization["'`]?\s*[:=]\s*([^\r\n]+)/gi
+  for (const match of content.matchAll(pattern)) {
+    if (!isEmptyAuthorizationCredential(match[1] ?? '')) return true
+  }
+  return false
+}
+
+function isEmptyAuthorizationCredential(value) {
+  if (isEmptySecretSentinel(value)) return true
+  let normalized = value.trim()
+  const quote = normalized[0]
+  if (
+    normalized.length >= 2 &&
+    ['"', "'", '`'].includes(quote) &&
+    normalized.at(-1) === quote
+  ) {
+    normalized = normalized.slice(1, -1).trim()
+  }
+  const separator = normalized.search(/\s/)
+  return (
+    separator > 0 &&
+    isEmptySecretSentinel(normalized.slice(separator + 1).trim())
+  )
+}
+
 function hasSecretLikeAssignment(content) {
   const pattern =
     /^[ \t]*(?:(?:[-*+>]|[0-9]+[.)])[ \t]+)*(?:\[[ xX]\][ \t]+)?(?:\$[ \t]+)?(?:export[ \t]+)?`?([A-Za-z][A-Za-z0-9_. -]{0,80})`?\s*[:=]\s*(\S.*)$/gm
@@ -558,7 +588,7 @@ function hasEmbeddedSecretLikePair(content) {
   // bounded value prefix prevents repeated delimiters from causing quadratic
   // scans across the remainder of a maximum-sized line.
   const pairPattern =
-    /(?=(?:^|[?&;,\s>{|=])(["'`]?)([A-Za-z][A-Za-z0-9_. -]{0,80})\1\s*[:=]\s*([^\r\n]{1,256}))/gm
+    /(?=(?:^|\[|[?&;,\s>{|=])(["'`]?)([A-Za-z][A-Za-z0-9_. -]{0,80})\1\s*[:=]\s*([^\r\n]{1,256}))/gm
   for (const match of content.matchAll(pairPattern)) {
     if (
       isSecretLikeFieldName(match[2] ?? '') &&

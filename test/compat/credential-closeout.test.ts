@@ -242,6 +242,22 @@ describe('credential closeout packet', () => {
     ['key hash', '{"keyHash":"do-not-print-key-hash"}'],
     ['secret hash', '{"secretHash":"do-not-print-secret-hash"}'],
     ['token signature', '{"tokenSignature":"do-not-print-token-signature"}'],
+    [
+      'password plaintext',
+      '{"passwordPlaintext":"do-not-print-password-plaintext"}',
+    ],
+    ['password raw', '{"passwordRaw":"do-not-print-password-raw"}'],
+    ['password clear', '{"passwordClear":"do-not-print-password-clear"}'],
+    ['key material', '{"keyMaterial":"do-not-print-key-material"}'],
+    ['secret material', '{"secretMaterial":"do-not-print-secret-material"}'],
+    ['key blob', '{"keyBlob":"do-not-print-key-blob"}'],
+    ['token bearer', '{"tokenBearer":"do-not-print-token-bearer"}'],
+    [
+      'compact password plaintext',
+      'passwordplaintext=do-not-print-compact-password-plaintext',
+    ],
+    ['compact key material', 'keymaterial=do-not-print-compact-key-material'],
+    ['bracket-wrapped password', '[password=do-not-print-bracket-password]'],
     ['raw access token', 'access_token=do-not-print-access-token'],
     ['camel access token', 'accessToken: do-not-print-camel-access-token'],
     ['compact API key', 'apikey=do-not-print-compact-api-key'],
@@ -270,6 +286,14 @@ describe('credential closeout packet', () => {
     [
       'authorization credential',
       'Authorization: Bearer do-not-print-bearer-token',
+    ],
+    [
+      'GitHub authorization credential',
+      'Authorization: token do-not-print-github-token',
+    ],
+    [
+      'digest authorization credential',
+      'Authorization: Digest do-not-print-digest-credential',
     ],
     [
       'JWT',
@@ -361,6 +385,28 @@ describe('credential closeout packet', () => {
     ],
     ['colon-delimited package script', 'pnpm account:keys:lifecycle'],
     ['key digest metadata', `key digest: sha256:${'c'.repeat(64)}`],
+    ['redacted authorization', 'Authorization: <redacted>'],
+    ['redacted bearer authorization', 'Authorization: Bearer <redacted>'],
+    [
+      'redacted arbitrary-scheme authorization',
+      'Authorization: token [redacted]',
+    ],
+    [
+      'type 0 malformed single-part text',
+      '0.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=',
+    ],
+    [
+      'type 1 malformed two-part text',
+      '1.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM=',
+    ],
+    [
+      'type 3 malformed two-part text',
+      '3.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=|YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM=',
+    ],
+    [
+      'type 5 malformed single-part text',
+      '5.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=',
+    ],
   ])('accepts approved %s metadata', (_name, safeContent) => {
     expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
   })

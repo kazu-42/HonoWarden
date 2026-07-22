@@ -80,24 +80,48 @@ After that fix, an expanded `keyHash` fixture produced the only failure in a
   delimiter-heavy regression proves a trailing secret is still found; and
 - directly pins oversized, invalid UTF-8, and registry source-digest failures.
 
-The focused suite now passes all 60 tests.
+The first remediation commit `ed0f3a5` then received two fresh reviews. Standard
+Opus session `b0b1a188-09ec-47a7-9e6d-08fb1dc5cc92` approved with zero
+actionable P0-P3, while noting that type 0 was conservatively accepted as both a
+one- and two-part EncString. Five-axis Opus session
+`fa64dc9a-1bd5-4855-9df0-15998e2451a0` approved with three actionable P3
+hardening findings: secret-material suffixes, non-Bearer/Basic Authorization
+schemes, and bracket-wrapped assignments. The second remediation red run passed
+64 of 77 tests and reproduced all 12 false negatives plus the type 0
+false-positive. The implementation now also:
 
-Positive leak fixtures cover passwords and password hashes, raw/compact access
-and refresh tokens, key/secret hashes, token signatures, wrapped and unwrapped
-keys, encrypted item bodies, identity payloads, provider payloads, profiles,
-secret-like schema fields, Authorization credentials, JWTs, EncString types
-0-7, private-key blocks, and personal email identities. Approved digests,
-versions, counts, enums, source refs, repository paths, limitation text, empty
-secret counts, verification markers, package scripts, and reserved example
-identities remain accepted.
+- detects plaintext, raw, clear, material, blob, and bearer suffixes for both
+  segmented and compact high-risk field names;
+- rejects every non-sentinel Authorization value without maintaining a scheme
+  allowlist;
+- recognizes `[` as an inline assignment boundary; and
+- accepts only the repository's exact EncString part count for each type, with
+  malformed one-, two-, and three-part controls pinned as safe metadata.
+
+A final self-review reproduced two false positives for scheme-prefixed redacted
+Authorization values in a 77-of-79 red run. Authorization sentinel handling now
+accepts either a direct sentinel or an arbitrary scheme followed only by a
+sentinel, without accepting a real credential value. The focused suite now
+passes all 79 tests.
+
+Positive leak fixtures cover passwords, password hashes and plaintext variants,
+raw/compact access and refresh tokens, key/secret hashes and material, token
+signatures and bearer fields, wrapped and unwrapped keys, encrypted item bodies,
+identity payloads, provider payloads, profiles, secret-like schema fields,
+Authorization credentials across schemes, bracket-wrapped assignments, JWTs,
+EncString types 0-7, private-key blocks, and personal email identities. Approved
+digests, versions, counts, enums, source refs, repository paths, limitation
+text, empty secret counts, redacted Authorization, malformed EncString shapes,
+verification markers, package scripts, and reserved example identities remain
+accepted.
 
 ## Current Verification
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 60/60 passed                                                                             |
-| Compatibility impact        | 201/201 across 5 files passed                                                            |
-| Full suite                  | 1,431/1,431 across 104 files passed serially                                             |
+| Focused generator/scanner   | 79/79 passed                                                                             |
+| Compatibility impact        | 220/220 across 5 files passed                                                            |
+| Full suite                  | 1,450/1,450 across 104 files passed serially                                             |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |
