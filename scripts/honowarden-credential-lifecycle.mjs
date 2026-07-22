@@ -375,12 +375,7 @@ export async function executeCredentialLifecycleForRecovery({
   )
 }
 
-export async function verifyRestoredCredentialGeneration({
-  persistTo,
-  harnessRoot,
-  recoveryContext,
-  timeoutMs = '120000',
-}) {
+function assertValidRecoveryContext(recoveryContext) {
   if (
     !recoveryContext?.material ||
     !recoveryContext?.officialOrigin ||
@@ -391,6 +386,15 @@ export async function verifyRestoredCredentialGeneration({
   ) {
     throw new Error('restored credential recovery context was invalid')
   }
+}
+
+export async function verifyRestoredCredentialGeneration({
+  persistTo,
+  harnessRoot,
+  recoveryContext,
+  timeoutMs = '120000',
+}) {
+  assertValidRecoveryContext(recoveryContext)
   const normalizedHarnessRoot = resolveHarnessRoot(harnessRoot)
   const timeout = parseTimeout(timeoutMs)
   const commandProcesses = new Set()
@@ -597,6 +601,515 @@ export async function verifyRestoredCredentialGeneration({
   }
 }
 
+export async function verifyCredentialForwardRecovery({
+  persistTo,
+  harnessRoot,
+  recoveryContext,
+  readPersistenceIdentity,
+  timeoutMs = '120000',
+}) {
+  assertValidRecoveryContext(recoveryContext)
+  if (typeof readPersistenceIdentity !== 'function') {
+    throw new TypeError('canonical persistence identity reader is required')
+  }
+  const normalizedHarnessRoot = resolveHarnessRoot(harnessRoot)
+  const timeout = parseTimeout(timeoutMs)
+  const commandProcesses = new Set()
+  let worker = null
+  let proxy = null
+  const cleanup = createIdempotentCleanup(async () => {
+    await runCleanupSteps(
+      [
+        () =>
+          stopTrackedProcesses(
+            commandProcesses,
+            'credential forward-recovery command cleanup',
+          ),
+        async () => {
+          const activeProxy = proxy
+          proxy = null
+          if (activeProxy) await stopTlsProxy(activeProxy)
+        },
+        async () => {
+          const activeWorker = worker
+          worker = null
+          if (activeWorker) await stopDetachedProcessTree(activeWorker)
+        },
+      ],
+      'credential forward-recovery cleanup',
+    )
+  })
+  const removeSignalCleanup = installSignalCleanup(cleanup)
+  const material = recoveryContext.material
+  const currentStage = recoveryContext.current.stage
+  const forwardStage = material.stages.forward_recovery
+  if (
+    currentStage?.digests?.credential !==
+      material.stages.user_key_rotation?.digests?.credential ||
+    forwardStage?.digests?.userKey !== currentStage?.digests?.userKey ||
+    forwardStage?.digests?.vault !== currentStage?.digests?.vault ||
+    forwardStage?.digests?.accountKeys !== currentStage?.digests?.accountKeys
+  ) {
+    throw new Error('forward-recovery credential stages were inconsistent')
+  }
+  const recoveryOrigin = validateRecoveryOfficialOrigin(
+    recoveryContext.officialOrigin,
+  )
+  const runId = sha256(`${persistTo}\nforward\n${Date.now()}`).slice(0, 12)
+  let tls
+  let ports
+  let baseUrl
+  let officialBaseUrl
+
+  const start = async ({ writersEnabled, quotaEnabled, withProxy }) => {
+    worker = startWorker({
+      persistTo,
+      port: ports[0],
+      inspectorPort: ports[1],
+      email: material.email,
+      credentialWritersEnabled: writersEnabled,
+      globalRequestQuotaEnabled: quotaEnabled,
+    })
+    baseUrl = `http://127.0.0.1:${ports[0]}`
+    await waitForHealth(baseUrl, worker)
+    if (withProxy) {
+      proxy = await startTlsProxy({
+        backendPort: ports[0],
+        certificatePath: tls.certificatePath,
+        keyPath: tls.keyPath,
+        port: recoveryOrigin.port,
+      })
+      officialBaseUrl = recoveryOrigin.origin
+    } else {
+      officialBaseUrl = null
+    }
+  }
+
+  const stop = async () => {
+    const activeProxy = proxy
+    const activeWorker = worker
+    proxy = null
+    worker = null
+    await runCleanupSteps(
+      [
+        async () => {
+          if (activeProxy) await stopTlsProxy(activeProxy)
+        },
+        async () => {
+          if (activeWorker) await stopDetachedProcessTree(activeWorker)
+        },
+      ],
+      'credential forward-recovery restart cleanup',
+    )
+  }
+
+  const rejectPriorGenerations = async (phase, currentTokens) => {
+    for (const stale of recoveryContext.stale) {
+      await assertDirectGenerationRejected({
+        baseUrl,
+        material,
+        previous: stale.previous,
+        tokens: stale.tokens,
+        label: `${stale.label}-forward-${phase}`,
+      })
+    }
+    await assertDirectGenerationRejected({
+      baseUrl,
+      material,
+      previous: currentStage,
+      tokens: currentTokens,
+      label: `pre-recovery-forward-${phase}`,
+    })
+    return recoveryContext.stale.length + 1
+  }
+
+  const rejectPriorSessions = async (phase, currentTokens) => {
+    const priorSessions = [
+      ...recoveryContext.stale.map((stale) => ({
+        label: stale.label,
+        tokens: stale.tokens,
+      })),
+      { label: 'pre-recovery', tokens: currentTokens },
+    ]
+    for (const prior of priorSessions) {
+      const access = await authorizedJson(
+        baseUrl,
+        '/api/sync',
+        prior.tokens.accessToken,
+      )
+      const refresh = await refreshGrant(baseUrl, prior.tokens.refreshToken)
+      assertStatus(access, 401, `${prior.label} ${phase} old access session`)
+      assertStatus(refresh, 400, `${prior.label} ${phase} old refresh session`)
+    }
+  }
+
+  const rejectPriorProfiles = async (phase) => {
+    let rejectedProfiles = 0
+    for (const [index, stale] of recoveryContext.stale.entries()) {
+      const profile = `hon226-${runId}-prior-${index}-${phase}`
+      await cloneOfficialProfile(normalizedHarnessRoot, stale.profile, profile)
+      await assertStaleProfileRejected({
+        baseUrl: officialBaseUrl,
+        caPath: tls.certificatePath,
+        harnessRoot: normalizedHarnessRoot,
+        profile,
+        session: stale.session,
+        label: `${stale.label}-forward-${phase}`,
+        timeoutMs: timeout,
+      })
+      rejectedProfiles += 1
+    }
+    return rejectedProfiles
+  }
+
+  try {
+    tls = await prepareTlsCertificate(persistTo, commandProcesses)
+    ports = await findDistinctFreePorts(2, [recoveryOrigin.port])
+    const baselineIdentity = await readPersistenceIdentity('baseline')
+    assertPersistenceIdentityUnchanged(
+      baselineIdentity,
+      baselineIdentity,
+      'baseline',
+    )
+    const disabledWriters = [
+      {
+        id: 'account_keys',
+        path: '/api/accounts/keys',
+        message: 'Account keys are not activated on this server.',
+      },
+      {
+        id: 'password_change',
+        path: '/api/accounts/password',
+        message: 'Password change is not activated on this server.',
+      },
+      {
+        id: 'kdf_mutation',
+        path: '/api/accounts/kdf',
+        message: 'KDF mutation is not activated on this server.',
+      },
+      {
+        id: 'user_key_rotation',
+        path: '/api/accounts/key-management/rotate-user-account-keys',
+        message: 'User-key rotation is not activated on this server.',
+      },
+    ]
+    const disabledReadbacks = []
+    for (const writer of disabledWriters) {
+      await start({
+        writersEnabled: false,
+        quotaEnabled: true,
+        withProxy: false,
+      })
+      let response
+      try {
+        response = await requestJson(baseUrl, writer.path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+      } finally {
+        await stop()
+      }
+      assertStatus(response, 501, `${writer.id} disabled writer`)
+      assert(
+        response.body?.error?.code === 'unsupported_feature' &&
+          response.body?.error?.message === writer.message,
+        `${writer.id} disabled writer response was inconsistent`,
+      )
+      const identity = await readPersistenceIdentity(writer.id)
+      assertPersistenceIdentityUnchanged(baselineIdentity, identity, writer.id)
+      disabledReadbacks.push({
+        id: writer.id,
+        status: response.status,
+        identity,
+      })
+    }
+
+    await start({
+      writersEnabled: true,
+      quotaEnabled: false,
+      withProxy: true,
+    })
+    const currentLogin = await passwordGrant(
+      baseUrl,
+      material,
+      currentStage,
+      'forward-current-api',
+    )
+    assertStatus(currentLogin, 200, 'forward current API login')
+    const currentTokens = readTokens(currentLogin, 'forward-current')
+    const preRecoveryProfile = `hon226-${runId}-pre-recovery`
+    const staleProfileAfterMutation = `${preRecoveryProfile}-stale-mutation`
+    const staleProfileAfterRestart = `${preRecoveryProfile}-stale-restart`
+    const preRecoveryOfficial = await verifyOfficialStage({
+      baseUrl: officialBaseUrl,
+      caPath: tls.certificatePath,
+      harnessRoot: normalizedHarnessRoot,
+      material,
+      profile: preRecoveryProfile,
+      stage: currentStage,
+      timeoutMs: timeout,
+    })
+    await cloneOfficialProfile(
+      normalizedHarnessRoot,
+      preRecoveryProfile,
+      staleProfileAfterMutation,
+    )
+    await cloneOfficialProfile(
+      normalizedHarnessRoot,
+      preRecoveryProfile,
+      staleProfileAfterRestart,
+    )
+    const before = await readGenerationSnapshot(persistTo, commandProcesses)
+    const r2Before = await readR2Sentinel(
+      persistTo,
+      'forward-recovery-before',
+      commandProcesses,
+    )
+    const mutationBody = passwordChangeBody(
+      material.email,
+      currentStage,
+      forwardStage,
+    )
+    const concurrentResponses = await Promise.all([
+      postCredentialJson(
+        baseUrl,
+        '/api/accounts/password',
+        currentTokens.accessToken,
+        mutationBody,
+      ),
+      postCredentialJson(
+        baseUrl,
+        '/api/accounts/password',
+        currentTokens.accessToken,
+        mutationBody,
+      ),
+    ])
+    const concurrentStatuses = concurrentResponses
+      .map((response) => response.status)
+      .sort((left, right) => left - right)
+    assert(
+      concurrentStatuses.filter((status) => status === 200).length === 1 &&
+        concurrentStatuses.every((status) => [200, 401, 409].includes(status)),
+      `forward recovery concurrency returned ${concurrentStatuses.join(',')}`,
+    )
+    const after = await readGenerationSnapshot(persistTo, commandProcesses)
+    assertNoForeignKeyViolations(after, 'forward recovery')
+    assertGenerationMatches(after, forwardStage, 'forward recovery')
+    const r2After = await readR2Sentinel(
+      persistTo,
+      'forward-recovery-after',
+      commandProcesses,
+    )
+    assert(
+      r2After.equals(r2Before),
+      'forward recovery changed immutable R2 bytes',
+    )
+    const auditDelta = after.auditContexts.slice(before.auditContexts.length)
+    assert(
+      after.user.securityStamp !== before.user.securityStamp &&
+        after.user.revisionDate > before.user.revisionDate &&
+        auditDelta.length === 1 &&
+        auditDelta[0]?.name === 'account.password.change' &&
+        after.wrapperHistory.length === before.wrapperHistory.length + 1,
+      'forward recovery did not commit exactly one credential generation',
+    )
+    assert(
+      findSecretAuditMatches(after.auditContexts, material, [
+        currentTokens.accessToken,
+        currentTokens.refreshToken,
+      ]).total === 0,
+      'forward recovery audit context contained private material',
+    )
+
+    const replay = await postCredentialJson(
+      baseUrl,
+      '/api/accounts/password',
+      currentTokens.accessToken,
+      mutationBody,
+    )
+    assert(
+      replay.status === 401 || replay.status === 409,
+      `forward recovery replay returned ${replay.status}`,
+    )
+    const afterReplay = await readGenerationSnapshot(
+      persistTo,
+      commandProcesses,
+    )
+    const r2AfterReplay = await readR2Sentinel(
+      persistTo,
+      'forward-recovery-replay',
+      commandProcesses,
+    )
+    assert(
+      generationStateEqual(after, afterReplay) && r2AfterReplay.equals(r2After),
+      'forward recovery replay changed D1/R2 state',
+    )
+
+    const forwardLogin = await passwordGrant(
+      baseUrl,
+      material,
+      forwardStage,
+      'forward-recovery-api',
+    )
+    assertStatus(forwardLogin, 200, 'forward recovery API login')
+    const forwardTokens = readTokens(forwardLogin, 'forward-recovery')
+    const forwardOfficial = await verifyOfficialStage({
+      baseUrl: officialBaseUrl,
+      caPath: tls.certificatePath,
+      harnessRoot: normalizedHarnessRoot,
+      material,
+      profile: `hon226-${runId}-forward`,
+      stage: forwardStage,
+      timeoutMs: timeout,
+    })
+    const forwardState = await generationStateCheckpoint({
+      id: 'forward_recovery',
+      expectedStage: forwardStage,
+      persistTo,
+      commandProcesses,
+    })
+    await rejectPriorSessions('before-restart', currentTokens)
+    await assertStaleProfileRejected({
+      baseUrl: officialBaseUrl,
+      caPath: tls.certificatePath,
+      harnessRoot: normalizedHarnessRoot,
+      profile: staleProfileAfterMutation,
+      session: preRecoveryOfficial.session,
+      label: 'pre-recovery-official-before-restart',
+      timeoutMs: timeout,
+    })
+
+    await stop()
+    await start({
+      writersEnabled: true,
+      quotaEnabled: false,
+      withProxy: true,
+    })
+    const forwardAccess = await authorizedJson(
+      baseUrl,
+      '/api/sync',
+      forwardTokens.accessToken,
+    )
+    assertStatus(forwardAccess, 200, 'forward recovery access after restart')
+    const forwardRefresh = await refreshGrant(
+      baseUrl,
+      forwardTokens.refreshToken,
+    )
+    assertStatus(forwardRefresh, 200, 'forward recovery refresh after restart')
+    const forwardRestartOfficial = await verifyOfficialStage({
+      baseUrl: officialBaseUrl,
+      caPath: tls.certificatePath,
+      harnessRoot: normalizedHarnessRoot,
+      material,
+      profile: `hon226-${runId}-forward-restart`,
+      stage: forwardStage,
+      timeoutMs: timeout,
+    })
+    const rejectedHistoricalProfilesAfterRestart =
+      await rejectPriorProfiles('after-restart')
+    await assertStaleProfileRejected({
+      baseUrl: officialBaseUrl,
+      caPath: tls.certificatePath,
+      harnessRoot: normalizedHarnessRoot,
+      profile: staleProfileAfterRestart,
+      session: preRecoveryOfficial.session,
+      label: 'pre-recovery-official-after-restart',
+      timeoutMs: timeout,
+    })
+    const rejectedProfilesAfterRestart =
+      rejectedHistoricalProfilesAfterRestart + 1
+    const rejectedGenerationsAfterRestart = await rejectPriorGenerations(
+      'after-restart',
+      currentTokens,
+    )
+    const finalState = await generationStateCheckpoint({
+      id: 'forward_recovery_restart',
+      expectedStage: forwardStage,
+      persistTo,
+      commandProcesses,
+    })
+    const checks = [
+      check(
+        'all_disabled_writers_are_canonical_no_ops',
+        disabledReadbacks.length === 4,
+      ),
+      check(
+        'same_target_reenabled_without_restore_reset',
+        disabledReadbacks.every(
+          (entry) =>
+            entry.identity.combinedSha256 === baselineIdentity.combinedSha256,
+        ),
+      ),
+      check(
+        'concurrent_forward_recovery_commits_exactly_once',
+        concurrentStatuses.filter((status) => status === 200).length === 1 &&
+          auditDelta.length === 1,
+      ),
+      check(
+        'retry_cannot_commit_second_generation',
+        replay.status === 401 || replay.status === 409,
+      ),
+      check(
+        'all_five_prior_generations_remain_rejected',
+        rejectedGenerationsAfterRestart === recoveryContext.stale.length + 1 &&
+          rejectedProfilesAfterRestart === recoveryContext.stale.length + 1,
+      ),
+      check(
+        'official_client_decrypts_forward_generation_after_restart',
+        forwardOfficial.itemRead && forwardRestartOfficial.itemRead,
+      ),
+      check('forward_recovery_preserves_r2', r2After.equals(r2Before)),
+      check(
+        'forward_recovery_foreign_keys_remain_valid',
+        forwardState.d1.foreignKeyViolations === 0 &&
+          finalState.d1.foreignKeyViolations === 0,
+      ),
+    ]
+    if (checks.some((entry) => entry.status !== 'pass')) {
+      throw new Error('credential forward-recovery checks failed')
+    }
+    return {
+      status: 'passed',
+      disabled: {
+        writerCount: disabledReadbacks.length,
+        baselineIdentity,
+        requests: disabledReadbacks,
+      },
+      mutation: {
+        concurrentStatuses,
+        replayStatus: replay.status,
+        securityStampChanged: true,
+        revisionAdvanced: true,
+        auditDelta: auditDelta.length,
+        wrapperHistoryDelta:
+          after.wrapperHistory.length - before.wrapperHistory.length,
+        r2Unchanged: true,
+      },
+      rejectedPriorSessions: {
+        beforeRestart: recoveryContext.stale.length + 1,
+      },
+      rejectedPriorGenerations: {
+        afterRestart: rejectedGenerationsAfterRestart,
+        profilesAfterRestart: rejectedProfilesAfterRestart,
+      },
+      officialClient: {
+        beforeRestart: redactOfficialReadback(forwardOfficial),
+        afterRestart: redactOfficialReadback(forwardRestartOfficial),
+      },
+      forward: forwardState,
+      final: finalState,
+      checks,
+    }
+  } finally {
+    try {
+      await cleanup()
+    } finally {
+      removeSignalCleanup()
+    }
+  }
+}
+
 function redactOfficialReadback(official) {
   return {
     itemRead: official.itemRead,
@@ -670,6 +1183,7 @@ export function normalizeCredentialMaterial(value) {
     ['argon2id', 'argon2id', 1],
     ['pbkdf2_return', 'pbkdf2', 1],
     ['user_key_rotation', 'pbkdf2', 2],
+    ['forward_recovery', 'pbkdf2', 2],
   ]
   if (
     typeof value?.email !== 'string' ||
@@ -2324,6 +2838,29 @@ export function generationStateEqual(left, right) {
   )
 }
 
+export function assertPersistenceIdentityUnchanged(expected, actual, label) {
+  const identities = [expected, actual]
+  if (
+    typeof label !== 'string' ||
+    label.length === 0 ||
+    identities.some(
+      (identity) =>
+        !isSha256(identity?.d1Sha256) ||
+        !isSha256(identity?.r2Sha256) ||
+        !isSha256(identity?.combinedSha256),
+    )
+  ) {
+    throw new Error(`${label} canonical persistence identity was invalid`)
+  }
+  if (
+    expected.d1Sha256 !== actual.d1Sha256 ||
+    expected.r2Sha256 !== actual.r2Sha256 ||
+    expected.combinedSha256 !== actual.combinedSha256
+  ) {
+    throw new Error(`${label} changed canonical D1/R2 identity`)
+  }
+}
+
 export function findSecretAuditMatches(contexts, material, issuedTokens = []) {
   const serialized = JSON.stringify(contexts)
   const secretValues = [
@@ -2580,7 +3117,22 @@ async function stopTlsProxy(server) {
   })
 }
 
-function startWorker({ persistTo, port, inspectorPort, email }) {
+function startWorker({
+  persistTo,
+  port,
+  inspectorPort,
+  email,
+  credentialWritersEnabled = true,
+  globalRequestQuotaEnabled = false,
+}) {
+  if (
+    typeof credentialWritersEnabled !== 'boolean' ||
+    typeof globalRequestQuotaEnabled !== 'boolean'
+  ) {
+    throw new TypeError('credential Worker rollout policy was invalid')
+  }
+  const writerFlag = credentialWritersEnabled ? 'true' : 'false'
+  const quotaFlag = globalRequestQuotaEnabled ? 'true' : 'false'
   const child = spawn(
     'pnpm',
     [
@@ -2605,13 +3157,15 @@ function startWorker({ persistTo, port, inspectorPort, email }) {
       '--var',
       `HONOWARDEN_TOKEN_SECRET:${tokenSecret}`,
       '--var',
-      'HONOWARDEN_ACCOUNT_KEYS_ENABLED:true',
+      `HONOWARDEN_ACCOUNT_KEYS_ENABLED:${writerFlag}`,
       '--var',
-      'HONOWARDEN_KDF_MUTATION_ENABLED:true',
+      `HONOWARDEN_KDF_MUTATION_ENABLED:${writerFlag}`,
       '--var',
-      'HONOWARDEN_USER_KEY_ROTATION_ENABLED:true',
+      `HONOWARDEN_PASSWORD_CHANGE_ENABLED:${writerFlag}`,
       '--var',
-      'HONOWARDEN_GLOBAL_REQUEST_QUOTA:false',
+      `HONOWARDEN_USER_KEY_ROTATION_ENABLED:${writerFlag}`,
+      '--var',
+      `HONOWARDEN_GLOBAL_REQUEST_QUOTA:${quotaFlag}`,
       '--var',
       'HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED:false',
       '--var',

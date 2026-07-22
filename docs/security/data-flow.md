@@ -59,25 +59,29 @@ Data stored:
 
 ## Password Verification And Change
 
-1. An authenticated client posts its current client-derived authentication hash
+1. Password change requires the explicit default-off
+   `HONOWARDEN_PASSWORD_CHANGE_ENABLED` writer flag. A disabled POST or
+   Hono-derived HEAD returns D1-free 501 before authentication or quota work;
+   the read-only verify-password route remains available.
+2. An authenticated client posts its current client-derived authentication hash
    to `POST /api/accounts/verify-password` or as the current proof in
    `POST /api/accounts/password`.
-2. Worker validates the bearer token and current security stamp, then applies
+3. Worker validates the bearer token and current security stamp, then applies
    the existing IP/account credential-proof defenses.
-3. Verify-password performs a constant-time hash comparison and returns only an
+4. Verify-password performs a constant-time hash comparison and returns only an
    empty `masterPasswordPolicy` projection. It does not mutate credentials or
    emit credential material.
-4. Password change accepts pinned structured, transitional legacy, or matching
+5. Password change accepts pinned structured, transitional legacy, or matching
    dual representations. Structured authentication and unlock data must agree
    on KDF and salt, and those values must match the stored account generation.
-5. One generation-guarded D1 batch replaces only the authentication hash and
+6. One generation-guarded D1 batch replaces only the authentication hash and
    opaque wrapped user key, advances the security stamp and revision, revokes
    all active device and refresh-token sessions, supersedes active auth
    requests, and inserts the required `account.password.change` audit row.
-6. Folder, cipher, attachment, email, and KDF columns are outside that batch and
+7. Folder, cipher, attachment, email, and KDF columns are outside that batch and
    remain unchanged. A stale generation or any failed batch statement leaves
    the old credential generation and sessions unchanged.
-7. After commit, Worker invalidates authenticated Durable Object notification
+8. After commit, Worker invalidates authenticated Durable Object notification
    sessions with the new generation. This socket cleanup is outside D1's atomic
    boundary: failure returns an explicit `session_revocation_incomplete` 503,
    while the password and D1 session revocation remain committed.

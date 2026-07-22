@@ -52,7 +52,8 @@ Failure invariants:
 ## Password Verification And Change
 
 ```text
-authenticated bearer token at current security stamp
+explicit password writer rollout flag enabled
+  -> authenticated bearer token at current security stamp
   -> current authentication-hash proof is well formed?
   -> credential-proof defense allows attempt?
   -> current hash matches in constant time?
@@ -76,6 +77,8 @@ Success invariants:
 
 Failure invariants:
 
+- a disabled password writer returns unsupported before authentication, quota,
+  or D1 access; verify-password remains a separate read-only route
 - malformed, oversized, mixed-alias, non-empty-hint, KDF-drift, salt-drift, and
   wrong-current-proof requests do not mutate the credential generation
 - a stale generation returns `revision_conflict`; the guarded D1 batch leaves

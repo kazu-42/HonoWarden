@@ -426,6 +426,8 @@ function startWorker({ persistTo, port, inspectorPort }) {
       '--var',
       `HONOWARDEN_TOKEN_SECRET:${tokenSecret}`,
       '--var',
+      'HONOWARDEN_PASSWORD_CHANGE_ENABLED:true',
+      '--var',
       'HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED:false',
       '--var',
       'HONOWARDEN_AUDIT_LOGS:false',

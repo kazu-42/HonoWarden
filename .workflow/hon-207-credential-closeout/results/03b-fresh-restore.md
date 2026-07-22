@@ -1,7 +1,6 @@
 # RECOVERY-1B: Fresh Restore And Stale-Generation Rejection
 
-Status: local implementation, integrated recovery proof, and implementation
-reviews passed; repository publication pending
+Status: merged, main CI passed, and Linear Done/archived
 
 Linear issue: HON-225
 
@@ -187,8 +186,11 @@ temporary D1 inspection root: removed
   recovery for a consumed failed fresh target, and a loose CI Node 22 pin that
   still resolves above the package's Node 22.13 runtime floor
 
-## Remaining Gate
+## Publication Closeout
 
-Review this evidence-only metadata delta, publish the PR, pass exact-head CI
-with zero unresolved review threads, squash with tree equality, pass merged-main
-CI, then move HON-225 to Done/archive before starting HON-226.
+- PR #113 head `2e5a010833ddb69d4a0071de450318c78402bfe0` passed CI run 29874808030.
+- Squash commit `c1e2f7c8befb4c85030d48e9b7171fb5599761c2` has the same tree
+  `aaaa0955ff6b737feba59e5b8f3409a562493cfa` as the reviewed head.
+- Merged-main CI run 29874991552 passed.
+- HON-225 moved to Done and was archived at
+  `2026-07-21T22:53:21.567Z`; HON-226 moved to In Progress.

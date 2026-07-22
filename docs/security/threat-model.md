@@ -81,7 +81,9 @@ Out of scope for the initial product:
   `/api/config`, `/config`
 - account bootstrap route: `/api/accounts/bootstrap`
 - account profile routes: `/api/accounts/profile`
-- default-off account-key routes: `GET` and `POST /api/accounts/keys`
+- default-off credential writers: `POST /api/accounts/password`,
+  `POST /api/accounts/kdf`, `GET` and `POST /api/accounts/keys`, and
+  `POST /api/accounts/key-management/rotate-user-account-keys`
 - disabled public registration routes
 - prelogin route: `/identity/accounts/prelogin`
 - token route: `/identity/connect/token`

@@ -259,6 +259,7 @@ const replayFixtures = [
   },
   {
     path: 'accounts/password-change-success.json',
+    passwordChangeEnabled: 'true',
     allowMutatingFixtures: true,
     systemTime: new Date('2026-07-19T00:00:00.000Z'),
     database: {
@@ -494,6 +495,9 @@ describe('compatibility fixture route replay', () => {
           : {}),
         ...('accountKeysEnabled' in fixture
           ? { accountKeysEnabled: fixture.accountKeysEnabled }
+          : {}),
+        ...('passwordChangeEnabled' in fixture
+          ? { passwordChangeEnabled: fixture.passwordChangeEnabled }
           : {}),
       }
       const runFixture = () =>

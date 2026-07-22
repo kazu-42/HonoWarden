@@ -73,6 +73,7 @@ describe('release feature-freeze docs', () => {
       '0016_user_key_rotation_wrapper_history.sql',
       'must be applied before deploying',
       'Drain credential mutation requests',
+      'HONOWARDEN_PASSWORD_CHANGE_ENABLED=false',
       'HONOWARDEN_ACCOUNT_KEYS_ENABLED=false',
       'HONOWARDEN_KDF_MUTATION_ENABLED=false',
       'HONOWARDEN_USER_KEY_ROTATION_ENABLED=false',

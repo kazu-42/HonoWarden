@@ -2,7 +2,7 @@
 
 Linear parent: HON-221
 
-Linear issue: HON-226; blocked by HON-225
+Linear issue: HON-226; HON-225 predecessor gate satisfied
 
 ## Goal
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto'
+import { spawn } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   chmod,
   lstat,
@@ -10,6 +11,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
+import { createServer as createNetServer } from 'node:net'
 import { join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +19,7 @@ import { parse as parseJsonc } from 'jsonc-parser'
 
 import {
   executeCredentialLifecycleForRecovery,
+  verifyCredentialForwardRecovery,
   verifyRestoredCredentialGeneration,
 } from './honowarden-credential-lifecycle.mjs'
 import { assertCredentialLifecycleCompletionAttestation } from './honowarden-credential-lifecycle-state.mjs'
@@ -25,6 +28,7 @@ import {
   installSignalCleanup,
   runBoundedCommand,
   runCleanupSteps,
+  stopDetachedProcessTree,
   stopTrackedProcesses,
 } from './honowarden-signal-cleanup.mjs'
 
@@ -33,6 +37,11 @@ const confirmation = 'credential-restore-lifecycle'
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
 const fixtureRoot = join(repoRoot, 'test/.tmp')
 const backupScript = join(repoRoot, 'scripts/honowarden-backup.mjs')
+const localR2InventoryScript = join(
+  repoRoot,
+  'scripts/honowarden-local-r2-inventory.mjs',
+)
+const wranglerExecutable = join(repoRoot, 'node_modules/.bin/wrangler')
 const rootWranglerConfig = join(repoRoot, 'wrangler.jsonc')
 const defaultHarnessRoot = 'test/.tmp/hon-207-official-client'
 const runOwnershipMarker = '.honowarden-credential-restore-owned'
@@ -135,7 +144,30 @@ function buildPacket({ action, generatedAt, options, runRoot }) {
   }
 }
 
-async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
+export async function executeCredentialRestoreLifecycle({
+  generatedAt,
+  harnessRoot = defaultHarnessRoot,
+  runRoot,
+  timeoutMs = '120000',
+  forwardRecovery = false,
+}) {
+  if (typeof forwardRecovery !== 'boolean') {
+    throw new TypeError('forward recovery selection was invalid')
+  }
+  return executeRestoreLifecycle({
+    generatedAt: parseTimestamp(generatedAt),
+    options: { harnessRoot, timeoutMs },
+    runRoot: resolveRunRoot(requireValue(runRoot, '--run-root')),
+    forwardRecovery,
+  })
+}
+
+async function executeRestoreLifecycle({
+  generatedAt,
+  options,
+  runRoot,
+  forwardRecovery = false,
+}) {
   await prepareRunRoot(runRoot.absolute)
   const activeProcesses = new Set()
   const cleanup = createIdempotentCleanup(async () => {
@@ -220,7 +252,11 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
         const manifestPath = join(backupRoot, 'backup-manifest.json')
         const manifestBytes = await readFile(manifestPath)
         const manifest = JSON.parse(manifestBytes.toString('utf8'))
-        assertGenerationBoundExportPacket(exportPacket, manifest)
+        assertGenerationBoundExportPacket(
+          exportPacket,
+          manifest,
+          readback.generationManifestSha256,
+        )
         const manifestSha256 = sha256(manifestBytes)
         const target = await preparePersistenceRoot(
           join(runRoot.absolute, 'target'),
@@ -261,10 +297,36 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
           recoveryContext,
           timeoutMs: options.timeoutMs ?? '120000',
         })
+        let forward = null
+        if (forwardRecovery) {
+          let identityIndex = 0
+          forward = await verifyCredentialForwardRecovery({
+            persistTo: target.persistTo,
+            harnessRoot: options.harnessRoot ?? defaultHarnessRoot,
+            recoveryContext,
+            timeoutMs: options.timeoutMs ?? '120000',
+            readPersistenceIdentity: async (label) => {
+              const identity = await readCanonicalPersistenceIdentity({
+                activeProcesses,
+                config: target.config,
+                index: identityIndex,
+                label,
+                persistTo: target.persistTo,
+                runRoot: runRoot.absolute,
+                timeoutMs: parseTimeout(options.timeoutMs ?? '120000'),
+              })
+              identityIndex += 1
+              return identity
+            },
+          })
+        }
         const recovery = {
           status: 'passed',
           backup: {
             manifestSha256,
+            lifecycleManifestSha256: readback.generationManifestSha256,
+            generationBindingSha256:
+              manifest.credentialGeneration.manifestSha256,
             generationManifestSha256:
               manifest.credentialGeneration.manifestSha256,
             sourceStateSha256: manifest.credentialGeneration.sourceStateSha256,
@@ -274,12 +336,21 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
           },
           restore: restorePacket.verification,
           credential,
+          ...(forward ? { forwardRecovery: forward } : {}),
           checks: [
             { name: 'source_completion_remained_attested', status: 'pass' },
             { name: 'restored_d1_r2_content_matches_source', status: 'pass' },
             { name: 'stale_generations_remain_rejected', status: 'pass' },
             { name: 'current_official_client_decrypts', status: 'pass' },
             { name: 'restart_preserves_restore_contract', status: 'pass' },
+            ...(forward
+              ? [
+                  {
+                    name: 'same_target_forward_recovery_passed',
+                    status: 'pass',
+                  },
+                ]
+              : []),
           ],
         }
         assertRecoveryContextAbsent(recovery, recoveryContext)
@@ -312,6 +383,292 @@ async function executeRestoreLifecycle({ generatedAt, options, runRoot }) {
       removeSignalCleanup()
     }
   }
+}
+
+async function readCanonicalPersistenceIdentity({
+  activeProcesses,
+  config,
+  index,
+  label,
+  persistTo,
+  runRoot,
+  timeoutMs,
+}) {
+  if (!Number.isInteger(index) || index < 0 || !/^[a-z0-9_]+$/.test(label)) {
+    throw new Error('canonical persistence identity coordinate was invalid')
+  }
+  const identityRoot = join(
+    runRoot,
+    `identity-${String(index).padStart(2, '0')}-${label}`,
+  )
+  const completeObjectList = await writeCompleteLocalR2ObjectList({
+    activeProcesses,
+    config,
+    index,
+    label,
+    persistTo,
+    runRoot,
+    timeoutMs,
+  })
+  const packet = await runBackupCommand(
+    [
+      'export',
+      '--out',
+      identityRoot,
+      '--database',
+      databaseName,
+      '--bucket',
+      bucketName,
+      '--mode',
+      'local',
+      '--config',
+      config,
+      '--persist-to',
+      persistTo,
+      '--r2-objects',
+      completeObjectList.path,
+      '--execute',
+    ],
+    {
+      activeProcesses,
+      label: `canonical persistence identity ${label}`,
+      timeoutMs,
+    },
+  )
+  const manifest = JSON.parse(
+    await readFile(join(identityRoot, 'backup-manifest.json'), 'utf8'),
+  )
+  if (
+    packet?.action !== 'export' ||
+    packet?.executed !== true ||
+    packet?.audit?.resultStatus !== 'executed' ||
+    !isSha256(manifest?.d1?.sha256)
+  ) {
+    throw new Error('canonical persistence identity export was incomplete')
+  }
+  const objects = assertCompleteCanonicalR2Inventory(
+    manifest?.r2?.objects,
+    completeObjectList.keys,
+  )
+  const r2Sha256 = sha256(JSON.stringify(objects))
+  return {
+    d1Sha256: manifest.d1.sha256,
+    r2Sha256,
+    combinedSha256: sha256(`${manifest.d1.sha256}\n${r2Sha256}`),
+  }
+}
+
+export function assertCompleteCanonicalR2Inventory(objects, expectedKeys) {
+  if (!Array.isArray(objects) || !Array.isArray(expectedKeys)) {
+    throw new Error('canonical R2 inventory export was incomplete')
+  }
+  const canonicalExpectedKeys = [...expectedKeys].sort()
+  const canonicalObjects = objects
+    .map((object) => ({ key: object?.key, sha256: object?.sha256 }))
+    .sort((left, right) => compareCanonicalStrings(left.key, right.key))
+  const manifestKeys = canonicalObjects.map((object) => object.key)
+  if (
+    canonicalExpectedKeys.length === 0 ||
+    new Set(canonicalExpectedKeys).size !== canonicalExpectedKeys.length ||
+    canonicalExpectedKeys.some(
+      (key) =>
+        typeof key !== 'string' ||
+        key.length === 0 ||
+        key.includes('\n') ||
+        key.includes('\r'),
+    ) ||
+    JSON.stringify(manifestKeys) !== JSON.stringify(canonicalExpectedKeys) ||
+    !manifestKeys.includes(r2ObjectKey) ||
+    canonicalObjects.some((object) => !isSha256(object.sha256))
+  ) {
+    throw new Error('canonical R2 inventory export was incomplete')
+  }
+  return canonicalObjects
+}
+
+function compareCanonicalStrings(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string') return 0
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+async function writeCompleteLocalR2ObjectList({
+  activeProcesses,
+  config,
+  index,
+  label,
+  persistTo,
+  runRoot,
+  timeoutMs,
+}) {
+  const keys = await readCompleteLocalR2ObjectKeys({
+    activeProcesses,
+    config,
+    persistTo,
+    timeoutMs,
+  })
+  if (!keys.includes(r2ObjectKey)) {
+    throw new Error('canonical R2 inventory omitted the sentinel object')
+  }
+  const path = join(
+    runRoot,
+    `r2-inventory-${String(index).padStart(2, '0')}-${label}.txt`,
+  )
+  await writePrivateFile(path, `${keys.join('\n')}\n`)
+  return { keys, path }
+}
+
+async function readCompleteLocalR2ObjectKeys({
+  activeProcesses,
+  config,
+  persistTo,
+  timeoutMs,
+}) {
+  const [port, inspectorPort] = await findDistinctFreePorts(2)
+  const token = randomUUID()
+  const worker = spawn(
+    wranglerExecutable,
+    [
+      'dev',
+      localR2InventoryScript,
+      '--config',
+      config,
+      '--local',
+      '--local-protocol',
+      'http',
+      '--ip',
+      '127.0.0.1',
+      '--port',
+      String(port),
+      '--inspector-port',
+      String(inspectorPort),
+      '--persist-to',
+      persistTo,
+      '--log-level',
+      'error',
+      '--var',
+      `HONOWARDEN_LOCAL_R2_INVENTORY_TOKEN:${token}`,
+    ],
+    {
+      cwd: repoRoot,
+      detached: true,
+      env: isolatedEnvironment(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+  activeProcesses.add(worker)
+  worker.output = ''
+  worker.spawnError = null
+  worker.once('error', (error) => {
+    worker.spawnError = error
+  })
+  worker.stdout.on('data', (chunk) => appendWorkerOutput(worker, chunk))
+  worker.stderr.on('data', (chunk) => appendWorkerOutput(worker, chunk))
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`
+    await waitForInventoryWorker(baseUrl, worker, timeoutMs, token)
+    const response = await globalThis.fetch(`${baseUrl}/inventory`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: globalThis.AbortSignal.timeout(Math.min(timeoutMs, 20_000)),
+    })
+    if (response.status !== 200) {
+      throw new Error('local R2 inventory request failed')
+    }
+    const packet = await response.json()
+    if (
+      packet?.schemaVersion !== 1 ||
+      !Array.isArray(packet.keys) ||
+      packet.keys.length === 0 ||
+      packet.keys.some(
+        (key) =>
+          typeof key !== 'string' ||
+          key.length === 0 ||
+          key.includes('\n') ||
+          key.includes('\r'),
+      ) ||
+      new Set(packet.keys).size !== packet.keys.length ||
+      JSON.stringify(packet.keys) !== JSON.stringify([...packet.keys].sort())
+    ) {
+      throw new Error('local R2 inventory response was invalid')
+    }
+    return packet.keys
+  } finally {
+    try {
+      await stopDetachedProcessTree(worker)
+    } finally {
+      worker.stdout?.destroy()
+      worker.stderr?.destroy()
+      activeProcesses.delete(worker)
+    }
+  }
+}
+
+async function waitForInventoryWorker(baseUrl, worker, timeoutMs, token) {
+  const deadline = Date.now() + Math.min(timeoutMs, 30_000)
+  while (Date.now() < deadline) {
+    if (worker.spawnError) {
+      throw new Error('local R2 inventory Worker could not start', {
+        cause: worker.spawnError,
+      })
+    }
+    if (worker.exitCode !== null) {
+      throw new Error(
+        `local R2 inventory Worker exited early${inventoryDiagnostic(worker.output, token)}`,
+      )
+    }
+    try {
+      const response = await globalThis.fetch(`${baseUrl}/health`, {
+        signal: globalThis.AbortSignal.timeout(1_000),
+      })
+      if (response.status === 204) return
+    } catch {
+      // The local-only inventory Worker is still starting.
+    }
+    await delay(100)
+  }
+  throw new Error(
+    `local R2 inventory Worker did not become healthy${inventoryDiagnostic(worker.output, token)}`,
+  )
+}
+
+function appendWorkerOutput(worker, chunk) {
+  worker.output = `${worker.output}${chunk.toString()}`.slice(-40_000)
+}
+
+function inventoryDiagnostic(value, token) {
+  const diagnostic = boundedDiagnostic(value).replaceAll(token, '[redacted]')
+  return diagnostic ? `: ${diagnostic}` : ''
+}
+
+function findFreePort() {
+  return new Promise((resolvePort, rejectPort) => {
+    const server = createNetServer()
+    server.once('error', rejectPort)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      const port = typeof address === 'object' && address ? address.port : null
+      server.close((error) => {
+        if (error) rejectPort(error)
+        else if (port) resolvePort(port)
+        else rejectPort(new Error('failed to allocate a local port'))
+      })
+    })
+  })
+}
+
+async function findDistinctFreePorts(count) {
+  const ports = []
+  while (ports.length < count) {
+    const port = await findFreePort()
+    if (!ports.includes(port)) ports.push(port)
+  }
+  return ports
+}
+
+function delay(milliseconds) {
+  return new Promise((resolveDelay) => {
+    globalThis.setTimeout(resolveDelay, milliseconds)
+  })
 }
 
 async function runBackupCommand(args, { activeProcesses, label, timeoutMs }) {
@@ -361,11 +718,17 @@ function boundedDiagnostic(value) {
     .slice(-4000)
 }
 
-function assertGenerationBoundExportPacket(packet, manifest) {
+export function assertGenerationBoundExportPacket(
+  packet,
+  manifest,
+  expectedLifecycleManifestSha256,
+) {
   if (
     packet?.action !== 'export' ||
     packet?.executed !== true ||
     packet?.audit?.resultStatus !== 'executed' ||
+    !isSha256(expectedLifecycleManifestSha256) ||
+    !isSha256(manifest?.credentialGeneration?.lifecycleManifestSha256) ||
     !isSha256(manifest?.credentialGeneration?.manifestSha256) ||
     !isSha256(manifest?.credentialGeneration?.sourceStateSha256) ||
     !isSha256(manifest?.d1?.sha256) ||
@@ -373,6 +736,12 @@ function assertGenerationBoundExportPacket(packet, manifest) {
     manifest.r2.objects.some((object) => !isSha256(object?.sha256))
   ) {
     throw new Error('generation-bound export readback was incomplete')
+  }
+  if (
+    manifest.credentialGeneration.lifecycleManifestSha256 !==
+    expectedLifecycleManifestSha256
+  ) {
+    throw new Error('generation-bound export lifecycle digest mismatch')
   }
 }
 

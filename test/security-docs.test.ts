@@ -20,6 +20,7 @@ const securityDocPaths = [
 const securityDocsRoot = fileURLToPath(
   new URL('../docs/security', import.meta.url).toString(),
 )
+const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 
 describe('security review materials', () => {
   it('keeps the required alpha security documents present', () => {
@@ -28,6 +29,20 @@ describe('security review materials', () => {
       expect(existsSync(fullPath), `${docPath} should exist`).toBe(true)
       expect(readFileSync(fullPath, 'utf8').trim().length).toBeGreaterThan(500)
     }
+  })
+
+  it('pins the temporary patched sharp line while Miniflare remains vulnerable', () => {
+    const workspacePolicy = readFileSync(
+      `${repoRoot}/pnpm-workspace.yaml`,
+      'utf8',
+    )
+    const dependencyAudit = readSecurityDoc('dependency-audit.md')
+
+    expect(workspacePolicy).toMatch(/overrides:\s+sharp: 0\.35\.3/)
+    expect(workspacePolicy).toContain('docs/security/dependency-audit.md')
+    expect(dependencyAudit).toContain('GHSA-f88m-g3jw-g9cj')
+    expect(dependencyAudit).toContain('temporary `overrides` policy')
+    expect(dependencyAudit).toContain('Images binding')
   })
 
   it('records critical security review sections', () => {
