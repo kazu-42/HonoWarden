@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
+import Ajv2020 from 'ajv/dist/2020.js'
 import { describe, expect, it } from 'vitest'
 
 // @ts-expect-error repository verifier intentionally ships as plain ESM.
@@ -191,6 +192,82 @@ describe('credential evidence contract', () => {
     expect(schema.$defs.artifact.properties.contentSha256.$ref).toBe(
       '#/$defs/sha256',
     )
+  })
+
+  it('rejects level-inconsistent claims at the JSON schema boundary', async () => {
+    const schema = JSON.parse(await readFile(schemaPath, 'utf8'))
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(
+      schema,
+    )
+    const registry = loadCredentialEvidenceRegistry({ repoRoot }) as Registry
+
+    expect(validate(registry), JSON.stringify(validate.errors)).toBe(true)
+
+    const mutations: Array<[string, (candidate: Registry) => void]> = [
+      [
+        'client evidence on a local API claim',
+        (candidate) => {
+          requiredClaim(candidate, 0).clientEvidence = [
+            { sourceId: 'cli.release', operations: ['login'] },
+          ]
+        },
+      ],
+      [
+        'missing client evidence on an official-client claim',
+        (candidate) => {
+          delete requiredClaim(candidate, 1).clientEvidence
+        },
+      ],
+      [
+        'non-API execution on an official-client claim',
+        (candidate) => {
+          requiredClaim(candidate, 1).executionLevel = 'fixture'
+        },
+      ],
+      [
+        'environment evidence on a local claim',
+        (candidate) => {
+          requiredClaim(candidate, 0).environmentEvidence = {
+            environment: 'staging',
+            deploymentRef: 'deployment-1',
+            recordedAt: '2026-07-22T00:00:00Z',
+          }
+        },
+      ],
+      [
+        'live evidence without environment evidence',
+        (candidate) => {
+          requiredClaim(candidate, 0).evidenceLevel = 'staging'
+        },
+      ],
+      [
+        'staging evidence bound to a production environment',
+        (candidate) => {
+          const claim = requiredClaim(candidate, 0)
+          claim.evidenceLevel = 'staging'
+          claim.environmentEvidence = {
+            environment: 'production',
+            deploymentRef: 'deployment-1',
+            recordedAt: '2026-07-22T00:00:00Z',
+          }
+        },
+      ],
+      [
+        'reviewed head source on a non-live claim',
+        (candidate) => {
+          requiredClaim(candidate, 0).sourceGeneration.kind = 'reviewed_head'
+        },
+      ],
+    ]
+
+    for (const [label, mutate] of mutations) {
+      const candidate = structuredClone(registry)
+      mutate(candidate)
+      expect(
+        validate(candidate),
+        `${label}: ${JSON.stringify(validate.errors)}`,
+      ).toBe(false)
+    }
   })
 
   it('pins LF checkout bytes for every digest-bound artifact', async () => {

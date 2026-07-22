@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: fifth-review remediation source-ready; final exact-head review and publication pending
+Status: five-axis remediation source-ready; final exact-head reviews and publication pending
 
 Linear issue: HON-227
 
@@ -54,16 +54,16 @@ marker error disclosure were accepted. A final red phase proved that standard
 escape-equivalent nested names. The fourth review red phase proved that unknown
 operation and object-field values reached verifier errors and CLI stderr, and
 that digest-bound checkout bytes had no cross-platform LF contract. The focused
-suite now passes all 34 positive and negative cases, including those exact
-adversarial mutations.
+suite now passes all 35 positive and negative cases, including those exact
+adversarial mutations and a schema-only level-consistency gate.
 
 ## Verification
 
 | Gate                      | Readback                                      |
 | ------------------------- | --------------------------------------------- |
-| Evidence contract         | 34/34 tests passed                            |
-| Compatibility impact      | 139/139 tests across 4 files passed           |
-| Full suite                | 1,369/1,369 tests across 103 files passed     |
+| Evidence contract         | 35/35 tests passed                            |
+| Compatibility impact      | 140/140 tests across 4 files passed           |
+| Full suite                | 1,370/1,370 tests across 103 files passed     |
 | HON-222 plan unit         | 4/4 Node tests passed                         |
 | Linear repo/live equality | HON-222 plus 3 children, 2 relations, 0 error |
 | TypeScript                | `tsc --noEmit` passed                         |
@@ -81,9 +81,11 @@ Artifact SHA-256 values at source-ready state:
 - registry:
   `53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169`
 - schema:
-  `1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534`
+  `ed9b70078aeca9c907ef08061a2b8989e90c5afc6243bad4fe42d51a23eab001`
 - verifier:
   `7beb3a48f96903f7c8168c7cf84388b4f18d013aa778676b6e4311bcecf1e106`
+- lockfile:
+  `fc40f82c98925b8bee037d291cfb5093c0361e78fcfb0cbbd52d0359c6b69b2b`
 
 The generic dynamic-workflow completion verifier still reports only the
 expected missing `final-report.md`. The parent workflow remains intentionally
@@ -189,7 +191,41 @@ at the byte level before hashing and marker checks, rejects lone CR line endings
 and still rejects appended content in the same CRLF fixture. The regression now
 passes without relying on Git to rewrite an existing worktree.
 
-Final exact-head standard and five-axis review remain pending.
+## Sixth Standard Review
+
+Native Codex standard review inspected exact head
+`b6c40ef912a3f6309168db2cca96f4f01d9b55a8` in session
+`019f8878-a9ce-7610-82a5-5ceb4b7d74a5` and returned no P0-P3 findings. The
+reviewer independently passed the 34-test pre-remediation focused suite, the
+four HON-222 plan tests, verifier, Git attribute readback, and diff check. An
+isolated exact-commit checkout with `core.autocrlf=true` also retained CRLF in
+seven existing artifacts while the remediated verifier passed, proving the
+line-ending fix against the original failure mode.
+
+## Initial Five-Axis Review And Remediation
+
+Independent Opus review inspected exact head
+`b6c40ef912a3f6309168db2cca96f4f01d9b55a8` in read-only session
+`95d86cad-7427-425e-b094-4906d34f3e15`. It approved all five axes with no
+P0-P2 finding and one non-blocking P3: the runtime verifier enforced
+level-specific `clientEvidence`, `environmentEvidence`, execution-level, and
+source-kind constraints that the JSON Schema did not express on its own.
+
+The finding was reproduced with Ajv 2020: a `local_api` claim carrying client
+evidence passed the schema before remediation. The schema now requires client
+evidence only for `local_official_client`, fixes that claim to `local_api`
+execution, requires matching environment evidence only for staging/production,
+and limits `reviewed_head` source generations to live claims. Seven independent
+mutations now fail at the schema boundary while the canonical registry passes.
+
+Ajv is test-only. The first selected 8.17.1 release was rejected before commit
+because the required low-level audit found `GHSA-2g4f-4pwh-qvx6`; patched Ajv
+8.20.0 is installed and `pnpm audit --audit-level low` reports no known
+vulnerabilities. The lockfile evidence and release gate were updated, after
+which the full 1,370-test suite and all quality gates passed.
+
+Final exact-head standard and five-axis review of the remediation commit remain
+pending.
 
 The review process also reported unrelated Figma/MCP authentication and local
 pnpm registry-signature/network friction. Direct Node/Vitest execution and the
@@ -198,8 +234,8 @@ messages.
 
 ## Remaining Publication Gate
 
-Exact-head standard review, independent five-axis review, PR/head CI, zero
-unresolved threads, squash tree equality, merged-main CI, and HON-227
+Exact-head standard and five-axis review of the remediation commit, PR/head CI,
+zero unresolved threads, squash tree equality, merged-main CI, and HON-227
 Done/archive remain. EVIDENCE-1B must not start before that closeout.
 
 No deployment, remote mutation, real credential, production or staging

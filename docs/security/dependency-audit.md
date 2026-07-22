@@ -35,11 +35,20 @@ sharp version and the same gates pass without it. Do not treat the override as
 approval to add an Images binding without a dedicated image-transform
 compatibility test.
 
+## Ajv Advisory Avoidance
+
+The 2026-07-22 credential-evidence schema test initially selected Ajv 8.17.1.
+The required low-severity audit gate rejected it because
+`GHSA-2g4f-4pwh-qvx6` affects Ajv versions before 8.18.0 when the optional
+`$data` feature is enabled. HonoWarden does not enable `$data`, but the test-only
+dependency was upgraded to patched Ajv 8.20.0 instead of accepting a known
+advisory. The audit result above is from the patched lockfile.
+
 ## Lockfile Evidence
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `bf56db979676ada307ab2fcd0c36e2f480ecbb4fdfdee10e2ab009280e2d701d`
+  `fc40f82c98925b8bee037d291cfb5093c0361e78fcfb0cbbd52d0359c6b69b2b`
 
 ## Scope
 

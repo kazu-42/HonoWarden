@@ -95,7 +95,7 @@
     }
   ],
   "verification": {
-    "status": "evidence_1a_fifth_review_remediation_source_ready",
+    "status": "evidence_1a_five_axis_remediation_source_ready",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -195,12 +195,12 @@
       "evidencePlanCheckpoint": "comment_0aead33f_61bd_4223_afd3_cb1c4a382008_verified_2026_07_22t02_47_07_510z",
       "linearWipNormalization": "passed_team_started_29_to_exact_hon_222_parent_and_hon_227_active_child_other_27_moved_reversibly_to_todo_live_readback_2026_07_22t05_49_26z",
       "evidence1aContract": "passed_schema_registry_verifier_11_claims_5_levels_8_artifacts_staging_production_0",
-      "evidence1aFocused": "passed_34_contract_tests_including_artifact_relabel_source_generation_client_operation_live_limitation_content_digest_marker_unknown_operation_unknown_field_cli_nondisclosure_duplicate_json_key_lf_checkout_contract_and_existing_crlf_checkout_reproductions",
-      "evidence1aCompatibility": "passed_139_tests_across_4_files",
-      "evidence1aFullSuite": "passed_1369_tests_across_103_files_serial",
+      "evidence1aFocused": "passed_35_contract_tests_including_artifact_relabel_source_generation_client_operation_live_limitation_content_digest_marker_unknown_operation_unknown_field_cli_nondisclosure_duplicate_json_key_lf_checkout_existing_crlf_checkout_and_schema_level_consistency_reproductions",
+      "evidence1aCompatibility": "passed_140_tests_across_4_files",
+      "evidence1aFullSuite": "passed_1370_tests_across_103_files_serial",
       "evidence1aQuality": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_alpha_completion_complete_frozen_offline_install_git_diff_check",
       "evidence1aLinearReadback": "passed_repo_rendered_hon_222_hon_227_hon_228_hon_229_descriptions_checkpoint_2_relations_0_errors",
-      "evidence1aArtifacts": "registry_sha256_53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169_schema_sha256_1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534_verifier_sha256_7beb3a48f96903f7c8168c7cf84388b4f18d013aa778676b6e4311bcecf1e106_gitattributes_sha256_b06f93b2f61693eed806140ad2d8d3a3e7ebcda410787dfbc24d1804e2341067",
+      "evidence1aArtifacts": "registry_sha256_53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169_schema_sha256_ed9b70078aeca9c907ef08061a2b8989e90c5afc6243bad4fe42d51a23eab001_verifier_sha256_7beb3a48f96903f7c8168c7cf84388b4f18d013aa778676b6e4311bcecf1e106_gitattributes_sha256_b06f93b2f61693eed806140ad2d8d3a3e7ebcda410787dfbc24d1804e2341067_lockfile_sha256_fc40f82c98925b8bee037d291cfb5093c0361e78fcfb0cbbd52d0359c6b69b2b",
       "evidence1aWorkflowVerifier": "expected_incomplete_missing_final_report_until_evidence_1b_evidence_1c_and_close_1_complete",
       "evidence1aInitialStandardReview": "exact_360a135_native_codex_1_p1_artifact_self_label_3_p2_source_generation_client_operations_live_limitation_all_reproduced",
       "evidence1aReviewRemediation": "passed_independent_provenance_catalog_canonical_claim_digests_exact_client_operations_dynamic_live_limitations_all_review_mutations_rejected",
@@ -211,7 +211,11 @@
       "evidence1aFourthStandardReview": "exact_6da6d3a_native_codex_session_019f884f_1983_7b40_b1fa_07a2294f0971_1_p1_registry_value_error_reflection_1_p2_unpinned_checkout_line_endings_both_reproduced",
       "evidence1aFourthReviewRemediation": "passed_fixed_structural_validation_errors_fixed_cli_failure_line_actual_byte_hashing_exact_text_eol_lf_contract_for_all_8_digest_bound_artifacts_and_4_regressions",
       "evidence1aFifthStandardReview": "exact_a20a22d_native_codex_session_019f8869_93f2_7ca3_8e98_550a5f5e6f6f_1_p2_existing_autocrlf_checkout_not_retroactively_rewritten_reproduced_in_isolated_clone",
-      "evidence1aFifthReviewRemediation": "passed_byte_level_crlf_to_lf_canonicalization_lone_cr_rejection_crlf_equivalence_and_same_fixture_content_drift_rejection"
+      "evidence1aFifthReviewRemediation": "passed_byte_level_crlf_to_lf_canonicalization_lone_cr_rejection_crlf_equivalence_and_same_fixture_content_drift_rejection",
+      "evidence1aSixthStandardReview": "exact_b6c40ef_native_codex_session_019f8878_a9ce_7610_82a5_5ceb4b7d74a5_0_actionable_p0_p1_p2_p3_approve",
+      "evidence1aInitialFiveAxisReview": "exact_b6c40ef_independent_opus_session_95d86cad_7427_425e_b094_4906d34f3e15_approve_0_p0_p1_p2_1_p3_schema_level_conditions",
+      "evidence1aFiveAxisReviewRemediation": "passed_ajv_2020_strict_canonical_registry_and_7_level_inconsistent_mutations_client_environment_execution_and_reviewed_head_conditions",
+      "evidence1aDependencyAudit": "rejected_ajv_8_17_1_ghsa_2g4f_4pwh_qvx6_upgraded_test_only_ajv_8_20_0_audit_low_0_known_vulnerabilities_release_gate_11_of_11"
     },
     "checks": [
       "linear_plan_unit",
