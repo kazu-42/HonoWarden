@@ -43,6 +43,14 @@ const schemaRelativePath = 'compat/credential-evidence.schema.json'
 const maximumInputBytes = 1024 * 1024
 const maximumDecodedJsonScanDepth = 4
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+const approvedColonDelimitedPackageScripts = new Set([
+  'account:credential-restore:lifecycle',
+  'account:key-rotation:lifecycle',
+  'account:keys:lifecycle',
+  'account:password-change:lifecycle',
+])
+const potentialSecretFieldPattern =
+  /password|token|secret|credential|key|seed|mnemonic|recovery|totp|salt|identity|profile|provider|payload|raw|encrypted|cipher|authorization|cookie/i
 const highRiskSecretFieldWords = new Set([
   'password',
   'passwords',
@@ -610,10 +618,12 @@ function assertNoDuplicateJsonObjectKeys(node) {
 }
 
 function unsafeCredentialCloseoutContent(content, decodedScanDepth = 0) {
+  if (hasUnsupportedTextForm(content)) return true
   if (hasSecretLikeJsonField(content)) return true
   if (hasMarkdownSecretLikePair(content)) return true
   if (hasSecretLikeAssignment(content)) return true
   if (hasEmbeddedSecretLikePair(content)) return true
+  if (hasColonAdjacentSecretLikePair(content)) return true
   if (hasAuthorizationCredential(content)) return true
   if (hasAuthenticationCookie(content)) return true
   if (hasOpaqueAccessToken(content)) return true
@@ -636,20 +646,45 @@ function unsafeCredentialCloseoutContent(content, decodedScanDepth = 0) {
   }
   if (/\bAGE-SECRET-KEY-1[0-9A-Z]{20,}\b/i.test(content)) return true
   if (hasUrlUserInfo(content)) return true
-  if (
-    decodedScanDepth < maximumDecodedJsonScanDepth &&
-    hasUnsafeDecodedJsonString(content, decodedScanDepth)
-  ) {
+  if (hasUnsafeDecodedJsonString(content, decodedScanDepth)) {
     return true
   }
-  if (
-    decodedScanDepth < maximumDecodedJsonScanDepth &&
-    hasUnsafeEscapedContent(content, decodedScanDepth)
-  ) {
+  if (hasUnsafeEscapedContent(content, decodedScanDepth)) {
+    return true
+  }
+  if (hasUnsafeEncodedContent(content, decodedScanDepth)) {
     return true
   }
   if (hasDisallowedEncodedIdentity(content)) return true
   return hasDisallowedIdentity(content)
+}
+
+function hasUnsupportedTextForm(content) {
+  for (let index = 0; index < content.length; index += 1) {
+    const code = content.charCodeAt(index)
+    if (code === 0x0d) {
+      if (content.charCodeAt(index + 1) !== 0x0a) return true
+      index += 1
+      continue
+    }
+    if (
+      code <= 0x08 ||
+      (code >= 0x0b && code <= 0x1f) ||
+      (code >= 0x7f && code <= 0x9f) ||
+      code === 0x2028 ||
+      code === 0x2029
+    ) {
+      return true
+    }
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const trailing = content.charCodeAt(index + 1)
+      if (!(trailing >= 0xdc00 && trailing <= 0xdfff)) return true
+      index += 1
+      continue
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) return true
+  }
+  return false
 }
 
 function hasUrlUserInfo(content) {
@@ -687,22 +722,55 @@ function isUrlAuthorityCharacter(character) {
 }
 
 function hasUnsafeDecodedJsonString(content, decodedScanDepth) {
-  if (!content.includes('\\')) return false
-  for (const match of content.matchAll(/"(?:\\.|[^"\\])*"/g)) {
-    if (!(match[0] ?? '').includes('\\')) continue
-    try {
-      const decoded = JSON.parse(match[0] ?? '')
-      if (
-        typeof decoded === 'string' &&
-        unsafeCredentialCloseoutContent(decoded, decodedScanDepth + 1)
-      ) {
-        return true
+  if (!content.includes('"')) return false
+  const decodedStrings = collectDecodedJsonStrings(content)
+  if (decodedStrings.length === 0) return false
+  if (decodedScanDepth >= maximumDecodedJsonScanDepth) return true
+  return unsafeCredentialCloseoutContent(
+    decodedStrings.join('\n'),
+    decodedScanDepth + 1,
+  )
+}
+
+function collectDecodedJsonStrings(content) {
+  try {
+    return collectJsonStrings(JSON.parse(content))
+  } catch {
+    const decodedStrings = []
+    for (const match of content.matchAll(/"(?:\\.|[^"\\])*"/g)) {
+      try {
+        const decoded = JSON.parse(match[0] ?? '')
+        if (typeof decoded === 'string') decodedStrings.push(decoded)
+      } catch {
+        continue
       }
-    } catch {
+    }
+    return decodedStrings
+  }
+}
+
+function collectJsonStrings(root) {
+  const strings = []
+  const pending = [root]
+  while (pending.length > 0) {
+    const value = pending.pop()
+    if (typeof value === 'string') {
+      strings.push(value)
       continue
     }
+    if (Array.isArray(value)) {
+      for (let index = value.length - 1; index >= 0; index -= 1) {
+        pending.push(value[index])
+      }
+      continue
+    }
+    if (value === null || typeof value !== 'object') continue
+    for (const key of Object.keys(value)) {
+      strings.push(key)
+      pending.push(value[key])
+    }
   }
-  return false
+  return strings
 }
 
 function hasUnsafeEscapedContent(content, decodedScanDepth) {
@@ -714,10 +782,48 @@ function hasUnsafeEscapedContent(content, decodedScanDepth) {
       return value <= 0x10ffff ? String.fromCodePoint(value) : match
     },
   )
-  return (
-    decoded !== content &&
-    unsafeCredentialCloseoutContent(decoded, decodedScanDepth + 1)
-  )
+  if (decoded === content) return false
+  if (decodedScanDepth >= maximumDecodedJsonScanDepth) return true
+  return unsafeCredentialCloseoutContent(decoded, decodedScanDepth + 1)
+}
+
+function hasUnsafeEncodedContent(content, decodedScanDepth) {
+  if (
+    !content.includes('&') &&
+    !content.includes('%') &&
+    !content.includes('\\')
+  ) {
+    return false
+  }
+  const decoded = content
+    .replace(
+      /&#x([0-9a-f]{1,6});|&#([0-9]{1,7});/gi,
+      (match, hexadecimal, decimal) => {
+        const value = Number.parseInt(
+          hexadecimal ?? decimal,
+          hexadecimal ? 16 : 10,
+        )
+        return value <= 0x10ffff ? String.fromCodePoint(value) : match
+      },
+    )
+    .replace(/&(amp|colon|equals|quot|apos|commat);/gi, (match, name) => {
+      const decodedNamedEntity = {
+        amp: '&',
+        apos: "'",
+        colon: ':',
+        commat: '@',
+        equals: '=',
+        quot: '"',
+      }[name.toLowerCase()]
+      return decodedNamedEntity ?? match
+    })
+    .replace(/%([0-9a-f]{2})/gi, (_match, hexadecimal) =>
+      String.fromCharCode(Number.parseInt(hexadecimal, 16)),
+    )
+    .replace(/\\([:=@])/g, '$1')
+  if (decoded === content) return false
+  if (decodedScanDepth >= maximumDecodedJsonScanDepth) return true
+  return unsafeCredentialCloseoutContent(decoded, decodedScanDepth + 1)
 }
 
 function hasDisallowedEncodedIdentity(content) {
@@ -1175,6 +1281,7 @@ function hasMarkdownTableSecretLikePair(content) {
 }
 
 function hasUnsafeMarkdownTableRow(line) {
+  if (!potentialSecretFieldPattern.test(line)) return false
   const cells = markdownTableCells(line)
   for (let index = 0; index + 1 < cells.length; index += 1) {
     const field = unwrapMarkdownField(cells[index] ?? '')
@@ -1275,6 +1382,134 @@ function hasEmbeddedSecretLikePair(content) {
           value,
         )
       )
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function hasColonAdjacentSecretLikePair(content) {
+  let boundaryIndex = content.indexOf(':')
+  while (boundaryIndex !== -1) {
+    let cursor = boundaryIndex + 1
+    const quote = ['"', "'", '`'].includes(content[cursor])
+      ? content[cursor]
+      : ''
+    if (quote) cursor += 1
+    const fieldStart = cursor
+    const firstCode = content.charCodeAt(cursor)
+    if (!isAsciiLetter(firstCode)) {
+      boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+      continue
+    }
+    cursor += 1
+    while (
+      cursor - fieldStart < 81 &&
+      isEmbeddedFieldCharacter(content.charCodeAt(cursor))
+    ) {
+      cursor += 1
+    }
+    if (isEmbeddedFieldCharacter(content.charCodeAt(cursor))) {
+      boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+      continue
+    }
+    const fieldEnd = cursor
+    if (quote) {
+      if (content[cursor] !== quote) {
+        boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+        continue
+      }
+      cursor += 1
+    }
+    while (content[cursor] === ' ' || content[cursor] === '\t') cursor += 1
+    const separator = content[cursor]
+    if (separator !== ':' && separator !== '=') {
+      boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+      continue
+    }
+    const field = content.slice(fieldStart, fieldEnd)
+    if (field.length < 3 || !potentialSecretFieldPattern.test(field)) {
+      boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+      continue
+    }
+    cursor += 1
+    while (content[cursor] === ' ' || content[cursor] === '\t') cursor += 1
+    const valueStart = cursor
+    while (
+      cursor - valueStart < 256 &&
+      content[cursor] !== undefined &&
+      content[cursor] !== '\r' &&
+      content[cursor] !== '\n'
+    ) {
+      cursor += 1
+    }
+    if (cursor === valueStart) {
+      boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+      continue
+    }
+    if (
+      separator === ':' &&
+      isApprovedColonDelimitedPackageScript(content, boundaryIndex)
+    ) {
+      boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+      continue
+    }
+    const value = content.slice(valueStart, cursor)
+    const secretLike = isSecretLikeFieldName(field)
+    if (
+      isUnsafeMarkdownPair(field, value) &&
+      !(
+        secretLike &&
+        isApprovedNestedNonSecretSummary(
+          content,
+          boundaryIndex + 1,
+          field,
+          value,
+        )
+      )
+    ) {
+      return true
+    }
+    boundaryIndex = content.indexOf(':', boundaryIndex + 1)
+  }
+  return false
+}
+
+function isAsciiLetter(code) {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+}
+
+function isEmbeddedFieldCharacter(code) {
+  return (
+    isAsciiWordCharacter(code) ||
+    code === 9 ||
+    code === 32 ||
+    code === 40 ||
+    code === 41 ||
+    code === 45 ||
+    code === 46 ||
+    code === 47 ||
+    code === 91 ||
+    code === 93
+  )
+}
+
+function isApprovedColonDelimitedPackageScript(content, pairIndex) {
+  const lineStart = content.lastIndexOf('\n', pairIndex - 1) + 1
+  const nextLineBreak = content.indexOf('\n', pairIndex)
+  const lineEnd = nextLineBreak === -1 ? content.length : nextLineBreak
+  const line = content.slice(lineStart, lineEnd)
+  const pattern =
+    /(?:^|[\s`])pnpm[ \t]+([A-Za-z0-9._-]+(?::[A-Za-z0-9._-]+)+)(?=$|[\s`])/g
+  for (const match of line.matchAll(pattern)) {
+    const command = match[1] ?? ''
+    if (!approvedColonDelimitedPackageScripts.has(command)) continue
+    const commandOffset = (match.index ?? 0) + (match[0]?.indexOf(command) ?? 0)
+    const commandStart = lineStart + commandOffset
+    if (
+      pairIndex >= commandStart &&
+      pairIndex < commandStart + command.length
     ) {
       return true
     }

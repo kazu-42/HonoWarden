@@ -378,6 +378,52 @@ artifact scans, credential-evidence verification, brand scan, dependency audit,
 strict release gate, completion audit, and the five HON-222 plan tests also
 pass. The canonical packet remains byte-identical.
 
+Read-only fallback standard review session
+`ses_0750819e6ffeQeNefeIDNTv6e5` then inspected exact commit `aab720d` with
+`opencode/nemotron-3-ultra-free`, passed all 231 focused tests, verified the
+packet hash, and returned `REQUEST_CHANGES`. Direct probes reproduced four
+actionable families: bare or generic JSON string values were not fully scanned,
+HTML/percent/Markdown-escaped separators and NUL could hide assignments, the
+four-pass decode bound stopped open instead of closed, and colon-adjacent
+nested fields were skipped. A two-case JSON/encoding probe also established
+that a direct lone carriage return was accepted even though the canonical file
+path rejects it.
+
+Three other review claims were not accepted as reported. Replacing a packet-path
+symlink during `rename` does not redirect POSIX rename through the symlink; the
+directory entry is atomically replaced. The proposed combining-mark identity
+already fails the non-ASCII identity check in a direct probe. Markdown row
+splitting is linear rather than quadratic. The latter still exposed a valid
+performance issue: a 1 MiB all-pipe row took about 413 ms, above the 250 ms
+contract, so the remediation retains the performance concern without the
+incorrect complexity classification.
+
+The twelfth remediation began with a 234-of-246 red run that reproduced all 12
+representative JSON, encoding, control-character, and adjacent-field failures.
+A separate red test reproduced a colon-colon form, and self-review added
+unpaired-surrogate rejection after finding a `NaN` range-check gap. The scanner
+now:
+
+- batches every decoded JSON key/value string through the complete classifier,
+  allows four decode passes, and rejects a fifth representation instead of
+  accepting uninspected content;
+- decodes bounded HTML numeric/named entities, percent bytes, and Markdown
+  structural escapes, while rejecting lone CR, control characters, Unicode
+  line separators, and unpaired UTF-16 surrogates;
+- scans colon-adjacent fields monotonically and permits only four exact
+  repository-owned pnpm lifecycle command tokens; and
+- skips Markdown cell splitting when no credential-field marker exists and
+  batches benign JSON strings before recursive classification.
+
+Performance red tests measured a 100 KiB colon chain at about 1,482 ms, a 1 MiB
+empty Markdown row at about 412 ms, and 800 KiB of benign JSON strings at about
+277 ms. The optimized three-test run completed all probes together in 53 ms;
+the final colon fixture was then raised to 1,000,000 bytes and remained below
+the 250 ms ceiling. Focused, compatibility, and full serial suites now pass 252,
+393, and 1,623 tests respectively. The full suite completed across 104 files in
+77.41 seconds, and all quality and release gates remain green without changing
+the canonical packet bytes.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact/postfixed access and refresh tokens, standalone provider tokens,
 authentication cookies across plain, Markdown, JSON, and embedded header
@@ -398,9 +444,9 @@ scripts, and public or reserved example identities remain accepted.
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 231/231 passed                                                                           |
-| Compatibility impact        | 372/372 across 5 files passed                                                            |
-| Full suite                  | 1,602/1,602 across 104 files passed serially in 58.69 seconds                            |
+| Focused generator/scanner   | 252/252 passed                                                                           |
+| Compatibility impact        | 393/393 across 5 files passed                                                            |
+| Full suite                  | 1,623/1,623 across 104 files passed serially in 77.41 seconds                            |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |

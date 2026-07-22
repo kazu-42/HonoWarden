@@ -229,6 +229,45 @@ describe('credential closeout packet', () => {
       'Wrapper: password: do-not-print-nested-password',
     ],
     [
+      'colon-adjacent nested password assignment',
+      'Wrapper:password=do-not-print-colon-adjacent-password',
+    ],
+    [
+      'colon-adjacent nested password pair',
+      'Wrapper:password:do-not-print-colon-adjacent-pair',
+    ],
+    [
+      'NUL-split password assignment',
+      'pass\u0000word=do-not-print-nul-password',
+    ],
+    ['lone carriage return', 'safe metadata\rcontinued metadata'],
+    ['unpaired high surrogate', '\ud800'],
+    ['unpaired low surrogate', '\udc00'],
+    [
+      'HTML decimal-entity assignment separator',
+      'password&#61;do-not-print-html-decimal-password',
+    ],
+    [
+      'HTML hexadecimal-entity assignment separator',
+      'password&#x3d;do-not-print-html-hex-password',
+    ],
+    [
+      'HTML named-entity assignment separator',
+      'password&equals;do-not-print-html-named-password',
+    ],
+    [
+      'percent-encoded assignment separator',
+      'password%3Ddo-not-print-percent-password',
+    ],
+    [
+      'double-percent-encoded assignment separator',
+      'password%253Ddo-not-print-double-percent-password',
+    ],
+    [
+      'Markdown-escaped assignment separator',
+      String.raw`password\=do-not-print-markdown-escaped-password`,
+    ],
+    [
       'pipe-delimited password assignment',
       'metadata=verified|password=do-not-print-pipe-password',
     ],
@@ -475,6 +514,20 @@ describe('credential closeout packet', () => {
       '{"result":"Authorization\\u003a Bearer do-not-print-json-authorization"}',
     ],
     [
+      'bare JSON string secret assignment',
+      JSON.stringify('password=do-not-print-bare-json-password'),
+    ],
+    [
+      'generic JSON value secret assignment',
+      JSON.stringify({
+        result: 'password=do-not-print-generic-json-password',
+      }),
+    ],
+    [
+      'JSON string secret assignment beyond the decode limit',
+      jsonStringifyTimes('password=do-not-print-deep-json-password', 5),
+    ],
+    [
       'standalone Unicode-escaped GitHub personal access token',
       String.raw`Observed: gh\u0070_0123456789abcdefghijklmnopqrstuvwxyzAB`,
     ],
@@ -707,6 +760,32 @@ describe('credential closeout packet', () => {
     ).not.toThrow()
   })
 
+  it('scans dense colon boundaries in linear time', () => {
+    const safeContent = 'a:'.repeat(500_000)
+    const startedAt = performance.now()
+
+    expect(Buffer.byteLength(safeContent)).toBeLessThan(1024 * 1024)
+    expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
+  it('scans maximum-sized empty Markdown cells in linear time', () => {
+    const safeContent = '|'.repeat(1024 * 1024)
+    const startedAt = performance.now()
+
+    expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
+  it('scans dense benign JSON strings in linear time', () => {
+    const safeContent = `[${'"a",'.repeat(200_000)}"a"]`
+    const startedAt = performance.now()
+
+    expect(Buffer.byteLength(safeContent)).toBeLessThan(1024 * 1024)
+    expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
   it('scans an at-free dotted input in linear time', () => {
     const safeContent = 'safe.'.repeat(16_384)
     const startedAt = performance.now()
@@ -808,6 +887,18 @@ describe('credential closeout packet', () => {
       '連絡先：security@honowarden.com',
     ],
     ['ordinary URL', 'Documentation: https://honowarden.com/docs'],
+    [
+      'percent-encoded password policy metadata',
+      'password%20policy%3A%20minimum%2016%20characters',
+    ],
+    [
+      'HTML-encoded password policy metadata',
+      'password&#32;policy&#58;&#32;minimum&#32;16&#32;characters',
+    ],
+    [
+      'JSON string metadata at the decode limit',
+      jsonStringifyTimes('artifact count: 8', 4),
+    ],
     [
       'ordinary outer-pipe-free Markdown table',
       'Field | Value\n--- | ---\nDigest | sha256:abc123',
@@ -1320,6 +1411,13 @@ type Packet = {
 
 function sameKeys(value: object, expected: string[]) {
   return JSON.stringify(Object.keys(value)) === JSON.stringify(expected)
+}
+
+function jsonStringifyTimes(value: string, count: number) {
+  for (let index = 0; index < count; index += 1) {
+    value = JSON.stringify(value)
+  }
+  return value
 }
 
 function createFixture({ includePacket = false } = {}) {
