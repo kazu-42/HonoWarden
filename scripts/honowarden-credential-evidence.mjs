@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
@@ -36,6 +37,153 @@ export const credentialOperations = Object.freeze([
   'recovery.writers.disabled',
   'recovery.forward_generation',
 ])
+
+const localApiLevel = 'local_api'
+const officialClientLevel = 'local_official_client'
+const lifecycleMerge = '7443d3daee70d09b015c864da6033ff3246d0f75'
+const backupMerge = '27388e56e54c8b7bd67249bc9cf4fea5401d3a7a'
+const restoreMerge = 'c1e2f7c8befb4c85030d48e9b7171fb5599761c2'
+const recoveryMerge = '13f4e895d69b2c2485a10a82d1793cf60e148024'
+const lifecycleResult =
+  '.workflow/hon-207-credential-closeout/results/02-credential-lifecycle.md'
+const backupResult =
+  '.workflow/hon-207-credential-closeout/results/03a-generation-bound-backup.md'
+const restoreResult =
+  '.workflow/hon-207-credential-closeout/results/03b-fresh-restore.md'
+const recoveryResult =
+  '.workflow/hon-207-credential-closeout/results/03c-disable-forward-recovery.md'
+const cliFullReadback = [
+  clientProvenance('cli.release', [
+    'login',
+    'lock',
+    'unlock',
+    'sync',
+    'item_read',
+  ]),
+]
+
+// The registry is mutable input; this catalog is its independent provenance anchor.
+export const credentialClaimProvenance = deepFreeze({
+  'account.password.verify': defineClaimProvenance({
+    sourceCommit: lifecycleMerge,
+    artifacts: [
+      [lifecycleResult, localApiLevel],
+      ['docs/release/account-password-change-local-evidence.md', localApiLevel],
+    ],
+  }),
+  'account.password.change': defineClaimProvenance({
+    evidenceLevel: officialClientLevel,
+    sourceCommit: lifecycleMerge,
+    artifacts: [
+      ['docs/release/account-password-change-local-evidence.md', localApiLevel],
+      [lifecycleResult, officialClientLevel],
+    ],
+    clientEvidence: cliFullReadback,
+  }),
+  'account.kdf.pbkdf2_to_argon2id': defineClaimProvenance({
+    evidenceLevel: officialClientLevel,
+    sourceCommit: lifecycleMerge,
+    artifacts: [
+      ['docs/release/account-kdf-change-local-evidence.md', localApiLevel],
+      [lifecycleResult, officialClientLevel],
+    ],
+    clientEvidence: cliFullReadback,
+  }),
+  'account.kdf.argon2id_to_pbkdf2': defineClaimProvenance({
+    evidenceLevel: officialClientLevel,
+    sourceCommit: lifecycleMerge,
+    artifacts: [
+      ['docs/release/account-kdf-change-local-evidence.md', localApiLevel],
+      [lifecycleResult, officialClientLevel],
+    ],
+    clientEvidence: cliFullReadback,
+  }),
+  'account.key.initialize': defineClaimProvenance({
+    evidenceLevel: officialClientLevel,
+    sourceCommit: lifecycleMerge,
+    artifacts: [
+      [
+        'docs/release/account-key-initialization-local-evidence.md',
+        localApiLevel,
+      ],
+      [lifecycleResult, officialClientLevel],
+    ],
+    clientEvidence: cliFullReadback,
+  }),
+  'account.key.read': defineClaimProvenance({
+    sourceCommit: lifecycleMerge,
+    artifacts: [
+      [lifecycleResult, localApiLevel],
+      [
+        'docs/release/account-key-initialization-local-evidence.md',
+        localApiLevel,
+      ],
+    ],
+  }),
+  'account.user_key.rotate': defineClaimProvenance({
+    evidenceLevel: officialClientLevel,
+    sourceCommit: lifecycleMerge,
+    artifacts: [
+      ['docs/release/user-key-rotation-local-evidence.md', localApiLevel],
+      [lifecycleResult, officialClientLevel],
+    ],
+    clientEvidence: [
+      ...cliFullReadback,
+      clientProvenance('browser.release', ['login', 'sync', 'vault_read']),
+    ],
+  }),
+  'recovery.backup.export': defineClaimProvenance({
+    sourceCommit: backupMerge,
+    artifacts: [[backupResult, localApiLevel]],
+  }),
+  'recovery.restore.fresh_target': defineClaimProvenance({
+    evidenceLevel: officialClientLevel,
+    sourceCommit: restoreMerge,
+    artifacts: [
+      [restoreResult, localApiLevel],
+      [restoreResult, officialClientLevel],
+    ],
+    clientEvidence: cliFullReadback,
+  }),
+  'recovery.writers.disabled': defineClaimProvenance({
+    sourceCommit: recoveryMerge,
+    artifacts: [[recoveryResult, localApiLevel]],
+  }),
+  'recovery.forward_generation': defineClaimProvenance({
+    evidenceLevel: officialClientLevel,
+    sourceCommit: recoveryMerge,
+    artifacts: [
+      [recoveryResult, localApiLevel],
+      [recoveryResult, officialClientLevel],
+    ],
+    clientEvidence: [clientProvenance('cli.release', ['item_read'])],
+  }),
+})
+
+export const credentialClaimDigests = Object.freeze({
+  'account.password.verify':
+    '19ce52216adad02fb8bc18a3c0b46dc26032b95c504a27b29d2e064b51099469',
+  'account.password.change':
+    'a15520cb10ebf45c68ca9f2dbde711fe41a49a9ded5610c99d509030e894717e',
+  'account.kdf.pbkdf2_to_argon2id':
+    '686e51d03f3d4e24c99bb48e8fea3e5e46d5a4cccc02c9d21d85ea0358c25727',
+  'account.kdf.argon2id_to_pbkdf2':
+    'ce4d2e6a488ce673999f2f7a8f2af674ffb1dad820e25201df53505063636ca3',
+  'account.key.initialize':
+    '993e3a70baa55d59595b436cff58631d553265e7f6e1f33c8ba9e70d3f21254a',
+  'account.key.read':
+    '110d30e9743bed61fc15e36206977cf062a281caa778ff6ea8ef88cb60de6f0b',
+  'account.user_key.rotate':
+    '6b2a855a0932ebcebd4334019d82d17501acca3477b7cc9334c7bc1cf59ffd71',
+  'recovery.backup.export':
+    'f9ba9696ee01290c0e3a0f5a623403dfefadd49f1c710c68f34543a7dbe898b3',
+  'recovery.restore.fresh_target':
+    '67197a4553735106e5300ae669049deec9bbe5460ce35202185ac1ec945d26e4',
+  'recovery.writers.disabled':
+    '355f8d536f5d254b2b610992ad574e4639c075a90aa50b06b4a7e01f7c79d57e',
+  'recovery.forward_generation':
+    '3973eeea067c65f670929cafad95242926f4fa9ce2d39711c9d012b0a33ee321',
+})
 
 export const credentialEvidenceSources = Object.freeze({
   repository: Object.freeze({
@@ -152,6 +300,10 @@ export function validateCredentialEvidenceRegistry(
     throw new Error('credential claims are missing or not in canonical order')
   }
 
+  const liveEvidenceLevels = ['staging', 'production'].filter((level) =>
+    registry.claims.some((claim) => claim.evidenceLevel === level),
+  )
+
   return {
     schemaVersion: 1,
     status: 'passed',
@@ -162,11 +314,33 @@ export function validateCredentialEvidenceRegistry(
         claim.artifacts.map((artifact) => artifact.path),
       ),
     ).size,
-    limitations: [
-      'The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.',
-      'No claim in this registry proves staging or production activation.',
-    ],
+    liveEvidenceLevels,
+    limitations: summarizeCredentialEvidenceLimitations(registry.claims),
   }
+}
+
+export function summarizeCredentialEvidenceLimitations(claims) {
+  const liveLevels = new Set(
+    claims
+      .map((claim) => claim.evidenceLevel)
+      .filter((level) => level === 'staging' || level === 'production'),
+  )
+  const limitations = [
+    'The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.',
+  ]
+  const missing = ['staging', 'production'].filter(
+    (level) => !liveLevels.has(level),
+  )
+  if (missing.length === 2) {
+    limitations.push(
+      'No claim in this registry proves staging or production activation.',
+    )
+  } else if (missing.length === 1) {
+    limitations.push(
+      `No claim in this registry proves ${missing[0]} activation.`,
+    )
+  }
+  return limitations
 }
 
 function validateSources(value) {
@@ -263,6 +437,15 @@ function validateClaim(claim, context) {
     claim.sourceGeneration.commit,
     `${label}.sourceGeneration.commit`,
   )
+  const provenance = credentialClaimProvenance[claim.operation]
+  if (
+    JSON.stringify(claim.sourceGeneration) !==
+    JSON.stringify(provenance.sourceGeneration)
+  ) {
+    throw new Error(
+      `${label} source generation does not match canonical provenance`,
+    )
+  }
 
   let environmentEvidence = null
   if (
@@ -279,7 +462,6 @@ function validateClaim(claim, context) {
       `${label} environmentEvidence is only valid for live environments`,
     )
   }
-
   if (!Array.isArray(claim.artifacts) || claim.artifacts.length === 0) {
     throw new Error(`${label}.artifacts must be a non-empty array`)
   }
@@ -326,6 +508,21 @@ function validateClaim(claim, context) {
   ) {
     throw new Error(`${label} live environment evidence must be artifact-bound`)
   }
+  if (
+    claim.executionLevel !== provenance.executionLevel ||
+    claim.evidenceLevel !== provenance.evidenceLevel
+  ) {
+    throw new Error(`${label} claim levels do not match canonical provenance`)
+  }
+  const artifactProvenance = claim.artifacts.map(({ path, evidenceLevel }) => ({
+    path,
+    evidenceLevel,
+  }))
+  if (
+    JSON.stringify(artifactProvenance) !== JSON.stringify(provenance.artifacts)
+  ) {
+    throw new Error(`${label} artifacts do not match canonical provenance`)
+  }
 
   if (claim.evidenceLevel === 'local_official_client') {
     if (
@@ -342,6 +539,14 @@ function validateClaim(claim, context) {
       )
     }
     validateClientEvidence(claim.clientEvidence, context.sources.clients, label)
+    if (
+      JSON.stringify(claim.clientEvidence) !==
+      JSON.stringify(provenance.clientEvidence)
+    ) {
+      throw new Error(
+        `${label} client evidence does not match canonical provenance`,
+      )
+    }
   } else if (Object.hasOwn(claim, 'clientEvidence')) {
     throw new Error(
       `${label} clientEvidence is only valid for local_official_client`,
@@ -349,6 +554,9 @@ function validateClaim(claim, context) {
   }
 
   assertUniqueNonEmptyStrings(claim.limitations, `${label}.limitations`)
+  if (sha256Json(claim) !== credentialClaimDigests[claim.operation]) {
+    throw new Error(`${label} claim payload does not match canonical digest`)
+  }
 }
 
 function validateArtifact(artifact, context) {
@@ -564,6 +772,46 @@ function isWithin(root, candidate) {
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function sha256Json(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
+
+function defineClaimProvenance({
+  executionLevel = localApiLevel,
+  evidenceLevel = localApiLevel,
+  sourceCommit,
+  artifacts,
+  clientEvidence = null,
+}) {
+  return {
+    executionLevel,
+    evidenceLevel,
+    sourceGeneration: { kind: 'merge_commit', commit: sourceCommit },
+    artifacts: artifacts.map(([path, level]) => ({
+      path,
+      evidenceLevel: level,
+    })),
+    clientEvidence:
+      clientEvidence?.map(({ sourceId, operations }) => ({
+        sourceId,
+        operations: [...operations],
+      })) ?? null,
+  }
+}
+
+function clientProvenance(sourceId, operations) {
+  return { sourceId, operations }
+}
+
+function deepFreeze(value) {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) {
+    return value
+  }
+  Object.freeze(value)
+  for (const nested of Object.values(value)) deepFreeze(nested)
+  return value
 }
 
 function isMainModule() {

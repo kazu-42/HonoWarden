@@ -40,15 +40,16 @@ approved CLI and extension asset SHA-256 values.
 The initial focused test failed because the verifier module did not exist. A
 second red phase proved that the pre-hardening contract accepted dot-component
 schema paths, impossible calendar timestamps, and unbound live-environment
-metadata. The final focused suite passes all 19 positive and negative cases.
+metadata. The final focused suite passes all 25 positive and negative cases,
+including the exact adversarial mutations returned by standard review.
 
 ## Verification
 
 | Gate                      | Readback                                      |
 | ------------------------- | --------------------------------------------- |
-| Evidence contract         | 19/19 tests passed                            |
-| Compatibility impact      | 124/124 tests across 4 files passed           |
-| Full suite                | 1,354/1,354 tests across 103 files passed     |
+| Evidence contract         | 25/25 tests passed                            |
+| Compatibility impact      | 130/130 tests across 4 files passed           |
+| Full suite                | 1,360/1,360 tests across 103 files passed     |
 | HON-222 plan unit         | 4/4 Node tests passed                         |
 | Linear repo/live equality | HON-222 plus 3 children, 2 relations, 0 error |
 | TypeScript                | `tsc --noEmit` passed                         |
@@ -67,7 +68,7 @@ Artifact SHA-256 values at source-ready state:
 - schema:
   `f3f89db4643b7f5ef7b61e5567422d7d8f7e96027f0db5bbe5e21aff50dd7f2c`
 - verifier:
-  `97e50c14f782e6cf359a84d8f567de00fb80d5e60783b901a353ebef2e739e91`
+  `c9990146699a4a9db5b07516030bfca28d2854f5aae6d0c3d26d99e4909b3771`
 
 The generic dynamic-workflow completion verifier still reports only the
 expected missing `final-report.md`. The parent workflow remains intentionally
@@ -82,6 +83,32 @@ here would falsely mark the larger workflow complete.
 - Managed parent checkpoint:
   `0aead33f-61bd-4223-afd3-cb1c4a382008`.
 - Repo-rendered descriptions and checkpoint matched live Linear byte-for-byte.
+
+## Initial Standard Review Remediation
+
+Native Codex standard review inspected exact head
+`360a1351ca87aac0c51aec4746f5ada3fed1b4e3` in session
+`019f881f-a592-7092-8d86-49f1f1cd039c` and returned one P1 plus three P2
+findings:
+
+- a local artifact could self-label as official-client or staging evidence;
+- a different 40-character artifact marker could replace the true source
+  generation;
+- a claim could reduce official-client proof to an unrelated operation such as
+  `lock`;
+- the CLI limitation was fixed text and would contradict a future valid live
+  claim.
+
+All four cases were reproduced as passing mutations against the reviewed head.
+The remediation adds an independently pinned operation-level provenance
+catalog, canonical full-claim digests, exact client-operation sets, and a live
+limitation derived from validated claim levels. The same mutations now fail in
+focused tests. Final exact-head standard and five-axis review remain pending.
+
+The review process also reported unrelated Figma/MCP authentication and local
+pnpm registry-signature/network friction. Direct Node/Vitest execution and the
+host pnpm gates passed; no source failure was attributed to those environment
+messages.
 
 ## Remaining Publication Gate
 

@@ -9,10 +9,13 @@ import { describe, expect, it } from 'vitest'
 import * as credentialEvidence from '../../scripts/honowarden-credential-evidence.mjs'
 
 const {
+  credentialClaimDigests,
+  credentialClaimProvenance,
   credentialEvidenceLevels,
   credentialEvidenceSources,
   credentialOperations,
   loadCredentialEvidenceRegistry,
+  summarizeCredentialEvidenceLimitations,
   validateCredentialEvidenceRegistry,
 } = credentialEvidence
 
@@ -39,6 +42,27 @@ describe('credential evidence contract', () => {
       registry.claims.map((claim: { operation: string }) => claim.operation),
     ).toEqual(credentialOperations)
     expect(registry.claims).toHaveLength(11)
+    expect(Object.keys(credentialClaimDigests)).toEqual(credentialOperations)
+    for (const digest of Object.values(credentialClaimDigests)) {
+      expect(digest).toMatch(/^[0-9a-f]{64}$/)
+    }
+    expect(
+      Object.fromEntries(
+        registry.claims.map((claim: Registry['claims'][number]) => [
+          claim.operation,
+          {
+            executionLevel: claim.executionLevel,
+            evidenceLevel: claim.evidenceLevel,
+            sourceGeneration: claim.sourceGeneration,
+            artifacts: claim.artifacts.map(({ path, evidenceLevel }) => ({
+              path,
+              evidenceLevel,
+            })),
+            clientEvidence: claim.clientEvidence ?? null,
+          },
+        ]),
+      ),
+    ).toEqual(credentialClaimProvenance)
     expect(
       registry.claims.some(
         (claim: { evidenceLevel: string }) =>
@@ -154,11 +178,47 @@ describe('credential evidence contract', () => {
       /duplicate operation/,
     ],
     [
+      'canonical claim payload drift',
+      (registry: Registry) => {
+        requiredClaim(registry, 0).assertion =
+          'A different but non-empty evidence assertion.'
+      },
+      /claim payload does not match canonical digest/,
+    ],
+    [
       'evidence-level inflation',
       (registry: Registry) => {
         requiredClaim(registry, 0).evidenceLevel = 'staging'
       },
       /staging claim requires staging environment evidence/,
+    ],
+    [
+      'local artifact relabeled as official-client evidence',
+      (registry: Registry) => {
+        const claim = requiredClaim(registry, 0)
+        claim.evidenceLevel = 'local_official_client'
+        requiredArtifact(claim, 0).evidenceLevel = 'local_official_client'
+        claim.clientEvidence = [
+          { sourceId: 'cli.release', operations: ['lock'] },
+        ]
+      },
+      /claim levels do not match canonical provenance/,
+    ],
+    [
+      'local artifact relabeled as staging evidence',
+      (registry: Registry) => {
+        const claim = requiredClaim(registry, 0)
+        claim.evidenceLevel = 'staging'
+        const artifact = requiredArtifact(claim, 0)
+        artifact.evidenceLevel = 'staging'
+        artifact.requiredMarkers.push('2026-07-21T04:23:48Z')
+        claim.environmentEvidence = {
+          environment: 'staging',
+          deploymentRef: claim.sourceGeneration.commit,
+          recordedAt: '2026-07-21T04:23:48Z',
+        }
+      },
+      /claim levels do not match canonical provenance/,
     ],
     [
       'invalid live evidence timestamp',
@@ -191,9 +251,24 @@ describe('credential evidence contract', () => {
     [
       'missing source generation',
       (registry: Registry) => {
-        requiredClaim(registry, 0).sourceGeneration.commit = 'f'.repeat(40)
+        const claim = requiredClaim(registry, 0)
+        const removed = requiredArtifact(claim, 0).requiredMarkers.shift()
+        if (removed !== claim.sourceGeneration.commit) {
+          throw new Error('source marker fixture missing')
+        }
       },
       /source generation is not an exact artifact marker/,
+    ],
+    [
+      'noncanonical source generation already present in the artifact',
+      (registry: Registry) => {
+        const claim = requiredClaim(registry, 0)
+        claim.sourceGeneration.commit =
+          'bc51cbdc9b89c365fdcc36e542e1ebff63615770'
+        requiredArtifact(claim, 0).requiredMarkers[0] =
+          claim.sourceGeneration.commit
+      },
+      /source generation does not match canonical provenance/,
     ],
     [
       'local API artifact for official client claim',
@@ -218,6 +293,16 @@ describe('credential evidence contract', () => {
         delete claim.clientEvidence
       },
       /requires clientEvidence/,
+    ],
+    [
+      'claim-agnostic official client operations',
+      (registry: Registry) => {
+        const claim = requiredClaim(registry, 1)
+        const clientEvidence = claim.clientEvidence?.[0]
+        if (!clientEvidence) throw new Error('client fixture missing')
+        clientEvidence.operations = ['lock']
+      },
+      /client evidence does not match canonical provenance/,
     ],
     [
       'path escape',
@@ -274,6 +359,30 @@ describe('credential evidence contract', () => {
     ).toThrow(expected)
   })
 
+  it('derives live-evidence limitations from validated claim levels', () => {
+    const localOnly = summarizeCredentialEvidenceLimitations([
+      { evidenceLevel: 'local_api' },
+    ])
+    const staging = summarizeCredentialEvidenceLimitations([
+      { evidenceLevel: 'staging' },
+    ])
+    const stagingAndProduction = summarizeCredentialEvidenceLimitations([
+      { evidenceLevel: 'staging' },
+      { evidenceLevel: 'production' },
+    ])
+
+    expect(localOnly).toContain(
+      'No claim in this registry proves staging or production activation.',
+    )
+    expect(staging).toContain(
+      'No claim in this registry proves production activation.',
+    )
+    expect(staging.join('\n')).not.toContain('proves staging activation')
+    expect(stagingAndProduction.join('\n')).not.toContain(
+      'No claim in this registry proves',
+    )
+  })
+
   it('prints only a bounded verification summary from the CLI', async () => {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
@@ -286,6 +395,7 @@ describe('credential evidence contract', () => {
       levels: number
       claims: number
       artifacts: number
+      liveEvidenceLevels: string[]
       limitations: string[]
     }
 
@@ -295,6 +405,7 @@ describe('credential evidence contract', () => {
       status: 'passed',
       levels: 5,
       claims: 11,
+      liveEvidenceLevels: [],
     })
     expect(report.artifacts).toBeGreaterThanOrEqual(4)
     expect(report.limitations).toEqual([
@@ -320,6 +431,7 @@ type Registry = {
   claims: Array<{
     id: string
     operation: string
+    assertion: string
     executionLevel: string
     evidenceLevel: string
     sourceGeneration: { kind: string; commit: string }
