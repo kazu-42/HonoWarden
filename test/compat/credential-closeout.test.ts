@@ -15,6 +15,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { performance } from 'node:perf_hooks'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
@@ -250,6 +251,11 @@ describe('credential closeout packet', () => {
     ['password clear', '{"passwordClear":"do-not-print-password-clear"}'],
     ['key material', '{"keyMaterial":"do-not-print-key-material"}'],
     ['secret material', '{"secretMaterial":"do-not-print-secret-material"}'],
+    ['seed phrase', '{"seedPhrase":"do-not-print-seed-phrase"}'],
+    ['mnemonic', '{"mnemonic":"do-not-print-mnemonic"}'],
+    ['recovery code', '{"recoveryCode":"do-not-print-recovery-code"}'],
+    ['TOTP seed', '{"totpSeed":"do-not-print-totp-seed"}'],
+    ['salt', '{"salt":"do-not-print-salt"}'],
     ['key blob', '{"keyBlob":"do-not-print-key-blob"}'],
     ['token bearer', '{"tokenBearer":"do-not-print-token-bearer"}'],
     [
@@ -296,6 +302,14 @@ describe('credential closeout packet', () => {
       'Authorization: Digest do-not-print-digest-credential',
     ],
     [
+      'raw authorization credential',
+      'Authorization: do-not-print-raw-credential',
+    ],
+    [
+      'annotated authorization credential',
+      'Authorization: Bearer <redacted> do-not-print-trailing-credential',
+    ],
+    [
       'JWT',
       'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkb250LXByaW50In0.c2lnbmF0dXJlLXZhbHVl',
     ],
@@ -336,6 +350,10 @@ describe('credential closeout packet', () => {
       '-----BEGIN PRIVATE KEY-----\ndo-not-print-private-key\n-----END PRIVATE KEY-----',
     ],
     ['personal identity', 'Contact: person@real-company.dev'],
+    [
+      'personal identity after an allowed identity',
+      'Contacts: support@honowarden.com, person@real-company.dev',
+    ],
   ])('rejects %s without reflecting content', (_name, unsafeContent) => {
     let thrown: unknown
     try {
@@ -363,6 +381,28 @@ describe('credential closeout packet', () => {
     )
   })
 
+  it('scans an at-free dotted input in linear time', () => {
+    const safeContent = 'safe.'.repeat(16_384)
+    const startedAt = performance.now()
+
+    expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
+  it('classifies a maximum-sized secret field in linear time', () => {
+    const unsafeContent = `{"${Array.from(
+      { length: 100_000 },
+      () => 'password',
+    ).join(' ')}":"redacted"}`
+    const startedAt = performance.now()
+
+    expect(Buffer.byteLength(unsafeContent)).toBeLessThan(1024 * 1024)
+    expect(() => assertCredentialCloseoutContentSafe(unsafeContent)).toThrow(
+      'credential closeout content is unsafe',
+    )
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
   it.each([
     ['digest', `sha256: ${'a'.repeat(64)}`],
     ['version', 'client version: 2026.6.1'],
@@ -380,13 +420,22 @@ describe('credential closeout packet', () => {
     ['empty secret count', 'Real secrets: none'],
     ['reserved identity', 'Contact: operator@example.test'],
     [
+      'allowed public identities',
+      'Contacts: security@honowarden.com, support@honowarden.com.',
+    ],
+    [
       'credential proof marker',
       'real aggregate source -> backup -> fresh restore -> credential proof: passed',
     ],
     ['colon-delimited package script', 'pnpm account:keys:lifecycle'],
     ['key digest metadata', `key digest: sha256:${'c'.repeat(64)}`],
     ['redacted authorization', 'Authorization: <redacted>'],
+    ['empty bearer authorization', 'Authorization: Bearer'],
     ['redacted bearer authorization', 'Authorization: Bearer <redacted>'],
+    [
+      'annotated redacted bearer authorization',
+      'Authorization: Bearer <redacted> (rotated)',
+    ],
     [
       'redacted arbitrary-scheme authorization',
       'Authorization: token [redacted]',

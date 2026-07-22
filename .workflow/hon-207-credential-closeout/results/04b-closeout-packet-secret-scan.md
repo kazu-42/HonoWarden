@@ -102,7 +102,41 @@ A final self-review reproduced two false positives for scheme-prefixed redacted
 Authorization values in a 77-of-79 red run. Authorization sentinel handling now
 accepts either a direct sentinel or an arbitrary scheme followed only by a
 sentinel, without accepting a real credential value. The focused suite now
-passes all 79 tests.
+passed all 79 tests at implementation head `d72a336`.
+
+That head received two further independent reviews. Standard Opus session
+`acbe4b82-46e7-4689-9094-b4e19a8e3d67` approved with zero actionable P0-P3 and
+independently exercised 36 scanner probes, all 79 focused tests, canonical
+verification, packet hashes, and atomic output behavior. Five-axis Opus session
+`ca81f202-67b0-4c53-94ac-69e7e875e579` resumed after a transient `ENOTFOUND`
+API failure and approved the overall change, but identified one actionable P2
+and two P3 hardening findings:
+
+- the email regex took quadratic time on a dotted maximum-size input, while
+  high-risk field classification copied every remaining suffix with
+  `slice(index + 1)`;
+- recovery secret fields such as seed phrases, mnemonics, recovery codes, TOTP
+  seeds, and salts were not classified; and
+- an empty Bearer Authorization header and a status-annotated redaction were
+  conservatively rejected.
+
+The third remediation red run passed 81 of 90 tests and reproduced all nine
+behavioral and performance failures. The scanner now:
+
+- walks literal `@` positions and their adjacent local/domain runs once, so
+  at-free and multi-address input is linear instead of repeatedly backtracking;
+- classifies high-risk suffix sequences with one reverse pass and no suffix
+  array copies;
+- recognizes exact singular/plural recovery-secret field families with the
+  existing allowed metadata suffixes; and
+- permits only known empty Authorization schemes or an exact redaction sentinel
+  followed by one allowlisted lifecycle annotation, while raw or trailing
+  credentials remain rejected.
+
+On the same machine, the 80 KiB dotted probe fell from about 1,149 ms to 1 ms
+and the 900 KiB secret-field probe fell from about 655 ms to 13 ms. The tests
+retain a conservative 250 ms bound at both sizes. Focused, compatibility, and
+full serial suites now pass 92, 233, and 1,463 tests respectively.
 
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact access and refresh tokens, key/secret hashes and material, token
@@ -119,9 +153,9 @@ accepted.
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 79/79 passed                                                                             |
-| Compatibility impact        | 220/220 across 5 files passed                                                            |
-| Full suite                  | 1,450/1,450 across 104 files passed serially                                             |
+| Focused generator/scanner   | 92/92 passed                                                                             |
+| Compatibility impact        | 233/233 across 5 files passed                                                            |
+| Full suite                  | 1,463/1,463 across 104 files passed serially                                             |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |

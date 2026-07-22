@@ -74,6 +74,24 @@ const compactSecretFieldSuffixPattern = `(?:${[...secretFieldSuffixWords].join(
 const compactSecretFieldPattern = new RegExp(
   `(?:password(?:hash)?|(?:api|access|refresh|auth|id|session|bearer)tokens?|(?:api|client|auth)secrets?|api(?:keys?|credentials?)|(?:auth|client|service)credentials?)(?:${compactSecretFieldSuffixPattern})*$|^(?:passwords?|tokens?|secrets?|credentials?|keys?)(?:${compactSecretFieldSuffixPattern})+$`,
 )
+const recoverySecretFieldPattern = new RegExp(
+  `^(?:seedphrases?|mnemonics?|recoverycodes?|totpseeds?|salts?)(?:${compactSecretFieldSuffixPattern})*$`,
+)
+const emptyAuthorizationSchemes = new Set([
+  'basic',
+  'bearer',
+  'digest',
+  'negotiate',
+  'token',
+])
+const emptyAuthorizationAnnotations = new Set([
+  'disabled',
+  'expired',
+  'omitted',
+  'removed',
+  'revoked',
+  'rotated',
+])
 const vaultCiphertextPartPattern = '[A-Za-z0-9+/_-]{20,}={0,2}'
 const vaultCiphertextPattern = new RegExp(
   `(?:^|[^A-Za-z0-9+/_=-])(?:[347]\\.${vaultCiphertextPartPattern}|[056]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}|[12]\\.${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern}\\|${vaultCiphertextPartPattern})(?=$|[^A-Za-z0-9+/_=|-])`,
@@ -520,14 +538,71 @@ function unsafeCredentialCloseoutContent(content) {
   if (vaultCiphertextPattern.test(content)) {
     return true
   }
-  for (const match of content.matchAll(
-    /\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi,
-  )) {
-    const address = match[0].toLowerCase()
-    const domain = match[1]?.toLowerCase()
-    if (domain && !isAllowedIdentity(address, domain)) return true
+  return hasDisallowedIdentity(content)
+}
+
+function hasDisallowedIdentity(content) {
+  let atIndex = content.indexOf('@')
+  while (atIndex !== -1) {
+    let start = atIndex
+    while (start > 0 && isEmailLocalCharacter(content.charCodeAt(start - 1))) {
+      start -= 1
+    }
+    while (
+      start < atIndex &&
+      !isAsciiWordCharacter(content.charCodeAt(start))
+    ) {
+      start += 1
+    }
+
+    let end = atIndex + 1
+    while (
+      end < content.length &&
+      isEmailDomainCharacter(content.charCodeAt(end))
+    ) {
+      end += 1
+    }
+
+    const candidate = content.slice(start, end)
+    const match = /^([A-Z0-9_][A-Z0-9._%+-]*)@([A-Z0-9.-]+\.[A-Z]{2,})\b/i.exec(
+      candidate,
+    )
+    const address = match?.[0].toLowerCase()
+    const domain = match?.[2].toLowerCase()
+    if (address && domain && !isAllowedIdentity(address, domain)) return true
+
+    atIndex = content.indexOf('@', atIndex + 1)
   }
   return false
+}
+
+function isAsciiWordCharacter(code) {
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    code === 95 ||
+    (code >= 97 && code <= 122)
+  )
+}
+
+function isEmailLocalCharacter(code) {
+  return (
+    isAsciiWordCharacter(code) ||
+    code === 37 ||
+    code === 43 ||
+    code === 45 ||
+    code === 46
+  )
+}
+
+function isEmailDomainCharacter(code) {
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    code === 45 ||
+    code === 46 ||
+    (code >= 97 && code <= 122)
+  )
 }
 
 function hasSecretLikeJsonField(content) {
@@ -552,7 +627,6 @@ function hasAuthorizationCredential(content) {
 }
 
 function isEmptyAuthorizationCredential(value) {
-  if (isEmptySecretSentinel(value)) return true
   let normalized = value.trim()
   const quote = normalized[0]
   if (
@@ -562,10 +636,28 @@ function isEmptyAuthorizationCredential(value) {
   ) {
     normalized = normalized.slice(1, -1).trim()
   }
+  if (isEmptySecretSentinelWithAnnotation(normalized)) return true
+
   const separator = normalized.search(/\s/)
-  return (
-    separator > 0 &&
-    isEmptySecretSentinel(normalized.slice(separator + 1).trim())
+  if (separator === -1) {
+    return emptyAuthorizationSchemes.has(normalized.toLowerCase())
+  }
+  if (separator <= 0) return false
+
+  return isEmptySecretSentinelWithAnnotation(
+    normalized.slice(separator + 1).trim(),
+  )
+}
+
+function isEmptySecretSentinelWithAnnotation(value) {
+  if (isEmptySecretSentinel(value)) return true
+  const annotated = /^(.*?)[ \t]+\(([^()\r\n]+)\)$/.exec(value)
+  return Boolean(
+    annotated &&
+    isEmptySecretSentinel(annotated[1] ?? '') &&
+    emptyAuthorizationAnnotations.has(
+      (annotated[2] ?? '').trim().toLowerCase(),
+    ),
   )
 }
 
@@ -607,6 +699,7 @@ function isSecretLikeFieldName(value) {
   if (
     hasHighRiskSecretWordSequence(words) ||
     compactSecretFieldPattern.test(normalized) ||
+    recoverySecretFieldPattern.test(normalized) ||
     ['identity', 'identities', 'profile', 'profiles'].includes(last)
   ) {
     return true
@@ -635,16 +728,15 @@ function isSecretLikeFieldName(value) {
 }
 
 function hasHighRiskSecretWordSequence(words) {
-  return words.some(
-    (word, index) =>
-      highRiskSecretFieldWords.has(word) &&
-      words
-        .slice(index + 1)
-        .every(
-          (suffix) =>
-            secretFieldSuffixWords.has(suffix) || /^v[0-9]+$/.test(suffix),
-        ),
-  )
+  let suffixesOnly = true
+  for (let index = words.length - 1; index >= 0; index -= 1) {
+    const word = words[index]
+    if (highRiskSecretFieldWords.has(word) && suffixesOnly) return true
+    if (!secretFieldSuffixWords.has(word) && !/^v[0-9]+$/.test(word)) {
+      suffixesOnly = false
+    }
+  }
+  return false
 }
 
 function fieldWords(value) {
