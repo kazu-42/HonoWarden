@@ -4,6 +4,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -476,6 +477,60 @@ describe('credential evidence contract', () => {
         '\nContradictory post-hoc text that preserves every marker.\n',
       )
 
+      expect(() =>
+        validateCredentialEvidenceRegistry(registry, {
+          repoRoot: isolatedRoot,
+          trackedPaths: paths,
+        }),
+      ).toThrow(/artifact content digest mismatch/)
+    } finally {
+      rmSync(isolatedRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts equivalent CRLF checkout bytes without accepting content drift', () => {
+    const registry = readRegistryFixture()
+    const paths = [
+      ...new Set(
+        registry.claims.flatMap((claim) =>
+          claim.artifacts.map((artifact) => artifact.path),
+        ),
+      ),
+    ]
+    const isolatedRoot = mkdtempSync(
+      join(tmpdir(), 'credential-evidence-crlf-'),
+    )
+    try {
+      for (const path of paths) {
+        const target = join(isolatedRoot, path)
+        mkdirSync(dirname(target), { recursive: true })
+        const content = readFileSync(join(repoRoot, path), 'utf8')
+        expect(content).not.toContain('\r')
+        writeFileSync(target, content.replaceAll('\n', '\r\n'))
+      }
+
+      expect(
+        validateCredentialEvidenceRegistry(registry, {
+          repoRoot: isolatedRoot,
+          trackedPaths: paths,
+        }),
+      ).toMatchObject({ status: 'passed', artifacts: 8 })
+
+      const driftTarget = join(
+        isolatedRoot,
+        requiredArtifact(requiredClaim(registry, 0), 0).path,
+      )
+      const crlfContent = readFileSync(driftTarget, 'utf8')
+      writeFileSync(driftTarget, crlfContent.replace('\r\n', '\r'))
+      expect(() =>
+        validateCredentialEvidenceRegistry(registry, {
+          repoRoot: isolatedRoot,
+          trackedPaths: paths,
+        }),
+      ).toThrow(/unsupported line endings/)
+
+      writeFileSync(driftTarget, crlfContent)
+      appendFileSync(driftTarget, 'Contradictory post-hoc text.\r\n')
       expect(() =>
         validateCredentialEvidenceRegistry(registry, {
           repoRoot: isolatedRoot,

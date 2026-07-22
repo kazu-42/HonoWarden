@@ -95,7 +95,7 @@
     }
   ],
   "verification": {
-    "status": "evidence_1a_fourth_review_remediation_source_ready",
+    "status": "evidence_1a_fifth_review_remediation_source_ready",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -195,12 +195,12 @@
       "evidencePlanCheckpoint": "comment_0aead33f_61bd_4223_afd3_cb1c4a382008_verified_2026_07_22t02_47_07_510z",
       "linearWipNormalization": "passed_team_started_29_to_exact_hon_222_parent_and_hon_227_active_child_other_27_moved_reversibly_to_todo_live_readback_2026_07_22t05_49_26z",
       "evidence1aContract": "passed_schema_registry_verifier_11_claims_5_levels_8_artifacts_staging_production_0",
-      "evidence1aFocused": "passed_33_contract_tests_including_artifact_relabel_source_generation_client_operation_live_limitation_content_digest_marker_unknown_operation_unknown_field_cli_nondisclosure_duplicate_json_key_and_lf_checkout_contract_reproductions",
-      "evidence1aCompatibility": "passed_138_tests_across_4_files",
-      "evidence1aFullSuite": "passed_1368_tests_across_103_files_serial",
+      "evidence1aFocused": "passed_34_contract_tests_including_artifact_relabel_source_generation_client_operation_live_limitation_content_digest_marker_unknown_operation_unknown_field_cli_nondisclosure_duplicate_json_key_lf_checkout_contract_and_existing_crlf_checkout_reproductions",
+      "evidence1aCompatibility": "passed_139_tests_across_4_files",
+      "evidence1aFullSuite": "passed_1369_tests_across_103_files_serial",
       "evidence1aQuality": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_alpha_completion_complete_frozen_offline_install_git_diff_check",
       "evidence1aLinearReadback": "passed_repo_rendered_hon_222_hon_227_hon_228_hon_229_descriptions_checkpoint_2_relations_0_errors",
-      "evidence1aArtifacts": "registry_sha256_53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169_schema_sha256_1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534_verifier_sha256_31be4e60cf2cab26fc3d735e85a641efd0ef5602607a03d0e72d0bb8c66ec013_gitattributes_sha256_b06f93b2f61693eed806140ad2d8d3a3e7ebcda410787dfbc24d1804e2341067",
+      "evidence1aArtifacts": "registry_sha256_53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169_schema_sha256_1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534_verifier_sha256_7beb3a48f96903f7c8168c7cf84388b4f18d013aa778676b6e4311bcecf1e106_gitattributes_sha256_b06f93b2f61693eed806140ad2d8d3a3e7ebcda410787dfbc24d1804e2341067",
       "evidence1aWorkflowVerifier": "expected_incomplete_missing_final_report_until_evidence_1b_evidence_1c_and_close_1_complete",
       "evidence1aInitialStandardReview": "exact_360a135_native_codex_1_p1_artifact_self_label_3_p2_source_generation_client_operations_live_limitation_all_reproduced",
       "evidence1aReviewRemediation": "passed_independent_provenance_catalog_canonical_claim_digests_exact_client_operations_dynamic_live_limitations_all_review_mutations_rejected",
@@ -209,7 +209,9 @@
       "evidence1aThirdStandardReview": "exact_580cfa9_native_codex_1_p2_duplicate_json_object_keys_accepted_and_reproduced",
       "evidence1aThirdReviewRemediation": "passed_strict_json_ast_decoded_duplicate_key_rejection_for_top_level_and_nested_escape_equivalent_names",
       "evidence1aFourthStandardReview": "exact_6da6d3a_native_codex_session_019f884f_1983_7b40_b1fa_07a2294f0971_1_p1_registry_value_error_reflection_1_p2_unpinned_checkout_line_endings_both_reproduced",
-      "evidence1aFourthReviewRemediation": "passed_fixed_structural_validation_errors_fixed_cli_failure_line_actual_byte_hashing_exact_text_eol_lf_contract_for_all_8_digest_bound_artifacts_and_4_regressions"
+      "evidence1aFourthReviewRemediation": "passed_fixed_structural_validation_errors_fixed_cli_failure_line_actual_byte_hashing_exact_text_eol_lf_contract_for_all_8_digest_bound_artifacts_and_4_regressions",
+      "evidence1aFifthStandardReview": "exact_a20a22d_native_codex_session_019f8869_93f2_7ca3_8e98_550a5f5e6f6f_1_p2_existing_autocrlf_checkout_not_retroactively_rewritten_reproduced_in_isolated_clone",
+      "evidence1aFifthReviewRemediation": "passed_byte_level_crlf_to_lf_canonicalization_lone_cr_rejection_crlf_equivalence_and_same_fixture_content_drift_rejection"
     },
     "checks": [
       "linear_plan_unit",

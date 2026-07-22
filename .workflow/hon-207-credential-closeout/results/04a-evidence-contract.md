@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: fourth-review remediation source-ready; final exact-head review and publication pending
+Status: fifth-review remediation source-ready; final exact-head review and publication pending
 
 Linear issue: HON-227
 
@@ -33,8 +33,10 @@ approved CLI and extension asset SHA-256 values.
   resolved path remains inside the repository.
 - Every artifact is bound to an independently pinned SHA-256 digest; preserving
   selected markers while changing any other artifact content fails closed.
-- Every digest-bound artifact has an explicit `text eol=lf` checkout contract,
-  and verification hashes the actual file bytes before decoding markers.
+- Every digest-bound artifact has an explicit `text eol=lf` fresh-checkout
+  contract. Verification canonicalizes only CRLF to LF before hashing so an
+  existing `core.autocrlf=true` checkout remains equivalent without accepting
+  other byte or line-ending drift.
 - Unknown or duplicate operations, claim IDs, client sources, artifact
   bindings, fields, limitations, and marker values fail closed.
 - Validation errors retain structural coordinates without reflecting rejected
@@ -52,16 +54,16 @@ marker error disclosure were accepted. A final red phase proved that standard
 escape-equivalent nested names. The fourth review red phase proved that unknown
 operation and object-field values reached verifier errors and CLI stderr, and
 that digest-bound checkout bytes had no cross-platform LF contract. The focused
-suite now passes all 33 positive and negative cases, including those exact
+suite now passes all 34 positive and negative cases, including those exact
 adversarial mutations.
 
 ## Verification
 
 | Gate                      | Readback                                      |
 | ------------------------- | --------------------------------------------- |
-| Evidence contract         | 33/33 tests passed                            |
-| Compatibility impact      | 138/138 tests across 4 files passed           |
-| Full suite                | 1,368/1,368 tests across 103 files passed     |
+| Evidence contract         | 34/34 tests passed                            |
+| Compatibility impact      | 139/139 tests across 4 files passed           |
+| Full suite                | 1,369/1,369 tests across 103 files passed     |
 | HON-222 plan unit         | 4/4 Node tests passed                         |
 | Linear repo/live equality | HON-222 plus 3 children, 2 relations, 0 error |
 | TypeScript                | `tsc --noEmit` passed                         |
@@ -81,7 +83,7 @@ Artifact SHA-256 values at source-ready state:
 - schema:
   `1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534`
 - verifier:
-  `31be4e60cf2cab26fc3d735e85a641efd0ef5602607a03d0e72d0bb8c66ec013`
+  `7beb3a48f96903f7c8168c7cf84388b4f18d013aa778676b6e4311bcecf1e106`
 
 The generic dynamic-workflow completion verifier still reports only the
 expected missing `final-report.md`. The parent workflow remains intentionally
@@ -168,8 +170,24 @@ single fixed failure line regardless of the underlying exception. The verifier
 hashes actual file bytes, and `.gitattributes` pins `text eol=lf` for every one
 of the eight independently digest-bound artifacts. Regressions cover unknown
 operations, unknown object fields, end-to-end CLI stderr non-disclosure, and
-complete LF-attribute coverage. Git `check-attr` and `ls-files --eol` confirm
-`eol=lf`, index LF, and worktree LF for all eight paths.
+complete LF-attribute coverage. Git `check-attr` confirms `eol=lf` for all eight
+paths in fresh checkouts.
+
+## Fifth Standard Review Remediation
+
+Native Codex standard review inspected exact head
+`a20a22d922a633e6d8e0bf66e5dbf61689e3f426` in session
+`019f8869-93f2-7ca3-8e98-550a5f5e6f6f` and returned one P2 finding: adding
+`eol=lf` does not retroactively rewrite unchanged files in an existing
+`core.autocrlf=true` checkout, so seven digest-bound artifacts could remain
+CRLF and fail verification after a normal base-to-head update.
+
+The reviewer reproduced the failure in an isolated clone. A focused red test
+then converted all eight artifact worktree copies to CRLF and reproduced the
+same digest mismatch. Artifact verification now canonicalizes CRLF pairs to LF
+at the byte level before hashing and marker checks, rejects lone CR line endings,
+and still rejects appended content in the same CRLF fixture. The regression now
+passes without relying on Git to rewrite an existing worktree.
 
 Final exact-head standard and five-axis review remain pending.
 

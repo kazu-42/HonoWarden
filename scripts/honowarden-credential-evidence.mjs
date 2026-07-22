@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
@@ -662,10 +663,14 @@ function validateArtifact(artifact, context) {
     throw new Error(`${context.label} artifact resolves outside the repository`)
   }
   const contentBytes = readFileSync(resolvedArtifact)
-  if (sha256Bytes(contentBytes) !== artifact.contentSha256) {
+  const canonicalContentBytes = canonicalizeArtifactBytes(
+    contentBytes,
+    context.label,
+  )
+  if (sha256Bytes(canonicalContentBytes) !== artifact.contentSha256) {
     throw new Error(`${context.label} artifact content digest mismatch`)
   }
-  const content = contentBytes.toString('utf8')
+  const content = canonicalContentBytes.toString('utf8')
   for (const marker of artifact.requiredMarkers) {
     if (!content.includes(marker)) {
       throw new Error(`${context.label} artifact marker is missing`)
@@ -847,6 +852,26 @@ function sha256Json(value) {
 
 function sha256Bytes(value) {
   return createHash('sha256').update(value).digest('hex')
+}
+
+function canonicalizeArtifactBytes(value, label) {
+  const canonical = Buffer.allocUnsafe(value.length)
+  let writeIndex = 0
+  for (let readIndex = 0; readIndex < value.length; readIndex += 1) {
+    const byte = value[readIndex]
+    if (byte !== 0x0d) {
+      canonical[writeIndex] = byte
+      writeIndex += 1
+      continue
+    }
+    if (value[readIndex + 1] !== 0x0a) {
+      throw new Error(`${label} artifact contains unsupported line endings`)
+    }
+    canonical[writeIndex] = 0x0a
+    writeIndex += 1
+    readIndex += 1
+  }
+  return canonical.subarray(0, writeIndex)
 }
 
 function defineClaimProvenance({
