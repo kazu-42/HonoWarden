@@ -95,7 +95,7 @@
     }
   ],
   "verification": {
-    "status": "evidence_1a_review_remediation_source_ready",
+    "status": "evidence_1a_second_review_remediation_source_ready",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -194,15 +194,17 @@
       "evidencePlan": "hon_227_in_progress_hon_228_todo_hon_229_todo_relations_exact_active_96_total_229",
       "evidencePlanCheckpoint": "comment_0aead33f_61bd_4223_afd3_cb1c4a382008_verified_2026_07_22t02_47_07_510z",
       "evidence1aContract": "passed_schema_registry_verifier_11_claims_5_levels_8_artifacts_staging_production_0",
-      "evidence1aFocused": "passed_25_contract_tests_including_initial_review_artifact_relabel_source_generation_client_operation_and_live_limitation_reproductions",
-      "evidence1aCompatibility": "passed_130_tests_across_4_files",
-      "evidence1aFullSuite": "passed_1360_tests_across_103_files_serial",
-      "evidence1aQuality": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_frozen_offline_install_git_diff_check",
+      "evidence1aFocused": "passed_27_contract_tests_including_artifact_relabel_source_generation_client_operation_live_limitation_content_digest_and_marker_nondisclosure_reproductions",
+      "evidence1aCompatibility": "passed_132_tests_across_4_files",
+      "evidence1aFullSuite": "passed_1362_tests_across_103_files_serial",
+      "evidence1aQuality": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_alpha_completion_complete_frozen_offline_install_git_diff_check",
       "evidence1aLinearReadback": "passed_repo_rendered_hon_222_hon_227_hon_228_hon_229_descriptions_checkpoint_2_relations_0_errors",
-      "evidence1aArtifacts": "registry_sha256_1d55ae4f26f8b78fcb0f821960da44984cf12b732772ef392ab4bf55563503a5_schema_sha256_f3f89db4643b7f5ef7b61e5567422d7d8f7e96027f0db5bbe5e21aff50dd7f2c_verifier_sha256_c9990146699a4a9db5b07516030bfca28d2854f5aae6d0c3d26d99e4909b3771",
+      "evidence1aArtifacts": "registry_sha256_53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169_schema_sha256_1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534_verifier_sha256_dfe230c714ab5ef49c3b17999b26733d81506c7054e401c67a06cfea7dc394fd",
       "evidence1aWorkflowVerifier": "expected_incomplete_missing_final_report_until_evidence_1b_evidence_1c_and_close_1_complete",
       "evidence1aInitialStandardReview": "exact_360a135_native_codex_1_p1_artifact_self_label_3_p2_source_generation_client_operations_live_limitation_all_reproduced",
-      "evidence1aReviewRemediation": "passed_independent_provenance_catalog_canonical_claim_digests_exact_client_operations_dynamic_live_limitations_all_review_mutations_rejected"
+      "evidence1aReviewRemediation": "passed_independent_provenance_catalog_canonical_claim_digests_exact_client_operations_dynamic_live_limitations_all_review_mutations_rejected",
+      "evidence1aSecondStandardReview": "exact_07939e4_native_codex_2_p1_preserved_marker_content_drift_and_missing_marker_value_disclosure_both_reproduced",
+      "evidence1aSecondReviewRemediation": "passed_independent_artifact_content_digests_actual_byte_verification_and_marker_value_nondisclosure_regressions"
     },
     "checks": [
       "linear_plan_unit",

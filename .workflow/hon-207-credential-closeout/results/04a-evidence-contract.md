@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: implementation source-ready; exact-head review and publication pending
+Status: second-review remediation source-ready; final exact-head review and publication pending
 
 Linear issue: HON-227
 
@@ -31,6 +31,8 @@ approved CLI and extension asset SHA-256 values.
   tracked artifact. This packet publishes no staging or production claim.
 - Artifact paths must be canonical, tracked, symlink-free regular files whose
   resolved path remains inside the repository.
+- Every artifact is bound to an independently pinned SHA-256 digest; preserving
+  selected markers while changing any other artifact content fails closed.
 - Unknown or duplicate operations, claim IDs, client sources, artifact
   bindings, fields, limitations, and marker values fail closed.
 - CLI output contains no artifact content or required marker values.
@@ -40,16 +42,18 @@ approved CLI and extension asset SHA-256 values.
 The initial focused test failed because the verifier module did not exist. A
 second red phase proved that the pre-hardening contract accepted dot-component
 schema paths, impossible calendar timestamps, and unbound live-environment
-metadata. The final focused suite passes all 25 positive and negative cases,
-including the exact adversarial mutations returned by standard review.
+metadata. Review-driven red phases then proved that self-asserted provenance,
+claim-agnostic client operations, preserved-marker content drift, and missing
+marker error disclosure were accepted. The focused suite now passes all 27
+positive and negative cases, including those exact adversarial mutations.
 
 ## Verification
 
 | Gate                      | Readback                                      |
 | ------------------------- | --------------------------------------------- |
-| Evidence contract         | 25/25 tests passed                            |
-| Compatibility impact      | 130/130 tests across 4 files passed           |
-| Full suite                | 1,360/1,360 tests across 103 files passed     |
+| Evidence contract         | 27/27 tests passed                            |
+| Compatibility impact      | 132/132 tests across 4 files passed           |
+| Full suite                | 1,362/1,362 tests across 103 files passed     |
 | HON-222 plan unit         | 4/4 Node tests passed                         |
 | Linear repo/live equality | HON-222 plus 3 children, 2 relations, 0 error |
 | TypeScript                | `tsc --noEmit` passed                         |
@@ -59,16 +63,17 @@ including the exact adversarial mutations returned by standard review.
 | Dependency audit          | 0 known vulnerabilities                       |
 | Frozen offline install    | passed                                        |
 | Release gate              | ready, 11 pass / 0 manual / 0 block           |
+| Alpha completion audit    | complete                                      |
 | `git diff --check`        | passed                                        |
 
 Artifact SHA-256 values at source-ready state:
 
 - registry:
-  `1d55ae4f26f8b78fcb0f821960da44984cf12b732772ef392ab4bf55563503a5`
+  `53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169`
 - schema:
-  `f3f89db4643b7f5ef7b61e5567422d7d8f7e96027f0db5bbe5e21aff50dd7f2c`
+  `1de0df8517786d20c28f6429e24716c91044cb5996b08b337282308efad74534`
 - verifier:
-  `c9990146699a4a9db5b07516030bfca28d2854f5aae6d0c3d26d99e4909b3771`
+  `dfe230c714ab5ef49c3b17999b26733d81506c7054e401c67a06cfea7dc394fd`
 
 The generic dynamic-workflow completion verifier still reports only the
 expected missing `final-report.md`. The parent workflow remains intentionally
@@ -103,7 +108,24 @@ All four cases were reproduced as passing mutations against the reviewed head.
 The remediation adds an independently pinned operation-level provenance
 catalog, canonical full-claim digests, exact client-operation sets, and a live
 limitation derived from validated claim levels. The same mutations now fail in
-focused tests. Final exact-head standard and five-axis review remain pending.
+focused tests.
+
+## Second Standard Review Remediation
+
+Native Codex standard review inspected exact head
+`07939e40f24e08214ee6960b0eafa6a9b1ad605d` in session
+`019f882f-5a7c-7030-934d-77472bcbc399` and returned two P1 findings:
+
+- tracked evidence content could be changed while preserving the selected
+  required markers;
+- a missing marker value was copied into the thrown error and CLI stderr.
+
+Both findings were reproduced against the reviewed head before remediation.
+Artifacts now carry schema-required content digests checked against an
+independent path-to-digest catalog and the actual tracked file bytes. Missing
+marker errors now identify only the artifact binding, never the marker value.
+Focused regressions prove both the content-drift rejection and non-disclosure.
+Final exact-head standard and five-axis review remain pending.
 
 The review process also reported unrelated Figma/MCP authentication and local
 pnpm registry-signature/network friction. Direct Node/Vitest execution and the

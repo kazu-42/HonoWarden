@@ -62,6 +62,25 @@ const cliFullReadback = [
   ]),
 ]
 
+export const credentialArtifactDigests = Object.freeze({
+  [lifecycleResult]:
+    'a85ae44c13af4a47a72f81ae2e13fe1ad4c1f018ee969ad36d0d74a04a8247d8',
+  [backupResult]:
+    '3a061f20f0f738004e803f7a5b92334bd3288cf3df50593b31b5410a7701be74',
+  [restoreResult]:
+    '272e6bde92b657eebe6934d7b814885f5de8fd0a4c3429068022f07058e4c540',
+  [recoveryResult]:
+    '8a5130246653fdd4dc17e358038d257d2f4a27762b4c5fc4caceadebe1c4c979',
+  'docs/release/account-kdf-change-local-evidence.md':
+    '1cbca6435c005b735b24aaee227df23573ceaa9dabdc35e5edb538f3b32a8213',
+  'docs/release/account-key-initialization-local-evidence.md':
+    'cd3d5197099e57a710a858f93d4972825c5585077dc4bb88667f2879f957d198',
+  'docs/release/account-password-change-local-evidence.md':
+    '5d66e66ab6d241a971115861b781c81ce40c30a281bc224a355f8942b85cf648',
+  'docs/release/user-key-rotation-local-evidence.md':
+    '50c6d16e4baa45b49dd7538019f6fe5a459342604fb940abbeeefecbcc7f2c6c',
+})
+
 // The registry is mutable input; this catalog is its independent provenance anchor.
 export const credentialClaimProvenance = deepFreeze({
   'account.password.verify': defineClaimProvenance({
@@ -162,27 +181,27 @@ export const credentialClaimProvenance = deepFreeze({
 
 export const credentialClaimDigests = Object.freeze({
   'account.password.verify':
-    '19ce52216adad02fb8bc18a3c0b46dc26032b95c504a27b29d2e064b51099469',
+    '5e59e6ab2dd1881225dd4de5c4866a861c7f463359f95ca352698a44b7429d26',
   'account.password.change':
-    'a15520cb10ebf45c68ca9f2dbde711fe41a49a9ded5610c99d509030e894717e',
+    '088e85c21b8a5d7997cf7e0d440b93bfac5d0cb75d30412e3123a0b38a84a49b',
   'account.kdf.pbkdf2_to_argon2id':
-    '686e51d03f3d4e24c99bb48e8fea3e5e46d5a4cccc02c9d21d85ea0358c25727',
+    '0000da17afe76b48055f3eed01e8f3ef4809e067126d0e996e8dee3583976c42',
   'account.kdf.argon2id_to_pbkdf2':
-    'ce4d2e6a488ce673999f2f7a8f2af674ffb1dad820e25201df53505063636ca3',
+    '3608bebe5202a3e17dad0d052705f0e1cd1a945f8c51c4a18e06fdeafdd8fd3a',
   'account.key.initialize':
-    '993e3a70baa55d59595b436cff58631d553265e7f6e1f33c8ba9e70d3f21254a',
+    '9b91c0493063c453f3d3b4cd2799ccef459f8e3166ba6064dee36a98fe0fd14b',
   'account.key.read':
-    '110d30e9743bed61fc15e36206977cf062a281caa778ff6ea8ef88cb60de6f0b',
+    'ff4ffd5804f6255c22145968f6f1e64cdbe4296caff9592702da01e5bb9ebe88',
   'account.user_key.rotate':
-    '6b2a855a0932ebcebd4334019d82d17501acca3477b7cc9334c7bc1cf59ffd71',
+    '3d5df13a00058d8ba4c82b80f1811cf579dfbdca190a8ef3e4b9c9210d4afbcc',
   'recovery.backup.export':
-    'f9ba9696ee01290c0e3a0f5a623403dfefadd49f1c710c68f34543a7dbe898b3',
+    '971fb7c2b9612e58a7341b784693f50f2104cd7d13ac460fb7531860475b939f',
   'recovery.restore.fresh_target':
-    '67197a4553735106e5300ae669049deec9bbe5460ce35202185ac1ec945d26e4',
+    '50a8fb6bdcb95fe680ec081295309b13d76adebeb0b151f59fdfff39cc067ce0',
   'recovery.writers.disabled':
-    '355f8d536f5d254b2b610992ad574e4639c075a90aa50b06b4a7e01f7c79d57e',
+    'a2f23defbf2e227d97edade05fc506004508f96789c1939bfc2abb75c0c4f022',
   'recovery.forward_generation':
-    '3973eeea067c65f670929cafad95242926f4fa9ce2d39711c9d012b0a33ee321',
+    '33d46043272594fe507e3802a71e06e3f236d34276b2b40e3e7560f684f906c4',
 })
 
 export const credentialEvidenceSources = Object.freeze({
@@ -514,10 +533,13 @@ function validateClaim(claim, context) {
   ) {
     throw new Error(`${label} claim levels do not match canonical provenance`)
   }
-  const artifactProvenance = claim.artifacts.map(({ path, evidenceLevel }) => ({
-    path,
-    evidenceLevel,
-  }))
+  const artifactProvenance = claim.artifacts.map(
+    ({ path, evidenceLevel, contentSha256 }) => ({
+      path,
+      evidenceLevel,
+      contentSha256,
+    }),
+  )
   if (
     JSON.stringify(artifactProvenance) !== JSON.stringify(provenance.artifacts)
   ) {
@@ -563,7 +585,7 @@ function validateArtifact(artifact, context) {
   assertPlainObject(artifact, context.label)
   assertExactKeys(
     artifact,
-    ['path', 'evidenceLevel', 'requiredMarkers'],
+    ['path', 'evidenceLevel', 'contentSha256', 'requiredMarkers'],
     context.label,
   )
   assertCanonicalRepoPath(artifact.path, `${context.label}.path`)
@@ -571,6 +593,7 @@ function validateArtifact(artifact, context) {
     artifact.evidenceLevel,
     `${context.label}.evidenceLevel`,
   )
+  assertSha256(artifact.contentSha256, `${context.label}.contentSha256`)
   assertUniqueNonEmptyStrings(
     artifact.requiredMarkers,
     `${context.label}.requiredMarkers`,
@@ -579,6 +602,9 @@ function validateArtifact(artifact, context) {
     throw new Error(
       `${context.label} artifact is not tracked: ${artifact.path}`,
     )
+  }
+  if (artifact.contentSha256 !== credentialArtifactDigests[artifact.path]) {
+    throw new Error(`${context.label} artifact digest is not canonical`)
   }
   const absolute = resolve(context.repoRoot, artifact.path)
   assertNoSymlinkComponents(context.repoRoot, artifact.path, context.label)
@@ -591,9 +617,12 @@ function validateArtifact(artifact, context) {
     throw new Error(`${context.label} artifact resolves outside the repository`)
   }
   const content = readFileSync(resolvedArtifact, 'utf8')
+  if (sha256Text(content) !== artifact.contentSha256) {
+    throw new Error(`${context.label} artifact content digest mismatch`)
+  }
   for (const marker of artifact.requiredMarkers) {
     if (!content.includes(marker)) {
-      throw new Error(`${context.label} artifact marker is missing: ${marker}`)
+      throw new Error(`${context.label} artifact marker is missing`)
     }
   }
   return level
@@ -778,6 +807,10 @@ function sha256Json(value) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
+function sha256Text(value) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
 function defineClaimProvenance({
   executionLevel = localApiLevel,
   evidenceLevel = localApiLevel,
@@ -792,6 +825,7 @@ function defineClaimProvenance({
     artifacts: artifacts.map(([path, level]) => ({
       path,
       evidenceLevel: level,
+      contentSha256: credentialArtifactDigests[path],
     })),
     clientEvidence:
       clientEvidence?.map(({ sourceId, operations }) => ({

@@ -1,5 +1,14 @@
 import { execFile } from 'node:child_process'
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+} from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
@@ -9,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 import * as credentialEvidence from '../../scripts/honowarden-credential-evidence.mjs'
 
 const {
+  credentialArtifactDigests,
   credentialClaimDigests,
   credentialClaimProvenance,
   credentialEvidenceLevels,
@@ -42,6 +52,22 @@ describe('credential evidence contract', () => {
       registry.claims.map((claim: { operation: string }) => claim.operation),
     ).toEqual(credentialOperations)
     expect(registry.claims).toHaveLength(11)
+    expect(Object.keys(credentialArtifactDigests).sort()).toEqual(
+      [
+        ...new Set(
+          registry.claims.flatMap((claim: Registry['claims'][number]) =>
+            claim.artifacts.map((artifact) => artifact.path),
+          ),
+        ),
+      ].sort(),
+    )
+    for (const claim of registry.claims) {
+      for (const artifact of claim.artifacts) {
+        expect(artifact.contentSha256).toBe(
+          credentialArtifactDigests[artifact.path],
+        )
+      }
+    }
     expect(Object.keys(credentialClaimDigests)).toEqual(credentialOperations)
     for (const digest of Object.values(credentialClaimDigests)) {
       expect(digest).toMatch(/^[0-9a-f]{64}$/)
@@ -54,10 +80,13 @@ describe('credential evidence contract', () => {
             executionLevel: claim.executionLevel,
             evidenceLevel: claim.evidenceLevel,
             sourceGeneration: claim.sourceGeneration,
-            artifacts: claim.artifacts.map(({ path, evidenceLevel }) => ({
-              path,
-              evidenceLevel,
-            })),
+            artifacts: claim.artifacts.map(
+              ({ path, evidenceLevel, contentSha256 }) => ({
+                path,
+                evidenceLevel,
+                contentSha256,
+              }),
+            ),
             clientEvidence: claim.clientEvidence ?? null,
           },
         ]),
@@ -125,7 +154,13 @@ describe('credential evidence contract', () => {
         }
       }
       $defs: {
-        artifact: { properties: { path: { pattern: string } } }
+        artifact: {
+          required: string[]
+          properties: {
+            path: { pattern: string }
+            contentSha256: { $ref: string }
+          }
+        }
       }
     }
 
@@ -150,6 +185,10 @@ describe('credential evidence contract', () => {
     expect(artifactPath.test('docs/release/evidence.md')).toBe(true)
     expect(artifactPath.test('../outside.md')).toBe(false)
     expect(artifactPath.test('docs/../outside.md')).toBe(false)
+    expect(schema.$defs.artifact.required).toContain('contentSha256')
+    expect(schema.$defs.artifact.properties.contentSha256.$ref).toBe(
+      '#/$defs/sha256',
+    )
   })
 
   it.each([
@@ -359,6 +398,59 @@ describe('credential evidence contract', () => {
     ).toThrow(expected)
   })
 
+  it('rejects tracked artifact content drift even when all markers remain', () => {
+    const registry = readRegistryFixture()
+    const paths = [
+      ...new Set(
+        registry.claims.flatMap((claim) =>
+          claim.artifacts.map((artifact) => artifact.path),
+        ),
+      ),
+    ]
+    const isolatedRoot = mkdtempSync(join(tmpdir(), 'credential-evidence-'))
+    try {
+      for (const path of paths) {
+        const target = join(isolatedRoot, path)
+        mkdirSync(dirname(target), { recursive: true })
+        copyFileSync(join(repoRoot, path), target)
+      }
+      appendFileSync(
+        join(
+          isolatedRoot,
+          requiredArtifact(requiredClaim(registry, 0), 0).path,
+        ),
+        '\nContradictory post-hoc text that preserves every marker.\n',
+      )
+
+      expect(() =>
+        validateCredentialEvidenceRegistry(registry, {
+          repoRoot: isolatedRoot,
+          trackedPaths: paths,
+        }),
+      ).toThrow(/artifact content digest mismatch/)
+    } finally {
+      rmSync(isolatedRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('does not include a missing marker value in verifier errors', () => {
+    const registry = readRegistryFixture()
+    const secretMarker = 'SUPER-SECRET-MARKER-DO-NOT-LOG'
+    requiredArtifact(requiredClaim(registry, 0), 0).requiredMarkers.push(
+      secretMarker,
+    )
+
+    let thrown
+    try {
+      validateCredentialEvidenceRegistry(registry, { repoRoot })
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).message).toMatch(/artifact marker is missing/)
+    expect((thrown as Error).message).not.toContain(secretMarker)
+  })
+
   it('derives live-evidence limitations from validated claim levels', () => {
     const localOnly = summarizeCredentialEvidenceLimitations([
       { evidenceLevel: 'local_api' },
@@ -438,6 +530,7 @@ type Registry = {
     artifacts: Array<{
       path: string
       evidenceLevel: string
+      contentSha256?: string
       requiredMarkers: string[]
     }>
     clientEvidence?: Array<{ sourceId: string; operations: string[] }>
