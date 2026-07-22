@@ -398,7 +398,11 @@ export function scanCredentialCloseoutArtifacts({
 }
 
 export function assertCredentialCloseoutContentSafe(content) {
-  if (typeof content !== 'string' || unsafeCredentialCloseoutContent(content)) {
+  if (
+    typeof content !== 'string' ||
+    Buffer.byteLength(content) > maximumInputBytes ||
+    unsafeCredentialCloseoutContent(content)
+  ) {
     throw new Error('credential closeout content is unsafe')
   }
 }

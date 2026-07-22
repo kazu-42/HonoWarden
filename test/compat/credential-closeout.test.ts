@@ -676,6 +676,37 @@ describe('credential closeout packet', () => {
     )
   })
 
+  it.each([
+    ['ASCII', 'a'.repeat(1024 * 1024 + 1)],
+    ['UTF-8', 'あ'.repeat(Math.floor((1024 * 1024) / 3) + 1)],
+  ])(
+    'rejects direct scanner %s input over the byte limit without reflection',
+    (_name, oversizedContent) => {
+      let thrown: unknown
+      try {
+        assertCredentialCloseoutContentSafe(oversizedContent)
+      } catch (error) {
+        thrown = error
+      }
+
+      expect(Buffer.byteLength(oversizedContent)).toBeGreaterThan(1024 * 1024)
+      expect(thrown).toBeInstanceOf(Error)
+      expect((thrown as Error).message).toBe(
+        'credential closeout content is unsafe',
+      )
+      expect((thrown as Error).message).not.toContain(oversizedContent)
+    },
+  )
+
+  it('accepts safe direct scanner input at the exact byte limit', () => {
+    const maximumSizedContent = 'a'.repeat(1024 * 1024)
+
+    expect(Buffer.byteLength(maximumSizedContent)).toBe(1024 * 1024)
+    expect(() =>
+      assertCredentialCloseoutContentSafe(maximumSizedContent),
+    ).not.toThrow()
+  })
+
   it('scans an at-free dotted input in linear time', () => {
     const safeContent = 'safe.'.repeat(16_384)
     const startedAt = performance.now()

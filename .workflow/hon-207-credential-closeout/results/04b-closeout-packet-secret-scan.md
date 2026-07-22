@@ -354,6 +354,30 @@ All eight canonical artifacts pass independently, and the packet remains 14,398
 bytes with SHA-256
 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
 
+A native Codex exact-head review attempt in session
+`019f8ae7-9707-7023-9b87-ff8f18625b54` reached the account usage limit before
+inspecting commit `73fe27e`, so it returned no verdict. Read-only fallback review
+session `ses_075167ae0ffePTlazdQ2P0RTkB` used
+`opencode/nemotron-3-ultra-free`, inspected the complete diff, independently
+passed all 1,599 tests, and exercised additional direct scanner probes. Its
+response stream failed before a verdict, so it is not approval evidence. The
+last completed probe did reproduce one actionable boundary gap: the exported
+scanner accepted a string one byte over its documented 1 MiB input ceiling,
+even though artifact-file and generated-packet paths already enforced that
+ceiling.
+
+The eleventh remediation started with a two-case red run proving that both an
+ASCII input and a multibyte UTF-8 input over the byte ceiling were accepted.
+`assertCredentialCloseoutContentSafe` now rejects input when
+`Buffer.byteLength(content)` exceeds the shared maximum before running the
+classifier, keeps the same fixed non-disclosing error, and explicitly accepts a
+safe input at exactly 1 MiB. Focused, compatibility, and full serial suites now
+pass 231, 372, and 1,602 tests respectively. The full suite completed across
+104 files in 58.69 seconds. TypeScript, ESLint, Prettier, canonical packet and
+artifact scans, credential-evidence verification, brand scan, dependency audit,
+strict release gate, completion audit, and the five HON-222 plan tests also
+pass. The canonical packet remains byte-identical.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact/postfixed access and refresh tokens, standalone provider tokens,
 authentication cookies across plain, Markdown, JSON, and embedded header
@@ -374,9 +398,9 @@ scripts, and public or reserved example identities remain accepted.
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 228/228 passed                                                                           |
-| Compatibility impact        | 369/369 across 5 files passed                                                            |
-| Full suite                  | 1,599/1,599 across 104 files passed serially in 135.17 seconds                           |
+| Focused generator/scanner   | 231/231 passed                                                                           |
+| Compatibility impact        | 372/372 across 5 files passed                                                            |
+| Full suite                  | 1,602/1,602 across 104 files passed serially in 58.69 seconds                            |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |
