@@ -264,6 +264,30 @@ describe('credential closeout packet', () => {
     ],
     ['compact key material', 'keymaterial=do-not-print-compact-key-material'],
     ['bracket-wrapped password', '[password=do-not-print-bracket-password]'],
+    [
+      'bold Markdown password',
+      '- **Password**: do-not-print-bold-markdown-password',
+    ],
+    [
+      'spaced bold Markdown password',
+      '- ** Password **: do-not-print-spaced-markdown-password',
+    ],
+    [
+      'Markdown table password',
+      '| Password | do-not-print-markdown-table-password |',
+    ],
+    [
+      'later Markdown table password field',
+      '| Evidence | Password | do-not-print-later-table-password |',
+    ],
+    [
+      'HTML-emphasized password',
+      '<strong>Password</strong>: do-not-print-html-password',
+    ],
+    [
+      'heading italic password',
+      '### _Password_: do-not-print-heading-password',
+    ],
     ['raw access token', 'access_token=do-not-print-access-token'],
     ['camel access token', 'accessToken: do-not-print-camel-access-token'],
     ['compact API key', 'apikey=do-not-print-compact-api-key'],
@@ -309,6 +333,30 @@ describe('credential closeout packet', () => {
       'annotated authorization credential',
       'Authorization: Bearer <redacted> do-not-print-trailing-credential',
     ],
+    ['status-word password', 'password=disabled'],
+    ['unchanged password', 'password=unchanged'],
+    ['none password', 'password=none'],
+    ['false password', 'password=false'],
+    ['zero password', 'password=0'],
+    ['null password', 'password=null'],
+    ['none generic secret field', 'secrets=none'],
+    [
+      'malformed stale credential summary',
+      '| Stale password/access/refresh/profile | disabled |',
+    ],
+    [
+      'redacted password with trailing credential',
+      'password=<redacted> do-not-print-trailing-password',
+    ],
+    ['status-word authorization', 'Authorization: Bearer passed'],
+    [
+      'CGI authorization credential',
+      'HTTP_AUTHORIZATION=Bearer do-not-print-cgi-authorization',
+    ],
+    [
+      'redirected CGI authorization credential',
+      'REDIRECT_HTTP_AUTHORIZATION=Bearer do-not-print-redirected-authorization',
+    ],
     [
       'JWT',
       'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkb250LXByaW50In0.c2lnbmF0dXJlLXZhbHVl',
@@ -350,6 +398,25 @@ describe('credential closeout packet', () => {
       '-----BEGIN PRIVATE KEY-----\ndo-not-print-private-key\n-----END PRIVATE KEY-----',
     ],
     ['personal identity', 'Contact: person@real-company.dev'],
+    ['Unicode local identity', 'Contact: ユーザー@real-company.dev'],
+    ['Unicode domain identity', 'Contact: person@例え.テスト'],
+    ['Unicode reserved-domain identity', 'Contact: 名@example.test'],
+    [
+      'Unicode prefix on an allowed identity',
+      'Contact: ユーザーsecurity@honowarden.com',
+    ],
+    [
+      'Unicode suffix on an allowed identity',
+      'Contact: security@honowarden.com例え',
+    ],
+    [
+      'punctuation prefix on an allowed identity',
+      'Contact: +security@honowarden.com',
+    ],
+    [
+      'domain suffix on an allowed identity',
+      'Contact: security@honowarden.com-evil',
+    ],
     [
       'personal identity after an allowed identity',
       'Contacts: support@honowarden.com, person@real-company.dev',
@@ -403,6 +470,15 @@ describe('credential closeout packet', () => {
     expect(performance.now() - startedAt).toBeLessThan(250)
   })
 
+  it('scans a maximum-sized Markdown table in linear time', () => {
+    const safeContent = `${'| field | ok '.repeat(70_000)}|`
+    const startedAt = performance.now()
+
+    expect(Buffer.byteLength(safeContent)).toBeLessThan(1024 * 1024)
+    expect(() => assertCredentialCloseoutContentSafe(safeContent)).not.toThrow()
+    expect(performance.now() - startedAt).toBeLessThan(250)
+  })
+
   it.each([
     ['digest', `sha256: ${'a'.repeat(64)}`],
     ['version', 'client version: 2026.6.1'],
@@ -418,10 +494,19 @@ describe('credential closeout packet', () => {
       'Limitation: no raw passwords, access tokens, wrapped keys, identities, provider payloads, or profiles are included.',
     ],
     ['empty secret count', 'Real secrets: none'],
+    [
+      'stale credential rejection count',
+      '| Stale password/access/refresh/profile | 4 each before restart; 4 each after restart |',
+    ],
+    ['Markdown empty secret count', '| Real secrets | none |'],
     ['reserved identity', 'Contact: operator@example.test'],
     [
       'allowed public identities',
       'Contacts: security@honowarden.com, support@honowarden.com.',
+    ],
+    [
+      'allowed public identity after Japanese punctuation',
+      '連絡先：security@honowarden.com',
     ],
     [
       'credential proof marker',
@@ -429,6 +514,9 @@ describe('credential closeout packet', () => {
     ],
     ['colon-delimited package script', 'pnpm account:keys:lifecycle'],
     ['key digest metadata', `key digest: sha256:${'c'.repeat(64)}`],
+    ['redacted password assignment', 'password: <redacted>'],
+    ['redacted bold Markdown password', '- ** Password **: <redacted>'],
+    ['redacted access token assignment', 'access_token=[redacted]'],
     ['redacted authorization', 'Authorization: <redacted>'],
     ['empty bearer authorization', 'Authorization: Bearer'],
     ['redacted bearer authorization', 'Authorization: Bearer <redacted>'],
@@ -439,6 +527,11 @@ describe('credential closeout packet', () => {
     [
       'redacted arbitrary-scheme authorization',
       'Authorization: token [redacted]',
+    ],
+    ['redacted CGI authorization', 'HTTP_AUTHORIZATION=Bearer <redacted>'],
+    [
+      'empty redirected CGI authorization',
+      'REDIRECT_HTTP_AUTHORIZATION=Bearer',
     ],
     [
       'type 0 malformed single-part text',

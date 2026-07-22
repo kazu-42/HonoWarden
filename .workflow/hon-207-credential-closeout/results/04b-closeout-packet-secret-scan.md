@@ -138,24 +138,59 @@ and the 900 KiB secret-field probe fell from about 655 ms to 13 ms. The tests
 retain a conservative 250 ms bound at both sizes. Focused, compatibility, and
 full serial suites now pass 92, 233, and 1,463 tests respectively.
 
+Native Codex exact-head review session
+`019f8a5a-849f-7e03-947d-f9fc04c8088b` then inspected commit `83194cc` and
+returned one P1 plus three P2 findings. Direct probes proved that Markdown
+emphasis/table labels could hide a password, credential values equal to status
+words were treated as empty, non-ASCII account identities were ignored, and
+CGI-style `HTTP_AUTHORIZATION` variables bypassed the header scan. A separate
+Opus five-axis attempt in session `57edb51b-95bd-4cc1-9317-ec7a23979d29`
+performed 16 read-only turns but reached its weekly limit before returning a
+verdict, so it is recorded as unavailable rather than approval evidence.
+
+The fourth remediation red run passed 96 of 112 tests and reproduced all 16
+review failures. Two generalized Markdown controls then produced a 112-of-114
+red run for whitespace inside emphasis and a secret label in a later table
+column. The implementation now:
+
+- scans emphasized and HTML-emphasized labels plus every adjacent Markdown
+  table cell, including headings and labels with internal whitespace;
+- accepts only exact redaction placeholders for secret values and
+  Authorization credentials, with two label-and-value-bound non-secret summary
+  exceptions for existing count evidence;
+- rejects Unicode identity candidates around `@` while preserving pinned
+  ASCII source references and approved public/reserved addresses;
+- recognizes header names and CGI-style Authorization variables with one or
+  more underscore prefixes; and
+- preserves linear bounds for dotted, large-field, and 910 KiB Markdown-table
+  inputs, each with a 250 ms regression ceiling.
+
+One final self-review produced a 122-of-126 red run by joining Unicode,
+punctuation, or domain-like suffixes to an otherwise allowlisted public address.
+Identity matching now checks Unicode context before allowlisting and anchors the
+entire ASCII candidate, while treating explicit Japanese punctuation as a text
+boundary. Focused, compatibility, and full serial suites now pass 126, 267, and
+1,497 tests respectively. The canonical packet remains 14,398 bytes with SHA-256
+`7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact access and refresh tokens, key/secret hashes and material, token
 signatures and bearer fields, wrapped and unwrapped keys, encrypted item bodies,
 identity payloads, provider payloads, profiles, secret-like schema fields,
-Authorization credentials across schemes, bracket-wrapped assignments, JWTs,
-EncString types 0-7, private-key blocks, and personal email identities. Approved
-digests, versions, counts, enums, source refs, repository paths, limitation
-text, empty secret counts, redacted Authorization, malformed EncString shapes,
-verification markers, package scripts, and reserved example identities remain
-accepted.
+Authorization credentials across headers and CGI variables, bracket-wrapped and
+Markdown-formatted assignments, JWTs, EncString types 0-7, private-key blocks,
+and ASCII or Unicode personal identities. Approved digests, versions, counts,
+enums, source refs, repository paths, limitation text, exact non-secret count
+summaries, exact redactions, malformed EncString shapes, verification markers,
+package scripts, and reserved example identities remain accepted.
 
 ## Current Verification
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 92/92 passed                                                                             |
-| Compatibility impact        | 233/233 across 5 files passed                                                            |
-| Full suite                  | 1,463/1,463 across 104 files passed serially                                             |
+| Focused generator/scanner   | 126/126 passed                                                                           |
+| Compatibility impact        | 267/267 across 5 files passed                                                            |
+| Full suite                  | 1,497/1,497 across 104 files passed serially                                             |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |
