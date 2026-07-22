@@ -209,24 +209,57 @@ the existing dotted, adjacent-`@`, large-field, and Markdown-table regressions
 all remain below 250 ms. Focused, compatibility, and full serial suites now pass
 141, 282, and 1,512 tests respectively without changing the canonical packet.
 
+Native Codex exact-head review session
+`019f8a94-7365-7a02-9792-ac31a195ff0e` then inspected commit `cd99f26` and
+returned two P1 plus two P2 findings. Postfixed credential field names such as
+`passwordOld` and `accessTokenCopy` were not classified, standalone provider
+access tokens and authentication cookies were not scanned, packet verification
+did not require the canonical output to be Git-tracked, and an oversized
+generated packet was rejected only after replacing the previous valid file.
+The reviewer's focused and static checks passed; its broad-suite attempt was
+stopped by the external review environment after 310 seconds and is not counted
+as repository failure or approval evidence.
+
+The seventh remediation red run passed 146 of 155 focused tests and reproduced
+all nine representative fail-open or mutation-order cases. The implementation
+now:
+
+- extends the existing reverse-pass field classifier with bounded credential
+  qualifiers while preserving explicit metadata controls such as password
+  policy and access-token count;
+- rejects high-confidence GitHub and Slack token forms plus non-redacted values
+  in known authentication cookies, while accepting non-authentication cookies
+  and exact redaction sentinels;
+- requires the canonical packet path in the tracked-path set before verify or
+  write and keeps an existing packet byte-for-byte unchanged on rejection; and
+- validates a generated packet against a bounded byte limit before creating a
+  temporary file or executing the atomic rename.
+
+Focused, compatibility, and full serial suites now pass 155, 296, and 1,526
+tests respectively. The full suite completed across 104 files in 129.30 seconds.
+The canonical packet remains 14,398 bytes with SHA-256
+`7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
-raw/compact access and refresh tokens, key/secret hashes and material, token
-signatures and bearer fields, wrapped and unwrapped keys, encrypted item bodies,
-identity payloads, provider payloads, profiles, secret-like schema fields,
-Authorization credentials across headers and CGI variables, bracket-wrapped and
+raw/compact/postfixed access and refresh tokens, standalone provider tokens,
+authentication cookies, key/secret hashes and material, token signatures and
+bearer fields, wrapped and unwrapped keys, encrypted item bodies, identity
+payloads, provider payloads, profiles, secret-like schema fields, Authorization
+credentials across headers and CGI variables, bracket-wrapped and
 Markdown-formatted assignments, JWTs, EncString types 0-7, private-key blocks,
 and ASCII or Unicode personal identities. Approved digests, versions, counts,
 enums, source refs, repository paths, limitation text, exact non-secret count
-summaries, exact redactions, malformed EncString shapes, verification markers,
-package scripts, and reserved example identities remain accepted.
+summaries, exact redactions, non-authentication cookies, malformed EncString
+shapes, verification markers, package scripts, and reserved example identities
+remain accepted.
 
 ## Current Verification
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 141/141 passed                                                                           |
-| Compatibility impact        | 282/282 across 5 files passed                                                            |
-| Full suite                  | 1,512/1,512 across 104 files passed serially                                             |
+| Focused generator/scanner   | 155/155 passed                                                                           |
+| Compatibility impact        | 296/296 across 5 files passed                                                            |
+| Full suite                  | 1,526/1,526 across 104 files passed serially in 129.30 seconds                           |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |

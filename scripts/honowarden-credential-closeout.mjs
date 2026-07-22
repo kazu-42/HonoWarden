@@ -55,6 +55,7 @@ const highRiskSecretFieldWords = new Set([
   'keys',
 ])
 const secretFieldSuffixWords = new Set([
+  'candidate',
   'hash',
   'hashes',
   'signature',
@@ -67,6 +68,16 @@ const secretFieldSuffixWords = new Set([
   'clear',
   'raw',
   'bearer',
+  'old',
+  'new',
+  'current',
+  'previous',
+  'confirmation',
+  'confirm',
+  'copy',
+  'repeat',
+  'original',
+  'proposed',
 ])
 const compactSecretFieldSuffixPattern = `(?:${[...secretFieldSuffixWords].join(
   '|',
@@ -92,6 +103,22 @@ const emptyAuthorizationAnnotations = new Set([
   'revoked',
   'rotated',
 ])
+const authenticationCookieNames = new Set(
+  [
+    'access-token',
+    'auth',
+    'auth-token',
+    'connect.sid',
+    'jsessionid',
+    'jwt',
+    'phpsessid',
+    'refresh-token',
+    'session',
+    'sessionid',
+    'sid',
+    'token',
+  ].map(normalizeCookieName),
+)
 const identityTokenBoundaryCharacters = new Set([
   '"',
   "'",
@@ -381,11 +408,12 @@ export function verifyCredentialCloseoutPacket({
   packetPath = resolve(repoRoot, credentialCloseoutPacketPath),
   trackedPaths,
 } = {}) {
+  const tracked = requiredCredentialCloseoutTrackedPaths(repoRoot, trackedPaths)
   const packet = buildCredentialCloseoutPacket({
     repoRoot,
     registryPath,
     schemaPath,
-    trackedPaths,
+    trackedPaths: [...tracked],
   })
   const expectedText = serializeCredentialCloseoutPacket(packet)
   const actualText = readCanonicalPacketText(repoRoot, packetPath)
@@ -413,6 +441,10 @@ export function writeCredentialCloseoutPacket(options = {}) {
   const packetPath = resolve(canonicalRepoRoot, credentialCloseoutPacketPath)
   assertCanonicalPacketLocation(canonicalRepoRoot, packetPath)
   assertSafeOutputParent(canonicalRepoRoot, dirname(packetPath))
+  const tracked = requiredCredentialCloseoutTrackedPaths(
+    canonicalRepoRoot,
+    options.trackedPaths,
+  )
   try {
     const stat = lstatSync(packetPath)
     if (!stat.isFile() || stat.isSymbolicLink()) {
@@ -422,9 +454,16 @@ export function writeCredentialCloseoutPacket(options = {}) {
     if (error?.code !== 'ENOENT') throw error
   }
 
-  const packet = buildCredentialCloseoutPacket(options)
+  const packet = buildCredentialCloseoutPacket({
+    ...options,
+    trackedPaths: [...tracked],
+  })
   const serialized = serializeCredentialCloseoutPacket(packet)
   assertCredentialCloseoutContentSafe(serialized)
+  const packetByteLimit = requiredPacketByteLimit(options.packetByteLimit)
+  if (Buffer.byteLength(serialized) > packetByteLimit) {
+    throw new Error('credential closeout packet exceeds the size limit')
+  }
   const temporaryPath = resolve(
     dirname(packetPath),
     `.${basename(packetPath)}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`,
@@ -559,6 +598,8 @@ function unsafeCredentialCloseoutContent(content) {
   if (hasSecretLikeAssignment(content)) return true
   if (hasEmbeddedSecretLikePair(content)) return true
   if (hasAuthorizationCredential(content)) return true
+  if (hasAuthenticationCookie(content)) return true
+  if (hasOpaqueAccessToken(content)) return true
   if (
     /-----BEGIN (?:PGP PRIVATE KEY BLOCK|(?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY)-----/i.test(
       content,
@@ -732,6 +773,39 @@ function hasAuthorizationCredential(content) {
     if (!isEmptyAuthorizationCredential(match[1] ?? '')) return true
   }
   return false
+}
+
+function hasAuthenticationCookie(content) {
+  const pattern =
+    /(?:^|[\r\n])[ \t]*(Set-Cookie|Cookie)[ \t]*:[ \t]*([^\r\n]*)/gim
+  for (const match of content.matchAll(pattern)) {
+    const pairs = (match[2] ?? '').split(';')
+    const relevantPairs =
+      match[1]?.toLowerCase() === 'set-cookie' ? pairs.slice(0, 1) : pairs
+    for (const pair of relevantPairs) {
+      const separator = pair.indexOf('=')
+      if (separator <= 0) continue
+      const name = normalizeCookieName(pair.slice(0, separator))
+      if (!authenticationCookieNames.has(name)) continue
+      const value = pair.slice(separator + 1).trim()
+      if (value && !isRedactedSecretSentinel(value)) return true
+    }
+  }
+  return false
+}
+
+function normalizeCookieName(value) {
+  return value
+    .trim()
+    .replace(/^__(?:Host|Secure)-/i, '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toLowerCase()
+}
+
+function hasOpaqueAccessToken(content) {
+  return /(?:^|[^A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}|xox[baprs]-[A-Za-z0-9-]{20,})(?=$|[^A-Za-z0-9_-])/m.test(
+    content,
+  )
 }
 
 function isEmptyAuthorizationCredential(value) {
@@ -1067,6 +1141,26 @@ function assertCanonicalInputLocation(repoRoot, path, expectedPath) {
   if (actualRelative !== expectedPath) {
     throw new Error('credential closeout input path is not canonical')
   }
+}
+
+function requiredCredentialCloseoutTrackedPaths(repoRoot, trackedPaths) {
+  const canonicalRepoRoot = realpathSync(repoRoot)
+  const tracked =
+    trackedPaths === undefined
+      ? readTrackedPaths(canonicalRepoRoot)
+      : new Set(trackedPaths)
+  if (!tracked.has(credentialCloseoutPacketPath)) {
+    throw new Error('credential closeout packet is not tracked')
+  }
+  return tracked
+}
+
+function requiredPacketByteLimit(value) {
+  const limit = value ?? maximumInputBytes
+  if (!Number.isSafeInteger(limit) || limit <= 0 || limit > maximumInputBytes) {
+    throw new Error('credential closeout packet size limit is invalid')
+  }
+  return limit
 }
 
 function assertCanonicalPacketLocation(repoRoot, packetPath) {
