@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: eighth-review remediation source-ready; final exact-head reviews and publication pending
+Status: implementation exact-head reviews passed; final evidence-head review and publication pending
 
 Linear issue: HON-227
 
@@ -283,8 +283,29 @@ all seven mutations fail. Focused tests pass 36/36, compatibility passes
 141/141, and the serial full suite passes 1,371/1,371 across 103 files. All
 static, dependency, release, verifier, and HON-222 plan gates also pass.
 
-Final exact-head standard and five-axis review of this remediation remain
-pending.
+## Exact ED59 Implementation Reviews
+
+Native Codex standard review inspected exact implementation head
+`ed59a880b469d1efa03e4d654a61d48fa86bcc5b`, tree
+`3f44fd1536170dcef9e204f2ad4a2f5e7dd6834d`, in session
+`019f892d-b7f1-7de2-83ac-7ac4b7f5a4e5`. It returned no actionable P0-P3
+findings. The reviewer independently passed the 36 focused tests, four HON-222
+plan tests, direct schema and verifier execution, TypeScript, ESLint, and diff
+checks. Its attempted pnpm commands hit only the already isolated local
+registry-signature/network failure; direct local binaries passed.
+
+Independent Opus five-axis review inspected the same exact clean head in
+read-only session `b06d50a9-5787-4f93-a55c-b588b8e021a7`. It returned no
+actionable P0-P3 finding, graded problem framing A, diagnosis A, solution design
+A, architecture and operations A-, and implementation craft A, then approved.
+Its non-blocking residual risks were schema-only client-operation/surface
+strictness for noncanonical registries, coordinated maintenance of in-module
+provenance pins, and direct positive coverage when dormant live claims are
+introduced. None changes the canonical registry or this local-only packet.
+
+Both reviewers re-read the exact head and clean tracked worktree before their
+verdicts. This review record is the only post-review source change; its exact
+evidence-only commit must pass a final no-change review before publication.
 
 The review process also reported unrelated Figma/MCP authentication and local
 pnpm registry-signature/network friction. Direct Node/Vitest execution and the
@@ -293,9 +314,9 @@ messages.
 
 ## Remaining Publication Gate
 
-Exact-head standard and five-axis review of the remediation commit, PR/head CI,
-zero unresolved threads, squash tree equality, merged-main CI, and HON-227
-Done/archive remain. EVIDENCE-1B must not start before that closeout.
+Final no-change review of the evidence-only commit, PR/head CI, zero unresolved
+threads, squash tree equality, merged-main CI, and HON-227 Done/archive remain.
+EVIDENCE-1B must not start before that closeout.
 
 No deployment, remote mutation, real credential, production or staging
 activation, destructive operation, paid action, browser-profile access, or
