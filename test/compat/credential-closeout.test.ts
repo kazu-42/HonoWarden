@@ -303,6 +303,22 @@ describe('credential closeout packet', () => {
       'bracketed API key qualifier',
       'API key [production]: do-not-print-production-api-key',
     ],
+    [
+      'natural-language password qualifier',
+      'Password for user: do-not-print-user-password',
+    ],
+    [
+      'natural-language access token qualifier',
+      'Access token for production: do-not-print-production-token',
+    ],
+    [
+      'natural-language secret qualifier',
+      'Secret used by client: do-not-print-client-secret',
+    ],
+    [
+      'tab-delimited natural-language password qualifier',
+      'Password\tfor\tuser = do-not-print-tabbed-password',
+    ],
     ['compact key material', 'keymaterial=do-not-print-compact-key-material'],
     ['bracket-wrapped password', '[password=do-not-print-bracket-password]'],
     [
@@ -447,6 +463,22 @@ describe('credential closeout packet', () => {
       'xoxb-123456789012-123456789012-abcdefghijklmnopqrstuvwx',
     ],
     [
+      'JSON-escaped JWT',
+      '{"result":"\\u0065yJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkb250LXByaW50In0.c2lnbmF0dXJlLXZhbHVl"}',
+    ],
+    [
+      'JSON-escaped GitHub personal access token',
+      '{"result":"g\\u0068p_0123456789abcdefghijklmnopqrstuvwxyzAB"}',
+    ],
+    [
+      'JSON-escaped authorization credential',
+      '{"result":"Authorization\\u003a Bearer do-not-print-json-authorization"}',
+    ],
+    [
+      'standalone Unicode-escaped GitHub personal access token',
+      String.raw`Observed: gh\u0070_0123456789abcdefghijklmnopqrstuvwxyzAB`,
+    ],
+    [
       'authentication Set-Cookie header',
       'Set-Cookie: connect.sid=s%3Ado-not-print-session.signature; HttpOnly',
     ],
@@ -477,6 +509,18 @@ describe('credential closeout packet', () => {
     [
       'qualified embedded authentication Cookie header',
       'Observed headers.Cookie: sessionid=do-not-print-qualified-session',
+    ],
+    [
+      'self-describing NextAuth session Cookie header',
+      'Set-Cookie: __Secure-next-auth.session-token=do-not-print-nextauth-session; HttpOnly',
+    ],
+    [
+      'custom authentication Cookie header',
+      'Cookie: app-auth-cookie=do-not-print-custom-auth-cookie',
+    ],
+    [
+      'OAuth state Cookie header',
+      'Cookie: oauth_state=do-not-print-oauth-state',
     ],
     [
       'JWT',
@@ -518,6 +562,14 @@ describe('credential closeout packet', () => {
       'private key',
       '-----BEGIN PRIVATE KEY-----\ndo-not-print-private-key\n-----END PRIVATE KEY-----',
     ],
+    [
+      'AGE private key block',
+      '-----BEGIN AGE SECRET KEY-----\ndo-not-print-age-private-key\n-----END AGE SECRET KEY-----',
+    ],
+    [
+      'AGE secret key',
+      'AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ',
+    ],
     ['personal identity', 'Contact: person@real-company.dev'],
     [
       'JSON-escaped personal identity',
@@ -541,12 +593,20 @@ describe('credential closeout packet', () => {
       String.raw`Contact: person\@real-company.dev`,
     ],
     [
+      'JavaScript code-point escaped personal identity',
+      String.raw`Contact: person\u{40}real-company.dev`,
+    ],
+    [
       'quoted local-part personal identity',
       'Contact: "person"@real-company.dev',
     ],
     [
       'commented local-part personal identity',
       'Contact: person(comment)@real-company.dev',
+    ],
+    [
+      'commented domain personal identity',
+      'Contact: person@(comment)real-company.dev',
     ],
     ['dotless-domain personal identity', 'Contact: alice@corp'],
     ['address-literal personal identity', 'Contact: alice@[192.0.2.1]'],
@@ -695,10 +755,18 @@ describe('credential closeout packet', () => {
       'percent-encoded allowed public identity',
       'Contact: security%40honowarden.com',
     ],
+    [
+      'JavaScript code-point escaped reserved identity',
+      String.raw`Contact: operator\u{40}example.test`,
+    ],
     ['quoted reserved identity', 'Contact: "operator"@example.test'],
     [
       'commented reserved identity',
       'Contact: operator(example fixture)@example.test',
+    ],
+    [
+      'domain-commented reserved identity',
+      'Contact: operator@(example fixture)example.test',
     ],
     [
       'allowed public identities',
@@ -745,6 +813,10 @@ describe('credential closeout packet', () => {
       '{"Set-Cookie":"cookie_consent=accepted; SameSite=Lax"}',
     ],
     [
+      'non-authentication author preference cookie',
+      'Set-Cookie: author_preferences=compact; SameSite=Lax',
+    ],
+    [
       'redacted Markdown list authentication cookie',
       '- Cookie: sessionid=<redacted>',
     ],
@@ -764,6 +836,14 @@ describe('credential closeout packet', () => {
       'redacted parenthesized password assignment',
       'Password (raw): <redacted>',
     ],
+    [
+      'redacted natural-language password assignment',
+      'Password for user: <redacted>',
+    ],
+    [
+      'password policy with natural-language qualifier',
+      'Password policy for users: minimum 16 characters',
+    ],
     ['redacted bold Markdown password', '- ** Password **: <redacted>'],
     [
       'redacted separator inside bold Markdown password',
@@ -773,6 +853,14 @@ describe('credential closeout packet', () => {
     [
       'redacted bracketed access token assignment',
       'Access token [production]: [redacted]',
+    ],
+    [
+      'access token count with natural-language qualifier',
+      'Access token count for production: 0',
+    ],
+    [
+      'redacted self-describing authentication cookie',
+      'Set-Cookie: __Secure-next-auth.session-token=<redacted>; HttpOnly',
     ],
     ['redacted authorization', 'Authorization: <redacted>'],
     ['empty bearer authorization', 'Authorization: Bearer'],

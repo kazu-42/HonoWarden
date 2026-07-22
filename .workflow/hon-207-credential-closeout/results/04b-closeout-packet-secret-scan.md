@@ -315,6 +315,45 @@ All eight canonical artifacts pass independently, and the packet remains 14,398
 bytes with SHA-256
 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
 
+Native Codex exact-head review session
+`019f8ad4-2ad8-78a3-8877-2e806a46109a` then inspected commit `ae4fc3c` and
+returned three P1 findings. Direct probes showed that an escape inside a JWT or
+provider token in a generic JSON string bypassed token signatures, natural
+language qualifiers such as `Password for user` bypassed field classification,
+and framework-defined names such as NextAuth session cookies bypassed the
+finite cookie-name set. The reviewer passed all 206 focused tests, five HON-222
+plan tests, canonical verification, typecheck, ESLint, and diff checks through
+direct repository binaries. GitNexus indexing and pnpm shim fetches failed only
+at reviewer sandbox boundaries and are not source failures.
+
+The tenth remediation red run passed 211 of 221 focused tests and reproduced
+all ten reviewer-family failures. The scanner now:
+
+- recursively applies the complete secret classifier to decoded JSON strings
+  and JavaScript-style Unicode or hexadecimal escapes, with a four-pass bound
+  and no rejected-value reflection;
+- removes bounded prepositional natural-language qualifiers after secret
+  labels, including tab-separated forms, while preserving password-policy and
+  access-token-count controls; and
+- classifies normalized cookie names by exact known names and bounded
+  auth/session/token/JWT/OAuth/CSRF markers while retaining benign preference
+  and consent cookies.
+
+A final self-review produced a 223-of-228 red run for a standalone escaped
+provider token, AGE private-key forms, an RFC comment between `@` and the
+domain, and an overbroad `auth` substring match on `author_preferences`. Those
+forms are now handled explicitly, marker matching uses cookie-name word
+boundaries, and public/reserved commented identities remain accepted. The new
+commented-domain regex initially raised the 980,000-byte URL-separator probe to
+about 266 ms; an `@`-free fast path restored five direct runs to 16-20 ms while
+retaining the 250 ms contract.
+
+Focused, compatibility, and full serial suites now pass 228, 369, and 1,599
+tests respectively. The full suite completed across 104 files in 135.17 seconds.
+All eight canonical artifacts pass independently, and the packet remains 14,398
+bytes with SHA-256
+`7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
+
 Positive leak fixtures cover passwords, password hashes and plaintext variants,
 raw/compact/postfixed access and refresh tokens, standalone provider tokens,
 authentication cookies across plain, Markdown, JSON, and embedded header
@@ -322,21 +361,22 @@ representations, key/secret hashes and material, token signatures and bearer
 fields, wrapped and unwrapped keys, encrypted item bodies, identity payloads,
 provider payloads, profiles, secret-like schema fields, Authorization
 credentials across headers and CGI variables, qualified/bracket-wrapped and
-Markdown-formatted assignments, JWTs, EncString types 0-7, private-key blocks,
-and literal, Unicode, quoted, commented, JSON-escaped, HTML-encoded,
+Markdown-formatted assignments, raw or JSON/Unicode-escaped JWTs and provider
+tokens, EncString types 0-7, PEM/PGP/OpenSSH/AGE private-key forms, and literal,
+Unicode, quoted, local/domain-commented, JSON-escaped, HTML-encoded,
 percent-encoded, or Markdown-escaped personal identities. Approved digests,
 versions, counts, enums, source refs, repository paths, limitation text, exact
-non-secret count summaries, exact redactions, non-authentication cookies,
-malformed EncString shapes, verification markers, package scripts, and public
-or reserved example identities remain accepted.
+non-secret count summaries, exact redactions, non-authentication consent or
+preference cookies, malformed EncString shapes, verification markers, package
+scripts, and public or reserved example identities remain accepted.
 
 ## Current Verification
 
 | Gate                        | Readback                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 206/206 passed                                                                           |
-| Compatibility impact        | 347/347 across 5 files passed                                                            |
-| Full suite                  | 1,577/1,577 across 104 files passed serially in 145.40 seconds                           |
+| Focused generator/scanner   | 228/228 passed                                                                           |
+| Compatibility impact        | 369/369 across 5 files passed                                                            |
+| Full suite                  | 1,599/1,599 across 104 files passed serially in 135.17 seconds                           |
 | HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
 | Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
 | Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |
