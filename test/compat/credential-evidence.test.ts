@@ -225,6 +225,18 @@ describe('credential evidence contract', () => {
         },
       ],
       [
+        'execution above the claimed evidence level',
+        (candidate) => {
+          requiredClaim(candidate, 0).executionLevel = 'production'
+        },
+      ],
+      [
+        'official-client execution with only local API evidence',
+        (candidate) => {
+          requiredClaim(candidate, 0).executionLevel = 'local_official_client'
+        },
+      ],
+      [
         'environment evidence on a local claim',
         (candidate) => {
           requiredClaim(candidate, 0).environmentEvidence = {
@@ -253,6 +265,34 @@ describe('credential evidence contract', () => {
         },
       ],
       [
+        'official-client claim backed only by local API artifacts',
+        (candidate) => {
+          const claim = requiredClaim(candidate, 1)
+          for (const artifact of claim.artifacts) {
+            artifact.evidenceLevel = 'local_api'
+          }
+        },
+      ],
+      [
+        'staging claim backed only by local API artifacts',
+        (candidate) => {
+          const claim = requiredClaim(candidate, 0)
+          claim.evidenceLevel = 'staging'
+          claim.environmentEvidence = {
+            environment: 'staging',
+            deploymentRef: 'deployment-1',
+            recordedAt: '2026-07-22T00:00:00Z',
+          }
+        },
+      ],
+      [
+        'artifact above the claimed evidence level',
+        (candidate) => {
+          requiredArtifact(requiredClaim(candidate, 0), 0).evidenceLevel =
+            'production'
+        },
+      ],
+      [
         'reviewed head source on a non-live claim',
         (candidate) => {
           requiredClaim(candidate, 0).sourceGeneration.kind = 'reviewed_head'
@@ -267,6 +307,81 @@ describe('credential evidence contract', () => {
         validate(candidate),
         `${label}: ${JSON.stringify(validate.errors)}`,
       ).toBe(false)
+    }
+
+    const levels = credentialEvidenceLevels.map(
+      (level: { id: string }) => level.id,
+    )
+    const prepareClaim = (candidate: Registry, evidenceLevel: string) => {
+      const claim = requiredClaim(candidate, 0)
+      claim.evidenceLevel = evidenceLevel
+      for (const artifact of claim.artifacts) {
+        artifact.evidenceLevel = evidenceLevel
+      }
+      if (evidenceLevel === 'local_official_client') {
+        claim.clientEvidence = [
+          { sourceId: 'cli.release', operations: ['login'] },
+        ]
+      } else {
+        delete claim.clientEvidence
+      }
+      if (evidenceLevel === 'staging' || evidenceLevel === 'production') {
+        claim.environmentEvidence = {
+          environment: evidenceLevel,
+          deploymentRef: 'deployment-1',
+          recordedAt: '2026-07-22T00:00:00Z',
+        }
+      } else {
+        delete claim.environmentEvidence
+      }
+      return claim
+    }
+
+    for (const [evidenceRank, evidenceLevel] of levels.entries()) {
+      for (const [executionRank, executionLevel] of levels.entries()) {
+        const candidate = structuredClone(registry)
+        const claim = prepareClaim(candidate, evidenceLevel)
+        claim.executionLevel = executionLevel
+        const expected =
+          evidenceLevel === 'local_official_client'
+            ? executionLevel === 'local_api'
+            : executionRank <= evidenceRank
+
+        expect(
+          validate(candidate),
+          `${executionLevel} execution with ${evidenceLevel} evidence: ${JSON.stringify(validate.errors)}`,
+        ).toBe(expected)
+      }
+
+      if (evidenceRank > 0) {
+        const candidate = structuredClone(registry)
+        const claim = prepareClaim(candidate, evidenceLevel)
+        claim.executionLevel =
+          evidenceLevel === 'local_official_client'
+            ? 'local_api'
+            : levels[evidenceRank - 1]
+        for (const artifact of claim.artifacts) {
+          artifact.evidenceLevel = levels[evidenceRank - 1]
+        }
+        expect(
+          validate(candidate),
+          `${evidenceLevel} claim without an exact-level artifact: ${JSON.stringify(validate.errors)}`,
+        ).toBe(false)
+      }
+
+      if (evidenceRank < levels.length - 1) {
+        const candidate = structuredClone(registry)
+        const claim = prepareClaim(candidate, evidenceLevel)
+        claim.executionLevel =
+          evidenceLevel === 'local_official_client'
+            ? 'local_api'
+            : evidenceLevel
+        requiredArtifact(claim, 0).evidenceLevel = levels[evidenceRank + 1]
+        expect(
+          validate(candidate),
+          `${evidenceLevel} claim with a higher-level artifact: ${JSON.stringify(validate.errors)}`,
+        ).toBe(false)
+      }
     }
   })
 

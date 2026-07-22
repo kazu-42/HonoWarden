@@ -1,6 +1,6 @@
 # EVIDENCE-1A: Credential Evidence Contract
 
-Status: five-axis remediation source-ready; final exact-head reviews and publication pending
+Status: seventh-review remediation source-ready; final exact-head reviews and publication pending
 
 Linear issue: HON-227
 
@@ -81,7 +81,7 @@ Artifact SHA-256 values at source-ready state:
 - registry:
   `53192962c66ccd1714d3a9ce6d878d12ed91b31f1d765caef1af4e127e15a169`
 - schema:
-  `ed9b70078aeca9c907ef08061a2b8989e90c5afc6243bad4fe42d51a23eab001`
+  `5144b1aa8eb5262632f72f57b920128a5d226971a43e3fa2bbcb0e595af9c23a`
 - verifier:
   `7beb3a48f96903f7c8168c7cf84388b4f18d013aa778676b6e4311bcecf1e106`
 - lockfile:
@@ -224,7 +224,35 @@ because the required low-level audit found `GHSA-2g4f-4pwh-qvx6`; patched Ajv
 vulnerabilities. The lockfile evidence and release gate were updated, after
 which the full 1,370-test suite and all quality gates passed.
 
-Final exact-head standard and five-axis review of the remediation commit remain
+That remediation proceeded to the seventh standard review below.
+
+## Seventh Standard Review And Remediation
+
+Native Codex standard review inspected exact head
+`5635aff82c8bbfdeda6094a42bbaf1e75a603159` in session
+`019f88c1-f9c1-7df0-b861-958abba8c859` and returned two P2 findings. Although
+the runtime verifier rejected both classes, a schema-only Ajv consumer could:
+
+- claim an execution level above its evidence level; and
+- back an official-client or live claim only with lower-level artifacts, or
+  attach an artifact above the claim level.
+
+Both findings were reproduced against the reviewed head before remediation.
+The schema now encodes the complete five-level execution ordering, requires at
+least one artifact at exactly the claim level, and rejects every artifact above
+that level. The focused schema test checks all 25 execution/evidence pairs,
+including the stricter official-client execution boundary, plus exact-artifact
+absence and higher-artifact rejection at every applicable level.
+
+The first serial full-suite remediation run passed 1,368 tests and timed out in
+two unrelated real-Wrangler lifecycle tests. Each timed-out test passed alone in
+19 and 17 seconds, no residual Wrangler or workerd process remained, and the
+unchanged serial suite then passed all 1,370 tests across 103 files in 148
+seconds. TypeScript, ESLint, Prettier, brand scan, dependency audit, frozen
+offline install, release gate, alpha completion audit, verifier, and HON-222
+plan tests also passed after the remediation.
+
+Final exact-head standard and five-axis review of this remediation remain
 pending.
 
 The review process also reported unrelated Figma/MCP authentication and local
