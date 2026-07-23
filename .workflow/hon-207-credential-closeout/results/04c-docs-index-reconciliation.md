@@ -62,16 +62,16 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 144 tests passed.
-- Compatibility suite: 6 files and 537 tests passed.
+- Cross-document credential contract: 184 tests passed.
+- Compatibility suite: 6 files and 577 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 5 files and 57 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The last managed Linear
   checkpoint readback was exact at 2,094 bytes and SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`;
   the sixth-remediation checkpoint refresh follows the exact local commit.
-- Post-eighth-remediation full serial suite: 105 files and 1,767 tests passed
-  in 160.86 seconds with file parallelism disabled and one worker.
+- Post-ninth-remediation full serial suite: 105 files and 1,807 tests passed in
+  86.53 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -292,9 +292,41 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   protect claim-ID, mixed-alias, postfix-alias, and Markdown-title negation.
   All 144 focused cases, 537 compatibility tests, and 57 related checks pass.
 
+## Ninth Review And Remediation
+
+- Native Codex session `019f8edd-92de-7281-9f60-67051aaf7a56` reviewed exact
+  commit `3381cabc37f7def36bb8409d0f6b2a56ea0602e9`, tree
+  `f4afb19db05a1b18b6c094199ae9da97cd02b7ac`, and reported three P2
+  fail-open paths: live-environment rollout assignments outside the two
+  canonical rollout tables, release-index prose counts not bound to the
+  registry, and an adjacent bare `Verified` block omitted unless it carried a
+  `Status` label.
+- Adversarial reviewer `019f8edd-778c-76e3-aa82-304b4124ddbb` reported two P2
+  false greens: `Password change is live` reused one `live` token as both
+  environment and affirmative status, and Markdown labels or image alt text
+  could carry the environment/operation while a separate link, image, or
+  reference title carried `verified`.
+- Five-axis reviewer `019f8edd-7864-7713-8316-93a5eb1a99e4` reported no P0-P3
+  findings and graded the five axes A/A-/A-/B+/B+. Its approval is recorded but
+  superseded by the actionable native and adversarial findings on the same
+  exact head.
+- Twenty-five combined review mutations failed first. Every canonical and
+  registry-backed supporting document now rejects affirmative tracked-flag
+  assignments in staging, production, live, or Cloudflare context; explicit
+  negation and local-only harness activation remain accepted. The release index
+  uses the same registry-derived structural count table contract as the other
+  summaries. Prose extraction combines visible Markdown text with direct and
+  first-definition reference titles. Predicate-position `live`, bounded
+  adjacent status-only blocks, and historical `went/has gone live` claims are
+  rejected while negated and future forms remain accepted. Six self-review RED
+  cases additionally pin CommonMark first-definition semantics and
+  clause-scoped rollout negation. All 184 focused cases, 577 compatibility
+  tests, 57 related checks, 6 HON-222 plan tests, and the serial 105-file/1,807-
+  test suite pass.
+
 ## Closeout Pending
 
-- Exact-head standard review and independent five-axis rereview of the
+- Exact-head standard, adversarial, and independent five-axis rereview of the
   remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.

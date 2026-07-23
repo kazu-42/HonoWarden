@@ -45,9 +45,18 @@ Canonical source: [packet](../../compat/credential-closeout-packet.json) and
 [registry](../../compat/credential-evidence.json). The packet is the release
 index entry for reconciled credential and recovery closeout. The linked
 per-operation local evidence files remain supporting detail, not separate
-canonical entries. Current canonical counts are `local_api` 4,
-`local_official_client` 7, `staging` 0, and `production` 0, so it must not be
-used as proof of tracked staging or approved production activation.
+canonical entries. Current canonical counts are:
+
+| Evidence level          | Claims |
+| ----------------------- | -----: |
+| `fixture`               |      0 |
+| `local_api`             |      4 |
+| `local_official_client` |      7 |
+| `staging`               |      0 |
+| `production`            |      0 |
+
+The packet must not be used as proof of tracked staging or approved production
+activation.
 
 Packet limitations:
 
