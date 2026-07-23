@@ -8,6 +8,15 @@ Cloudflare account access-control evidence and the least-privilege token plan
 are recorded in
 [Cloudflare Access-Control Review](cloudflare-access-control.md).
 
+Credential account-operation evidence is indexed by the canonical
+[credential closeout packet](../../compat/credential-closeout-packet.json) and
+[credential evidence registry](../../compat/credential-evidence.json). The
+packet's ceiling is local: it contains `local_api` and
+`local_official_client` claims only, with no staging or production activation
+claims. Official-client evidence means pinned client login/unlock/sync/item
+readback after API-driven local mutations; it does not claim an
+official-client settings UI.
+
 ## Scope
 
 Use this environment for local automation only:
@@ -231,6 +240,29 @@ blank, so known and unknown accounts share the same configuration failure
 boundary. Rotating the secret or changing the stored population can remap an
 unknown-account decoy; neither changes a known account's exact projection or
 any stored KDF generation. The allowlist remains the primary prelogin boundary.
+
+## Credential Operation Evidence Map
+
+The account credential operations remain local evidence until a later
+environment-specific staging or production activation is approved and recorded.
+Do not copy secrets, raw wrapped material, client profiles, tokens, hashes, or
+operator credential values into evidence notes.
+
+| Operation area                      | Canonical claim IDs                                                                                | Exact evidence artifacts                                                                                                                                                                                              | Local/staging/production boundary                                                                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Password verify and password change | `account.password.verify.local-api`, `account.password.change.client-readback`                     | [password-change local evidence](../release/account-password-change-local-evidence.md), [credential lifecycle closeout](../../.workflow/hon-207-credential-closeout/results/02-credential-lifecycle.md)               | Local synthetic API mutation with pinned official CLI readback for the committed generation; no staging or production writer activation.                                 |
+| KDF mutation                        | `account.kdf.pbkdf2-to-argon2id.client-readback`, `account.kdf.argon2id-to-pbkdf2.client-readback` | [KDF-change local evidence](../release/account-kdf-change-local-evidence.md), [credential lifecycle closeout](../../.workflow/hon-207-credential-closeout/results/02-credential-lifecycle.md)                         | Local API operation with official-client readback, not an official-client settings UI claim; tracked staging and production writers remain disabled.                     |
+| Account key initialization and read | `account.key.initialize.client-readback`, `account.key.read.local-api`                             | [account-key initialization local evidence](../release/account-key-initialization-local-evidence.md), [credential lifecycle closeout](../../.workflow/hon-207-credential-closeout/results/02-credential-lifecycle.md) | Local one-time V1 initializer and opaque envelope readback; replacement, V2 keys, signatures, and production activation are not claimed.                                 |
+| User-key rotation                   | `account.user-key.rotate.client-readback`                                                          | [user-key rotation local evidence](../release/user-key-rotation-local-evidence.md), [credential lifecycle closeout](../../.workflow/hon-207-credential-closeout/results/02-credential-lifecycle.md)                   | Local API-driven rotation with official client readback; no official-client rotation UI, shared vault, remote environment, staging, or production activation is claimed. |
+
+The tracked rollout flags in `wrangler.jsonc` are all disabled:
+
+| Rollout flag                           | Top-level | Staging | Production |
+| -------------------------------------- | --------- | ------- | ---------- |
+| `HONOWARDEN_PASSWORD_CHANGE_ENABLED`   | `false`   | `false` | `false`    |
+| `HONOWARDEN_ACCOUNT_KEYS_ENABLED`      | `false`   | `false` | `false`    |
+| `HONOWARDEN_KDF_MUTATION_ENABLED`      | `false`   | `false` | `false`    |
+| `HONOWARDEN_USER_KEY_ROTATION_ENABLED` | `false`   | `false` | `false`    |
 
 ## Password Change Rollout
 

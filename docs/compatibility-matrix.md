@@ -51,6 +51,35 @@ rollback through local Wrangler and real local D1. This is synthetic server
 evidence only: it does not add `liveEvidence`, promote a compatibility row, or
 activate the false flag in any tracked environment.
 
+## Credential Closeout Evidence Levels
+
+Credential closeout evidence is reconciled through the canonical
+[`credential-evidence.json`](../compat/credential-evidence.json) registry and
+[`credential-closeout-packet.json`](../compat/credential-closeout-packet.json)
+packet. These credential evidence levels are not the same scale as the matrix
+verification levels below: `fixture_only`, `live_smoke`, and `live_regression`
+remain client compatibility row states, while `local_api` and
+`local_official_client` classify the local credential-operation evidence packet.
+
+The packet preserves the local, staging, and production boundary explicitly.
+Every credential operation claim is local; staging and production counts are
+zero. `local_official_client` means pinned official-client readback of local
+state after an API-driven operation, not an official-client UI operation, remote
+account activation, staging activation, or production activation.
+
+| Evidence level          | Claims |
+| ----------------------- | -----: |
+| `fixture`               |      0 |
+| `local_api`             |      4 |
+| `local_official_client` |      7 |
+| `staging`               |      0 |
+| `production`            |      0 |
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
 ## 2026-07-13 Premium Surface Boundary
 
 A source-map audit of the pinned browser extension `2026.6.1` found no
@@ -104,31 +133,33 @@ and live evidence.
 
 There is intentionally no Organizations or shared vault row. HonoWarden's alpha
 compatibility target is the personal-vault protocol surface. Shared vault
-support would require ADR 0005's membership, ownership, role, collection-access,
-cross-user isolation, encrypted key sharing, audit, migration, rollback, and
-compatibility fixture gates before compatibility can be claimed.
+support would require [ADR 0005](adr/0005-organizations-shared-vault-scope.md)'s
+membership, ownership, role, collection-access, cross-user isolation, encrypted
+key sharing, audit, migration, rollback, and compatibility fixture gates before
+compatibility can be claimed.
 
 Policy metadata remains fixture-covered as authenticated empty list responses
 for personal vaults. Policy mutation and organization policy enforcement are
-not compatibility claims; ADR 0006 requires policy schema, enforcement points,
-default behavior, audit, rollback, and compatibility fixture design before
-support can be claimed.
+not compatibility claims; [ADR 0006](adr/0006-policy-management-scope.md)
+requires policy schema, enforcement points, default behavior, audit, rollback,
+and compatibility fixture design before support can be claimed.
 
 Collection metadata remains fixture-covered as authenticated empty read-only
 responses for personal vaults. Collection mutation and cipher assignment are not
-compatibility claims; ADR 0007 requires ownership, membership, assignment,
-audit, migration, rollback, and compatibility fixture design before support can
-be claimed.
+compatibility claims; [ADR 0007](adr/0007-collection-mutation-scope.md) requires
+ownership, membership, assignment, audit, migration, rollback, and compatibility
+fixture design before support can be claimed.
 
 There is intentionally no Send or public file-sharing row. Cipher-scoped
 attachments are authenticated owner-scoped vault operations; public sharing
-would require ADR 0003's access-token, expiration, revocation, rate-limit,
-abuse, cache, and retention controls before compatibility can be claimed.
-
-There is intentionally no Emergency Access row. Delegated recovery requires ADR
-0004's grantee identity, delay, cancellation, notification, cryptographic
-handoff, abuse-control, audit, rollback, and incident-response design before
+would require [ADR 0003](adr/0003-send-public-sharing-scope.md)'s access-token,
+expiration, revocation, rate-limit, abuse, cache, and retention controls before
 compatibility can be claimed.
+
+There is intentionally no Emergency Access row. Delegated recovery requires
+[ADR 0004](adr/0004-emergency-access-scope.md)'s grantee identity, delay,
+cancellation, notification, cryptographic handoff, abuse-control, audit,
+rollback, and incident-response design before compatibility can be claimed.
 
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
 Live official-client attachment upload, download, and delete evidence is still

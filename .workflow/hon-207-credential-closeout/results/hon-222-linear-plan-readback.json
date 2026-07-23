@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-22T10:35:26.373Z",
+  "generatedAt": "2026-07-23T07:46:47Z",
   "status": "exact",
   "parent": {
     "id": "0879badf-b4b1-4c56-9da5-64d6fb71a994",
@@ -9,8 +9,8 @@
   },
   "capacity": {
     "totalIncludingArchived": 229,
-    "archived": 132,
-    "activeUnarchived": 95,
+    "archived": 133,
+    "activeUnarchived": 94,
     "completedUnarchived": 2
   },
   "issues": [
@@ -25,31 +25,30 @@
       "key": "EVIDENCE-1B",
       "id": "48f5b632-fdb5-4cb2-8702-edb0f893a622",
       "identifier": "HON-228",
-      "state": "In Progress",
-      "archivedAt": null
+      "state": "Done",
+      "archivedAt": "2026-07-23T06:42:39.292Z",
+      "pullRequest": 116,
+      "mergeCommit": "32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3",
+      "reviewedPublicationTree": "25d64460775356fabad0b5c76fd4cbc39857bab4",
+      "exactHeadCiRun": 29985521114,
+      "mainCiRun": 29985701462
     },
     {
       "key": "EVIDENCE-1C",
       "id": "672786f1-e7ab-4337-846a-c8dcd8c46fa5",
       "identifier": "HON-229",
-      "state": "Todo",
+      "state": "In Progress",
       "archivedAt": null
     }
   ],
-  "relations": [
-    {
-      "id": "78b340f2-a8e9-48c6-9352-98411b6888fd",
-      "type": "blocks",
-      "blocker": "HON-228",
-      "blocked": "HON-229"
-    }
-  ],
+  "relations": [],
   "checkpoint": {
     "id": "0aead33f-61bd-4223-afd3-cb1c4a382008",
     "createdAt": "2026-07-22T02:46:54.160Z",
-    "updatedAt": "2026-07-22T10:13:58.591Z",
-    "bytes": 1800,
-    "sha256": "254cc8f9fb6e977bcba1c66ec34561870b54251708fa896ae7bdec3f844fdbee"
+    "updatedAt": "2026-07-23T06:43:06.815Z",
+    "bytes": 2094,
+    "sha256": "0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839"
   },
+  "teamWip": ["HON-222", "HON-229"],
   "verificationErrors": []
 }

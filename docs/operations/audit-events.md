@@ -11,6 +11,24 @@ Audit events are designed to be secret-safe. Event builders drop context fields
 whose keys contain sensitive fragments such as `password`, `token`, `secret`,
 `hash`, `key`, `encrypted`, `payload`, or `body`.
 
+## Credential Closeout Evidence Boundary
+
+Credential-operation evidence is indexed by the canonical
+[credential closeout packet](../../compat/credential-closeout-packet.json) and
+[credential evidence registry](../../compat/credential-evidence.json). That
+packet's ceiling is local: claims are `local_api` or
+`local_official_client`, with zero staging claims and zero production claims.
+The official-client evidence is post-mutation readback for isolated synthetic
+local state; it is not an official-client settings UI claim and it does not
+activate any staging or production writer.
+
+The credential closeout packet proves that the local credential mutations write
+their required redacted D1 audit rows as part of the same local transaction.
+That is separate from live audit or log operations. Enabling
+`HONOWARDEN_AUDIT_LOGS=true`, reviewing D1 `audit_events`, and reading
+Cloudflare Logpush output remain environment-specific staging or production
+operations, not facts implied by the local closeout packet.
+
 ## Event Shape
 
 ```json

@@ -17,6 +17,22 @@ The cleanup path covers:
 It does not delete users, devices, folders, ciphers, backup manifests, or R2
 objects.
 
+## Credential Closeout Boundary
+
+Credential closeout evidence is tracked by the canonical
+[credential closeout packet](../../compat/credential-closeout-packet.json) and
+[credential evidence registry](../../compat/credential-evidence.json). The
+packet records local-only credential claims: `local_api` and
+`local_official_client` evidence against isolated synthetic state, with no
+staging or production evidence levels. It does not prove that live audit-log
+retention, Cron Trigger delivery, or production cleanup has run.
+
+Retention cleanup is a separate live operations concern. Required credential
+audit rows remain subject to the 365-day `audit_events` retention boundary even
+when optional audit emission is disabled, but verifying that boundary in
+staging or production still requires environment-specific D1 schema, Cron
+Trigger, and cleanup readback evidence.
+
 ## Schedule
 
 Cleanup runs from two entrypoints:

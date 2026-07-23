@@ -18,7 +18,7 @@ test('defines three serialized evidence packets with one active entry', () => {
   validateHon222Plan()
   assert.deepEqual(
     hon222LinearPlan.issues.map((issue) => issue.stateType),
-    ['completed', 'started', 'unstarted'],
+    ['completed', 'completed', 'started'],
   )
   assert.deepEqual(summarizeHon222Plan().relations, [
     { blocker: 'EVIDENCE-1A', blocked: 'EVIDENCE-1B' },
@@ -56,6 +56,14 @@ test('pins exact parent, children, labels, and workflow packets', () => {
     mainCiRun: 29910713312,
     tree: '0297ca848869817cbec3e8f077cd61d313faf239',
   })
+  assert.deepEqual(hon222LinearPlan.issues[1].closeout, {
+    archivedAt: '2026-07-23T06:42:39.292Z',
+    pullRequest: 116,
+    mergeCommit: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+    reviewedPublicationTree: '25d64460775356fabad0b5c76fd4cbc39857bab4',
+    exactHeadCiRun: 29985521114,
+    mainCiRun: 29985701462,
+  })
 })
 
 test('renders exact managed descriptions and checkpoint dependencies', () => {
@@ -78,20 +86,23 @@ test('renders exact managed descriptions and checkpoint dependencies', () => {
     checkpoint.match(/honowarden-managed:HON-222:execution-plan/g)?.length,
     1,
   )
-  assert.match(checkpoint, /EVIDENCE-1B is the only active child/)
+  assert.match(checkpoint, /EVIDENCE-1C is the only active child/)
   assert.match(checkpoint, /PR #115 was squash-merged/)
+  assert.match(checkpoint, /PR #116 was squash-merged/)
+  assert.match(checkpoint, /PR\/head CI run `29985521114`/)
+  assert.match(checkpoint, /exactly HON-222 plus child HON-229/)
   assert.match(checkpoint, /HON-227 ->|HON-227 \(EVIDENCE-1A\)/)
   assert.match(checkpoint, /lower-level artifacts cannot satisfy/)
   assert.match(checkpoint, /merged-main CI/)
   assert.equal(checkpoint.endsWith('\n'), true)
-  assert.equal(Buffer.byteLength(checkpoint), 1800)
+  assert.equal(Buffer.byteLength(checkpoint), 2094)
   assert.equal(
     createHash('sha256').update(checkpoint).digest('hex'),
-    '254cc8f9fb6e977bcba1c66ec34561870b54251708fa896ae7bdec3f844fdbee',
+    '0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839',
   )
 })
 
-test('pins current workflow state and Linear readback to EVIDENCE-1B', () => {
+test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   const state = JSON.parse(
     readFileSync(new URL('../state.json', import.meta.url), 'utf8'),
   )
@@ -105,7 +116,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1B', () => {
     (packet) => packet.id === '04-compatibility-evidence',
   )
 
-  assert.equal(state.active_packet, '04b-closeout-packet-secret-scan')
+  assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.deepEqual(
     evidencePacket.subpackets.map((packet) => [
       packet.linear,
@@ -114,9 +125,13 @@ test('pins current workflow state and Linear readback to EVIDENCE-1B', () => {
     ]),
     [
       ['HON-227', 'completed', 'results/04a-evidence-contract.md'],
-      ['HON-228', 'in_progress', 'results/04b-closeout-packet-secret-scan.md'],
-      ['HON-229', 'pending', null],
+      ['HON-228', 'completed', 'results/04b-closeout-packet-secret-scan.md'],
+      ['HON-229', 'in_progress', 'results/04c-docs-index-reconciliation.md'],
     ],
+  )
+  assert.equal(
+    state.verification.status,
+    'evidence_1c_implementation_verified_review_pending',
   )
   assert.deepEqual(
     readback.issues.map((issue) => [
@@ -126,22 +141,27 @@ test('pins current workflow state and Linear readback to EVIDENCE-1B', () => {
     ]),
     [
       ['HON-227', 'Done', true],
-      ['HON-228', 'In Progress', false],
-      ['HON-229', 'Todo', false],
+      ['HON-228', 'Done', true],
+      ['HON-229', 'In Progress', false],
     ],
+  )
+  assert.deepEqual(readback.teamWip, ['HON-222', 'HON-229'])
+  assert.equal(
+    readback.issues[1].mergeCommit,
+    '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
   )
   assert.deepEqual(readback.checkpoint, {
     id: '0aead33f-61bd-4223-afd3-cb1c4a382008',
     createdAt: '2026-07-22T02:46:54.160Z',
-    updatedAt: '2026-07-22T10:13:58.591Z',
-    bytes: 1800,
-    sha256: '254cc8f9fb6e977bcba1c66ec34561870b54251708fa896ae7bdec3f844fdbee',
+    updatedAt: '2026-07-23T06:43:06.815Z',
+    bytes: 2094,
+    sha256: '0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839',
   })
 })
 
 test('rejects invalid active count, unknown blockers, duplicate identity, and cycles', () => {
   const noActive = globalThis.structuredClone(hon222LinearPlan)
-  noActive.issues[1].stateType = 'unstarted'
+  noActive.issues[2].stateType = 'unstarted'
   assert.throws(
     () => validateHon222Plan(noActive),
     /exactly one started packet/,

@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-19
+Last updated: 2026-07-23
 
 ## Week 1 Status
 
@@ -808,6 +808,35 @@ Not implemented:
 - iOS live evidence (`HON-65`)
 - browser-extension, desktop, Android, or iOS TOTP UX evidence
 - live item mutation evidence beyond the existing CLI smoke
+
+## 2026-07-23 HON-229 Credential Evidence Reconciliation
+
+Canonical credential closeout evidence is recorded in the
+[credential closeout packet](../compat/credential-closeout-packet.json) and
+[credential evidence registry](../compat/credential-evidence.json).
+
+Current evidence-level counts:
+
+| Evidence level          | Claims |
+| ----------------------- | -----: |
+| `fixture`               |      0 |
+| `local_api`             |      4 |
+| `local_official_client` |      7 |
+| `staging`               |      0 |
+| `production`            |      0 |
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
+The `local_official_client` rows mean local API-driven credential mutations
+with official-client readback, such as post-mutation login, unlock, sync,
+decrypt, or item readability checks. They do not claim official-client UI
+flows, Web Vault or shared-vault behavior, tracked staging/production
+activation, or remote D1/R2 backup and restore operations. Remote backup
+operations remain separate from the local synthetic backup/export and
+fresh-target restore evidence.
 
 ## Week 26 Server Config Fixture Coverage
 

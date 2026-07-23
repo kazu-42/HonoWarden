@@ -34,6 +34,16 @@ Use these documents together when reviewing alpha readiness:
 - repository brand scan
 - workflow verifier
 
+## Credential Closeout Evidence
+
+Canonical source: [packet](../../compat/credential-closeout-packet.json) and
+[registry](../../compat/credential-evidence.json). The closeout covers isolated
+local credential and recovery evidence, including official-client readback for
+some API-driven operations, while staging and production writer activation
+remain unclaimed. Existing per-operation release evidence files are supporting
+detail only; this section is the single canonical entry for the reconciled
+credential packet.
+
 ## Review Rules
 
 - Do not promote compatibility rows beyond `fixture_only` without linked live

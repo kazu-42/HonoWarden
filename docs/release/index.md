@@ -38,6 +38,16 @@ Use this index as the feature-freeze entry point:
 - [Secret Rotation Drill Evidence](secret-rotation-drill-evidence.md)
 - [Alpha Release Notes](v0.1.0-alpha-release-notes.md)
 
+## Credential Closeout Evidence
+
+Canonical source: [packet](../../compat/credential-closeout-packet.json) and
+[registry](../../compat/credential-evidence.json). The packet is the release
+index entry for reconciled credential and recovery closeout. The linked
+per-operation local evidence files remain supporting detail, not separate
+canonical entries. Current canonical counts are `local_api` 4,
+`local_official_client` 7, `staging` 0, and `production` 0, so it must not be
+used as proof of tracked staging or approved production activation.
+
 ## Freeze Position
 
 The repository-local alpha gate is expected to be ready before tagging, while

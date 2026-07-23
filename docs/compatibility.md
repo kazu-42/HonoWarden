@@ -34,6 +34,21 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - Keep executable JSON fixtures for client-facing response shapes under `compat/fixtures`.
 - Treat fixture regressions as compatibility regressions once a route has been implemented.
 
+## Credential Closeout Boundary
+
+Credential operation evidence is reconciled through the canonical
+[`credential-evidence.json`](../compat/credential-evidence.json) registry and
+[`credential-closeout-packet.json`](../compat/credential-closeout-packet.json)
+packet. This credential evidence is separate from fixture compatibility levels:
+fixtures prove protocol route shapes, while credential evidence levels describe
+how each local credential operation was exercised and read back.
+
+The current credential packet preserves a local-only boundary. It records
+`local_api` and `local_official_client` claims against isolated synthetic local
+state, with zero `staging` claims and zero `production` claims. It does not
+claim official-client settings UI execution, remote account activation, staging
+activation, or production activation.
+
 ## Web Vault Boundary
 
 HonoWarden does not expose a Web Vault compatibility surface in the alpha
@@ -47,26 +62,26 @@ and live evidence before any support claim.
 HonoWarden does not expose Organizations or shared vaults in the alpha
 personal-vault product line. Shared vault support would add membership,
 ownership, role, collection-access, cross-user isolation, encrypted key sharing,
-audit, migration, and rollback requirements. ADR 0005 defines the scope as a
-non-goal for this product line and the minimum gates before any future shared or
-team-vault support claim.
+audit, migration, and rollback requirements. [ADR 0005](adr/0005-organizations-shared-vault-scope.md)
+defines the scope as a non-goal for this product line and the minimum gates
+before any future shared or team-vault support claim.
 
 ## Policy Management Boundary
 
 HonoWarden exposes authenticated empty policy metadata reads only. It does not
 implement policy mutation or organization policy enforcement in the alpha
-personal-vault product line. ADR 0006 defines the no-policy default behavior and
-the schema, enforcement, audit, rollback, and compatibility gates required
-before future policy support.
+personal-vault product line. [ADR 0006](adr/0006-policy-management-scope.md)
+defines the no-policy default behavior and the schema, enforcement, audit,
+rollback, and compatibility gates required before future policy support.
 
 ## Collection Mutation Boundary
 
 HonoWarden exposes authenticated empty collection metadata reads only. It does
 not implement collection create, update, delete, cipher assignment, or
-organization-scoped collections in the alpha personal-vault product line. ADR
-0007 defines the read-only default behavior and the ownership, membership,
-assignment, audit, migration, rollback, and fixture gates required before future
-collection mutation support.
+organization-scoped collections in the alpha personal-vault product line.
+[ADR 0007](adr/0007-collection-mutation-scope.md) defines the read-only default
+behavior and the ownership, membership, assignment, audit, migration, rollback,
+and fixture gates required before future collection mutation support.
 
 ## Send And Public Sharing Boundary
 
@@ -74,15 +89,16 @@ HonoWarden does not expose Send or public file-sharing in the alpha release.
 Cipher-scoped attachments remain authenticated and owner-scoped. Public sharing
 would add unauthenticated access, link enumeration risk, expiration, revocation,
 rate limiting, abuse reporting, cache policy, and separate retention/deletion
-semantics. ADR 0003 defines the minimum design gates before any support claim.
+semantics. [ADR 0003](adr/0003-send-public-sharing-scope.md) defines the
+minimum design gates before any support claim.
 
 ## Emergency Access Boundary
 
 HonoWarden does not expose Emergency Access in the alpha release. Delegated
 recovery would add grantee identity proofing, delayed access, cancellation,
 notification delivery, cryptographic handoff, abuse controls, and transition
-auditing requirements. ADR 0004 defines the minimum design gates before any
-support claim.
+auditing requirements. [ADR 0004](adr/0004-emergency-access-scope.md) defines
+the minimum design gates before any support claim.
 
 ## Explicit Unsupported Responses
 
