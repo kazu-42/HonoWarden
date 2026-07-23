@@ -161,19 +161,20 @@ const rolloutFlags = [
   'HONOWARDEN_KDF_MUTATION_ENABLED',
   'HONOWARDEN_USER_KEY_ROTATION_ENABLED',
 ] as const
-const credentialPolicyPattern = new RegExp(
-  [
-    ...rolloutFlags.map(escapeRegExp),
-    String.raw`\b(?:password[-\s]+(?:change|reset|update)|kdf[-\s]+mutation|account[-\s]+key[-\s]+(?:initialization|read|rotation)|user[-\s]+key[-\s]+rotation|credential[-\s]+writer)\b`,
-  ].join('|'),
-  'i',
-)
+const credentialPolicyMutationDocs = [
+  'docs/adr/0009-premium-surface-scope.md',
+  'docs/release/upgrade-guide.md',
+  'docs/release/v0.1.0-alpha-release-notes.md',
+  'docs/security/auth-state-machine.md',
+  'docs/security/secrets-inventory.md',
+  'docs/security/threat-model.md',
+] as const
 
 const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:there\s+(?:is|are)\s+(?=(?:staging|prod(?:uction)?|remote|real[-\s]+account|live|cloudflare)\b)|verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -192,14 +193,9 @@ const registryCredentialDocs = [
     ),
   ),
 ].sort()
-const credentialPolicyDocs = markdownFilesUnder('docs').filter(
-  (docPath) =>
-    credentialPolicyPattern.test(readText(docPath)) &&
-    !credentialDocs.some((path) => path === docPath) &&
-    !registryCredentialDocs.includes(docPath),
-)
+const credentialDocumentationDocs = markdownFilesUnder('docs')
 const credentialSupportingDocs = [
-  ...new Set([...registryCredentialDocs, ...credentialPolicyDocs]),
+  ...new Set([...registryCredentialDocs, ...credentialPolicyMutationDocs]),
 ].sort()
 const credentialNavigationDocs = [
   'docs/operations/operator-environment.md',
@@ -294,18 +290,18 @@ describe('credential closeout documentation contract', () => {
     }
   })
 
-  it('protects every credential-bearing policy document', () => {
-    expect(credentialPolicyDocs).toEqual([
-      'docs/adr/0009-premium-surface-scope.md',
-      'docs/release/upgrade-guide.md',
-      'docs/release/v0.1.0-alpha-release-notes.md',
-      'docs/security/auth-state-machine.md',
-      'docs/security/secrets-inventory.md',
-      'docs/security/threat-model.md',
-    ])
-
-    for (const docPath of credentialPolicyDocs) {
+  it('keeps representative credential policy documents under mutation coverage', () => {
+    for (const docPath of credentialPolicyMutationDocs) {
       assertCredentialSupportingDocContract(docPath, readText(docPath))
+    }
+  })
+
+  it('scans every Markdown document for credential claims and rollout assignments', () => {
+    expect(credentialDocumentationDocs).toContain(
+      'docs/release/feature-freeze-checklist.md',
+    )
+    for (const docPath of credentialDocumentationDocs) {
+      assertCredentialPolicyDocContract(docPath, readText(docPath))
     }
   })
 
@@ -495,6 +491,13 @@ describe('credential closeout documentation contract', () => {
     'Password change went live.',
     'Password change has gone live.',
     'There is production password-change evidence.',
+    'There is password-change evidence for production.',
+    'There was production password-change evidence.',
+    'Production has password-change evidence.',
+    'No doubt production password change is verified.',
+    'There is no doubt that production password change is verified.',
+    'There is no blocker, but production password-change evidence exists.',
+    'Production pass**word** change is verified.',
     '[details](feature-freeze-checklist.md "Production credential writer activation is verified.")',
     '[details][live-title]\n\n[live-title]: feature-freeze-checklist.md "Production credential writer activation is verified."',
     '![safe alt](assets/hon-95/desktop-vault.png "Production credential writer activation is verified.")',
@@ -582,6 +585,7 @@ describe('credential closeout documentation contract', () => {
     '## Production\n\n- Credential writer activation\n- Verified',
     '## Production\n\nPassword change.\n\nRollout status: complete.',
     '## Production\n\nPassword change.\n\nDeployment status: verified.',
+    '## Production\n\nPassword change.\n\n### Current status\n\nVerified.',
     'Production password change.\n\nRelease status: ready.',
     'Production password change. Deployment notes remain unchanged. Release status: ready.',
     '| Environment | Operation |\n| --- | --- |\n| Production | credential writer activation |\n| Status | verified |',
@@ -1012,6 +1016,8 @@ describe('credential closeout documentation contract', () => {
     'Production has `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.',
     'Production defines `HONOWARDEN_PASSWORD_CHANGE_ENABLED` as true.',
     'Production maps `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` value is `true`.',
+    "Production's non-local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.",
     'Production does not set `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true` while staging sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])('rejects every active live rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
@@ -1030,6 +1036,21 @@ describe('credential closeout documentation contract', () => {
       /tracked credential rollout flag/,
     )
   })
+
+  it.each([
+    '| Flag | Top-level | Staging | Production |\n| --- | --- | --- | --- |\n| `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `false` | `false` | `true` |',
+    '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
+  ])(
+    'rejects a live true rollout assignment regardless of table column order: %s',
+    (table) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n\n${table}\n`
+
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /tracked credential rollout flag/,
+      )
+    },
+  )
 
   it('scopes a local-harness exception to the assignment it describes', () => {
     const docPath = 'docs/release/index.md'
@@ -1107,6 +1128,7 @@ describe('credential closeout documentation contract', () => {
   it.each([
     'No blockers remain and production `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
     'Production cannot remain blocked because `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
+    'No doubt production uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])(
     'does not let an unrelated negation mask a live true rollout assignment: %s',
     (claim) => {
@@ -1197,6 +1219,20 @@ function assertCredentialSupportingDocContract(
     ).toBe(true)
   }
 
+  for (const fragment of proseFragments(document)) {
+    expect(
+      unsupportedLiveCredentialClaim(fragment),
+      `${docPath} must not claim verified staging or production activation: ${fragment}`,
+    ).toBe(false)
+  }
+}
+
+function assertCredentialPolicyDocContract(
+  docPath: string,
+  content: string,
+): void {
+  const document = parsePolicyMarkdown(content)
+  assertNoLiveRolloutFlagAssignments(docPath, document)
   for (const fragment of proseFragments(document)) {
     expect(
       unsupportedLiveCredentialClaim(fragment),
@@ -1422,7 +1458,7 @@ function resolvedRepoLinks(docPath: string, content: string): string[] {
 }
 
 function parseMarkdown(docPath: string, content: string): Root {
-  const document = markdownParser.parse(content) as Root
+  const document = parsePolicyMarkdown(content)
   walkMarkdown(document, (node) => {
     if (node.type === 'html') {
       throw new Error(`${docPath} contains raw HTML: ${node.value}`)
@@ -1438,6 +1474,10 @@ function parseMarkdown(docPath: string, content: string): Root {
     }
   })
   return document
+}
+
+function parsePolicyMarkdown(content: string): Root {
+  return markdownParser.parse(content) as Root
 }
 
 function resolvedRepoLinksInTree(
@@ -1647,6 +1687,10 @@ function positiveRolloutAssignments(
     new RegExp(`${quotedFlag}\\s*(?:=|:|\\bis\\b)\\s*${positiveValue}`, 'gi'),
     new RegExp(`${quotedFlag}\\s+${positiveValue}`, 'gi'),
     new RegExp(
+      `${quotedFlag}\\s+(?:current\\s+)?value\\s*(?:=|:|\\bis\\b)\\s*${positiveValue}`,
+      'gi',
+    ),
+    new RegExp(
       `\\b(?:enable(?:s|d|ing)?|turn(?:s|ed|ing)?\\s+on)\\s+(?:the\\s+)?${quotedFlag}`,
       'gi',
     ),
@@ -1723,11 +1767,18 @@ function rolloutAssignmentIsNegated(prefix: string): boolean {
     return false
   }
   const governedPrefix = scopedPrefix.slice(no.index + no[0].length).trim()
-  if (new RegExp(`\\b${assignmentVerb}\\s*$`, 'i').test(governedPrefix)) {
+  const verb = governedPrefix.match(
+    new RegExp(`\\b${assignmentVerb}\\s*$`, 'i'),
+  )
+  const governedSubject =
+    verb?.index === undefined
+      ? governedPrefix
+      : governedPrefix.slice(0, verb.index).trim()
+  if (governedSubject.length === 0) {
     return true
   }
-  return /^(?:(?:any|credential|current|environment|flag|live|production|real|remote|route|runtime|setting|staging|the|tracked|writer)\s*)*$/i.test(
-    governedPrefix,
+  return /^(?:(?:any|config|credential|current|deployed|environment|flag|live|production|real|remote|route|runtime|setting|staging|the|tracked|writer)\s*)+$/i.test(
+    governedSubject,
   )
 }
 
@@ -1745,6 +1796,14 @@ function rolloutAssignmentIsExplicitlyLocal(prefix: string): boolean {
     ),
   ].at(-1)
   if (!localScope || localScope.index === undefined) {
+    return false
+  }
+  const beforeLocalScope = scopedPrefix.slice(0, localScope.index)
+  if (
+    /\b(?:non[-\s]*|not(?:\s+(?:actually|explicitly|truly))?\s+|isn['’]t\s+)$/i.test(
+      beforeLocalScope,
+    )
+  ) {
     return false
   }
   const afterLocalScope = scopedPrefix.slice(
@@ -1765,6 +1824,60 @@ function rolloutPredicateScope(prefix: string): string {
       .at(-1)
       ?.trim() ?? ''
   )
+}
+
+function rolloutTableFragments(
+  headingContext: string[],
+  header: string[],
+  row: string[],
+): string[] {
+  const flags = rolloutFlags.filter((flag) =>
+    row.some((cell) =>
+      new RegExp(`\\b${escapeRegExp(flag)}\\b`, 'i').test(cell),
+    ),
+  )
+  const positiveValueIndexes = row.flatMap((cell, index) =>
+    /^["']?(?:true|1|yes|on|enabled)["']?$/i.test(cell.trim()) ? [index] : [],
+  )
+  if (flags.length === 0 || positiveValueIndexes.length === 0) {
+    return []
+  }
+
+  const explicitLiveContexts = row.filter((cell) =>
+    hasLiveEnvironmentContext(cell),
+  )
+  const hasExplicitLocalContext = row.some((cell) =>
+    hasExplicitLocalRolloutContext(cell),
+  )
+  const inheritedLiveContext = [...headingContext]
+    .reverse()
+    .find((heading) => hasLiveEnvironmentContext(heading))
+  const fragments = new Set<string>()
+
+  for (const flag of flags) {
+    for (const valueIndex of positiveValueIndexes) {
+      const matrixLiveContext = header[valueIndex]
+      if (
+        matrixLiveContext !== undefined &&
+        hasLiveEnvironmentContext(matrixLiveContext)
+      ) {
+        fragments.add(`${matrixLiveContext} ${flag} is true`)
+      }
+      for (const liveContext of explicitLiveContexts) {
+        fragments.add(`${liveContext} ${flag} is true`)
+      }
+      if (
+        explicitLiveContexts.length === 0 &&
+        !hasExplicitLocalContext &&
+        matrixLiveContext !== undefined &&
+        !hasLiveEnvironmentContext(matrixLiveContext) &&
+        inheritedLiveContext !== undefined
+      ) {
+        fragments.add(`${inheritedLiveContext} ${flag} is true`)
+      }
+    }
+  }
+  return [...fragments]
 }
 
 function proseFragments(document: Root): string[] {
@@ -1910,8 +2023,13 @@ function proseFragments(document: Root): string[] {
   ): void => {
     let headingContext = [...inheritedHeadingContext]
     for (const child of children) {
+      if (child.type === 'html') {
+        appendWithHeadingContext(headingContext, [
+          child.value.replace(/<[^>]*>/g, ' '),
+        ])
+        continue
+      }
       if (child.type === 'heading') {
-        pendingAdjacentClaim = undefined
         const previousHeadingDepth = headingContext.length
         const headingText = markdownProseText(child, referenceTitles).trim()
         headingContext = headingContext.slice(0, child.depth - 1)
@@ -1931,6 +2049,11 @@ function proseFragments(document: Root): string[] {
         } else {
           pendingLocalRolloutContext = undefined
         }
+        if (nestedNeutralHeading && pendingAdjacentClaim !== undefined) {
+          pendingAdjacentClaim.headingKey = headingKey
+        } else {
+          pendingAdjacentClaim = undefined
+        }
         append([...headingContext])
         continue
       }
@@ -1946,7 +2069,19 @@ function proseFragments(document: Root): string[] {
           ),
         )
         for (const row of rows) {
-          appendWithHeadingContext(headingContext, [...(header ?? []), ...row])
+          appendWithHeadingContext(headingContext, row)
+          for (const headerCell of header ?? []) {
+            if (hasLiveEnvironmentContext(headerCell)) {
+              append([headerCell, ...row])
+            }
+          }
+          for (const fragment of rolloutTableFragments(
+            headingContext,
+            header ?? [],
+            row,
+          )) {
+            append([fragment])
+          }
         }
         continue
       }
@@ -1955,7 +2090,9 @@ function proseFragments(document: Root): string[] {
         for (const line of lines) {
           append([line])
         }
-        appendWithHeadingContext(headingContext, lines, true)
+        if (!commandFragmentIsInstruction(lines.join(' '))) {
+          appendWithHeadingContext(headingContext, lines, true)
+        }
         continue
       }
       if ('children' in child) {
@@ -2023,9 +2160,7 @@ function markdownProseText(
 
   const content =
     'children' in node
-      ? node.children
-          .map((child) => markdownProseText(child as Nodes, referenceTitles))
-          .join(' ')
+      ? joinMarkdownProseChildren(node.children as Nodes[], referenceTitles)
       : ''
   if (node.type === 'link') {
     return [content, node.title ?? ''].filter(Boolean).join(' ')
@@ -2036,6 +2171,43 @@ function markdownProseText(
       .join(' ')
   }
   return content
+}
+
+function joinMarkdownProseChildren(
+  children: Nodes[],
+  referenceTitles: ReadonlyMap<string, string | undefined>,
+): string {
+  let content = ''
+  let previousNode: Nodes | undefined
+  let previousText = ''
+  for (const child of children) {
+    const childText = markdownProseText(child, referenceTitles)
+    if (
+      previousNode !== undefined &&
+      previousText.length > 0 &&
+      childText.length > 0 &&
+      !/\s$/.test(previousText) &&
+      !/^\s/.test(childText) &&
+      !inlineFormattingNodesMayJoin(previousNode, child)
+    ) {
+      content += ' '
+    }
+    content += childText
+    previousNode = child
+    previousText = childText
+  }
+  return content
+}
+
+function inlineFormattingNodesMayJoin(left: Nodes, right: Nodes): boolean {
+  const formattingTypes = new Set([
+    'delete',
+    'emphasis',
+    'inlineCode',
+    'strong',
+    'text',
+  ])
+  return formattingTypes.has(left.type) && formattingTypes.has(right.type)
 }
 
 function normalizeCredentialSpellings(value: string): string {
@@ -2096,7 +2268,46 @@ function liveAliasHasCredentialContext(
 }
 
 function liveStatusMatches(value: string): IndexedRegExpMatch[] {
-  return indexedMatches(value, new RegExp(liveStatusPatternSource, 'gi'))
+  const statuses = [
+    ...indexedMatches(value, new RegExp(liveStatusPatternSource, 'gi')),
+    ...indexedMatches(
+      value,
+      /\b(?:there\s+(?:is|are|was|were)|has|have|had)\b/gi,
+    ).filter((status) =>
+      existentialStatusClaimsCredentialEvidence(value, status),
+    ),
+  ]
+  const uniqueStatuses = new Map<string, IndexedRegExpMatch>()
+  for (const status of statuses) {
+    uniqueStatuses.set(`${status.index}:${status[0].toLowerCase()}`, status)
+  }
+  return [...uniqueStatuses.values()].sort(
+    (left, right) => left.index - right.index,
+  )
+}
+
+function existentialStatusClaimsCredentialEvidence(
+  value: string,
+  status: IndexedRegExpMatch,
+): boolean {
+  const scope =
+    value
+      .slice(status.index + status[0].length)
+      .split(/[.;!?]/, 1)[0]
+      ?.trim() ?? ''
+  const evidence = scope.match(/\b(?:evidence|proof|records?)\b/i)
+  if (evidence?.index === undefined) {
+    return false
+  }
+  const beforeEvidence = scope.slice(0, evidence.index)
+  if (
+    /\b(?:intent|need|no|not|plan(?:ned|s)?|proposal|request|requirement)\b/i.test(
+      beforeEvidence,
+    )
+  ) {
+    return false
+  }
+  return hasCredentialClaimContext(scope)
 }
 
 function indexedMatches(value: string, pattern: RegExp): IndexedRegExpMatch[] {
@@ -2111,7 +2322,7 @@ function indexedMatches(value: string, pattern: RegExp): IndexedRegExpMatch[] {
 }
 
 function hasAffirmativeLiveStatus(value: string): boolean {
-  return new RegExp(liveStatusPatternSource, 'i').test(value)
+  return liveStatusMatches(value).length > 0
 }
 
 function escapeRegExp(value: string): string {
@@ -2136,7 +2347,8 @@ function hasExplicitLocalRolloutContext(value: string): boolean {
       .trim()
     if (
       /\b(?:no|not|never)\b/i.test(scopedPrefix) ||
-      /\b\w+n['’]t\b/i.test(scopedPrefix)
+      /\b\w+n['’]t\b/i.test(scopedPrefix) ||
+      /\bnon[-\s]*$/i.test(scopedPrefix)
     ) {
       continue
     }
@@ -2150,6 +2362,9 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
     .replaceAll('|', ' ')
     .replace(/\s+/g, ' ')
     .trim()
+  if (commandFragmentIsInstruction(normalized)) {
+    return false
+  }
   const clauses = normalized
     .split(/[.;!?]+/)
     .map((clause) => clause.trim())
@@ -2280,6 +2495,12 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
   return false
 }
 
+function commandFragmentIsInstruction(value: string): boolean {
+  return /^(?:[$>#]\s*)?(?:bun|curl|git|node|npm|npx|pnpm|wrangler|yarn)\b[\s\S]*\s--(?:env|mode)\b/i.test(
+    value.trim(),
+  )
+}
+
 function bareLiveStatusUsesEnvironmentAlias(
   clause: string,
   status: IndexedRegExpMatch,
@@ -2334,7 +2555,8 @@ function statusDescribesEnvironmentClaim(
   const start = Math.min(environmentIndex, statusIndex)
   const end = Math.max(environmentIndex, statusIndex)
   const relation = clause.slice(start, end)
-  const boundaryPattern = /[,;]|\b(?:and|but|however|yet|while|whereas)\b/gi
+  const boundaryPattern =
+    /[,;]|\b(?:although|and|because|but|however|though|while|whereas|yet)\b/gi
   if (boundaryPattern.test(relation)) {
     return false
   }
@@ -2342,7 +2564,7 @@ function statusDescribesEnvironmentClaim(
   const beforeRelation = clause.slice(0, start)
   const leftBoundary = [
     ...beforeRelation.matchAll(
-      /[,;:]|\b(?:and|but|however|yet|while|whereas)\b/gi,
+      /[,;:]|\b(?:although|and|because|but|however|though|while|whereas|yet)\b/gi,
     ),
   ].at(-1)
   const afterRelation = clause.slice(end)
@@ -2351,8 +2573,8 @@ function statusDescribesEnvironmentClaim(
     /^(?:status\s*:\s*)?$/i.test(clause.slice(0, statusIndex))
   const rightBoundary = afterRelation.match(
     statusIntroducesTrailingLabel
-      ? /[,;]|\b(?:and|but|however|yet|while|whereas)\b/i
-      : /[,;:]|\b(?:and|but|however|yet|while|whereas)\b/i,
+      ? /[,;]|\b(?:although|and|because|but|however|though|while|whereas|yet)\b/i
+      : /[,;:]|\b(?:although|and|because|but|however|though|while|whereas|yet)\b/i,
   )
   const segmentStart = leftBoundary
     ? leftBoundary.index + leftBoundary[0].length
@@ -2375,7 +2597,15 @@ function hasCredentialClaimContext(clause: string): boolean {
     return true
   }
   if (
-    /\b(?:(?:master[-\s]+)?password[-\s]+(?:changes?|updates?|resets?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|restor(?:e|es|ed|ation)|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
+    /\b(?:(?:master[-\s]+)?password[-\s]+(?:changes?|updates?|resets?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
+      normalizedClause,
+    )
+  ) {
+    return true
+  }
+  if (
+    /\brestor(?:e|es|ed|ation)\b/i.test(normalizedClause) &&
+    /\b(?:account|backup|credential|d1|r2|recovery|vault|writer)\b/i.test(
       normalizedClause,
     )
   ) {
@@ -2414,15 +2644,13 @@ function liveClaimIsNegated(
   const beforeStatus = clause.slice(0, statusIndex)
   const beforeEnvironment = clause.slice(0, environmentIndex)
   if (
-    /\bthere\s+(?:is|are)\s+(?:no|not(?:\s+yet)?)\b/i.test(beforeEnvironment)
-  ) {
-    return true
-  }
-  if (
     /\b(?:not|never)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
       beforeStatus,
     )
   ) {
+    return true
+  }
+  if (/\b(?:unexecuted|unperformed)(?:\s+future)?\s*$/i.test(beforeStatus)) {
     return true
   }
   if (
@@ -2460,23 +2688,49 @@ function liveClaimIsNegated(
   if (!negator) {
     return false
   }
-  const scope = beforeEnvironment.slice(negator.index + negator[0].length)
+  const scope = beforeEnvironment
+    .slice(negator.index + negator[0].length)
+    .trim()
   if (
-    /[;:]|\b(?:after|although|and|because|before|but|however|if|once|that|though|until|when|while|whereas|yet)\b/i.test(
+    /[,;:]|\b(?:after|although|and|because|before|but|however|if|once|that|though|until|when|while|whereas|yet)\b/i.test(
       scope,
     )
   ) {
     return false
   }
-  if (
-    scope.includes(',') &&
-    hasCredentialClaimContext(clause.slice(environmentIndex, statusIndex))
-  ) {
-    return false
+  if (scope.length === 0) {
+    return true
   }
-  return !/\b(?:am|are|be|been|being|can|could|did|do|does|had|has|have|is|may|might|must|need(?:s|ed)?|remain(?:s|ed)?|require(?:s|d)?|should|show(?:s|ed)?|was|were|will|would)\b/i.test(
-    scope,
-  )
+  if (
+    /^(?:(?:any|current|documented|live|official|real|remote|staging|the|tracked)\s*)+$/i.test(
+      scope,
+    )
+  ) {
+    return true
+  }
+  if (
+    (hasLiveEnvironmentContext(scope) || /\blive\b/i.test(scope)) &&
+    !/\b(?:am|are|be|been|being|can|could|did|do|does|had|has|have|is|may|might|must|need(?:s|ed)?|remain(?:s|ed)?|require(?:s|d)?|should|show(?:s|ed)?|was|were|will|would)\b/i.test(
+      scope,
+    )
+  ) {
+    return true
+  }
+  if (
+    /^(?:any\s+)?(?:claim|evidence|proof|record)\b[\w\s-]{0,80}\b(?:confirms?|demonstrates?|documents?|proves?|records?|validates?|verifies?)\s*$/i.test(
+      scope,
+    )
+  ) {
+    return true
+  }
+  if (
+    /\b(?:nor|or)\s*$/i.test(scope) &&
+    /\b(?:client|fixture|harness|local|settings?|tests?|ui)\b/i.test(scope) &&
+    !/\b(?:doubt|question|reason)\b/i.test(scope)
+  ) {
+    return true
+  }
+  return hasCredentialClaimContext(scope) && /\b(?:nor|or)\s*$/i.test(scope)
 }
 
 function liveClaimIsNonAssertive(
@@ -2486,6 +2740,23 @@ function liveClaimIsNonAssertive(
   status = '',
 ): boolean {
   const beforeStatus = clause.slice(0, statusIndex)
+  if (commandFragmentIsInstruction(clause)) {
+    return true
+  }
+  if (
+    /^(?:approved|available|documented)\s+(?:(?:recovery|rollback)\s+)?(?:command|plan|procedure|strategy)\b/i.test(
+      clause.slice(statusIndex).trim(),
+    )
+  ) {
+    return true
+  }
+  if (
+    /\bremains?\s+(?:intentionally\s+)?(?:unexecuted|unperformed)\b/i.test(
+      clause.slice(statusIndex + status.length),
+    )
+  ) {
+    return true
+  }
   if (
     /\b(?:will|would|must|should|could|may|might|needs?\s+to)(?:\s+(?:be|have\s+been|go|become))?\s*$/i.test(
       beforeStatus,

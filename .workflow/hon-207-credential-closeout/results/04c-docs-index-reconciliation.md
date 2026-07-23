@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: fourteenth review findings remediated; exact-head rereviews and publication pending
+Status: fifteenth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -37,15 +37,20 @@ Linear issue: HON-229
 ## Implementation Result
 
 The reconciliation now protects 14 canonical user-facing compatibility,
-current-state, operations, release, and security documents plus ten supporting
-documents: four derived directly from registry artifact paths and six policy
-documents discovered from the tracked rollout flags and credential-operation
-vocabulary. A GFM-aware
-Markdown AST contract resolves inline, angle-bracket, escaped, and
-reference-style local links, rejects unparsed link syntax and raw HTML, and
-requires exactly one canonical packet and registry entry under the expected
-per-document heading. Canonical navigation must expose every registry-backed
-supporting document and the official-client credential harness. The
+current-state, operations, release, and security documents, four
+registry-backed evidence documents, and six representative policy documents
+under mutation coverage. In addition, every `docs/**/*.md` file is scanned for
+unsupported credential claims and live rollout assignments, so a new recovery
+or credential document cannot bypass the gate through a narrower discovery
+vocabulary. A GFM-aware Markdown AST contract resolves inline, angle-bracket,
+escaped, and reference-style local links, rejects unparsed link syntax and raw
+HTML in structurally protected documents, and requires exactly one canonical
+packet and registry entry under the expected per-document heading. The
+repository-wide policy pass uses a separate parser boundary so unrelated
+documentation HTML or link syntax does not inherit canonical-document
+constraints, while credential-bearing HTML remains scanner input. Canonical
+navigation must expose every registry-backed supporting document and the
+official-client credential harness. The
 compatibility fixture inventory maps all 11 claim IDs through exactly five
 positional columns to the operation, execution level, evidence level, and one
 exact artifact linked from the representative-artifact cell. Every canonical
@@ -60,8 +65,10 @@ literal block, while local section headings remain scoped by Markdown
 hierarchy. Assignment coverage includes direct flag-first forms, active and
 postfix predicates, quoted JSON-style values, flag-subject `is set to true`,
 and environment-subject `has FLAG set to true` forms, declarative
-`defines/maps FLAG as/to true` forms, and flag/value pairs split across table
-cells. Every matched assignment
+`defines/maps FLAG as/to true` forms, value-qualified assignments, and
+flag/value pairs split across tables. Long-form environment/flag/value tables
+are column-order independent, and matrix tables bind positive values to their
+environment headers. Every matched assignment
 binds full or contracted negation and local-harness exceptions to its exact
 predicate, including quoted absence examples, and a later positive assignment
 cannot be masked by an earlier negative one. The claim scanner carries
@@ -69,10 +76,15 @@ section-scoped operations across neutral blocks, distinguishes current and
 historical staging, production, remote, and real-account credential/recovery
 assertions, including direct existential evidence forms, from explicit,
 contracted, or coordinated `neither` negation and
-genuine future or future-perfect gates, recognizes bounded release/rollout
-status labels and noun-form success claims, and associates qualified
+genuine future or future-perfect gates, recognizes direct and historical
+existential evidence forms, bounded release/rollout status labels, and
+noun-form success claims, and associates qualified
 Cloudflare account headings and `live` aliases structurally without treating
-documentation headings as deployment claims. Evidence count tables are
+documentation headings, shell command sequences, recovery strategies, or
+token-keyring operations as credential deployment claims. Inline formatting
+preserves rendered word adjacency without merging independent link/image
+metadata, neutral child headings retain pending claim context, and `no`
+negation must govern the exact claim or rollout predicate. Evidence count tables are
 compared structurally with the registry, and each rollout document must carry
 exactly one row with all three configured scopes set to `false` for each of the
 four credential flags.
@@ -83,8 +95,8 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 345 tests passed.
-- Compatibility suite: 6 files and 738 tests passed.
+- Cross-document credential contract: 359 tests passed.
+- Compatibility suite: 6 files and 752 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
@@ -92,8 +104,8 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   SHA-256
   `be26fcb1180911b9ebdf774170f49b5e927f7db2097665d5a17e02490618a847`;
   it was updated at `2026-07-23T15:00:56.447Z` for commit `c52dd0b`.
-- Post-fourteenth-remediation full serial suite: 105 files and 1,968 tests
-  passed in 141.10 seconds with file parallelism disabled and one worker.
+- Post-fifteenth-remediation full serial suite: 105 files and 1,982 tests
+  passed in 207.61 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -494,6 +506,50 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   The release-note exclusions now carry self-contained `no live` wording. All
   345 focused cases, 738 compatibility tests, 60 related checks, 6 HON-222
   plan tests, and the serial 105-file/1,968-test suite pass.
+
+## Fifteenth Review And Remediation
+
+- Native Codex session `019f8fb5-a2cd-7a71-9ca9-ae0b00d1f254` reviewed exact
+  commit `b2fbd47f5efbf8557dafb64536ddabc62f0299ed`, tree
+  `0310edb14295d6b6c9270a8a64c6ed6b290df258`, and reproduced four P2
+  fail-open paths with executable mutations: a pending claim lost across a
+  neutral child heading, value-qualified true-flag assignments, and unrelated
+  `no doubt` phrases masking both live credential claims and rollout
+  assignments.
+- Adversarial reviewer `019f8fb5-e125-7b71-bd72-db8a7e6ffb03` reported six
+  P2 classes: production matrix tables, possessive and historical existential
+  claims, unrelated existential negation, omitted recovery-policy documents,
+  `non-local harness` treated as local, and word-internal Markdown formatting.
+  Independent five-axis reviewer
+  `019f8fb6-107b-7160-9136-fc3ecee63c99` reported four overlapping P2
+  classes for existential claims, negation scope, table column order, and
+  discovery vocabulary. Its grades were A, B+, B-, C, and C+ for framing,
+  diagnosis, design, correctness/tests, and architecture. Both reviewers
+  requested changes.
+- Fourteen combined regression cases failed while 345 existing focused cases
+  stayed green. The remediation removed policy vocabulary from the enforcement
+  boundary and scans every Markdown document, while retaining a narrower
+  structural contract for canonical and registry-backed docs. Table analysis
+  preserves row/header relationships for long-form and matrix layouts.
+  Rendered inline words survive formatting boundaries without merging
+  independent metadata. Pending claim context survives neutral child headings.
+  Existential status handling covers `there was`, reordered `there is`, and
+  `production has evidence` forms. Predicate-scoped negation rejects unrelated
+  `no doubt` and `there is no blocker` phrases, and local scope rejects
+  `non-local` wording.
+- Full-corpus scanning exposed legitimate operator commands, remote backup
+  evidence, token-keyring restoration, rollback strategies, and explicit
+  negative limitations that the earlier flattened model misclassified. A
+  read-only impact review by agent
+  `019f8fe7-c180-7d71-b654-b4483283ffe5` confirmed those collision classes.
+  The final scanner separates policy parsing from protected-document
+  structure, shell command sequences from assertions, table headers from row
+  values, and credential recovery from unrelated restore/recovery prose.
+- All 359 focused cases, 752 compatibility tests, 60 related checks, 6
+  HON-222 plan tests, and the serial 105-file/1,982-test suite pass.
+  TypeScript, full ESLint, full Prettier, brand scan, dependency audit with
+  zero known vulnerabilities, credential evidence/closeout verification,
+  strict 11-of-11 release gate, and alpha completion audit also pass.
 
 ## Closeout Pending
 
