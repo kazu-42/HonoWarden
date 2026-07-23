@@ -95,7 +95,7 @@
     }
   ],
   "verification": {
-    "status": "evidence_1c_third_review_findings_remediated_rereview_pending",
+    "status": "evidence_1c_fourth_review_findings_remediated_rereview_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -288,9 +288,9 @@
       "evidence1bPublication": "pr_116_squash_32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3_reviewed_publication_tree_25d64460775356fabad0b5c76fd4cbc39857bab4_exact_head_ci_29985521114_passed_merged_main_ci_29985701462_passed",
       "evidence1bLinearCloseout": "hon_228_done_archived_2026_07_23t06_42_39_292z_hon_229_in_progress_non_archived",
       "evidence1cLinearReadback": "hon_222_and_hon_229_only_started_hon_228_done_archived_hon_229_in_progress_checkpoint_updated",
-      "evidence1cImplementation": "verified_13_docs_ast_parsed_unique_canonical_links_and_sections_exact_count_and_rollout_tables_11_claim_operation_inventory_no_staging_or_production_activation",
-      "evidence1cFocused": "passed_docs_contract_33_compat_426_release_security_config_operator_docs_69_hon_222_plan_6",
-      "evidence1cFullSuite": "passed_105_files_1656_tests_serial_205_84_seconds",
+      "evidence1cImplementation": "verified_14_canonical_docs_and_4_registry_backed_supporting_docs_ast_parsed_raw_html_rejected_unique_canonical_links_and_sections_exact_count_rollout_and_5_column_inventory_tables_no_staging_or_production_activation",
+      "evidence1cFocused": "passed_docs_contract_59_compat_452_related_ops_docs_51_hon_222_plan_6",
+      "evidence1cFullSuite": "passed_105_files_1682_tests_serial_241_77_seconds_post_fourth_remediation",
       "evidence1cCanonicalPacket": "passed_11_claims_8_artifacts_14398_bytes_sha256_7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58",
       "evidence1cImplementationReviewedHead": "50c00be6917aa9f498c17afb5724446af6b93302",
       "evidence1cImplementationReviewedTree": "d20bc87b0cff6b91ed102eb5e44c01aa420f73d4",
@@ -310,8 +310,14 @@
       "evidence1cThirdAdversarialReview": "exact_b6a73ac_agent_019f8e41_0ae2_7972_ae35_67d7ac673c95_request_changes_1_p2_natural_postfixed_environment_and_negation_scope_1_p3_machine_specific_absolute_links",
       "evidence1cThirdFiveAxisReview": "exact_b6a73ac_agent_019f8e41_35ec_7e30_9a87_8a594cade464_0_actionable_findings_problem_framing_a_diagnosis_a_design_a_solution_a_architecture_a_minus_approve_superseded_by_standard_and_adversarial_findings",
       "evidence1cThirdReviewRemediation": "passed_12_red_mutations_row_level_claims_postfixed_environment_clause_bound_negation_operational_status_vocabulary_unknown_inventory_ids_link_vs_image_kind_absolute_and_encoded_path_rejection_with_negative_controls",
+      "evidence1cFourthReviewedHead": "3e0aa18f3e2fcd79ef9607d543173a5e668bceed",
+      "evidence1cFourthReviewedTree": "6140446e400368ef61715bcc97157b31c9fbbc11",
+      "evidence1cFourthStandardReview": "exact_3e0aa18_native_codex_session_019f8e5a_616d_7de2_9ab9_80c0a51247e3_request_changes_4_p2_direct_credential_operations_clause_negation_raw_html_and_positional_inventory_columns",
+      "evidence1cFourthAdversarialReview": "exact_3e0aa18_agent_019f8e5a_2df8_7380_9b60_ac1fba0d79aa_request_changes_2_p2_section_table_context_and_without_negation_2_p3_conditional_future_scope_and_raw_html",
+      "evidence1cFourthFiveAxisReview": "exact_3e0aa18_agent_019f8e5a_2ee7_78d1_a8e8_25a8f67d7e70_request_changes_1_p2_incomplete_hand_maintained_document_set_and_stale_hon_226_harness_status_grades_b_minus_b_b_b_minus_b_minus",
+      "evidence1cFourthReviewRemediation": "passed_18_initial_red_and_6_self_review_red_mutations_14_canonical_and_4_registry_derived_supporting_docs_navigation_completeness_hon_226_closeout_section_and_table_context_direct_operations_status_bound_negation_conditional_future_scope_raw_html_rejection_and_exact_5_column_inventory_59_focused_452_compatibility_51_related_ops_docs",
       "evidence1cDependencyAuditRemediation": "initial_full_1614_pass_23_fail_all_cascaded_from_fail_closed_stale_lockfile_audit_hash_live_audit_0_updated_sha256_bf9f3c6065cb2265448a4ffb566a0cb7db3a572162c191dd3f01091cb18df4c5_affected_9_files_41_tests_then_full_green",
-      "evidence1cQuality": "passed_33_docs_contract_426_compatibility_69_related_docs_6_hon_222_plan_105_files_1656_full_typecheck_eslint_prettier_brand_scan_dependency_audit_0_credential_registry_and_closeout_release_gate_11_of_11_alpha_completion_complete_third_review_findings_remediated_rereview_pending"
+      "evidence1cQuality": "passed_59_docs_contract_452_compatibility_51_related_ops_docs_6_hon_222_plan_105_files_1682_full_241_77_seconds_typecheck_full_eslint_full_prettier_brand_scan_dependency_audit_0_credential_registry_and_closeout_release_gate_11_of_11_alpha_completion_complete_residual_worktree_processes_0_fourth_review_findings_remediated_rereview_pending"
     },
     "checks": [
       "linear_plan_unit",

@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: third review findings remediated; exact-head rereviews and publication pending
+Status: fourth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -36,17 +36,21 @@ Linear issue: HON-229
 
 ## Implementation Result
 
-The reconciliation now covers 13 user-facing compatibility, current-state,
-operations, release, and security documents. A GFM-aware Markdown AST contract
-resolves inline, angle-bracket, escaped, and reference-style local links,
-rejects unparsed link syntax, and requires exactly one canonical packet and
-registry entry in one heading block at any depth. The compatibility fixture
-inventory maps all 11 claim IDs to their operation, execution level, evidence
-level, and one exact artifact at the claim's evidence level. Every canonical
-credential section carries the packet's exact no-rerun and no-live-activation
-limitations. Evidence count tables are compared structurally with the registry,
-and each rollout document must carry exactly one row with all three configured
-scopes set to `false` for each of the four credential flags.
+The reconciliation now protects 14 canonical user-facing compatibility,
+current-state, operations, release, and security documents plus four supporting
+evidence documents derived directly from registry artifact paths. A GFM-aware
+Markdown AST contract resolves inline, angle-bracket, escaped, and
+reference-style local links, rejects unparsed link syntax and raw HTML, and
+requires exactly one canonical packet and registry entry in one heading block
+at any depth. Canonical navigation must expose every registry-backed supporting
+document and the official-client credential harness. The compatibility fixture
+inventory maps all 11 claim IDs through exactly five positional columns to the
+operation, execution level, evidence level, and one exact artifact at the
+claim's evidence level. Every canonical credential section carries the packet's
+exact no-rerun and no-live-activation limitations. Evidence count tables are
+compared structurally with the registry, and each rollout document must carry
+exactly one row with all three configured scopes set to `false` for each of the
+four credential flags.
 
 The local workflow state points at the 04c packet. The completed 04b result is
 now bound to PR #116, exact-head and merged-main CI, squash-tree equality, and
@@ -54,14 +58,15 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 33 tests passed.
-- Compatibility suite: 6 files and 426 tests passed.
-- Release, security, Wrangler environment, operator, and credential docs: 5
-  files and 69 tests passed.
+- Cross-document credential contract: 59 tests passed.
+- Compatibility suite: 6 files and 452 tests passed.
+- Related operator, release, completion-audit, brand, and official-client
+  harness checks: 5 files and 51 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed; live checkpoint exact at
   2,094 bytes and SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`.
-- Full serial suite: 105 files and 1,656 tests passed in 205.84 seconds.
+- Post-fourth-remediation full serial suite: 105 files and 1,682 tests passed in
+  241.77 seconds.
 - TypeScript, ESLint, full-repository Prettier, and brand scan passed.
 - Diff whitespace check passed.
 - Dependency audit: no known vulnerabilities.
@@ -156,6 +161,29 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   other explicit negative controls. All 33 contract tests, 426 compatibility
   tests, 69 related document/configuration tests, and 1,656 full-suite tests now
   pass.
+
+## Fourth Review And Remediation
+
+- Native Codex session `019f8e5a-616d-7de2-9ab9-80c0a51247e3` reviewed exact
+  commit `3e0aa18f3e2fcd79ef9607d543173a5e668bceed`, tree
+  `6140446e400368ef61715bcc97157b31c9fbbc11`, and reported four P2 bypasses:
+  direct password/KDF/key operations without a generic context noun, unrelated
+  negation, raw HTML links/prose, and non-positional inventory cells.
+- Adversarial reviewer `019f8e5a-2df8-7380-9b60-ac1fba0d79aa` reported two P2
+  findings for section/table context and `without` negation, plus two P3
+  findings for conditional/future wording and raw HTML targets.
+- Five-axis reviewer `019f8e5a-2ee7-78d1-a8e8-25a8f67d7e70` reported one P2:
+  the hand-maintained 13-document set omitted registry-backed evidence docs and
+  left the HON-226 official-client harness publication status stale. Grades
+  were B-, B, B, B-, and B-.
+- Eighteen initial mutations failed first. Six additional self-review mutations
+  then failed around unrelated conditional markers, active proof verbs, modal
+  future requirements, and environment-heading context. The final contract
+  passes all 59 cases: heading and table context is inherited, current positive
+  claims remain distinct from directly scoped negation and non-assertive future
+  gates, raw HTML is rejected, inventory rows are exactly five positional
+  cells, registry-backed document coverage is derived rather than copied, and
+  the HON-226 harness now pins PR #114, squash merge, and Linear archive.
 
 ## Closeout Pending
 

@@ -103,6 +103,7 @@ const credentialDocs = [
   'docs/operations/backup-restore.md',
   'docs/release/rollback-guide.md',
   'docs/operations/operator-environment.md',
+  'docs/operations/official-client-credential-harness.md',
   'docs/release/index.md',
   'docs/security/review-index.md',
   'docs/security/known-limitations.md',
@@ -144,6 +145,19 @@ const rolloutFlags = [
 const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const markdownParser = unified().use(remarkParse).use(remarkGfm)
+const registryCredentialDocs = [
+  ...new Set(
+    registry.claims.flatMap((claim) =>
+      claim.artifacts
+        .map((artifact) => artifact.path)
+        .filter((path) => path.startsWith('docs/') && path.endsWith('.md')),
+    ),
+  ),
+].sort()
+const credentialNavigationDocs = [
+  'docs/operations/operator-environment.md',
+  'docs/release/index.md',
+] as const
 
 describe('credential closeout documentation contract', () => {
   it('keeps the closeout packet bound to the exact registry and artifacts', () => {
@@ -220,6 +234,50 @@ describe('credential closeout documentation contract', () => {
     }
   })
 
+  it('protects every registry-backed credential evidence document', () => {
+    expect(registryCredentialDocs).toEqual([
+      'docs/release/account-kdf-change-local-evidence.md',
+      'docs/release/account-key-initialization-local-evidence.md',
+      'docs/release/account-password-change-local-evidence.md',
+      'docs/release/user-key-rotation-local-evidence.md',
+    ])
+
+    for (const docPath of registryCredentialDocs) {
+      assertCredentialSupportingDocContract(docPath, readText(docPath))
+    }
+  })
+
+  it('exposes every credential-supporting document from canonical navigation', () => {
+    const requiredDocs = [
+      ...registryCredentialDocs,
+      'docs/operations/official-client-credential-harness.md',
+    ].sort()
+    const linkedDocs = [
+      ...new Set(
+        credentialNavigationDocs.flatMap((docPath) =>
+          resolvedRepoLinks(docPath, readText(docPath)).filter((link) =>
+            requiredDocs.includes(link),
+          ),
+        ),
+      ),
+    ].sort()
+
+    expect(linkedDocs).toEqual(requiredDocs)
+  })
+
+  it('keeps the official credential harness bound to HON-226 publication closeout', () => {
+    const content = readText(
+      'docs/operations/official-client-credential-harness.md',
+    )
+
+    expect(content).not.toMatch(
+      /HON-226[\s\S]{0,160}pending exact-head review/i,
+    )
+    expect(content).toContain('PR #114')
+    expect(content).toContain('13f4e895d69b2c2485a10a82d1793cf60e148024')
+    expect(content).toContain('2026-07-22T02:39:04.165Z')
+  })
+
   it('exposes exactly one canonical credential entry in each review index', () => {
     for (const docPath of indexDocs) {
       const content = readText(docPath)
@@ -242,44 +300,7 @@ describe('credential closeout documentation contract', () => {
 
   it('keeps one operation row per claim with a real representative artifact', () => {
     const inventoryPath = 'compat/README.md'
-    const inventory = readText(inventoryPath)
-    const lines = inventory.split('\n')
-
-    expect(
-      inventoryClaimIds(inventoryPath, inventory),
-      `${inventoryPath} inventory claim IDs`,
-    ).toEqual(registry.claims.map((claim) => claim.id))
-
-    for (const claim of registry.claims) {
-      const claimRows = lines
-        .map((line) => ({ line, cells: markdownTableCells(line) }))
-        .filter(({ cells }) => cells[0] === `\`${claim.id}\``)
-      expect(claimRows, `${claim.id} inventory rows`).toHaveLength(1)
-
-      const claimRow = claimRows[0]
-      if (!claimRow) {
-        throw new Error(`missing inventory row for ${claim.id}`)
-      }
-      const { line: row, cells } = claimRow
-      expect(cells).toContain(`\`${claim.operation}\``)
-      expect(cells).toContain(`\`${claim.executionLevel}\``)
-      expect(cells).toContain(`\`${claim.evidenceLevel}\``)
-
-      const rowLinks = resolvedRepoLinks(inventoryPath, row)
-      const representativeArtifacts = claim.artifacts.filter((artifact) =>
-        rowLinks.includes(artifact.path),
-      )
-      expect(
-        representativeArtifacts,
-        `${claim.id} must link one of its exact artifacts`,
-      ).not.toHaveLength(0)
-      expect(
-        representativeArtifacts.some(
-          (artifact) => artifact.evidenceLevel === claim.evidenceLevel,
-        ),
-        `${claim.id} representative artifact must prove ${claim.evidenceLevel}`,
-      ).toBe(true)
-    }
+    assertOperationInventoryContract(inventoryPath, readText(inventoryPath))
   })
 
   it('keeps reconciled document freshness metadata current', () => {
@@ -330,6 +351,16 @@ describe('credential closeout documentation contract', () => {
     'Production credential writer activation is approved.',
     'Production credential writer is live.',
     'Production credential writer is ready.',
+    'Production password change is verified.',
+    'Production KDF mutation is verified.',
+    'Production account-key rotation is verified.',
+    'Without credential evidence, production credential writer activation is verified.',
+    'Without staging evidence, production credential writer activation is approved.',
+    'Without local evidence, production credential writer is ready.',
+    'Before lunch, production credential writer activation is verified.',
+    'If convenient, production password change is approved.',
+    'The packet verifies credential writer activation in production.',
+    'The registry confirms production KDF mutation.',
   ])(
     'rejects unsupported live credential claims outside the canonical section: %s',
     (claim) => {
@@ -351,6 +382,24 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
+  it('rejects unsupported live credential claims inherited from a section heading', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n## Production\n\nCredential writer activation is verified.\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
+  it('rejects unsupported live credential claims inherited from table headers', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n| Production operation | Status |\n| --- | --- |\n| credential writer activation | Verified |\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
   it.each([
     'Production credential writer activation is not verified.',
     'No production credential writer activation is verified.',
@@ -360,6 +409,27 @@ describe('credential closeout documentation contract', () => {
   ])('accepts an explicitly negated live credential claim: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+  })
+
+  it.each([
+    'Before production credential writer activation is verified, keep the flag disabled.',
+    'If production credential writer activation is verified, update this packet.',
+    'When staging password change is approved, record separate environment evidence.',
+    'Once production KDF mutation is verified, update the release index.',
+    'Production credential writer activation must be verified before the flag is enabled.',
+    'Production password change will be verified in a later evidence run.',
+  ])('accepts a non-assertive future live credential gate: %s', (claim) => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n${claim}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+  })
+
+  it('accepts a conditional credential gate under an environment heading', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n## Production\n\nIf credential writer activation is verified, update this packet.\n`
 
     expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
   })
@@ -412,6 +482,19 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
+  it.each([
+    '<a href="../../compat/missing-artifact.json">orphaned evidence</a>',
+    '<img src="../../compat/missing.png" alt="missing packet">',
+    '<p>Production credential writer activation is verified.</p>',
+  ])('rejects raw HTML in protected credential documentation: %s', (html) => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n${html}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /raw HTML/,
+    )
+  })
+
   it('rejects inventory claim rows absent from the registry', () => {
     const docPath = 'compat/README.md'
     const content = readText(docPath)
@@ -431,6 +514,35 @@ describe('credential closeout documentation contract', () => {
 
     expect(inventoryClaimIds(docPath, mutated)).not.toEqual(
       registry.claims.map((claim) => claim.id),
+    )
+  })
+
+  it('requires exact positional inventory columns and row width', () => {
+    const docPath = 'compat/README.md'
+    const content = readText(docPath)
+    const claim = registry.claims[0]
+    if (!claim) {
+      throw new Error('credential registry must contain claims')
+    }
+    const original = content
+      .split('\n')
+      .find((line) => line.startsWith(`| \`${claim.id}\``))
+    if (!original) {
+      throw new Error(`missing inventory row for ${claim.id}`)
+    }
+    const exactArtifact = claim.artifacts.find(
+      (artifact) => artifact.evidenceLevel === claim.evidenceLevel,
+    )
+    if (!exactArtifact) {
+      throw new Error(`missing exact-level artifact for ${claim.id}`)
+    }
+    const mutated = content.replace(
+      original,
+      `| \`${claim.id}\` | \`wrong.operation\` | \`wrong_execution\` | \`production\` | [wrong existing artifact](../.workflow/hon-207-credential-closeout/results/03a-generation-bound-backup.md) | \`${claim.operation}\` | \`${claim.executionLevel}\` | \`${claim.evidenceLevel}\` | [correct artifact](../${exactArtifact.path}) |`,
+    )
+
+    expect(() => assertOperationInventoryContract(docPath, mutated)).toThrow(
+      /inventory row/,
     )
   })
 
@@ -520,17 +632,94 @@ function assertCredentialDocContract(docPath: string, content: string): void {
   }
 }
 
+function assertCredentialSupportingDocContract(
+  docPath: string,
+  content: string,
+): void {
+  const document = parseMarkdown(docPath, content)
+  const targets = resolvedRepoTargetsInTree(docPath, document, document)
+  for (const target of targets) {
+    expect(
+      existsSync(repoPath(target.path)),
+      `${docPath} has an orphaned local ${target.kind}: ${target.path}`,
+    ).toBe(true)
+  }
+
+  for (const fragment of proseFragments(document)) {
+    expect(
+      unsupportedLiveCredentialClaim(fragment),
+      `${docPath} must not claim verified staging or production activation: ${fragment}`,
+    ).toBe(false)
+  }
+}
+
+function assertOperationInventoryContract(
+  inventoryPath: string,
+  inventory: string,
+): void {
+  const { document, table } = operationInventoryTable(inventoryPath, inventory)
+  const rows = table.children.slice(1)
+
+  expect(
+    rows.map((row) => markdownText(row.children[0]!, true).trim()),
+    `${inventoryPath} inventory claim IDs`,
+  ).toEqual(registry.claims.map((claim) => claim.id))
+
+  for (const claim of registry.claims) {
+    const claimRows = rows.filter(
+      (row) => markdownText(row.children[0]!, true).trim() === claim.id,
+    )
+    expect(claimRows, `${claim.id} inventory rows`).toHaveLength(1)
+
+    const claimRow = claimRows[0]
+    if (!claimRow) {
+      throw new Error(`missing inventory row for ${claim.id}`)
+    }
+    const cells = claimRow.children.map((cell) =>
+      markdownText(cell, true).trim(),
+    )
+    expect(cells, `${claim.id} inventory row`).toHaveLength(5)
+    expect(cells.slice(0, 4), `${claim.id} inventory row values`).toEqual([
+      claim.id,
+      claim.operation,
+      claim.executionLevel,
+      claim.evidenceLevel,
+    ])
+
+    const rowLinks = resolvedRepoLinksInTree(inventoryPath, claimRow, document)
+    expect(rowLinks, `${claim.id} inventory row links`).toHaveLength(1)
+    const representativeArtifacts = claim.artifacts.filter((artifact) =>
+      rowLinks.includes(artifact.path),
+    )
+    expect(
+      representativeArtifacts,
+      `${claim.id} must link one of its exact artifacts`,
+    ).not.toHaveLength(0)
+    expect(
+      representativeArtifacts.some(
+        (artifact) => artifact.evidenceLevel === claim.evidenceLevel,
+      ),
+      `${claim.id} representative artifact must prove ${claim.evidenceLevel}`,
+    ).toBe(true)
+  }
+}
+
 function inventoryClaimIds(docPath: string, content: string): string[] {
-  const tables = tablesIn(parseMarkdown(docPath, content))
+  const { table } = operationInventoryTable(docPath, content)
+  return markdownTableRows(table)
+    .slice(1)
+    .map((row) => row[0] ?? '')
+}
+
+function operationInventoryTable(
+  docPath: string,
+  content: string,
+): { document: Root; table: Table } {
+  const document = parseMarkdown(docPath, content)
+  const tables = tablesIn(document)
   const inventoryTables = tables.filter((table) => {
     const header = markdownTableRows(table)[0]
-    return (
-      header?.[0] === 'Claim ID' &&
-      header[1] === 'Operation' &&
-      header[2] === 'Execution level' &&
-      header[3] === 'Evidence level' &&
-      header[4] === 'Representative artifact'
-    )
+    return header?.[0] === 'Claim ID'
   })
   expect(inventoryTables, `${docPath} operation inventory tables`).toHaveLength(
     1,
@@ -539,9 +728,17 @@ function inventoryClaimIds(docPath: string, content: string): string[] {
   if (!inventoryTable) {
     throw new Error(`missing operation inventory table in ${docPath}`)
   }
-  return markdownTableRows(inventoryTable)
-    .slice(1)
-    .map((row) => row[0] ?? '')
+  expect(
+    markdownTableRows(inventoryTable)[0],
+    `${docPath} operation inventory header`,
+  ).toEqual([
+    'Claim ID',
+    'Operation',
+    'Execution level',
+    'Evidence level',
+    'Representative artifact',
+  ])
+  return { document, table: inventoryTable }
 }
 
 function assertEvidenceSummaryContract(docPath: string, content: string): void {
@@ -650,6 +847,9 @@ function resolvedRepoLinks(docPath: string, content: string): string[] {
 function parseMarkdown(docPath: string, content: string): Root {
   const document = markdownParser.parse(content) as Root
   walkMarkdown(document, (node) => {
+    if (node.type === 'html') {
+      throw new Error(`${docPath} contains raw HTML: ${node.value}`)
+    }
     if (
       node.type === 'text' &&
       (/\[[^\]\n]+\]\s*\([^\n)]*\)/.test(node.value) ||
@@ -665,7 +865,7 @@ function parseMarkdown(docPath: string, content: string): Root {
 
 function resolvedRepoLinksInTree(
   docPath: string,
-  tree: Root,
+  tree: Nodes,
   fullDocument: Root,
 ): string[] {
   return resolvedRepoTargetsInTree(docPath, tree, fullDocument)
@@ -675,7 +875,7 @@ function resolvedRepoLinksInTree(
 
 function resolvedRepoTargetsInTree(
   docPath: string,
-  tree: Root,
+  tree: Nodes,
   fullDocument: Root,
 ): ResolvedRepoTarget[] {
   const definitions = new Map<string, string>()
@@ -792,33 +992,47 @@ function canonicalCredentialSection(docPath: string, document: Root): Root {
 
 function proseFragments(document: Root): string[] {
   const fragments: string[] = []
+  const headingContext: string[] = []
 
-  const visit = (node: Nodes): void => {
-    if (node.type === 'paragraph' || node.type === 'heading') {
+  const append = (parts: string[]): void => {
+    const text = parts
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+      .join(' ')
+    if (text.length > 0) {
+      fragments.push(text)
+    }
+  }
+
+  const visitContent = (node: Nodes): void => {
+    if (node.type === 'paragraph') {
       const text = markdownText(node, true).trim()
-      if (text.length > 0) {
-        fragments.push(text)
-      }
+      append([...headingContext, text])
       return
     }
-    if (node.type === 'tableRow') {
-      const text = node.children
-        .map((cell) => markdownText(cell, true).trim())
-        .join(' ')
-        .trim()
-      if (text.length > 0) {
-        fragments.push(text)
+    if (node.type === 'table') {
+      const [header, ...rows] = markdownTableRows(node)
+      for (const row of rows) {
+        append([...headingContext, ...(header ?? []), ...row])
       }
       return
     }
     if ('children' in node) {
       for (const child of node.children) {
-        visit(child as Nodes)
+        visitContent(child as Nodes)
       }
     }
   }
 
-  visit(document)
+  for (const child of document.children) {
+    if (child.type === 'heading') {
+      headingContext.length = child.depth - 1
+      headingContext[child.depth - 1] = markdownText(child, true).trim()
+      append([...headingContext])
+      continue
+    }
+    visitContent(child)
+  }
   return fragments
 }
 
@@ -832,15 +1046,11 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
       continue
     }
 
-    const hasCredentialContext =
-      /\b(?:credential|password(?:[-\s]+change)?|kdf(?:[-\s]+mutation)?|account[-\s]+key|user[-\s]+key|writer)\b/i.test(
-        clause,
-      ) &&
-      /\b(?:activation|evidence|writer|run|operation|lifecycle)\b/i.test(clause)
+    const hasCredentialContext = hasCredentialClaimContext(clause)
     if (hasCredentialContext) {
       const statuses = [
         ...clause.matchAll(
-          /\b(?:verified|proven|recorded|enabled|activated|approved|available|complete|completed|deployed|live|operational|passed|ready|successful|succeeded|confirmed|demonstrated)\b/gi,
+          /\b(?:verified|proven|recorded|enabled|activated|approved|available|complete|completed|deployed|live|operational|passed|ready|successful|succeeded|confirmed|demonstrated|supported|verifies|proves|records|confirms|demonstrates)\b/gi,
         ),
       ]
       for (const status of statuses) {
@@ -850,7 +1060,19 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
             ? candidate
             : nearest,
         )
-        if (!liveClaimIsNegated(clause, environment.index, status.index)) {
+        if (
+          !statusDescribesEnvironmentClaim(
+            clause,
+            environment.index,
+            status.index,
+          )
+        ) {
+          continue
+        }
+        if (
+          !liveClaimIsNegated(clause, environment.index, status.index) &&
+          !liveClaimIsNonAssertive(clause, environment.index, status.index)
+        ) {
           return true
         }
       }
@@ -869,6 +1091,11 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
           clause,
           environmentIndex,
           match.index + statusOffset,
+        ) &&
+        !liveClaimIsNonAssertive(
+          clause,
+          environmentIndex,
+          match.index + statusOffset,
         )
       ) {
         return true
@@ -876,6 +1103,54 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
     }
   }
   return false
+}
+
+function statusDescribesEnvironmentClaim(
+  clause: string,
+  environmentIndex: number,
+  statusIndex: number,
+): boolean {
+  const beforeStatus = clause.slice(0, statusIndex)
+  const linkingVerb = beforeStatus.match(
+    /\b(?:is|are|was|were|has\s+been|have\s+been)\s*$/i,
+  )
+  if (linkingVerb?.index !== undefined) {
+    const beforeSubject = beforeStatus.slice(0, linkingVerb.index)
+    const boundaries = [
+      ...beforeSubject.matchAll(
+        /[,;:]|\b(?:before|after|if|when|once|until|and|but|however|yet)\b/gi,
+      ),
+    ]
+    const boundary = boundaries.at(-1)
+    const subject = beforeSubject.slice(
+      boundary ? boundary.index + boundary[0].length : 0,
+    )
+    return hasCredentialClaimContext(subject)
+  }
+
+  const start = Math.min(environmentIndex, statusIndex)
+  const end = Math.max(environmentIndex, statusIndex)
+  const relation = clause.slice(start, end)
+  if (relation.includes(',')) {
+    return false
+  }
+  return /\bstatus\b/i.test(clause) || hasCredentialClaimContext(relation)
+}
+
+function hasCredentialClaimContext(clause: string): boolean {
+  if (
+    /\b(?:password[-\s]+(?:change|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer)\b/i.test(
+      clause,
+    )
+  ) {
+    return true
+  }
+  return (
+    /\bcredential\b/i.test(clause) &&
+    /\b(?:activation|evidence|writer|run|operation|lifecycle|mutation|rotation|readback)\b/i.test(
+      clause,
+    )
+  )
 }
 
 function liveClaimIsNegated(
@@ -893,25 +1168,62 @@ function liveClaimIsNegated(
   }
 
   const beforeEnvironment = clause.slice(0, environmentIndex)
-  const negators = [
-    ...beforeEnvironment.matchAll(/\b(?:no|not|never|until|without)\b/gi),
-  ]
-  const negator = negators.at(-1)
+  const negator = [...beforeEnvironment.matchAll(/\bno\b/gi)].at(-1)
   if (!negator) {
     return false
   }
   const scope = beforeEnvironment.slice(negator.index + negator[0].length)
-  if (/\b(?:and|but|however|yet)\b/i.test(scope)) {
+  if (/[;:]|\b(?:and|but|however|yet)\b/i.test(scope)) {
+    return false
+  }
+  if (
+    scope.includes(',') &&
+    hasCredentialClaimContext(clause.slice(environmentIndex, statusIndex))
+  ) {
     return false
   }
   return (
     scope.trim().length === 0 ||
-    /\b(?:claim|evidence|credential|password|kdf|account[-\s]+key|user[-\s]+key|activation|writer|client|settings|ui|run|operation|lifecycle|recorded|verified)\b/i.test(
+    /\b(?:claim|evidence|credential|password|kdf|account[-\s]+key|user[-\s]+key|activation|writer|client|settings|ui|run|operation|lifecycle)\b/i.test(
       scope,
     ) ||
-    /^(?:\s|,|a|later|current|tracked|live|remote|actual|real|official|client|any|environment(?:-specific)?|staging|production|or)*$/i.test(
+    /^(?:\s|a|later|current|tracked|live|remote|actual|real|official|client|any|environment(?:-specific)?|staging|production|or)*$/i.test(
       scope,
     )
+  )
+}
+
+function liveClaimIsNonAssertive(
+  clause: string,
+  environmentIndex: number,
+  statusIndex: number,
+): boolean {
+  const beforeStatus = clause.slice(0, statusIndex)
+  if (
+    /\b(?:will|would|must|should|could|may|might|needs?\s+to)\s+(?:be|have\s+been)\s*$/i.test(
+      beforeStatus,
+    )
+  ) {
+    return true
+  }
+
+  const marker = [
+    ...beforeStatus.matchAll(/\b(?:before|if|when|once|until)\b/gi),
+  ].at(-1)
+  if (!marker) {
+    return false
+  }
+
+  const scope = clause.slice(marker.index, statusIndex)
+  if (/[,;:]|\b(?:but|however|yet)\b/i.test(scope)) {
+    return false
+  }
+  return (
+    (/\b(?:staging|production)\b/i.test(scope) &&
+      /\b(?:credential|password|kdf|account[-\s]+key|user[-\s]+key|activation|writer|operation|lifecycle)\b/i.test(
+        scope,
+      )) ||
+    (environmentIndex < marker.index && hasCredentialClaimContext(scope))
   )
 }
 
@@ -960,14 +1272,4 @@ function walkMarkdown(node: Nodes, visit: (node: Nodes) => void): void {
 
 function countOccurrences(content: string, needle: string): number {
   return content.split(needle).length - 1
-}
-
-function markdownTableCells(line: string): string[] {
-  if (!line.trim().startsWith('|')) {
-    return []
-  }
-  return line
-    .split('|')
-    .slice(1, -1)
-    .map((cell) => cell.trim())
 }

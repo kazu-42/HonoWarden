@@ -131,7 +131,23 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_third_review_findings_remediated_rereview_pending',
+    'evidence_1c_fourth_review_findings_remediated_rereview_pending',
+  )
+  assert.equal(
+    state.verification.results.evidence1cFourthReviewedHead,
+    '3e0aa18f3e2fcd79ef9607d543173a5e668bceed',
+  )
+  assert.equal(
+    state.verification.results.evidence1cFourthReviewedTree,
+    '6140446e400368ef61715bcc97157b31c9fbbc11',
+  )
+  assert.match(
+    state.verification.results.evidence1cFourthStandardReview,
+    /019f8e5a_616d_7de2_9ab9_80c0a51247e3_request_changes_4_p2/,
+  )
+  assert.match(
+    state.verification.results.evidence1cFourthReviewRemediation,
+    /59_focused_452_compatibility_51_related_ops_docs/,
   )
   assert.deepEqual(
     readback.issues.map((issue) => [
