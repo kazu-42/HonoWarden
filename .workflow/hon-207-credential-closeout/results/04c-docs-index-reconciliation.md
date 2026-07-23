@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: sixth review findings remediated; exact-head rereviews and publication pending
+Status: seventh review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -62,19 +62,18 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 103 tests passed.
-- Compatibility suite: 6 files and 496 tests passed.
+- Cross-document credential contract: 130 tests passed.
+- Compatibility suite: 6 files and 523 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 5 files and 57 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The last managed Linear
   checkpoint readback was exact at 2,094 bytes and SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`;
   the sixth-remediation checkpoint refresh follows the exact local commit.
-- Post-sixth-remediation full serial suite: 105 files and 1,726 tests passed in
-  179.97 seconds.
-- TypeScript, ESLint, full-repository Prettier, and brand scan passed.
-- Diff whitespace check passed.
-- Dependency audit: no known vulnerabilities.
+- Post-seventh-remediation full serial suite: 105 files and 1,753 tests passed
+  in 184.06 seconds with file parallelism disabled and one worker.
+- TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
+  strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
   `bf9f3c6065cb2265448a4ffb566a0cb7db3a572162c191dd3f01091cb18df4c5`.
 - Credential registry verification: 11 claims and 8 artifacts passed.
@@ -240,6 +239,33 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   Explicit negation, unrelated conditional markers, and remote operational
   backup evidence remain negative controls. All 103 focused cases, 496
   compatibility tests, and 57 related checks pass.
+
+## Seventh Review And Remediation
+
+- Native Codex session `019f8ea8-b7ea-7b00-bb0d-50c3186c79cf` reviewed exact
+  commit `f9e3fdd668ecd803bff122ecc979a3bac913fdda`, tree
+  `c2906be644441072a8894557eda2da873a065ee0`, and reported three P2 bypass
+  classes: omitted Markdown hard-break/image-alt semantics, canonical registry
+  operation spellings split on punctuation, and affirmative status vocabulary
+  such as `validated`, `active`, and `shipped`.
+- Adversarial reviewer `019f8ea8-83dc-7170-a1bf-a48f3568f967` reported two P2
+  findings for past-tense `After`/`Once` claims and status split into adjacent
+  Markdown blocks, plus two P3 findings for live-environment aliases and nested
+  canonical subsections.
+- Five-axis reviewer `019f8ea8-848d-7882-939f-374a5d5dce6a` reported no P0-P3
+  findings and graded the five axes A/A/A-/A-/A-. That approval is recorded but
+  superseded by the actionable native and adversarial findings on the same
+  exact head.
+- Fifteen combined mutations failed first. The contract now preserves semantic
+  break and image-alt text, derives canonical operation spellings from the
+  registry before sentence splitting, shares environment and status taxonomy,
+  rejects past/perfect-tense claims under temporal markers, and assembles only
+  bounded adjacent `Status` blocks. Live/Cloudflare aliases require explicit
+  credential context, and canonical sections now retain nested subsections
+  until a peer or higher-level heading. Two more alias-heading mutations failed
+  before the final implementation. Existing website-live and remote-backup
+  language plus explicit negation/local-fixture cases remain negative controls.
+  All 130 focused cases, 523 compatibility tests, and 57 related checks pass.
 
 ## Closeout Pending
 

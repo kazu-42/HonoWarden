@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
-import type { Nodes, Root, RootContent, Table } from 'mdast'
+import type { Nodes, Root, Table } from 'mdast'
 import { parse as parseJsonc } from 'jsonc-parser'
 import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
@@ -163,6 +163,13 @@ const rolloutFlags = [
 
 const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
+const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
+const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b(?=[^.;!?]{0,120}\b(?:credential|password|kdf|account[ ._-]+key|user[ ._-]+key|recovery|backup|restore)\b)`
+const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|shipped|successful|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const registryOperationSpellings = registry.claims.map((claim) => ({
+  canonical: claim.operation,
+  prose: claim.operation.replace(/[._]+/g, ' '),
+}))
 const markdownParser = unified().use(remarkParse).use(remarkGfm)
 const registryCredentialDocs = [
   ...new Set(
@@ -406,6 +413,17 @@ describe('credential closeout documentation contract', () => {
     'Status: verified in production: credential writer activation.',
     'Production credential writer activation evidence exists.',
     'Production credential writer activation evidence is present.',
+    'Production credential writer activation is  \nverified.',
+    '![Production password change is verified.](assets/hon-95/desktop-vault.png)',
+    'Production `account.password.change` is verified.',
+    'Production `account.user_key.rotate` is verified.',
+    'Production password change has been validated.',
+    'Production password change is active.',
+    'Production password change has shipped.',
+    'After production credential writer activation was verified, the rollout flag was enabled.',
+    'Once production KDF mutation was verified, the release moved to Done.',
+    'Live credential writer activation is verified.',
+    'Cloudflare credential writer activation is verified.',
     'Production credential writer activation is not only documented but is verified.',
   ])(
     'rejects unsupported live credential claims outside the canonical section: %s',
@@ -440,6 +458,8 @@ describe('credential closeout documentation contract', () => {
   it.each([
     ['Production', 'Backup export is approved.'],
     ['Prod', 'Credential writer activation is verified.'],
+    ['Live', 'Credential writer activation is verified.'],
+    ['Cloudflare', 'Credential writer activation is verified.'],
   ])(
     'rejects unsupported live credential claims inherited from a %s heading',
     (heading, claim) => {
@@ -470,6 +490,33 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
+  it.each([
+    '## Production\n\nCredential writer activation.\n\nStatus: verified.',
+    '## Production\n\n- Credential writer activation\n- Status: verified',
+    '| Environment | Operation |\n| --- | --- |\n| Production | credential writer activation |\n| Status | verified |',
+  ])(
+    'rejects unsupported live credential claims assembled across adjacent blocks: %s',
+    (claim) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n${claim}\n`
+
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /must not claim verified staging or production activation/,
+      )
+    },
+  )
+
+  it.each([
+    '## Production\n\nCredential writer activation.\n\nStatus: not verified.',
+    '## Production\n\nCredential writer activation.\n\nLocal fixture status: verified.',
+    '## Live\n\nCredential writer activation is not verified.',
+  ])('accepts bounded adjacent-block credential evidence: %s', (claim) => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n${claim}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+  })
+
   it('rejects unsupported live credential claims in fenced output', () => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n\`\`\`text\nProduction credential writer activation is verified.\n\`\`\`\n`
@@ -493,6 +540,13 @@ describe('credential closeout documentation contract', () => {
     'Production credential writer activation evidence is not present.',
     'Production credential writer activation: not verified.',
     'Local evidence is available: production credential writer activation is not verified.',
+    'Production password change has not been validated.',
+    'Production password change is not active.',
+    'Production password change has not shipped.',
+    'Live credential writer activation is not verified.',
+    'Cloudflare credential writer activation is not verified.',
+    'Production account.password.change is not verified.',
+    '![Production password change is not verified.](assets/hon-95/desktop-vault.png)',
   ])('accepts an explicitly negated live credential claim: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
@@ -555,6 +609,16 @@ describe('credential closeout documentation contract', () => {
     expect(() => assertCredentialDocContract(docPath, content)).toThrow(
       /canonical credential sections/,
     )
+  })
+
+  it('keeps nested subsections inside the canonical credential section', () => {
+    const docPath = 'docs/release/index.md'
+    const content = readText(docPath).replace(
+      'Packet limitations:\n\n- The registry verifies committed metadata',
+      '### Packet limitations\n\n- The registry verifies committed metadata',
+    )
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
   })
 
   it.each([
@@ -1105,21 +1169,27 @@ function resolveRepoLink(docPath: string, target: string): string | undefined {
   return relativePath
 }
 
-function markdownBlocks(document: Root): Root[] {
-  const blocks: Root[] = []
-  let children: RootContent[] = []
-
-  for (const child of document.children) {
-    if (child.type === 'heading' && children.length > 0) {
-      blocks.push({ type: 'root', children })
-      children = []
+function markdownSections(document: Root): Root[] {
+  const sections: Root[] = []
+  for (let start = 0; start < document.children.length; start += 1) {
+    const heading = document.children[start]
+    if (heading?.type !== 'heading') {
+      continue
     }
-    children.push(child)
+    let end = start + 1
+    while (end < document.children.length) {
+      const candidate = document.children[end]
+      if (candidate?.type === 'heading' && candidate.depth <= heading.depth) {
+        break
+      }
+      end += 1
+    }
+    sections.push({
+      type: 'root',
+      children: document.children.slice(start, end),
+    })
   }
-  if (children.length > 0) {
-    blocks.push({ type: 'root', children })
-  }
-  return blocks
+  return sections
 }
 
 function canonicalCredentialSection(docPath: string, document: Root): Root {
@@ -1128,7 +1198,7 @@ function canonicalCredentialSection(docPath: string, document: Root): Root {
   if (!expectedHeading) {
     throw new Error(`missing canonical credential heading for ${docPath}`)
   }
-  const sections = markdownBlocks(document).filter((block) => {
+  const sections = markdownSections(document).filter((block) => {
     const heading = block.children[0]
     if (
       heading?.type !== 'heading' ||
@@ -1149,6 +1219,8 @@ function canonicalCredentialSection(docPath: string, document: Root): Root {
 
 function proseFragments(document: Root): string[] {
   const fragments: string[] = []
+  let pendingAdjacentClaim:
+    { headingKey: string; contextualParts: string[] } | undefined
 
   const append = (parts: string[]): void => {
     const text = parts
@@ -1165,16 +1237,40 @@ function proseFragments(document: Root): string[] {
     parts: string[],
   ): void => {
     append(parts)
-    const content = parts.join(' ')
+    const content = parts.join(' ').trim()
     const environmentHeadings = headingContext.filter((heading) =>
       hasLiveEnvironmentContext(heading),
     )
+    const contextualParts = [...environmentHeadings, ...parts]
+    const contextualContent = contextualParts.join(' ')
     if (
       environmentHeadings.length > 0 &&
-      hasCredentialClaimContext([...environmentHeadings, content].join(' '))
+      hasCredentialClaimContext(contextualContent)
     ) {
-      append([...environmentHeadings, ...parts])
+      append(contextualParts)
     }
+
+    const headingKey = headingContext.join('\u0000')
+    if (
+      pendingAdjacentClaim?.headingKey === headingKey &&
+      hasAffirmativeLiveStatus(content) &&
+      /\bstatus\b/i.test(content) &&
+      !hasCredentialClaimContext(content) &&
+      !/\b(?:fixture|local|synthetic)\b/i.test(content)
+    ) {
+      append(
+        [...pendingAdjacentClaim.contextualParts, ...parts].map((part) =>
+          part.replace(/[.;!?]+\s*$/g, ''),
+        ),
+      )
+    }
+
+    pendingAdjacentClaim =
+      hasLiveEnvironmentContext(contextualContent) &&
+      hasCredentialClaimContext(contextualContent) &&
+      !hasAffirmativeLiveStatus(contextualContent)
+        ? { headingKey, contextualParts }
+        : undefined
   }
 
   const visitChildren = (
@@ -1184,6 +1280,7 @@ function proseFragments(document: Root): string[] {
     let headingContext = [...inheritedHeadingContext]
     for (const child of children) {
       if (child.type === 'heading') {
+        pendingAdjacentClaim = undefined
         headingContext = headingContext.slice(0, child.depth - 1)
         headingContext[child.depth - 1] = markdownText(child, true).trim()
         append([...headingContext])
@@ -1221,36 +1318,89 @@ function proseFragments(document: Root): string[] {
   return fragments
 }
 
+function normalizeCredentialOperationSpellings(value: string): string {
+  let normalized = value
+  for (const { canonical, prose } of registryOperationSpellings) {
+    normalized = normalized.replace(
+      new RegExp(`\\b${escapeRegExp(canonical)}\\b`, 'gi'),
+      prose,
+    )
+  }
+  return normalized
+}
+
+interface IndexedRegExpMatch extends RegExpMatchArray {
+  index: number
+}
+
+function liveEnvironmentMatches(value: string): IndexedRegExpMatch[] {
+  const primary = indexedMatches(
+    value,
+    new RegExp(liveEnvironmentPatternSource, 'gi'),
+  )
+  return primary.length > 0
+    ? primary
+    : indexedMatches(value, new RegExp(liveEnvironmentAliasPatternSource, 'gi'))
+}
+
+function liveStatusMatches(value: string): IndexedRegExpMatch[] {
+  return indexedMatches(value, new RegExp(liveStatusPatternSource, 'gi'))
+}
+
+function indexedMatches(value: string, pattern: RegExp): IndexedRegExpMatch[] {
+  const matches: IndexedRegExpMatch[] = []
+  for (const match of value.matchAll(pattern)) {
+    if (match.index === undefined) {
+      throw new Error('global regular-expression match omitted its index')
+    }
+    matches.push(match as IndexedRegExpMatch)
+  }
+  return matches
+}
+
+function hasAffirmativeLiveStatus(value: string): boolean {
+  return new RegExp(liveStatusPatternSource, 'i').test(value)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function unsupportedLiveCredentialClaim(text: string): boolean {
-  const normalized = text.replaceAll('|', ' ').replace(/\s+/g, ' ').trim()
+  const normalized = normalizeCredentialOperationSpellings(text)
+    .replaceAll('|', ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
   const clauses = normalized
     .split(/[.;!?]+/)
     .map((clause) => clause.trim())
     .filter((clause) => clause.length > 0)
 
   for (const clause of clauses) {
-    const environments = [
-      ...clause.matchAll(
-        /\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/gi,
-      ),
-    ]
+    const environments = liveEnvironmentMatches(clause)
     if (environments.length === 0) {
       continue
     }
 
     const hasCredentialContext = hasCredentialClaimContext(clause)
     if (hasCredentialContext) {
-      const statuses = [
-        ...clause.matchAll(
-          /\b(?:verified|proven|recorded|enabled|disabled|activated|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|successful|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|proves|records|confirms|demonstrates|documents)\b/gi,
-        ),
-      ]
+      const statuses = liveStatusMatches(clause)
       for (const status of statuses) {
-        const environment = environments.reduce((nearest, candidate) =>
-          Math.abs(candidate.index - status.index) <
-          Math.abs(nearest.index - status.index)
-            ? candidate
-            : nearest,
+        const environmentCandidates =
+          status[0].toLowerCase() === 'live'
+            ? environments.filter(
+                (environment) => environment.index !== status.index,
+              )
+            : environments
+        if (environmentCandidates.length === 0) {
+          continue
+        }
+        const environment = environmentCandidates.reduce(
+          (nearest, candidate) =>
+            Math.abs(candidate.index - status.index) <
+            Math.abs(nearest.index - status.index)
+              ? candidate
+              : nearest,
         )
         if (
           !statusDescribesEnvironmentClaim(
@@ -1270,11 +1420,13 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
       }
     }
 
-    for (const match of clause.matchAll(
-      /\b(?:packet|registry|closeout|evidence)\s+(?:verifies|proves|records|confirms|demonstrates)\s+(?:tracked\s+)?(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/gi,
-    )) {
+    const proofPattern = new RegExp(
+      String.raw`\b(?:packet|registry|closeout|evidence)\s+(?:verifies|proves|records|confirms|demonstrates)\s+(?:tracked\s+)?${liveEnvironmentPatternSource}`,
+      'gi',
+    )
+    for (const match of clause.matchAll(proofPattern)) {
       const environmentOffset = match[0].search(
-        /\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/i,
+        new RegExp(liveEnvironmentPatternSource, 'i'),
       )
       const environmentIndex = match.index + environmentOffset
       const statusOffset = match[0].search(
@@ -1357,29 +1509,42 @@ function statusDescribesEnvironmentClaim(
 }
 
 function hasCredentialClaimContext(clause: string): boolean {
+  const normalizedClause = normalizeCredentialOperationSpellings(clause)
   if (
-    /\b(?:password[-\s]+(?:changes?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|restor(?:e|es|ed|ation)|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
-      clause,
+    registryOperationSpellings.some(({ prose }) =>
+      normalizedClause.toLowerCase().includes(prose.toLowerCase()),
     )
   ) {
     return true
   }
   if (
-    /\bcredential\b/i.test(clause) &&
+    /\b(?:password[-\s]+(?:changes?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|restor(?:e|es|ed|ation)|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
+      normalizedClause,
+    )
+  ) {
+    return true
+  }
+  if (
+    /\bcredential\b/i.test(normalizedClause) &&
     /\b(?:activation|evidence|writer|run|operation|lifecycle|mutation|rotation|readback|recovery|backup|restore|restoration|generation)\b/i.test(
-      clause,
+      normalizedClause,
     )
   ) {
     return true
   }
   return (
-    /\bbackup[-\s]+export\b/i.test(clause) &&
-    /\b(?:staging|prod(?:uction)?|real[-\s]+account)\b/i.test(clause)
+    /\bbackup[-\s]+export\b/i.test(normalizedClause) &&
+    /\b(?:staging|prod(?:uction)?|live|cloudflare|real[-\s]+account)\b/i.test(
+      normalizedClause,
+    )
   )
 }
 
 function hasLiveEnvironmentContext(value: string): boolean {
-  return /\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/i.test(value)
+  return (
+    liveEnvironmentMatches(value).length > 0 ||
+    /^(?:live|cloudflare)(?:\s+(?:environment|runtime))?$/i.test(value.trim())
+  )
 }
 
 function liveClaimIsNegated(
@@ -1447,9 +1612,16 @@ function liveClaimIsNonAssertive(
   if (/[,;:]|\b(?:but|however|yet)\b/i.test(scope)) {
     return false
   }
+  if (
+    /\b(?:was|were|has\s+been|have\s+been|had\s+been)\s*$/i.test(
+      beforeStatus,
+    ) ||
+    /^(?:was|were)\s+present\b/i.test(clause.slice(statusIndex))
+  ) {
+    return false
+  }
   return (
-    (/\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/i.test(scope) &&
-      hasCredentialClaimContext(scope)) ||
+    (hasLiveEnvironmentContext(scope) && hasCredentialClaimContext(scope)) ||
     (environmentIndex < marker.index && hasCredentialClaimContext(scope))
   )
 }
@@ -1479,6 +1651,12 @@ function markdownText(node: Nodes, includeCode: boolean): string {
   }
   if (node.type === 'code') {
     return ''
+  }
+  if (node.type === 'break') {
+    return ' '
+  }
+  if (node.type === 'image' || node.type === 'imageReference') {
+    return node.alt ?? ''
   }
   if ('children' in node) {
     return node.children

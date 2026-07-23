@@ -131,7 +131,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_sixth_review_findings_remediated_rereview_pending',
+    'evidence_1c_seventh_review_findings_remediated_rereview_pending',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -180,6 +180,30 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.match(
     state.verification.results.evidence1cSixthReviewRemediation,
     /103_focused_496_compatibility_57_related_ops_docs/,
+  )
+  assert.equal(
+    state.verification.results.evidence1cSeventhReviewedHead,
+    'f9e3fdd668ecd803bff122ecc979a3bac913fdda',
+  )
+  assert.equal(
+    state.verification.results.evidence1cSeventhReviewedTree,
+    'c2906be644441072a8894557eda2da873a065ee0',
+  )
+  assert.match(
+    state.verification.results.evidence1cSeventhStandardReview,
+    /019f8ea8_b7ea_7b00_bb0d_50c3186c79cf_request_changes_3_p2/,
+  )
+  assert.match(
+    state.verification.results.evidence1cSeventhAdversarialReview,
+    /019f8ea8_83dc_7170_a1bf_a48f3568f967_request_changes_2_p2.*2_p3/,
+  )
+  assert.match(
+    state.verification.results.evidence1cSeventhFiveAxisReview,
+    /019f8ea8_848d_7882_939f_374a5d5dce6a_0_actionable_p0_p1_p2_p3/,
+  )
+  assert.match(
+    state.verification.results.evidence1cSeventhReviewRemediation,
+    /130_focused_523_compatibility_57_related_ops_docs/,
   )
   assert.deepEqual(
     readback.issues.map((issue) => [
