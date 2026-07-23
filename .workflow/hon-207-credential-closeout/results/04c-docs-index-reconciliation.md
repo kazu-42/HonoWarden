@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: second review findings remediated; exact-head rereviews and publication pending
+Status: third review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -54,14 +54,14 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 17 tests passed.
-- Compatibility suite: 6 files and 410 tests passed.
+- Cross-document credential contract: 33 tests passed.
+- Compatibility suite: 6 files and 426 tests passed.
 - Release, security, Wrangler environment, operator, and credential docs: 5
-  files and 53 tests passed.
+  files and 69 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed; live checkpoint exact at
   2,094 bytes and SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`.
-- Full serial suite: 105 files and 1,640 tests passed in 171.16 seconds.
+- Full serial suite: 105 files and 1,656 tests passed in 205.84 seconds.
 - TypeScript, ESLint, full-repository Prettier, and brand scan passed.
 - Diff whitespace check passed.
 - Dependency audit: no known vulnerabilities.
@@ -128,7 +128,34 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   audit found zero known vulnerabilities; after the audit document was rebound
   to the new lockfile SHA-256, all 41 affected tests across nine files and then
   the full suite passed serially. After the final self-review mutations, the
-  last full run passed all 1,640 tests across 105 files.
+  second-remediation full run passed all 1,640 tests across 105 files.
+
+## Third Review And Remediation
+
+- Native Codex session `019f8e41-8c6b-75d0-bc00-efe1d1d4c061` reviewed exact
+  commit `b6a73ac3e6b7faa51782de279ff412c69c115e4a`, tree
+  `c3fcb4b88e9cbcd9e8e6599beaf0add15557ae6c`, and reported four P2 contract
+  bypasses: live claims split across table cells, unrelated negation, stale
+  inventory rows absent from the registry, and image targets counted as
+  canonical links.
+- Adversarial reviewer `019f8e41-0ae2-7972-ae35-67d7ac673c95` reported one
+  overlapping P2 for natural environment-suffix wording and negation scope,
+  plus one P3 for machine-specific absolute local paths that normalized back
+  inside the checkout.
+- Five-axis reviewer `019f8e41-35ec-7e30-9a87-8a594cade464` reported no
+  actionable finding and graded framing, diagnosis, design, correctness/tests,
+  and architecture A/A/A/A/A-. Its approval is recorded but superseded by the
+  actionable standard and adversarial findings on the same exact head.
+- Eight review mutations failed first. The parser now preserves `link` versus
+  `image` kind, rejects decoded absolute local paths, scans complete table rows,
+  compares the full inventory ID set with the registry, accepts environment
+  placement before or after the credential claim, and binds negation to the
+  status or environment clause instead of a fixed prefix window.
+- Four more self-review mutations expanded positive operational statuses to
+  `approved`, `live`, and `ready`, while preserving `not yet been verified` and
+  other explicit negative controls. All 33 contract tests, 426 compatibility
+  tests, 69 related document/configuration tests, and 1,656 full-suite tests now
+  pass.
 
 ## Closeout Pending
 
