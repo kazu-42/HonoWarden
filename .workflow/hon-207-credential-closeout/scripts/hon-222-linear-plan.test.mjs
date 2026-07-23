@@ -123,9 +123,9 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: twelfth review findings remediated; exact-head rereviews and publication pending$/m,
+    /^Status: thirteenth review findings remediated; exact-head rereviews and publication pending$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: eleventh review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: twelfth review/m)
   assert.deepEqual(
     evidencePacket.subpackets.map((packet) => [
       packet.linear,
@@ -140,7 +140,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_twelfth_review_findings_remediated_rereview_pending',
+    'evidence_1c_thirteenth_review_findings_remediated_rereview_pending',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -343,12 +343,40 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
     /297_focused_690_compatibility_57_related_ops_docs_6_hon_222_plan_1920_full/,
   )
   assert.equal(
+    state.verification.results.evidence1cThirteenthReviewedHead,
+    'f63a3a95193778262f75d5442e860ee442347ffd',
+  )
+  assert.equal(
+    state.verification.results.evidence1cThirteenthReviewedTree,
+    'fcd6f47c1e84e64c5335ae6a247a352712a6983a',
+  )
+  assert.match(
+    state.verification.results.evidence1cThirteenthStandardReview,
+    /019f8f45_39ae_77f3_8e8d_f469e18ad8d9_request_changes_4_p2/,
+  )
+  assert.match(
+    state.verification.results.evidence1cThirteenthAdversarialReview,
+    /019f8f44_fc8f_76f2_a1cd_554a3ec1649e_request_changes_1_p2/,
+  )
+  assert.match(
+    state.verification.results.evidence1cThirteenthFiveAxisReview,
+    /019f8f45_1f35_76d0_b238_921c48f2935a_0_actionable_p0_p1_p2_p3/,
+  )
+  assert.match(
+    state.verification.results.evidence1cThirteenthFollowupReviews,
+    /019f8f50_821a_7942_83ac_626a4adbf424.*019f8f50_831e_7e31_9434_ada14dec61dc/,
+  )
+  assert.match(
+    state.verification.results.evidence1cThirteenthReviewRemediation,
+    /322_focused_715_compatibility_57_related_ops_docs_6_hon_222_plan_1945_full/,
+  )
+  assert.equal(
     state.verification.results.evidence1cFocused,
-    'passed_docs_contract_297_compat_690_related_ops_docs_57_hon_222_plan_6',
+    'passed_docs_contract_322_compat_715_related_ops_docs_57_hon_222_plan_6',
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_1920_tests_serial_137_02_seconds_post_twelfth_remediation',
+    'passed_105_files_1945_tests_serial_179_56_seconds_post_thirteenth_remediation',
   )
   assert.deepEqual(
     readback.issues.map((issue) => [

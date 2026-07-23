@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: twelfth review findings remediated; exact-head rereviews and publication pending
+Status: thirteenth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -51,21 +51,26 @@ credential section carries the packet's exact no-rerun and no-live-activation
 limitations. Environment context is inherited through nested Markdown
 containers, table headers, and bounded adjacent sentences. User-visible prose
 preserves boundaries between adjacent Markdown inline nodes. Rollout assignment
-checks inherit a live environment from qualified headings or bounded paragraph
-context, retain it across neutral sentences until an explicit context shift,
-and cover direct flag-first assignments, active and postfix predicates, quoted
-JSON-style values, and flag-subject `is set to true` forms. Every matched
-assignment binds negation and local-harness exceptions to its exact predicate,
-including quoted absence examples, and a later positive assignment cannot be
-masked by an earlier negative one. The claim scanner carries section-scoped
-operations across neutral blocks, distinguishes current and historical
-staging, production, remote, and real-account credential/recovery assertions
-from explicit or contracted negation and genuine future gates, recognizes
-bounded release/rollout status labels and noun-form success claims, and
-associates `live` aliases structurally without treating live documentation as a
-deployment claim. Evidence count tables are compared structurally with the
-registry, and each rollout document must carry exactly one row with all three
-configured scopes set to `false` for each of the four credential flags.
+checks inherit a live environment from qualified headings, adjacent Markdown
+blocks, and nested neutral subheadings until an explicit scope shift. A
+short-lived local-harness context applies only to the immediately following
+literal block, while local section headings remain scoped by Markdown
+hierarchy. Assignment coverage includes direct flag-first forms, active and
+postfix predicates, quoted JSON-style values, flag-subject `is set to true`,
+and environment-subject `has FLAG set to true` forms. Every matched assignment
+binds full or contracted negation and local-harness exceptions to its exact
+predicate, including quoted absence examples, and a later positive assignment
+cannot be masked by an earlier negative one. The claim scanner carries
+section-scoped operations across neutral blocks, distinguishes current and
+historical staging, production, remote, and real-account credential/recovery
+assertions from explicit, contracted, or coordinated `neither` negation and
+genuine future or future-perfect gates, recognizes bounded release/rollout
+status labels and noun-form success claims, and associates qualified
+Cloudflare account headings and `live` aliases structurally without treating
+documentation headings as deployment claims. Evidence count tables are
+compared structurally with the registry, and each rollout document must carry
+exactly one row with all three configured scopes set to `false` for each of the
+four credential flags.
 
 The local workflow state points at the 04c packet. The completed 04b result is
 now bound to PR #116, exact-head and merged-main CI, squash-tree equality, and
@@ -73,17 +78,17 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 297 tests passed.
-- Compatibility suite: 6 files and 690 tests passed.
+- Cross-document credential contract: 322 tests passed.
+- Compatibility suite: 6 files and 715 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
-  harness checks: 5 files and 57 tests passed.
+  harness checks: 6 files and 57 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
-  HON-229 implementation checkpoint readback was exact at 4,279 bytes and
+  HON-229 implementation checkpoint readback was exact at 4,722 bytes and
   SHA-256
-  `4eef6d9f1decb90c0c6b27d3465b759aa2603e7845a3a88364cb389b0fbf452d`;
-  it was updated at `2026-07-23T13:27:38.782Z` for commit `5eece6c`.
-- Post-twelfth-remediation full serial suite: 105 files and 1,920 tests passed
-  in 137.02 seconds with file parallelism disabled and one worker.
+  `96015660109b96ff10bb4e3367a6514b4f212610ffb30317a058bf5d7413cf94`;
+  it was updated at `2026-07-23T13:57:46.132Z` for commit `f63a3a9`.
+- Post-thirteenth-remediation full serial suite: 105 files and 1,945 tests
+  passed in 179.56 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -425,6 +430,38 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   structural controls rather than prose exceptions. All 297 focused cases,
   690 compatibility tests, 57 related checks, and the serial 105-file/1,920-
   test suite pass.
+
+## Thirteenth Review And Remediation
+
+- Native Codex session `019f8f45-39ae-77f3-8e8d-f469e18ad8d9` reviewed exact
+  commit `f63a3a95193778262f75d5442e860ee442347ffd`, tree
+  `fcd6f47c1e84e64c5335ae6a247a352712a6983a`, and reported four P2
+  boundaries: environment-subject `has FLAG set to true` assignments,
+  qualified Cloudflare account headings, coordinated `neither` negation, and
+  future-perfect conditional gates.
+- Adversarial reviewer `019f8f44-fc8f-76f2-a1cd-554a3ec1649e` reported one
+  P2 gap where a live rollout lead-in paragraph and its fenced assignment were
+  split across Markdown blocks. Independent five-axis reviewer
+  `019f8f45-1f35-76d0-b238-921c48f2935a` reported no P0-P3 findings, graded
+  the five axes A-/A-/A-/A-/B+, and approved subject to publication gates;
+  that approval is superseded by the actionable standard and adversarial
+  findings on the same exact head.
+- Follow-up adversarial reviewer `019f8f50-821a-7942-83ac-626a4adbf424`
+  reported four P2 boundaries for neutral child headings, Cloudflare account
+  settings, contracted rollout negation, and qualified future-perfect gates.
+  Scope-state reviewer `019f8f50-831e-7e31-9434-ada14dec61dc` reported one P2
+  false positive for a local literal block under a production heading.
+- Eight initial review mutations, five follow-up mutations, and two
+  self-review mutations failed first. Ten positive and negative scope controls
+  stayed green. The resulting state machine carries live rollout context
+  through adjacent blocks and nested neutral headings, stops it at sibling or
+  explicit local boundaries, and consumes a local lead-in only for the next
+  literal block. Predicate handling now covers active environment-subject
+  assignments, contracted assignment negation, coordinated negation,
+  qualified Cloudflare account headings, and future-perfect gates without
+  weakening completed historical assertions. All 322 focused cases, 715
+  compatibility tests, 57 related checks, 6 HON-222 plan tests, and the serial
+  105-file/1,945-test suite pass.
 
 ## Closeout Pending
 

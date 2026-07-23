@@ -437,6 +437,8 @@ describe('credential closeout documentation contract', () => {
     'Staging is approved for KDF mutation.',
     'Production has been validated for credential writer activation.',
     'After production credential writer activation was verified, the rollout flag was enabled.',
+    'After production password change has been verified, the release index was updated.',
+    'After production password change has been verified in Cloudflare, the release index was updated.',
     'Once production KDF mutation was verified, the release moved to Done.',
     'After production password change succeeded, the release index was updated.',
     'After production password change released, the release index was updated.',
@@ -471,6 +473,7 @@ describe('credential closeout documentation contract', () => {
     '[Production password change](feature-freeze-checklist.md)![proof](assets/hon-95/desktop-vault.png "verified")',
     '![Production password change][split-image][proof][split-proof]\n\n[split-image]: assets/hon-95/desktop-vault.png\n[split-proof]: feature-freeze-checklist.md "verified"',
     'Production credential writer activation is not only documented but is verified.',
+    'Neither the local docs nor the fixture notes change the fact that production password change is verified.',
   ])(
     'rejects unsupported live credential claims outside the canonical section: %s',
     (claim) => {
@@ -506,6 +509,8 @@ describe('credential closeout documentation contract', () => {
     ['Prod', 'Credential writer activation is verified.'],
     ['Live', 'Credential writer activation is verified.'],
     ['Cloudflare', 'Credential writer activation is verified.'],
+    ['Cloudflare account', 'Password change is verified.'],
+    ['Cloudflare account settings', 'Password change is verified.'],
   ])(
     'rejects unsupported live credential claims inherited from a %s heading',
     (heading, claim) => {
@@ -637,6 +642,8 @@ describe('credential closeout documentation contract', () => {
     'Password change is not live.',
     'Password change did not go live.',
     'Production credential writer activation. Not verified.',
+    'Neither production password change nor staging KDF mutation is verified.',
+    'Production password change is neither verified nor approved.',
     '[details](feature-freeze-checklist.md "Production credential writer activation is not verified.")',
     '[Production password change](feature-freeze-checklist.md "not verified")',
     '[Production password change][first-title]\n\n[first-title]: feature-freeze-checklist.md\n[first-title]: feature-freeze-checklist.md "verified"',
@@ -659,6 +666,7 @@ describe('credential closeout documentation contract', () => {
     'Production is verified for release documentation.',
     'Staging is ready for ordinary website traffic.',
     'The live documentation index is ready for password change updates.',
+    '## Cloudflare documentation\n\nPassword change is verified.',
   ])('accepts a non-credential environment status: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
@@ -688,6 +696,10 @@ describe('credential closeout documentation contract', () => {
     'Password change will go live only after a separate production evidence run.',
     'If remote credential restoration is verified, record separate evidence.',
     'After production credential writer activation is verified, update this packet.',
+    'Once production password change has been verified, update this packet.',
+    'After production password change has been verified, enable the flag.',
+    'When staging KDF mutation has been approved, record separate evidence.',
+    'After production password change has been verified in Cloudflare, update this packet.',
   ])('accepts a non-assertive future live credential gate: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
@@ -927,6 +939,10 @@ describe('credential closeout documentation contract', () => {
     'Production uses the following setting. `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
     '## Production\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
     'Production rollout settings are listed below. Credential gates remain documented here. `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
+    'Production uses the following setting.\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    'Production uses the following setting.\n\n### Current value\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    'Production uses the following setting.\n\nThis setting is not local.\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    '## Production\n\nThe local harness uses:\n\nDeployment notes remain unchanged.\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
   ])(
     'rejects a live true rollout assignment with bounded environment context: %s',
     (claim) => {
@@ -958,6 +974,7 @@ describe('credential closeout documentation contract', () => {
     'Production uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED = "true"`.',
     'Production keeps `HONOWARDEN_PASSWORD_CHANGE_ENABLED` turned on.',
     'Production env var `HONOWARDEN_PASSWORD_CHANGE_ENABLED` is set to true.',
+    'Production has `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.',
     'Production does not set `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true` while staging sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])('rejects every active live rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
@@ -1011,6 +1028,8 @@ describe('credential closeout documentation contract', () => {
     'Production does not have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` enabled.',
     'Production never keeps `HONOWARDEN_ACCOUNT_KEYS_ENABLED` enabled.',
     'Production does not run with `HONOWARDEN_USER_KEY_ROTATION_ENABLED` enabled.',
+    'Production does not have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.',
+    "Production doesn't have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.",
     'Production remains disabled. The local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
     '## Production\n\nThe local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`; production remains false.',
     '## Production\n\nThe local harness enables `HONOWARDEN_PASSWORD_CHANGE_ENABLED`; production remains disabled.',
@@ -1023,6 +1042,12 @@ describe('credential closeout documentation contract', () => {
     'Production config does not contain `"HONOWARDEN_PASSWORD_CHANGE_ENABLED": "true"`.',
     'Production does not set `"HONOWARDEN_PASSWORD_CHANGE_ENABLED": "true"`.',
     'Production has no `HONOWARDEN_PASSWORD_CHANGE_ENABLED = "true"` entry.',
+    'Production uses the following setting.\n\nThe local harness uses:\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    'Production uses the following setting.\n\n## Local harness\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    '## Production\n\nThe local harness uses:\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    '## Production\n\n### Local harness\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    '## Production\n\n### Local harness\n\nConfiguration follows.\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    'Production uses the following setting.\n\n## Documentation example\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
   ])('accepts a non-contradictory rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n\n${claim}\n`
@@ -1572,7 +1597,7 @@ function positiveRolloutAssignments(
       'gi',
     ),
     new RegExp(
-      `\\b(?:has|have|keep(?:s|ing)?|run(?:s|ning)?\\s+with)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:${positiveValue}|turned\\s+on\\b)`,
+      `\\b(?:has|have|keep(?:s|ing)?|run(?:s|ning)?\\s+with)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:${positiveValue}|turned\\s+on\\b|(?:set|configured)\\s+(?:to|as)\\s*${positiveValue})`,
       'gi',
     ),
     new RegExp(
@@ -1619,6 +1644,14 @@ function rolloutAssignmentIsNegated(prefix: string): boolean {
     new RegExp(`\\b(?:cannot|never)\\s+${assignmentVerb}\\s*$`, 'i').test(
       scopedPrefix,
     )
+  ) {
+    return true
+  }
+  if (
+    new RegExp(
+      `\\b(?:(?:ain|are|ca|could|did|do|does|had|has|have|is|might|must|need|should|was|were|wo|would)n['’]t)(?:\\s+(?:actually|currently|directly|ever|explicitly|yet))?(?:\\s+${assignmentVerb})?\\s*$`,
+      'i',
+    ).test(scopedPrefix)
   ) {
     return true
   }
@@ -1688,6 +1721,10 @@ function proseFragments(document: Root): string[] {
   })
   let pendingAdjacentClaim:
     { headingKey: string; contextualParts: string[] } | undefined
+  let pendingRolloutContext:
+    { headingKey: string; contextualParts: string[] } | undefined
+  let pendingLocalRolloutContext:
+    { headingKey: string; contextualParts: string[] } | undefined
 
   const append = (parts: string[]): void => {
     const text = parts
@@ -1702,23 +1739,72 @@ function proseFragments(document: Root): string[] {
   const appendWithHeadingContext = (
     headingContext: string[],
     parts: string[],
+    literalBlock = false,
   ): void => {
     append(parts)
     const content = parts.join(' ').trim()
     const environmentHeadings = headingContext.filter((heading) =>
       hasLiveEnvironmentContext(heading),
     )
+    const localHeadings = headingContext.filter((heading) =>
+      hasExplicitLocalRolloutContext(heading),
+    )
     const contextualParts = [...environmentHeadings, ...parts]
     const contextualContent = contextualParts.join(' ')
+    const headingKey = headingContext.join('\u0000')
+    const hasTrackedFlag = hasTrackedRolloutFlag(content)
+    const inheritedLocalRolloutContext =
+      literalBlock &&
+      hasTrackedFlag &&
+      pendingLocalRolloutContext?.headingKey === headingKey
+        ? pendingLocalRolloutContext
+        : undefined
+    const inheritsLocalRolloutContext =
+      inheritedLocalRolloutContext !== undefined
+    const rolloutContextualParts = [
+      ...environmentHeadings,
+      ...(inheritedLocalRolloutContext?.contextualParts ?? []),
+      ...localHeadings,
+      ...parts,
+    ]
     if (
       environmentHeadings.length > 0 &&
       (hasCredentialClaimContext(contextualContent) ||
         hasTrackedRolloutFlag(contextualContent))
     ) {
-      append(contextualParts)
+      append(hasTrackedFlag ? rolloutContextualParts : contextualParts)
     }
 
-    const headingKey = headingContext.join('\u0000')
+    const hasExplicitLocalContext =
+      localHeadings.length > 0 || hasExplicitLocalRolloutContext(content)
+    if (
+      pendingRolloutContext?.headingKey === headingKey &&
+      hasTrackedFlag &&
+      !hasExplicitLocalContext
+    ) {
+      append([...pendingRolloutContext.contextualParts, ...parts])
+    }
+    if (
+      pendingLocalRolloutContext !== undefined &&
+      !inheritsLocalRolloutContext &&
+      !hasExplicitLocalContext
+    ) {
+      pendingLocalRolloutContext = undefined
+    }
+    if (hasExplicitLocalContext) {
+      pendingRolloutContext = undefined
+      pendingLocalRolloutContext = hasTrackedFlag
+        ? undefined
+        : { headingKey, contextualParts: parts }
+    } else if (hasTrackedFlag) {
+      pendingRolloutContext = undefined
+      pendingLocalRolloutContext = undefined
+    } else if (hasLiveEnvironmentContext(contextualContent)) {
+      pendingRolloutContext = { headingKey, contextualParts }
+    } else if (pendingRolloutContext?.headingKey !== headingKey) {
+      pendingRolloutContext = undefined
+    }
+
     if (
       pendingAdjacentClaim?.headingKey === headingKey &&
       isStandaloneAffirmativeStatus(content) &&
@@ -1764,11 +1850,25 @@ function proseFragments(document: Root): string[] {
     for (const child of children) {
       if (child.type === 'heading') {
         pendingAdjacentClaim = undefined
+        const previousHeadingDepth = headingContext.length
+        const headingText = markdownProseText(child, referenceTitles).trim()
         headingContext = headingContext.slice(0, child.depth - 1)
-        headingContext[child.depth - 1] = markdownProseText(
-          child,
-          referenceTitles,
-        ).trim()
+        headingContext[child.depth - 1] = headingText
+        const headingKey = headingContext.join('\u0000')
+        const nestedNeutralHeading =
+          child.depth > previousHeadingDepth &&
+          !hasLiveEnvironmentContext(headingText) &&
+          !hasExplicitLocalRolloutContext(headingText)
+        if (nestedNeutralHeading && pendingRolloutContext !== undefined) {
+          pendingRolloutContext.headingKey = headingKey
+        } else {
+          pendingRolloutContext = undefined
+        }
+        if (nestedNeutralHeading && pendingLocalRolloutContext !== undefined) {
+          pendingLocalRolloutContext.headingKey = headingKey
+        } else {
+          pendingLocalRolloutContext = undefined
+        }
         append([...headingContext])
         continue
       }
@@ -1791,11 +1891,9 @@ function proseFragments(document: Root): string[] {
       if (child.type === 'code') {
         const lines = child.value.split(/\r?\n/)
         for (const line of lines) {
-          appendWithHeadingContext(headingContext, [line])
+          append([line])
         }
-        if (lines.length > 1) {
-          appendWithHeadingContext(headingContext, lines)
-        }
+        appendWithHeadingContext(headingContext, lines, true)
         continue
       }
       if ('children' in child) {
@@ -1962,6 +2060,27 @@ function hasTrackedRolloutFlag(value: string): boolean {
   return rolloutFlags.some((flag) =>
     new RegExp(`\\b${escapeRegExp(flag)}\\b`, 'i').test(value),
   )
+}
+
+function hasExplicitLocalRolloutContext(value: string): boolean {
+  for (const match of value.matchAll(
+    /\b(?:fixture|harness|local|loopback|synthetic)\b/gi,
+  )) {
+    if (match.index === undefined) {
+      throw new Error('local rollout context match omitted its index')
+    }
+    const scopedPrefix = rolloutPredicateScope(value.slice(0, match.index))
+      .replace(/\bnot\s+only\b/gi, '')
+      .trim()
+    if (
+      /\b(?:no|not|never)\b/i.test(scopedPrefix) ||
+      /\b\w+n['’]t\b/i.test(scopedPrefix)
+    ) {
+      continue
+    }
+    return true
+  }
+  return false
 }
 
 function unsupportedLiveCredentialClaim(text: string): boolean {
@@ -2219,7 +2338,7 @@ function hasCredentialClaimContext(clause: string): boolean {
 function hasLiveEnvironmentContext(value: string): boolean {
   return (
     new RegExp(liveEnvironmentPatternSource, 'i').test(value) ||
-    /^(?:live|cloudflare)(?:[-\s]+(?:credential|deployment|environment|production|rollout|runtime|workers?)){0,3}$/i.test(
+    /^(?:live|cloudflare)(?:[-\s]+(?:account|credential|deployment|environment|production|rollout|runtime|settings?|workers?)){0,3}$/i.test(
       value.trim(),
     )
   )
@@ -2244,6 +2363,25 @@ function liveClaimIsNegated(
     )
   ) {
     return true
+  }
+  const neither = [...beforeStatus.matchAll(/\bneither\b/gi)].at(-1)
+  if (neither?.index !== undefined) {
+    const beforeNeither = beforeStatus.slice(0, neither.index)
+    const neitherScope = beforeStatus.slice(neither.index + neither[0].length)
+    const hasScopeBreak =
+      /[,;:]|\b(?:although|and|because|but|however|that|though|whereas|yet)\b/i.test(
+        neitherScope,
+      )
+    const predicateNegation =
+      neither.index > environmentIndex &&
+      /\b(?:are|has\s+been|have\s+been|is|was|were)\s*$/i.test(beforeNeither)
+    const coordinatedSubjectNegation =
+      neither.index <= environmentIndex &&
+      /\bnor\b/i.test(neitherScope) &&
+      /\b(?:are|has\s+been|have\s+been|is|was|were)\s*$/i.test(neitherScope)
+    if (!hasScopeBreak && (predicateNegation || coordinatedSubjectNegation)) {
+      return true
+    }
   }
 
   const beforeEnvironment = clause.slice(0, environmentIndex)
@@ -2295,6 +2433,15 @@ function liveClaimIsNonAssertive(
   const scope = clause.slice(marker.index, statusIndex)
   if (/[,;:]|\b(?:but|however|yet)\b/i.test(scope)) {
     return false
+  }
+  const afterStatus = clause.slice(statusIndex + status.length)
+  if (
+    /\b(?:has|have)\s+been\s*$/i.test(beforeStatus) &&
+    /^\s*(?:\b(?:for|in|on|with)\b[^,;.!?]{1,80})?,\s*(?:archive|attach|continue|create|deploy|disable|enable|keep|mark|merge|move|proceed|promote|publish|record|run|update|write)\b/i.test(
+      afterStatus,
+    )
+  ) {
+    return true
   }
   if (
     /\b(?:was|were|has\s+been|have\s+been|had\s+been)\s*$/i.test(
