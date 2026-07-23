@@ -95,7 +95,7 @@
     }
   ],
   "verification": {
-    "status": "evidence_1b_implementation_in_progress",
+    "status": "evidence_1b_implementation_reviewed_evidence_binding_in_progress",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -276,7 +276,11 @@
       "evidence1bTwelfthReviewedHead": "aab720d5d2fc159d73e98b73d95aa0510ea02eaa",
       "evidence1bTwelfthStandardReview": "exact_aab720d_opencode_nemotron_3_ultra_free_session_ses_0750819e6ffeQeNefeIDNTv6e5_request_changes_json_string_values_encoded_separators_control_text_decode_limit_and_colon_adjacent_fields_reproduced_packet_symlink_redirect_and_combining_identity_not_reproduced_markdown_linear_but_over_performance_budget",
       "evidence1bTwelfthReviewRemediation": "passed_complete_json_string_batch_scan_four_pass_then_fail_closed_html_percent_markdown_structural_decode_control_line_separator_surrogate_rejection_monotonic_colon_pair_exact_package_command_allowlist_and_three_linear_performance_regressions_252_focused_393_compatibility_1623_full",
-      "evidence1bQualityPartial": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_alpha_completion_complete_credential_evidence_hon_222_plan_5_git_diff_check_fresh_exact_reviews_pending",
+      "evidence1bImplementationReviewedHead": "fb2867837557c4b4f8859534950d6047ddf1bdc7",
+      "evidence1bImplementationReviewedTree": "4809aedb0be531be67868fd840c2f4816462ad18",
+      "evidence1bFinalStandardReview": "exact_fb28678_opencode_nemotron_3_ultra_free_session_ses_074e33588ffetKFFweyotsV9pu_0_actionable_p0_p1_p2_p3_252_focused_and_bounded_representation_performance_probes_approve",
+      "evidence1bFinalFiveAxisReview": "exact_fb28678_opencode_deepseek_v4_flash_free_session_ses_072634f4cffeBIoTXt32DhIR2n_0_actionable_p0_p1_p2_p3_problem_framing_a_diagnosis_a_design_a_solution_a_architecture_a_393_compatibility_packet_source_and_bounded_probes_approve",
+      "evidence1bQualityPartial": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_alpha_completion_complete_credential_evidence_hon_222_plan_5_git_diff_check_exact_implementation_reviews_approved_evidence_binding_review_pending",
       "evidence1bLinearReadback": "hon_222_and_hon_228_only_started_hon_227_done_archived_hon_229_todo_checkpoint_updated"
     },
     "checks": [

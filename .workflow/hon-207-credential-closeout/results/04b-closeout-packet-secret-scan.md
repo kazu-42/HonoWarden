@@ -1,6 +1,6 @@
 # EVIDENCE-1B: Canonical Closeout Packet And Secret Scan
 
-Status: review remediation complete; fresh exact-head reviews pending
+Status: implementation reviews approved; evidence-only closeout review pending
 
 Linear issue: HON-228
 
@@ -440,6 +440,20 @@ non-secret count summaries, exact redactions, non-authentication consent or
 preference cookies, malformed EncString shapes, verification markers, package
 scripts, and public or reserved example identities remain accepted.
 
+Fresh read-only reviews then inspected exact implementation commit
+`fb2867837557c4b4f8859534950d6047ddf1bdc7` and tree
+`4809aedb0be531be67868fd840c2f4816462ad18` against base
+`5b67fbdcf6d32942e5786f4cc49684c479778de8`. Standard fallback session
+`ses_074e33588ffetKFFweyotsV9pu` used `opencode/nemotron-3-ultra-free`,
+independently passed all 252 focused tests and bounded representation and
+performance probes, and returned `APPROVE` with no actionable findings.
+Independent five-axis session `ses_072634f4cffeBIoTXt32DhIR2n` used
+`opencode/deepseek-v4-flash-free`, passed all 393 compatibility tests, verified
+the canonical packet and source evidence, exercised false-positive, bypass,
+and 1 MiB performance probes, graded all five axes A, and returned `APPROVE`
+with no actionable findings. Native Codex remained unavailable because of its
+account usage limit, so it is not represented as approval evidence.
+
 ## Current Verification
 
 | Gate                        | Readback                                                                                 |
@@ -458,15 +472,18 @@ scripts, and public or reserved example identities remain accepted.
 | Dependency audit            | 0 known vulnerabilities                                                                  |
 | Release gate                | ready, 11 pass / 0 manual / 0 block                                                      |
 | Alpha completion audit      | complete                                                                                 |
+| Implementation coordinates  | commit `fb286783`; tree `4809aed`; base `5b67fbd`                                        |
+| Standard review             | Nemotron session `ses_074e33588ffetKFFweyotsV9pu`; no findings; `APPROVE`                |
+| Independent five-axis       | DeepSeek session `ses_072634f4cffeBIoTXt32DhIR2n`; A/A/A/A/A; `APPROVE`                  |
 | `git diff --check`          | passed                                                                                   |
 
 ## Remaining Gates
 
-Fresh exact-head standard and independent five-axis reviews of the remediation,
-PR/head CI, zero unresolved threads, squash tree equality, merged-main CI, and
-Linear Done/archive remain required before HON-229 starts. The parent
-dynamic-workflow verifier remains intentionally incomplete only because
-`final-report.md` is reserved for EVIDENCE-1C and CLOSE-1 completion.
+An exact review of this evidence-only binding commit, PR/head CI, zero
+unresolved threads, squash tree equality, merged-main CI, and Linear
+Done/archive remain required before HON-229 starts. The parent dynamic-workflow
+verifier remains intentionally incomplete only because `final-report.md` is
+reserved for EVIDENCE-1C and CLOSE-1 completion.
 
 No deployment, remote mutation, real credential, production or staging
 activation, destructive operation, paid action, normal browser profile, or
