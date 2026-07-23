@@ -40,6 +40,8 @@
     "client:auth-fixture": "node scripts/honowarden-client-auth-fixture.mjs",
     "client:browser-profile": "node scripts/honowarden-browser-profile.mjs",
     "client:official-harness": "node scripts/honowarden-official-client-harness.mjs",
+    "credential:closeout:verify": "node scripts/honowarden-credential-closeout.mjs",
+    "credential:closeout:write": "node scripts/honowarden-credential-closeout.mjs write",
     "credential:evidence:verify": "node scripts/honowarden-credential-evidence.mjs",
     "db:migrate:local": "wrangler d1 migrations apply honowarden --local",
     "deploy": "wrangler deploy",

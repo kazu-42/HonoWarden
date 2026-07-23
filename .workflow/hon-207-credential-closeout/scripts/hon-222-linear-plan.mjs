@@ -21,7 +21,14 @@ export const hon222LinearPlan = {
       id: '71dc5d6f-e42e-4519-844e-b4b96add30ed',
       packet: '04a-evidence-contract',
       title: 'Account A2f.4a: credential evidence contract and claim registry',
-      stateType: 'started',
+      stateType: 'completed',
+      closeout: {
+        archivedAt: '2026-07-22T10:11:52.647Z',
+        pullRequest: 115,
+        mergeCommit: '5b67fbdcf6d32942e5786f4cc49684c479778de8',
+        mainCiRun: 29910713312,
+        tree: '0297ca848869817cbec3e8f077cd61d313faf239',
+      },
       blockers: [],
       labels: [
         'type:feature',
@@ -50,7 +57,7 @@ export const hon222LinearPlan = {
       packet: '04b-closeout-packet-secret-scan',
       title:
         'Account A2f.4b: canonical credential closeout packet and secret scan',
-      stateType: 'unstarted',
+      stateType: 'started',
       blockers: ['EVIDENCE-1A'],
       labels: [
         'type:ops',
@@ -153,32 +160,32 @@ export function renderHon222ChildDescription(definition, identifiers) {
 }
 
 export function renderHon222ExecutionCheckpoint(identifiers) {
+  const evidence1a = identifiers['EVIDENCE-1A'] ?? 'EVIDENCE-1A'
+  const evidence1b = identifiers['EVIDENCE-1B'] ?? 'EVIDENCE-1B'
+  const evidence1c = identifiers['EVIDENCE-1C'] ?? 'EVIDENCE-1C'
   return [
     checkpointMarker,
     '# HON-222 compatibility evidence execution plan',
     '',
-    'Status: three serialized sub-issues; only EVIDENCE-1A is active.',
+    'Status: EVIDENCE-1A is complete and archived; EVIDENCE-1B is the only active child.',
     '',
     'Sub-issue sequence:',
-    ...hon222LinearPlan.issues.map((definition) => {
-      const identifier = identifiers[definition.key] ?? definition.key
-      const blocker =
-        definition.blockers.length === 0
-          ? 'HON-221 (completed and archived)'
-          : definition.blockers.map((key) => identifiers[key] ?? key).join(', ')
-      return `- ${identifier} (${definition.key}): ${definition.title}; ${stateLabel(definition.stateType)}; blocker: ${blocker}.`
-    }),
+    `- ${evidence1a} (EVIDENCE-1A): Done and archived at 2026-07-22T10:11:52.647Z. PR #115 was squash-merged as 5b67fbdcf6d32942e5786f4cc49684c479778de8; merged-main CI run 29910713312 passed and the squash tree equals the reviewed branch tree.`,
+    `- ${evidence1b} (EVIDENCE-1B): In Progress. Generates the deterministic canonical closeout packet and fails closed on secret-bearing or structurally unsafe evidence.`,
+    `- ${evidence1c} (EVIDENCE-1C): Todo; blocked until HON-228 is merged, verified on exact main, moved to Done, and archived.`,
+    '',
+    'Current WIP invariant: exactly HON-222 plus child HON-228 are In Progress in this execution lane.',
     '',
     'Integration invariants:',
-    '- Evidence levels are ordered fixture < local API < local official client < staging < production, but a lower-level artifact can never satisfy a higher-level claim.',
+    '- Evidence levels are ordered fixture < local API < local official client < staging < production, and lower-level artifacts cannot satisfy higher-level claims.',
     '- Canonical evidence contains only allowlisted IDs, source pins, levels, statuses, counts, paths, limitations, and digests; secret-bearing material is rejected.',
-    '- Documentation is generated or validated against the machine-readable registry and cannot promote local synthetic evidence to staging or production.',
+    '- Documentation remains bound to the machine-readable registry and cannot promote local synthetic evidence to staging or production.',
     '- Web Vault publication, remote activation, real-account mutation, and untested client surfaces remain explicit limitations.',
     '',
-    'Per-child closeout:',
-    '- Focused/full gates, exact-head standard and independent five-axis review, PR/head CI, zero unresolved threads, squash tree equality, merged-main CI, and Linear Done/archive.',
+    'Per-child closeout requires focused/full gates, exact-head standard and independent five-axis review, PR/head CI, zero unresolved threads, squash tree equality, merged-main CI, and Linear Done/archive.',
     '',
     'Boundary: no deployment, remote mutation, production or staging activation, real credential or secret, destructive operation, paid action, or third-party contact is authorized.',
+    '',
   ].join('\n')
 }
 
@@ -258,9 +265,4 @@ export function summarizeHon222Plan(plan = hon222LinearPlan) {
       issue.blockers.map((blocker) => ({ blocker, blocked: issue.key })),
     ),
   }
-}
-
-function stateLabel(stateType) {
-  if (stateType === 'completed') return 'Done'
-  return stateType === 'started' ? 'In Progress' : 'Todo'
 }

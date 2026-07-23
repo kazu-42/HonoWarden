@@ -2,6 +2,9 @@
 worker-configuration.d.ts whitespace=-blank-at-eol
 
 # Credential evidence digests bind canonical repository bytes across platforms.
+compat/credential-evidence.json text eol=lf
+compat/credential-evidence.schema.json text eol=lf
+compat/credential-closeout-packet.json text eol=lf
 .workflow/hon-207-credential-closeout/results/02-credential-lifecycle.md text eol=lf
 .workflow/hon-207-credential-closeout/results/03a-generation-bound-backup.md text eol=lf
 .workflow/hon-207-credential-closeout/results/03b-fresh-restore.md text eol=lf
