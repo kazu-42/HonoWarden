@@ -830,13 +830,14 @@ Packet limitations:
 - The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
 - No claim in this registry proves staging or production activation.
 
-The `local_official_client` rows mean local API-driven credential mutations
-with official-client readback, such as post-mutation login, unlock, sync,
-decrypt, or item readability checks. They do not claim official-client UI
-flows, Web Vault or shared-vault behavior, tracked staging/production
-activation, or remote D1/R2 backup and restore operations. Remote backup
-operations remain separate from the local synthetic backup/export and
-fresh-target restore evidence.
+The `local_official_client` rows mean isolated local operations with
+official-client readback, such as post-operation login, unlock, sync, decrypt,
+or item readability checks. Credential mutations are API-driven. The recovery
+row instead records an operator-driven local fresh-target restore with
+official-client readback. These rows do not claim official-client UI flows, Web
+Vault or shared-vault behavior, tracked staging/production activation, or remote
+D1/R2 backup and restore operations. Remote backup operations remain separate
+from the local synthetic backup/export and fresh-target restore evidence.
 
 ## Week 26 Server Config Fixture Coverage
 

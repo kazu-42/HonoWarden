@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: seventh review findings remediated; exact-head rereviews and publication pending
+Status: eighth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -62,16 +62,16 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 130 tests passed.
-- Compatibility suite: 6 files and 523 tests passed.
+- Cross-document credential contract: 144 tests passed.
+- Compatibility suite: 6 files and 537 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 5 files and 57 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The last managed Linear
   checkpoint readback was exact at 2,094 bytes and SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`;
   the sixth-remediation checkpoint refresh follows the exact local commit.
-- Post-seventh-remediation full serial suite: 105 files and 1,753 tests passed
-  in 184.06 seconds with file parallelism disabled and one worker.
+- Post-eighth-remediation full serial suite: 105 files and 1,767 tests passed
+  in 160.86 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -266,6 +266,31 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   before the final implementation. Existing website-live and remote-backup
   language plus explicit negation/local-fixture cases remain negative controls.
   All 130 focused cases, 523 compatibility tests, and 57 related checks pass.
+
+## Eighth Review And Remediation
+
+- Native Codex session `019f8ecb-0bd1-7062-a9a6-c32a6faf862b` reviewed exact
+  commit `ab4edc72febe201d5944157998d646d0035c7b24`, tree
+  `4461471b5ec870eb98c2f3b15c506fa05d122dde`, and reported four P2 gaps:
+  postfix Cloudflare aliases, password-update wording, user-visible Markdown
+  titles omitted from prose, and API-driven wording applied to the
+  operator-driven fresh-target restore row.
+- Adversarial reviewer `019f8eca-ed3d-75c0-a53a-8db1c5120828` reported two P2
+  false-green paths: registry claim IDs split on punctuation and live/Cloudflare
+  aliases masked by an unrelated primary environment in the same clause.
+- Five-axis reviewer `019f8eca-eb25-78b0-8fb4-cccd3a8f973b` reported no P0-P3
+  findings and graded the five axes A/A/A-/A-/B+. Its approval is recorded but
+  superseded by the actionable standard and adversarial findings on the same
+  exact head.
+- Ten review mutations failed first. Registry claim IDs and operations are now
+  normalized longest-first, primary and bounded alias candidates are combined,
+  password-update wording is covered, and every Markdown link/image/definition
+  title is scanned. Alias candidates require nearby strong credential/recovery
+  context, preserving website-live and explicit remote-drill negation controls.
+  Current state now distinguishes API-driven credential mutations from the
+  operator-driven local fresh-target restore. Four explicit negative controls
+  protect claim-ID, mixed-alias, postfix-alias, and Markdown-title negation.
+  All 144 focused cases, 537 compatibility tests, and 57 related checks pass.
 
 ## Closeout Pending
 

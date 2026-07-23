@@ -164,12 +164,16 @@ const rolloutFlags = [
 const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
-const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b(?=[^.;!?]{0,120}\b(?:credential|password|kdf|account[ ._-]+key|user[ ._-]+key|recovery|backup|restore)\b)`
+const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
 const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|shipped|successful|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
-const registryOperationSpellings = registry.claims.map((claim) => ({
-  canonical: claim.operation,
-  prose: claim.operation.replace(/[._]+/g, ' '),
-}))
+const registryCredentialSpellings = [
+  ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
+]
+  .sort((left, right) => right.length - left.length)
+  .map((canonical) => ({
+    canonical,
+    prose: canonical.replace(/[._-]+/g, ' '),
+  }))
 const markdownParser = unified().use(remarkParse).use(remarkGfm)
 const registryCredentialDocs = [
   ...new Set(
@@ -417,6 +421,7 @@ describe('credential closeout documentation contract', () => {
     '![Production password change is verified.](assets/hon-95/desktop-vault.png)',
     'Production `account.password.change` is verified.',
     'Production `account.user_key.rotate` is verified.',
+    'Production `account.password.change.client-readback` is verified.',
     'Production password change has been validated.',
     'Production password change is active.',
     'Production password change has shipped.',
@@ -424,6 +429,14 @@ describe('credential closeout documentation contract', () => {
     'Once production KDF mutation was verified, the release moved to Done.',
     'Live credential writer activation is verified.',
     'Cloudflare credential writer activation is verified.',
+    'Credential writer activation is verified in Cloudflare.',
+    'Production evidence remains local, but live password change has shipped.',
+    'Production evidence remains local, but Cloudflare password change has shipped.',
+    'Production master-password update is verified.',
+    'Master-password update is verified in production.',
+    '[details](feature-freeze-checklist.md "Production credential writer activation is verified.")',
+    '[details][live-title]\n\n[live-title]: feature-freeze-checklist.md "Production credential writer activation is verified."',
+    '![safe alt](assets/hon-95/desktop-vault.png "Production credential writer activation is verified.")',
     'Production credential writer activation is not only documented but is verified.',
   ])(
     'rejects unsupported live credential claims outside the canonical section: %s',
@@ -546,6 +559,10 @@ describe('credential closeout documentation contract', () => {
     'Live credential writer activation is not verified.',
     'Cloudflare credential writer activation is not verified.',
     'Production account.password.change is not verified.',
+    'Production account.password.change.client-readback is not verified.',
+    'Credential writer activation is not verified in Cloudflare.',
+    'Production evidence remains local, but live password change has not shipped.',
+    '[details](feature-freeze-checklist.md "Production credential writer activation is not verified.")',
     '![Production password change is not verified.](assets/hon-95/desktop-vault.png)',
   ])('accepts an explicitly negated live credential claim: %s', (claim) => {
     const docPath = 'docs/release/index.md'
@@ -559,6 +576,17 @@ describe('credential closeout documentation contract', () => {
     const content = `${readText(docPath)}\nScheduled remote backup export evidence is recorded.\n\n## Remote\n\nScheduled backup export evidence is recorded.\n`
 
     expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+  })
+
+  it('describes operator-driven restore separately from API credential mutations', () => {
+    const currentState = readText('docs/current-state.md')
+
+    expect(currentState).toMatch(
+      /operator-driven local fresh-target restore with\s+official-client readback/,
+    )
+    expect(currentState).not.toContain(
+      'The `local_official_client` rows mean local API-driven credential mutations',
+    )
   })
 
   it.each([
@@ -1315,12 +1343,17 @@ function proseFragments(document: Root): string[] {
   }
 
   visitChildren(document.children as Nodes[], [])
+  walkMarkdown(document, (node) => {
+    if ('title' in node && typeof node.title === 'string') {
+      append([node.title])
+    }
+  })
   return fragments
 }
 
-function normalizeCredentialOperationSpellings(value: string): string {
+function normalizeCredentialSpellings(value: string): string {
   let normalized = value
-  for (const { canonical, prose } of registryOperationSpellings) {
+  for (const { canonical, prose } of registryCredentialSpellings) {
     normalized = normalized.replace(
       new RegExp(`\\b${escapeRegExp(canonical)}\\b`, 'gi'),
       prose,
@@ -1334,13 +1367,24 @@ interface IndexedRegExpMatch extends RegExpMatchArray {
 }
 
 function liveEnvironmentMatches(value: string): IndexedRegExpMatch[] {
-  const primary = indexedMatches(
+  const aliases = indexedMatches(
     value,
-    new RegExp(liveEnvironmentPatternSource, 'gi'),
+    new RegExp(liveEnvironmentAliasPatternSource, 'gi'),
+  ).filter((match) => liveAliasHasCredentialContext(value, match.index))
+  return [
+    ...indexedMatches(value, new RegExp(liveEnvironmentPatternSource, 'gi')),
+    ...aliases,
+  ].sort((left, right) => left.index - right.index)
+}
+
+function liveAliasHasCredentialContext(
+  value: string,
+  aliasIndex: number,
+): boolean {
+  const context = value.slice(Math.max(0, aliasIndex - 120), aliasIndex + 120)
+  return /\b(?:credential|password|kdf|account[ ._-]+key|user[ ._-]+key|recovery|backup|restore|restoration)\b/i.test(
+    context,
   )
-  return primary.length > 0
-    ? primary
-    : indexedMatches(value, new RegExp(liveEnvironmentAliasPatternSource, 'gi'))
 }
 
 function liveStatusMatches(value: string): IndexedRegExpMatch[] {
@@ -1367,7 +1411,7 @@ function escapeRegExp(value: string): string {
 }
 
 function unsupportedLiveCredentialClaim(text: string): boolean {
-  const normalized = normalizeCredentialOperationSpellings(text)
+  const normalized = normalizeCredentialSpellings(text)
     .replaceAll('|', ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -1509,16 +1553,16 @@ function statusDescribesEnvironmentClaim(
 }
 
 function hasCredentialClaimContext(clause: string): boolean {
-  const normalizedClause = normalizeCredentialOperationSpellings(clause)
+  const normalizedClause = normalizeCredentialSpellings(clause)
   if (
-    registryOperationSpellings.some(({ prose }) =>
+    registryCredentialSpellings.some(({ prose }) =>
       normalizedClause.toLowerCase().includes(prose.toLowerCase()),
     )
   ) {
     return true
   }
   if (
-    /\b(?:password[-\s]+(?:changes?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|restor(?:e|es|ed|ation)|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
+    /\b(?:(?:master[-\s]+)?password[-\s]+(?:changes?|updates?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|restor(?:e|es|ed|ation)|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
       normalizedClause,
     )
   ) {
@@ -1542,7 +1586,7 @@ function hasCredentialClaimContext(clause: string): boolean {
 
 function hasLiveEnvironmentContext(value: string): boolean {
   return (
-    liveEnvironmentMatches(value).length > 0 ||
+    new RegExp(liveEnvironmentPatternSource, 'i').test(value) ||
     /^(?:live|cloudflare)(?:\s+(?:environment|runtime))?$/i.test(value.trim())
   )
 }
@@ -1581,7 +1625,7 @@ function liveClaimIsNegated(
     /\b(?:claim|evidence|credential|password|kdf|account[-\s]+key|user[-\s]+key|activation|writer|client|settings|ui|run|operation|lifecycle|recovery|backup|restore|restoration|generation)\b/i.test(
       scope,
     ) ||
-    /^(?:\s|a|later|current|tracked|live|remote|actual|real|official|client|any|environment(?:-specific)?|staging|production|or)*$/i.test(
+    /^(?:\s|a|later|current|tracked|live|remote|actual|real|official|client|any|disposable|environment(?:-specific)?|staging|production|or)*$/i.test(
       scope,
     )
   )
