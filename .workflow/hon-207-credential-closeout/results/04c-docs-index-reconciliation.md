@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: implementation verified; reviews and publication pending
+Status: initial review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -40,23 +40,25 @@ The reconciliation now covers 13 user-facing compatibility, current-state,
 operations, release, and security documents. Every owned document resolves
 links to the canonical packet and registry. The compatibility fixture inventory
 maps all 11 claim IDs to their operation, execution level, evidence level, and
-one exact artifact. Release and security indexes each expose one canonical
-credential-closeout entry. The tracked top-level, staging, and production
-values for all four credential rollout flags remain `false`.
+one exact artifact at the claim's evidence level. Every canonical credential
+section carries the packet's exact no-rerun and no-live-activation limitations.
+Release and security indexes each expose one canonical credential-closeout
+entry. The tracked top-level, staging, and production values for all four
+credential rollout flags remain `false`.
 
 The local workflow state points at the 04c packet, while 04b remains linked to
 its existing result file. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 6 tests passed.
-- Compatibility suite: 6 files and 399 tests passed.
-- Existing release, security, and Wrangler environment docs: 3 files and 28
-  tests passed.
+- Cross-document credential contract: 7 tests passed.
+- Compatibility suite: 6 files and 400 tests passed.
+- Release, security, Wrangler environment, operator, and credential docs: 5
+  files and 43 tests passed.
 - HON-222 workflow renderer/readback: 5 tests passed; live checkpoint exact at
   2,094 bytes and SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`.
-- Full serial suite: 105 files and 1,629 tests passed.
+- Full serial suite: 105 files and 1,630 tests passed.
 - TypeScript, ESLint, full-repository Prettier, and brand scan passed.
 - Diff whitespace check passed.
 - Dependency audit: no known vulnerabilities.
@@ -70,9 +72,29 @@ its existing result file. HON-229 and HON-222 remain In Progress.
   HON-229 has no active relation.
 - Worktree process readback: no residual process owned by this worktree.
 
+## Initial Review And Remediation
+
+- Standard Codex review targeted implementation commit
+  `50c00be6917aa9f498c17afb5724446af6b93302`, tree
+  `d20bc87b0cff6b91ed102eb5e44c01aa420f73d4`, session
+  `019f8dfa-a157-7fb1-9dda-e6e17f70a18d`. It reported three P2 findings:
+  lower-level representative links for official-client claims, missing
+  no-rerun limitations in the canonical release/security indexes, and a
+  keyword-only activation-boundary test.
+- Independent five-axis review targeted the same implementation commit and
+  tree, agent `019f8dfa-6332-7f53-9726-596bb24590cd`. It reported one P3:
+  stale release-document freshness metadata. Grades were A-, A-, A-, B+, and
+  A- for framing, diagnosis, design, correctness/tests, and architecture.
+- Remediation was test-first. The strengthened contract failed across all four
+  finding classes, then passed after representative links were bound to
+  same-level artifacts, exact packet limitations were required in every
+  canonical section, positive staging/production activation wording was
+  rejected, and all changed freshness headers were advanced to 2026-07-23.
+
 ## Closeout Pending
 
-- Exact-head standard review and independent five-axis review are pending.
+- Exact-head standard review and independent five-axis rereview of the
+  remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.

@@ -131,7 +131,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_implementation_verified_review_pending',
+    'evidence_1c_review_findings_remediated_rereview_pending',
   )
   assert.deepEqual(
     readback.issues.map((issue) => [

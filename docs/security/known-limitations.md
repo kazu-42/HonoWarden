@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-19.
+Last reviewed: 2026-07-23.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.

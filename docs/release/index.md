@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-19.
+Last updated: 2026-07-23.
 
 Use this index as the feature-freeze entry point:
 
@@ -47,6 +47,11 @@ per-operation local evidence files remain supporting detail, not separate
 canonical entries. Current canonical counts are `local_api` 4,
 `local_official_client` 7, `staging` 0, and `production` 0, so it must not be
 used as proof of tracked staging or approved production activation.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
 
 ## Freeze Position
 

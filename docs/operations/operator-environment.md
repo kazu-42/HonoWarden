@@ -17,6 +17,11 @@ claims. Official-client evidence means pinned client login/unlock/sync/item
 readback after API-driven local mutations; it does not claim an
 official-client settings UI.
 
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
 ## Scope
 
 Use this environment for local automation only:

@@ -27,6 +27,11 @@ packet records local-only credential claims: `local_api` and
 staging or production evidence levels. It does not prove that live audit-log
 retention, Cron Trigger delivery, or production cleanup has run.
 
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
 Retention cleanup is a separate live operations concern. Required credential
 audit rows remain subject to the 365-day `audit_events` retention boundary even
 when optional audit emission is disabled, but verifying that boundary in

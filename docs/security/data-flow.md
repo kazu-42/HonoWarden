@@ -1,6 +1,6 @@
 # Security Data Flow
 
-Last reviewed: 2026-07-19.
+Last reviewed: 2026-07-23.
 
 This document describes where sensitive data enters, moves, and persists.
 
@@ -27,6 +27,11 @@ Credential and recovery claims are reconciled through the canonical
 committed metadata and artifact markers for isolated local runs only. It does
 not claim staging activation, production activation, real-account recovery, or
 historical credential rollback.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
 
 | Operation area                        | Canonical claim IDs                                                                                | Highest evidence level  | Boundary                                                                                                                                                                            |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

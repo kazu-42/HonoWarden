@@ -49,6 +49,11 @@ state, with zero `staging` claims and zero `production` claims. It does not
 claim official-client settings UI execution, remote account activation, staging
 activation, or production activation.
 
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
 ## Web Vault Boundary
 
 HonoWarden does not expose a Web Vault compatibility surface in the alpha

@@ -22,6 +22,11 @@ The official-client evidence is post-mutation readback for isolated synthetic
 local state; it is not an official-client settings UI claim and it does not
 activate any staging or production writer.
 
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
 The credential closeout packet proves that the local credential mutations write
 their required redacted D1 audit rows as part of the same local transaction.
 That is separate from live audit or log operations. Enabling

@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-22.
+Last updated: 2026-07-23.
 
 Rollback separates Worker code rollback from data rollback. Do not assume schema
 changes can be safely reversed in place.
@@ -24,6 +24,11 @@ Credential rollback evidence is reconciled in the canonical
 [evidence registry](../../compat/credential-evidence.json). The evidence covers
 local API and local official-client readback only. It does not prove staging or
 production writer activation.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
 
 The tracked writer flags remain disabled at every configured scope:
 

@@ -116,6 +116,15 @@ const rolloutFlagDocs = [
   'docs/release/rollback-guide.md',
 ] as const
 
+const freshnessDocs = [
+  'docs/current-state.md',
+  'docs/release/index.md',
+  'docs/release/rollback-guide.md',
+  'docs/security/data-flow.md',
+  'docs/security/known-limitations.md',
+  'docs/security/review-index.md',
+] as const
+
 const rolloutFlags = [
   'HONOWARDEN_PASSWORD_CHANGE_ENABLED',
   'HONOWARDEN_ACCOUNT_KEYS_ENABLED',
@@ -211,18 +220,32 @@ describe('credential closeout documentation contract', () => {
           `${docPath} has an orphaned local link: ${link}`,
         ).toBe(true)
       }
+
+      const canonicalSection = sectionWithCanonicalCredentialLinks(
+        docPath,
+        content,
+      )
+      for (const limitation of packet.limitations) {
+        expect(canonicalSection, `${docPath} packet limitation`).toContain(
+          limitation,
+        )
+      }
+      const sectionWithoutCanonicalLimitations = packet.limitations.reduce(
+        (section, limitation) => section.replaceAll(limitation, ''),
+        canonicalSection,
+      )
       expect(
-        content.toLowerCase(),
-        `${docPath} must state the local boundary`,
-      ).toContain('local')
+        sectionWithoutCanonicalLimitations,
+        `${docPath} must not claim verified staging or production activation`,
+      ).not.toMatch(
+        /\b(?:staging|production)\s+(?:activation|evidence|writer(?: activation)?)\s+(?:is|are|was|were|has been|have been)\s+(?:verified|proven|recorded|enabled|activated|complete|completed|passed)\b/i,
+      )
       expect(
-        content.toLowerCase(),
-        `${docPath} must state the staging boundary`,
-      ).toContain('staging')
-      expect(
-        content.toLowerCase(),
-        `${docPath} must state the production boundary`,
-      ).toContain('production')
+        sectionWithoutCanonicalLimitations,
+        `${docPath} packet must not prove staging or production activation`,
+      ).not.toMatch(
+        /\b(?:packet|registry|closeout|evidence)\s+(?:verifies|proves|records|confirms|demonstrates)\s+(?:tracked\s+)?(?:staging|production)\b/i,
+      )
     }
   })
 
@@ -240,6 +263,9 @@ describe('credential closeout documentation contract', () => {
         `${docPath} evidence registry links`,
       ).toHaveLength(1)
       expect(countOccurrences(content, 'Credential Closeout Evidence')).toBe(1)
+      for (const limitation of packet.limitations) {
+        expect(content, `${docPath} packet limitation`).toContain(limitation)
+      }
     }
   })
 
@@ -264,11 +290,27 @@ describe('credential closeout documentation contract', () => {
       expect(cells).toContain(`\`${claim.evidenceLevel}\``)
 
       const rowLinks = resolvedRepoLinks(inventoryPath, row)
-      const artifactPaths = claim.artifacts.map((artifact) => artifact.path)
+      const representativeArtifacts = claim.artifacts.filter((artifact) =>
+        rowLinks.includes(artifact.path),
+      )
       expect(
-        rowLinks.some((link) => artifactPaths.includes(link)),
+        representativeArtifacts,
         `${claim.id} must link one of its exact artifacts`,
+      ).not.toHaveLength(0)
+      expect(
+        representativeArtifacts.some(
+          (artifact) => artifact.evidenceLevel === claim.evidenceLevel,
+        ),
+        `${claim.id} representative artifact must prove ${claim.evidenceLevel}`,
       ).toBe(true)
+    }
+  })
+
+  it('keeps reconciled document freshness metadata current', () => {
+    for (const docPath of freshnessDocs) {
+      expect(readText(docPath), `${docPath} freshness metadata`).toMatch(
+        /^Last (?:updated|reviewed): 2026-07-23\.?$/m,
+      )
     }
   })
 
@@ -382,6 +424,34 @@ function resolvedRepoLinks(docPath: string, content: string): string[] {
   }
 
   return links
+}
+
+function sectionWithCanonicalCredentialLinks(
+  docPath: string,
+  content: string,
+): string {
+  const lines = content.split('\n')
+  const starts = [
+    0,
+    ...lines.flatMap((line, index) => (/^## /.test(line) ? [index] : [])),
+  ]
+  const sections = starts.map((start, index) =>
+    lines.slice(start, starts[index + 1] ?? lines.length).join('\n'),
+  )
+  const canonicalSections = sections.filter((section) => {
+    const links = resolvedRepoLinks(docPath, section)
+    return links.includes(packetPath) && links.includes(registryPath)
+  })
+
+  expect(
+    canonicalSections,
+    `${docPath} canonical credential sections`,
+  ).toHaveLength(1)
+  const canonicalSection = canonicalSections[0]
+  if (!canonicalSection) {
+    throw new Error(`missing canonical credential section in ${docPath}`)
+  }
+  return canonicalSection
 }
 
 function countOccurrences(content: string, needle: string): number {

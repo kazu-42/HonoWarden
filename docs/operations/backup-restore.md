@@ -22,6 +22,11 @@ synthetic state. They do not prove staging or production backup execution, do
 not activate staging or production credential writers, and do not imply remote
 credential restoration for real accounts or remote D1/R2 resources.
 
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
 The four recovery claims map to these exact artifacts:
 
 | Claim ID                                        | Exact artifact                                                                                                           | Boundary                                                                                                                                         |
