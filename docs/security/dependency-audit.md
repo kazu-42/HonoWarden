@@ -1,6 +1,6 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-07-22.
+Last scanned: 2026-07-23.
 
 This is a point-in-time dependency audit snapshot for the repository state used
 by the Week 24 security review materials. Re-run the command before every
@@ -44,11 +44,21 @@ The required low-severity audit gate rejected it because
 dependency was upgraded to patched Ajv 8.20.0 instead of accepting a known
 advisory. The audit result above is from the patched lockfile.
 
+## Markdown Contract Parser
+
+The 2026-07-23 HON-229 reconciliation added `unified`, `remark-parse`,
+`remark-gfm`, and the compile-time-only `@types/mdast` package as development
+dependencies. They parse user-facing documentation in tests so canonical
+credential links, heading blocks, and tables are checked structurally instead
+of with partial regular expressions. They are not imported by the Worker
+runtime or production bundle. The audit result above and lockfile digest below
+were regenerated after this dependency change.
+
 ## Lockfile Evidence
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `fc40f82c98925b8bee037d291cfb5093c0361e78fcfb0cbbd52d0359c6b69b2b`
+  `bf9f3c6065cb2265448a4ffb566a0cb7db3a572162c191dd3f01091cb18df4c5`
 
 ## Scope
 

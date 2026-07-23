@@ -95,7 +95,7 @@
     }
   ],
   "verification": {
-    "status": "evidence_1c_review_findings_remediated_rereview_pending",
+    "status": "evidence_1c_second_review_findings_remediated_rereview_pending",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -288,16 +288,24 @@
       "evidence1bPublication": "pr_116_squash_32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3_reviewed_publication_tree_25d64460775356fabad0b5c76fd4cbc39857bab4_exact_head_ci_29985521114_passed_merged_main_ci_29985701462_passed",
       "evidence1bLinearCloseout": "hon_228_done_archived_2026_07_23t06_42_39_292z_hon_229_in_progress_non_archived",
       "evidence1cLinearReadback": "hon_222_and_hon_229_only_started_hon_228_done_archived_hon_229_in_progress_checkpoint_updated",
-      "evidence1cImplementation": "verified_13_docs_canonical_links_11_claim_operation_inventory_4_rollout_flags_no_staging_or_production_activation",
-      "evidence1cFocused": "passed_docs_contract_7_compat_400_release_security_config_operator_docs_43_hon_222_plan_5",
-      "evidence1cFullSuite": "passed_105_files_1630_tests_serial_zero_residual_worktree_processes",
+      "evidence1cImplementation": "verified_13_docs_ast_parsed_unique_canonical_links_and_sections_exact_count_and_rollout_tables_11_claim_operation_inventory_no_staging_or_production_activation",
+      "evidence1cFocused": "passed_docs_contract_17_compat_410_release_security_config_operator_docs_53_hon_222_plan_6",
+      "evidence1cFullSuite": "passed_105_files_1640_tests_serial_171_16_seconds",
       "evidence1cCanonicalPacket": "passed_11_claims_8_artifacts_14398_bytes_sha256_7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58",
       "evidence1cImplementationReviewedHead": "50c00be6917aa9f498c17afb5724446af6b93302",
       "evidence1cImplementationReviewedTree": "d20bc87b0cff6b91ed102eb5e44c01aa420f73d4",
       "evidence1cImplementationStandardReview": "exact_50c00be_codex_session_019f8dfa_a157_7fb1_9dda_e6e17f70a18d_request_changes_3_p2_same_level_representative_artifacts_index_no_rerun_limitations_activation_claim_contract",
       "evidence1cImplementationFiveAxisReview": "exact_50c00be_agent_019f8dfa_6332_7f53_9726_596bb24590cd_request_changes_1_p3_freshness_metadata_grades_a_minus_a_minus_a_minus_b_plus_a_minus",
       "evidence1cReviewRemediation": "passed_test_first_same_level_artifact_binding_exact_packet_limitations_positive_activation_rejection_and_2026_07_23_freshness_contract",
-      "evidence1cQuality": "passed_typecheck_eslint_prettier_brand_scan_dependency_audit_0_release_gate_11_of_11_alpha_completion_complete_review_findings_remediated_rereview_pending"
+      "evidence1cSecondReviewedHead": "9049eea2d35b0ede01a55b6123fb2a08f4152f1b",
+      "evidence1cSecondReviewedTree": "5d295b569e342733c358874c283141517060f9be",
+      "evidence1cSecondStandardReview": "exact_9049eea_native_codex_session_019f8e14_fb88_7d40_bab2_d982fc958d8d_request_changes_3_p2_global_activation_claim_scope_canonical_count_table_scope_and_exact_rollout_flag_rows",
+      "evidence1cSecondAdversarialTestReview": "exact_9049eea_agent_019f8e14_8878_7cc3_b77d_f102dbb8e03c_request_changes_2_p2_global_claim_and_all_heading_duplicate_detection_1_p3_commonmark_local_link_parsing",
+      "evidence1cSecondWorkflowReview": "exact_9049eea_agent_019f8e14_87ad_71c2_afcf_7a7f413bff3e_request_changes_1_p2_evidence_1b_publication_closeout_state_drift",
+      "evidence1cSecondReviewRemediation": "passed_test_first_remark_gfm_ast_links_all_heading_blocks_exact_canonical_count_and_rollout_tables_global_positive_live_credential_claim_rejection_commonmark_first_definition_semantics_and_evidence_1b_publication_binding",
+      "evidence1cSelfReviewHardening": "passed_3_additional_red_mutations_inline_code_live_claim_duplicate_reference_definition_and_rollout_scope_headers",
+      "evidence1cDependencyAuditRemediation": "initial_full_1614_pass_23_fail_all_cascaded_from_fail_closed_stale_lockfile_audit_hash_live_audit_0_updated_sha256_bf9f3c6065cb2265448a4ffb566a0cb7db3a572162c191dd3f01091cb18df4c5_affected_9_files_41_tests_then_full_green",
+      "evidence1cQuality": "passed_17_docs_contract_410_compatibility_53_related_docs_6_hon_222_plan_105_files_1640_full_typecheck_eslint_prettier_brand_scan_dependency_audit_0_credential_registry_and_closeout_release_gate_11_of_11_alpha_completion_complete_second_review_findings_remediated_rereview_pending"
     },
     "checks": [
       "linear_plan_unit",

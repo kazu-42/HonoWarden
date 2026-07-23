@@ -3,7 +3,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
+import type { Nodes, Root, RootContent, Table } from 'mdast'
 import { parse as parseJsonc } from 'jsonc-parser'
+import remarkGfm from 'remark-gfm'
+import remarkParse from 'remark-parse'
+import { unified } from 'unified'
 import { describe, expect, it } from 'vitest'
 
 interface EvidenceLevel {
@@ -134,6 +138,7 @@ const rolloutFlags = [
 
 const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
+const markdownParser = unified().use(remarkParse).use(remarkGfm)
 
 describe('credential closeout documentation contract', () => {
   it('keeps the closeout packet bound to the exact registry and artifacts', () => {
@@ -206,46 +211,7 @@ describe('credential closeout documentation contract', () => {
   it('links every reconciled document to the canonical packet and registry', () => {
     for (const docPath of credentialDocs) {
       const content = readText(docPath)
-      const links = resolvedRepoLinks(docPath, content)
-
-      expect(links, `${docPath} must link the closeout packet`).toContain(
-        packetPath,
-      )
-      expect(links, `${docPath} must link the evidence registry`).toContain(
-        registryPath,
-      )
-      for (const link of links) {
-        expect(
-          existsSync(repoPath(link)),
-          `${docPath} has an orphaned local link: ${link}`,
-        ).toBe(true)
-      }
-
-      const canonicalSection = sectionWithCanonicalCredentialLinks(
-        docPath,
-        content,
-      )
-      for (const limitation of packet.limitations) {
-        expect(canonicalSection, `${docPath} packet limitation`).toContain(
-          limitation,
-        )
-      }
-      const sectionWithoutCanonicalLimitations = packet.limitations.reduce(
-        (section, limitation) => section.replaceAll(limitation, ''),
-        canonicalSection,
-      )
-      expect(
-        sectionWithoutCanonicalLimitations,
-        `${docPath} must not claim verified staging or production activation`,
-      ).not.toMatch(
-        /\b(?:staging|production)\s+(?:activation|evidence|writer(?: activation)?)\s+(?:is|are|was|were|has been|have been)\s+(?:verified|proven|recorded|enabled|activated|complete|completed|passed)\b/i,
-      )
-      expect(
-        sectionWithoutCanonicalLimitations,
-        `${docPath} packet must not prove staging or production activation`,
-      ).not.toMatch(
-        /\b(?:packet|registry|closeout|evidence)\s+(?:verifies|proves|records|confirms|demonstrates)\s+(?:tracked\s+)?(?:staging|production)\b/i,
-      )
+      assertCredentialDocContract(docPath, content)
     }
   })
 
@@ -315,23 +281,9 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('keeps evidence summaries aligned with the packet ceiling and counts', () => {
-    const levelCounts = countBy(registry.claims, (claim) => claim.evidenceLevel)
-
     for (const docPath of evidenceSummaryDocs) {
       const content = readText(docPath)
-
-      for (const level of registry.evidenceLevels) {
-        const expectedCount = levelCounts[level.id] ?? 0
-        expect(content, `${docPath} ${level.id} count`).toMatch(
-          new RegExp(
-            `\\|\\s*\`${escapeRegExp(level.id)}\`\\s*\\|\\s*${expectedCount}\\s*\\|`,
-          ),
-        )
-      }
-
-      for (const limitation of packet.limitations) {
-        expect(content, `${docPath} packet limitation`).toContain(limitation)
-      }
+      assertEvidenceSummaryContract(docPath, content)
       expect(content).not.toMatch(/no official[- ]client evidence/i)
     }
   })
@@ -351,18 +303,199 @@ describe('credential closeout documentation contract', () => {
         'false',
         'false',
       ])
+    }
 
-      const rowPattern = new RegExp(
-        `\\|\\s*\`${escapeRegExp(flag)}\`\\s*\\|\\s*\`false\`\\s*\\|\\s*\`false\`\\s*\\|\\s*\`false\`\\s*\\|`,
-      )
-      for (const docPath of rolloutFlagDocs) {
-        expect(readText(docPath), `${docPath} ${flag} values`).toMatch(
-          rowPattern,
-        )
-      }
+    for (const docPath of rolloutFlagDocs) {
+      assertRolloutFlagContract(docPath, readText(docPath))
     }
   })
+
+  it.each([
+    'Production credential writer activation is verified.',
+    'Production `credential writer activation` is verified.',
+  ])(
+    'rejects unsupported live credential claims outside the canonical section: %s',
+    (claim) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n## Contradictory Credential Status\n\n${claim}\n`
+
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /must not claim verified staging or production activation/,
+      )
+    },
+  )
+
+  it('rejects duplicate canonical entries at any heading level', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n### Duplicate Credential Closeout Evidence\n\nCanonical source: [packet](../../compat/credential-closeout-packet.json) and [registry](../../compat/credential-evidence.json).\n\n- ${packet.limitations[0]}\n- ${packet.limitations[1]}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /canonical credential sections|closeout packet links/,
+    )
+  })
+
+  it.each([
+    '[orphan](<../../compat/missing artifact.json>)',
+    '[orphan][missing-artifact]\n\n[missing-artifact]: <../../compat/missing artifact.json>',
+    '[orphan][artifact]\n\n[artifact]: <../../compat/missing artifact.json>\n[artifact]: ../../compat/credential-evidence.json',
+    '[orphan](../../compat/missing artifact.json)',
+  ])('rejects orphaned or unparsed local link syntax: %s', (link) => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n${link}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /orphaned local link|unparsed Markdown link/,
+    )
+  })
+
+  it('reads evidence counts only from the canonical section table', () => {
+    const docPath = 'docs/current-state.md'
+    const content = `${readText(docPath).replace(
+      /\| `local_api`\s+\|\s+4 \|/,
+      '| `local_api`             |    999 |',
+    )}\n## Stale Credential Count\n\n| Evidence level | Claims |\n| --- | ---: |\n| \`local_api\` | 4 |\n`
+
+    expect(() => assertEvidenceSummaryContract(docPath, content)).toThrow(
+      /evidence count table/,
+    )
+  })
+
+  it('requires one exact documented row per rollout flag', () => {
+    const docPath = 'docs/release/rollback-guide.md'
+    const content = `${readText(docPath)}\n| Flag | Top-level | Staging | Production |\n| --- | --- | --- | --- |\n| \`HONOWARDEN_PASSWORD_CHANGE_ENABLED\` | \`false\` | \`true\` | \`false\` |\n`
+
+    expect(() => assertRolloutFlagContract(docPath, content)).toThrow(
+      /HONOWARDEN_PASSWORD_CHANGE_ENABLED rows/,
+    )
+  })
+
+  it('requires the canonical rollout scope columns', () => {
+    const docPath = 'docs/release/rollback-guide.md'
+    const content = readText(docPath).replace(
+      '| Flag                                   | Top-level | Staging | Production |',
+      '| Flag                                   | Root      | Test    | Live       |',
+    )
+
+    expect(() => assertRolloutFlagContract(docPath, content)).toThrow(
+      /rollout flag table/,
+    )
+  })
 })
+
+function assertCredentialDocContract(docPath: string, content: string): void {
+  const document = parseMarkdown(docPath, content)
+  const links = resolvedRepoLinksInTree(docPath, document, document)
+
+  expect(
+    links.filter((link) => link === packetPath),
+    `${docPath} closeout packet links`,
+  ).toHaveLength(1)
+  expect(
+    links.filter((link) => link === registryPath),
+    `${docPath} evidence registry links`,
+  ).toHaveLength(1)
+  for (const link of links) {
+    expect(
+      existsSync(repoPath(link)),
+      `${docPath} has an orphaned local link: ${link}`,
+    ).toBe(true)
+  }
+
+  const canonicalSections = markdownBlocks(document).filter((block) => {
+    const blockLinks = resolvedRepoLinksInTree(docPath, block, document)
+    return blockLinks.includes(packetPath) && blockLinks.includes(registryPath)
+  })
+  expect(
+    canonicalSections,
+    `${docPath} canonical credential sections`,
+  ).toHaveLength(1)
+  const canonicalSection = canonicalSections[0]
+  if (!canonicalSection) {
+    throw new Error(`missing canonical credential section in ${docPath}`)
+  }
+
+  const canonicalText = markdownText(canonicalSection, true)
+  for (const limitation of packet.limitations) {
+    expect(canonicalText, `${docPath} packet limitation`).toContain(limitation)
+  }
+
+  for (const fragment of proseFragments(document)) {
+    const withoutLimitations = packet.limitations.reduce(
+      (value, limitation) => value.replaceAll(limitation, ''),
+      fragment,
+    )
+    expect(
+      unsupportedLiveCredentialClaim(withoutLimitations),
+      `${docPath} must not claim verified staging or production activation: ${fragment}`,
+    ).toBe(false)
+  }
+}
+
+function assertEvidenceSummaryContract(docPath: string, content: string): void {
+  const document = parseMarkdown(docPath, content)
+  const canonicalSection = canonicalCredentialSection(docPath, document)
+  const evidenceTables = tablesIn(canonicalSection).filter((table) => {
+    const rows = markdownTableRows(table)
+    return rows[0]?.[0] === 'Evidence level' && rows[0]?.[1] === 'Claims'
+  })
+  expect(
+    evidenceTables,
+    `${docPath} canonical evidence count tables`,
+  ).toHaveLength(1)
+
+  const evidenceTable = evidenceTables[0]
+  if (!evidenceTable) {
+    throw new Error(`missing canonical evidence count table in ${docPath}`)
+  }
+  const levelCounts = countBy(registry.claims, (claim) => claim.evidenceLevel)
+  const expectedRows = registry.evidenceLevels.map((level) => [
+    level.id,
+    String(levelCounts[level.id] ?? 0),
+  ])
+  expect(
+    markdownTableRows(evidenceTable).slice(1),
+    `${docPath} evidence count table`,
+  ).toEqual(expectedRows)
+}
+
+function assertRolloutFlagContract(docPath: string, content: string): void {
+  const tables = tablesIn(parseMarkdown(docPath, content))
+  const rows = tables.flatMap((table) => markdownTableRows(table))
+
+  for (const flag of rolloutFlags) {
+    const flagRows = rows.filter((row) => row[0] === flag)
+    expect(flagRows, `${docPath} ${flag} rows`).toHaveLength(1)
+    expect(flagRows[0], `${docPath} ${flag} values`).toEqual([
+      flag,
+      'false',
+      'false',
+      'false',
+    ])
+  }
+
+  const rolloutTables = tables.filter((table) =>
+    markdownTableRows(table).some((row) =>
+      rolloutFlags.includes(row[0] as (typeof rolloutFlags)[number]),
+    ),
+  )
+  expect(rolloutTables, `${docPath} rollout flag tables`).toHaveLength(1)
+  const rolloutTable = rolloutTables[0]
+  if (!rolloutTable) {
+    throw new Error(`missing rollout flag table in ${docPath}`)
+  }
+  const [header, ...documentedFlags] = markdownTableRows(rolloutTable)
+  expect(header?.[0], `${docPath} rollout flag table label`).toMatch(
+    /^(?:Flag|Rollout flag)$/,
+  )
+  expect(header?.slice(1), `${docPath} rollout flag table scopes`).toEqual([
+    'Top-level',
+    'Staging',
+    'Production',
+  ])
+  expect(documentedFlags, `${docPath} rollout flag table rows`).toEqual(
+    rolloutFlags.map((flag) => [flag, 'false', 'false', 'false']),
+  )
+}
 
 function readJson<T>(path: string): T {
   return JSON.parse(readText(path)) as T
@@ -397,61 +530,213 @@ function countBy<T>(
 }
 
 function resolvedRepoLinks(docPath: string, content: string): string[] {
+  const document = parseMarkdown(docPath, content)
+  return resolvedRepoLinksInTree(docPath, document, document)
+}
+
+function parseMarkdown(docPath: string, content: string): Root {
+  const document = markdownParser.parse(content) as Root
+  walkMarkdown(document, (node) => {
+    if (
+      node.type === 'text' &&
+      (/\[[^\]\n]+\]\s*\([^\n)]*\)/.test(node.value) ||
+        /\[[^\]\n]+\]\s*\[[^\]\n]*\]/.test(node.value))
+    ) {
+      throw new Error(
+        `${docPath} has unparsed Markdown link syntax: ${node.value}`,
+      )
+    }
+  })
+  return document
+}
+
+function resolvedRepoLinksInTree(
+  docPath: string,
+  tree: Root,
+  fullDocument: Root,
+): string[] {
+  const definitions = new Map<string, string>()
+  walkMarkdown(fullDocument, (node) => {
+    if (
+      node.type === 'definition' &&
+      !definitions.has(node.identifier.toLowerCase())
+    ) {
+      definitions.set(node.identifier.toLowerCase(), node.url)
+    }
+  })
+
   const links: string[] = []
-  const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+["'][^)]*["'])?\)/g
-
-  for (const match of content.matchAll(linkPattern)) {
-    const rawTarget = match[1]
-    if (!rawTarget) {
-      throw new Error(`missing link target in ${docPath}`)
+  walkMarkdown(tree, (node) => {
+    let target: string | undefined
+    if (node.type === 'link' || node.type === 'image') {
+      target = node.url
+    } else if (
+      node.type === 'linkReference' ||
+      node.type === 'imageReference'
+    ) {
+      target = definitions.get(node.identifier.toLowerCase())
+      if (!target) {
+        throw new Error(
+          `${docPath} has an unresolved Markdown link reference: ${node.identifier}`,
+        )
+      }
     }
-    const target = rawTarget.replace(/^<|>$/g, '')
-    if (/^(?:https?:|mailto:|#)/.test(target)) {
-      continue
-    }
 
-    const pathOnly = target.split(/[?#]/, 1)[0]
-    if (!pathOnly) {
-      throw new Error(`empty local link target in ${docPath}`)
+    if (target !== undefined) {
+      const resolved = resolveRepoLink(docPath, target)
+      if (resolved !== undefined) {
+        links.push(resolved)
+      }
     }
-    const absolutePath = resolve(repoRoot, dirname(docPath), pathOnly)
-    const relativePath = relative(repoRoot, absolutePath).split(sep).join('/')
-    expect(
-      relativePath,
-      `${docPath} link must stay inside the repository`,
-    ).not.toMatch(/^\.\.(?:\/|$)/)
-    links.push(relativePath)
-  }
-
+  })
   return links
 }
 
-function sectionWithCanonicalCredentialLinks(
-  docPath: string,
-  content: string,
-): string {
-  const lines = content.split('\n')
-  const starts = [
-    0,
-    ...lines.flatMap((line, index) => (/^## /.test(line) ? [index] : [])),
-  ]
-  const sections = starts.map((start, index) =>
-    lines.slice(start, starts[index + 1] ?? lines.length).join('\n'),
-  )
-  const canonicalSections = sections.filter((section) => {
-    const links = resolvedRepoLinks(docPath, section)
+function resolveRepoLink(docPath: string, target: string): string | undefined {
+  if (/^(?:https?:|mailto:|#)/i.test(target)) {
+    return undefined
+  }
+  if (/^[a-z][a-z\d+.-]*:/i.test(target)) {
+    throw new Error(`${docPath} has an unsupported link scheme: ${target}`)
+  }
+
+  const pathOnly = target.split(/[?#]/, 1)[0]
+  if (!pathOnly) {
+    throw new Error(`empty local link target in ${docPath}`)
+  }
+  if (pathOnly.includes('\\')) {
+    throw new Error(`${docPath} local link must use forward slashes: ${target}`)
+  }
+
+  let decodedPath: string
+  try {
+    decodedPath = decodeURIComponent(pathOnly)
+  } catch {
+    throw new Error(`${docPath} has an invalid encoded link target: ${target}`)
+  }
+  const absolutePath = resolve(repoRoot, dirname(docPath), decodedPath)
+  const relativePath = relative(repoRoot, absolutePath).split(sep).join('/')
+  expect(
+    relativePath,
+    `${docPath} link must stay inside the repository`,
+  ).not.toMatch(/^\.\.(?:\/|$)/)
+  return relativePath
+}
+
+function markdownBlocks(document: Root): Root[] {
+  const blocks: Root[] = []
+  let children: RootContent[] = []
+
+  for (const child of document.children) {
+    if (child.type === 'heading' && children.length > 0) {
+      blocks.push({ type: 'root', children })
+      children = []
+    }
+    children.push(child)
+  }
+  if (children.length > 0) {
+    blocks.push({ type: 'root', children })
+  }
+  return blocks
+}
+
+function canonicalCredentialSection(docPath: string, document: Root): Root {
+  const sections = markdownBlocks(document).filter((block) => {
+    const links = resolvedRepoLinksInTree(docPath, block, document)
     return links.includes(packetPath) && links.includes(registryPath)
   })
-
-  expect(
-    canonicalSections,
-    `${docPath} canonical credential sections`,
-  ).toHaveLength(1)
-  const canonicalSection = canonicalSections[0]
-  if (!canonicalSection) {
+  expect(sections, `${docPath} canonical credential sections`).toHaveLength(1)
+  const section = sections[0]
+  if (!section) {
     throw new Error(`missing canonical credential section in ${docPath}`)
   }
-  return canonicalSection
+  return section
+}
+
+function proseFragments(document: Root): string[] {
+  const fragments: string[] = []
+
+  const visit = (node: Nodes): void => {
+    if (
+      node.type === 'paragraph' ||
+      node.type === 'heading' ||
+      node.type === 'tableCell'
+    ) {
+      const text = markdownText(node, true).trim()
+      if (text.length > 0) {
+        fragments.push(text)
+      }
+      return
+    }
+    if ('children' in node) {
+      for (const child of node.children) {
+        visit(child as Nodes)
+      }
+    }
+  }
+
+  visit(document)
+  return fragments
+}
+
+function unsupportedLiveCredentialClaim(text: string): boolean {
+  const patterns = [
+    /\b(?:staging|production)\s+(?:(?:credential|password(?:\s+change)?|kdf(?:\s+mutation)?|account[-\s]+key|user[-\s]+key)\s+)*(?:activation|evidence|writer(?:\s+activation)?)\s+(?:is|are|was|were|has been|have been)\s+(?:verified|proven|recorded|enabled|activated|complete|completed|passed)\b/gi,
+    /\b(?:packet|registry|closeout|evidence)\s+(?:verifies|proves|records|confirms|demonstrates)\s+(?:tracked\s+)?(?:staging|production)\b/gi,
+  ]
+
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const prefix = text.slice(Math.max(0, match.index - 48), match.index)
+      if (!/\b(?:no|not|never|without)\b[^.!?]*$/i.test(prefix)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function tablesIn(document: Root): Table[] {
+  const tables: Table[] = []
+  walkMarkdown(document, (node) => {
+    if (node.type === 'table') {
+      tables.push(node)
+    }
+  })
+  return tables
+}
+
+function markdownTableRows(table: Table): string[][] {
+  return table.children.map((row) =>
+    row.children.map((cell) => markdownText(cell, true).trim()),
+  )
+}
+
+function markdownText(node: Nodes, includeCode: boolean): string {
+  if (node.type === 'text') {
+    return node.value
+  }
+  if (node.type === 'inlineCode') {
+    return includeCode ? node.value : ''
+  }
+  if (node.type === 'code') {
+    return ''
+  }
+  if ('children' in node) {
+    return node.children
+      .map((child) => markdownText(child as Nodes, includeCode))
+      .join('')
+  }
+  return ''
+}
+
+function walkMarkdown(node: Nodes, visit: (node: Nodes) => void): void {
+  visit(node)
+  if ('children' in node) {
+    for (const child of node.children) {
+      walkMarkdown(child as Nodes, visit)
+    }
+  }
 }
 
 function countOccurrences(content: string, needle: string): number {
@@ -466,8 +751,4 @@ function markdownTableCells(line: string): string[] {
     .split('|')
     .slice(1, -1)
     .map((cell) => cell.trim())
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

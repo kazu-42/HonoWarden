@@ -131,7 +131,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_review_findings_remediated_rereview_pending',
+    'evidence_1c_second_review_findings_remediated_rereview_pending',
   )
   assert.deepEqual(
     readback.issues.map((issue) => [
@@ -157,6 +157,21 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
     bytes: 2094,
     sha256: '0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839',
   })
+})
+
+test('keeps the completed EVIDENCE-1B result bound to publication closeout', () => {
+  const result = readFileSync(
+    new URL('../results/04b-closeout-packet-secret-scan.md', import.meta.url),
+    'utf8',
+  )
+
+  assert.doesNotMatch(result, /publication pending/i)
+  assert.doesNotMatch(result, /remain required before HON-229 starts/i)
+  assert.match(result, /PR #116/)
+  assert.match(result, /32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3/)
+  assert.match(result, /29985521114/)
+  assert.match(result, /29985701462/)
+  assert.match(result, /2026-07-23T06:42:39\.292Z/)
 })
 
 test('rejects invalid active count, unknown blockers, duplicate identity, and cycles', () => {
