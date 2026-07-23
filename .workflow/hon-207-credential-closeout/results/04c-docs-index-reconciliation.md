@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: thirteenth review findings remediated; exact-head rereviews and publication pending
+Status: fourteenth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -37,8 +37,10 @@ Linear issue: HON-229
 ## Implementation Result
 
 The reconciliation now protects 14 canonical user-facing compatibility,
-current-state, operations, release, and security documents plus four supporting
-evidence documents derived directly from registry artifact paths. A GFM-aware
+current-state, operations, release, and security documents plus ten supporting
+documents: four derived directly from registry artifact paths and six policy
+documents discovered from the tracked rollout flags and credential-operation
+vocabulary. A GFM-aware
 Markdown AST contract resolves inline, angle-bracket, escaped, and
 reference-style local links, rejects unparsed link syntax and raw HTML, and
 requires exactly one canonical packet and registry entry under the expected
@@ -57,13 +59,16 @@ short-lived local-harness context applies only to the immediately following
 literal block, while local section headings remain scoped by Markdown
 hierarchy. Assignment coverage includes direct flag-first forms, active and
 postfix predicates, quoted JSON-style values, flag-subject `is set to true`,
-and environment-subject `has FLAG set to true` forms. Every matched assignment
+and environment-subject `has FLAG set to true` forms, declarative
+`defines/maps FLAG as/to true` forms, and flag/value pairs split across table
+cells. Every matched assignment
 binds full or contracted negation and local-harness exceptions to its exact
 predicate, including quoted absence examples, and a later positive assignment
 cannot be masked by an earlier negative one. The claim scanner carries
 section-scoped operations across neutral blocks, distinguishes current and
 historical staging, production, remote, and real-account credential/recovery
-assertions from explicit, contracted, or coordinated `neither` negation and
+assertions, including direct existential evidence forms, from explicit,
+contracted, or coordinated `neither` negation and
 genuine future or future-perfect gates, recognizes bounded release/rollout
 status labels and noun-form success claims, and associates qualified
 Cloudflare account headings and `live` aliases structurally without treating
@@ -78,17 +83,17 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 322 tests passed.
-- Compatibility suite: 6 files and 715 tests passed.
+- Cross-document credential contract: 345 tests passed.
+- Compatibility suite: 6 files and 738 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
-  harness checks: 6 files and 57 tests passed.
+  harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
-  HON-229 implementation checkpoint readback was exact at 4,722 bytes and
+  HON-229 implementation checkpoint readback was exact at 4,384 bytes and
   SHA-256
-  `96015660109b96ff10bb4e3367a6514b4f212610ffb30317a058bf5d7413cf94`;
-  it was updated at `2026-07-23T13:57:46.132Z` for commit `f63a3a9`.
-- Post-thirteenth-remediation full serial suite: 105 files and 1,945 tests
-  passed in 179.56 seconds with file parallelism disabled and one worker.
+  `be26fcb1180911b9ebdf774170f49b5e927f7db2097665d5a17e02490618a847`;
+  it was updated at `2026-07-23T15:00:56.447Z` for commit `c52dd0b`.
+- Post-fourteenth-remediation full serial suite: 105 files and 1,968 tests
+  passed in 141.10 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -462,6 +467,33 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   weakening completed historical assertions. All 322 focused cases, 715
   compatibility tests, 57 related checks, 6 HON-222 plan tests, and the serial
   105-file/1,945-test suite pass.
+
+## Fourteenth Review And Remediation
+
+- Native Codex session `019f8f7f-0f18-76e2-87bf-17e4f3a2767d` reviewed exact
+  commit `c52dd0b29f719a9f6935f1fe62208ba1eda9055f`, tree
+  `cc5b724ce278946701ccffa260a0a519798f5f63`, and reported three P2
+  fail-open paths: direct existential production-evidence claims,
+  declarative true-flag assignments, and credential-bearing release/security
+  documents outside the protected set.
+- Adversarial reviewer `019f8f7e-ff8c-7f22-809d-4894612b5549` reported one P2
+  true-flag assignment split across Markdown table cells and one P3 false
+  positive for perfect-tense coordinated `neither ... nor ... has shipped`
+  negation. Independent five-axis reviewer
+  `019f8f7f-005d-7920-b4a5-64b6d130d7ea` initially reported an unsupported
+  `toBeOneOf` matcher, revoked that finding after exact Vitest 4.1.10 type and
+  runtime readback, found no replacement P0-P3 issue, graded the axes
+  A/A-/A-/A-/B+, and approved the reviewed tree. That approval is superseded
+  by the actionable native and adversarial findings on the same exact head.
+- Eleven review mutations failed first while 325 existing cases stayed green.
+  The contract now derives six additional policy documents from stable
+  credential vocabulary, checks all ten supporting documents, binds adjacent
+  table cells and declarative assignment verbs, recognizes direct existential
+  evidence claims, and accepts perfect-tense coordinated negation. Two further
+  controls preserve non-assertive planning prose and local-harness table rows.
+  The release-note exclusions now carry self-contained `no live` wording. All
+  345 focused cases, 738 compatibility tests, 60 related checks, 6 HON-222
+  plan tests, and the serial 105-file/1,968-test suite pass.
 
 ## Closeout Pending
 

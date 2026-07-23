@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
 import type { Nodes, Root, Table } from 'mdast'
@@ -161,12 +161,19 @@ const rolloutFlags = [
   'HONOWARDEN_KDF_MUTATION_ENABLED',
   'HONOWARDEN_USER_KEY_ROTATION_ENABLED',
 ] as const
+const credentialPolicyPattern = new RegExp(
+  [
+    ...rolloutFlags.map(escapeRegExp),
+    String.raw`\b(?:password[-\s]+(?:change|reset|update)|kdf[-\s]+mutation|account[-\s]+key[-\s]+(?:initialization|read|rotation)|user[-\s]+key[-\s]+rotation|credential[-\s]+writer)\b`,
+  ].join('|'),
+  'i',
+)
 
 const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const liveStatusPatternSource = String.raw`\b(?:there\s+(?:is|are)\s+(?=(?:staging|prod(?:uction)?|remote|real[-\s]+account|live|cloudflare)\b)|verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -184,6 +191,15 @@ const registryCredentialDocs = [
         .filter((path) => path.startsWith('docs/') && path.endsWith('.md')),
     ),
   ),
+].sort()
+const credentialPolicyDocs = markdownFilesUnder('docs').filter(
+  (docPath) =>
+    credentialPolicyPattern.test(readText(docPath)) &&
+    !credentialDocs.some((path) => path === docPath) &&
+    !registryCredentialDocs.includes(docPath),
+)
+const credentialSupportingDocs = [
+  ...new Set([...registryCredentialDocs, ...credentialPolicyDocs]),
 ].sort()
 const credentialNavigationDocs = [
   'docs/operations/operator-environment.md',
@@ -274,6 +290,21 @@ describe('credential closeout documentation contract', () => {
     ])
 
     for (const docPath of registryCredentialDocs) {
+      assertCredentialSupportingDocContract(docPath, readText(docPath))
+    }
+  })
+
+  it('protects every credential-bearing policy document', () => {
+    expect(credentialPolicyDocs).toEqual([
+      'docs/adr/0009-premium-surface-scope.md',
+      'docs/release/upgrade-guide.md',
+      'docs/release/v0.1.0-alpha-release-notes.md',
+      'docs/security/auth-state-machine.md',
+      'docs/security/secrets-inventory.md',
+      'docs/security/threat-model.md',
+    ])
+
+    for (const docPath of credentialPolicyDocs) {
       assertCredentialSupportingDocContract(docPath, readText(docPath))
     }
   })
@@ -463,6 +494,7 @@ describe('credential closeout documentation contract', () => {
     'Credential writer activation is live.',
     'Password change went live.',
     'Password change has gone live.',
+    'There is production password-change evidence.',
     '[details](feature-freeze-checklist.md "Production credential writer activation is verified.")',
     '[details][live-title]\n\n[live-title]: feature-freeze-checklist.md "Production credential writer activation is verified."',
     '![safe alt](assets/hon-95/desktop-vault.png "Production credential writer activation is verified.")',
@@ -643,7 +675,9 @@ describe('credential closeout documentation contract', () => {
     'Password change did not go live.',
     'Production credential writer activation. Not verified.',
     'Neither production password change nor staging KDF mutation is verified.',
+    'Neither production password change nor staging KDF mutation has shipped.',
     'Production password change is neither verified nor approved.',
+    'There is no production password-change evidence.',
     '[details](feature-freeze-checklist.md "Production credential writer activation is not verified.")',
     '[Production password change](feature-freeze-checklist.md "not verified")',
     '[Production password change][first-title]\n\n[first-title]: feature-freeze-checklist.md\n[first-title]: feature-freeze-checklist.md "verified"',
@@ -700,6 +734,7 @@ describe('credential closeout documentation contract', () => {
     'After production password change has been verified, enable the flag.',
     'When staging KDF mutation has been approved, record separate evidence.',
     'After production password change has been verified in Cloudflare, update this packet.',
+    'There is a plan to collect production password-change evidence.',
   ])('accepts a non-assertive future live credential gate: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
@@ -907,7 +942,7 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
-  it.each([...credentialDocs, ...registryCredentialDocs])(
+  it.each([...credentialDocs, ...credentialSupportingDocs])(
     'rejects a live true rollout assignment in protected documentation: %s',
     (docPath) => {
       const content = `${readText(docPath)}\n\nProduction \`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true\`.\n`
@@ -921,7 +956,7 @@ describe('credential closeout documentation contract', () => {
     },
   )
 
-  it.each([...credentialDocs, ...registryCredentialDocs])(
+  it.each([...credentialDocs, ...credentialSupportingDocs])(
     'rejects a heading-scoped live true rollout assignment in protected documentation: %s',
     (docPath) => {
       const content = `${readText(docPath)}\n\n## Production\n\n\`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true\`\n`
@@ -975,10 +1010,21 @@ describe('credential closeout documentation contract', () => {
     'Production keeps `HONOWARDEN_PASSWORD_CHANGE_ENABLED` turned on.',
     'Production env var `HONOWARDEN_PASSWORD_CHANGE_ENABLED` is set to true.',
     'Production has `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.',
+    'Production defines `HONOWARDEN_PASSWORD_CHANGE_ENABLED` as true.',
+    'Production maps `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production does not set `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true` while staging sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])('rejects every active live rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n\n${claim}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /tracked credential rollout flag/,
+    )
+  })
+
+  it('rejects a live true rollout assignment split across table cells', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n\n## Production\n\n| Flag | Value |\n| --- | --- |\n| \`HONOWARDEN_PASSWORD_CHANGE_ENABLED\` | \`true\` |\n`
 
     expect(() => assertCredentialDocContract(docPath, content)).toThrow(
       /tracked credential rollout flag/,
@@ -1030,6 +1076,9 @@ describe('credential closeout documentation contract', () => {
     'Production does not run with `HONOWARDEN_USER_KEY_ROTATION_ENABLED` enabled.',
     'Production does not have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.',
     "Production doesn't have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.",
+    'Production does not define `HONOWARDEN_PASSWORD_CHANGE_ENABLED` as true.',
+    'Production does not map `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    '## Production\n\n| Context | Flag | Value |\n| --- | --- | --- |\n| Local harness | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `true` |',
     'Production remains disabled. The local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
     '## Production\n\nThe local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`; production remains false.',
     '## Production\n\nThe local harness enables `HONOWARDEN_PASSWORD_CHANGE_ENABLED`; production remains disabled.',
@@ -1339,6 +1388,18 @@ function repoPath(path: string): string {
   return resolve(repoRoot, path)
 }
 
+function markdownFilesUnder(directoryPath: string): string[] {
+  return readdirSync(repoPath(directoryPath), { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = join(directoryPath, entry.name)
+      if (entry.isDirectory()) {
+        return markdownFilesUnder(entryPath)
+      }
+      return entry.isFile() && entry.name.endsWith('.md') ? [entryPath] : []
+    })
+    .sort()
+}
+
 function sha256(content: Buffer): string {
   return createHash('sha256').update(content).digest('hex')
 }
@@ -1584,12 +1645,13 @@ function positiveRolloutAssignments(
   const positiveValue = `["']?(?:true|1|yes|on|enabled)\\b["']?`
   const patterns = [
     new RegExp(`${quotedFlag}\\s*(?:=|:|\\bis\\b)\\s*${positiveValue}`, 'gi'),
+    new RegExp(`${quotedFlag}\\s+${positiveValue}`, 'gi'),
     new RegExp(
       `\\b(?:enable(?:s|d|ing)?|turn(?:s|ed|ing)?\\s+on)\\s+(?:the\\s+)?${quotedFlag}`,
       'gi',
     ),
     new RegExp(
-      `\\b(?:set(?:s|ting)?|configur(?:e|es|ed|ing)|use(?:s|d|ing)?)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:(?:to|as|=)\\s*)?${positiveValue}`,
+      `\\b(?:assign(?:s|ed|ing)?|configur(?:e|es|ed|ing)|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|map(?:s|ped|ping)?|set(?:s|ting)?|use(?:s|d|ing)?)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:(?:to|as|=)\\s*)?${positiveValue}`,
       'gi',
     ),
     new RegExp(
@@ -1630,7 +1692,7 @@ function rolloutAssignmentIsNegated(prefix: string): boolean {
     .replace(/["'`]+\s*$/g, '')
     .trim()
   const assignmentVerb =
-    '(?:assign(?:s|ed|ing)?|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
+    '(?:assign(?:s|ed|ing)?|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|map(?:s|ped|ping)?|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
 
   if (
     new RegExp(
@@ -2350,6 +2412,12 @@ function liveClaimIsNegated(
   statusIndex: number,
 ): boolean {
   const beforeStatus = clause.slice(0, statusIndex)
+  const beforeEnvironment = clause.slice(0, environmentIndex)
+  if (
+    /\bthere\s+(?:is|are)\s+(?:no|not(?:\s+yet)?)\b/i.test(beforeEnvironment)
+  ) {
+    return true
+  }
   if (
     /\b(?:not|never)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
       beforeStatus,
@@ -2374,17 +2442,20 @@ function liveClaimIsNegated(
       )
     const predicateNegation =
       neither.index > environmentIndex &&
-      /\b(?:are|has\s+been|have\s+been|is|was|were)\s*$/i.test(beforeNeither)
+      /\b(?:are|had(?:\s+been)?|has(?:\s+been)?|have(?:\s+been)?|is|was|were)\s*$/i.test(
+        beforeNeither,
+      )
     const coordinatedSubjectNegation =
       neither.index <= environmentIndex &&
       /\bnor\b/i.test(neitherScope) &&
-      /\b(?:are|has\s+been|have\s+been|is|was|were)\s*$/i.test(neitherScope)
+      /\b(?:are|had(?:\s+been)?|has(?:\s+been)?|have(?:\s+been)?|is|was|were)\s*$/i.test(
+        neitherScope,
+      )
     if (!hasScopeBreak && (predicateNegation || coordinatedSubjectNegation)) {
       return true
     }
   }
 
-  const beforeEnvironment = clause.slice(0, environmentIndex)
   const negator = [...beforeEnvironment.matchAll(/\bno\b/gi)].at(-1)
   if (!negator) {
     return false
