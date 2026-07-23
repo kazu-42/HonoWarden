@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: fourth review findings remediated; exact-head rereviews and publication pending
+Status: fifth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -41,16 +41,20 @@ current-state, operations, release, and security documents plus four supporting
 evidence documents derived directly from registry artifact paths. A GFM-aware
 Markdown AST contract resolves inline, angle-bracket, escaped, and
 reference-style local links, rejects unparsed link syntax and raw HTML, and
-requires exactly one canonical packet and registry entry in one heading block
-at any depth. Canonical navigation must expose every registry-backed supporting
-document and the official-client credential harness. The compatibility fixture
-inventory maps all 11 claim IDs through exactly five positional columns to the
-operation, execution level, evidence level, and one exact artifact at the
-claim's evidence level. Every canonical credential section carries the packet's
-exact no-rerun and no-live-activation limitations. Evidence count tables are
-compared structurally with the registry, and each rollout document must carry
-exactly one row with all three configured scopes set to `false` for each of the
-four credential flags.
+requires exactly one canonical packet and registry entry under the expected
+per-document heading. Canonical navigation must expose every registry-backed
+supporting document and the official-client credential harness. The
+compatibility fixture inventory maps all 11 claim IDs through exactly five
+positional columns to the operation, execution level, evidence level, and one
+exact artifact linked from the representative-artifact cell. Every canonical
+credential section carries the packet's exact no-rerun and no-live-activation
+limitations. Environment context is inherited through nested Markdown
+containers and table headers, while the claim scanner distinguishes current
+staging, production, remote, and real-account credential/recovery assertions
+from explicit negation and future gates. Evidence count tables are compared
+structurally with the registry, and each rollout document must carry exactly
+one row with all three configured scopes set to `false` for each of the four
+credential flags.
 
 The local workflow state points at the 04c packet. The completed 04b result is
 now bound to PR #116, exact-head and merged-main CI, squash-tree equality, and
@@ -58,15 +62,15 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 59 tests passed.
-- Compatibility suite: 6 files and 452 tests passed.
+- Cross-document credential contract: 84 tests passed.
+- Compatibility suite: 6 files and 477 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
-  harness checks: 5 files and 51 tests passed.
+  harness checks: 5 files and 57 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed; live checkpoint exact at
   2,094 bytes and SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`.
-- Post-fourth-remediation full serial suite: 105 files and 1,682 tests passed in
-  241.77 seconds.
+- Post-fifth-remediation full serial suite: 105 files and 1,707 tests passed in
+  171.31 seconds.
 - TypeScript, ESLint, full-repository Prettier, and brand scan passed.
 - Diff whitespace check passed.
 - Dependency audit: no known vulnerabilities.
@@ -184,6 +188,32 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   gates, raw HTML is rejected, inventory rows are exactly five positional
   cells, registry-backed document coverage is derived rather than copied, and
   the HON-226 harness now pins PR #114, squash merge, and Linear archive.
+
+## Fifth Review And Remediation
+
+- Native Codex session `019f8e77-d6d6-7340-846e-110e8a6eec61` reviewed exact
+  commit `e143396a08b1f77854f4bf7c2bafdadb018fcdff`, tree
+  `485649479e072eb1ea3bd4e449d857146f4f69b4`, and reported four P2 false-green
+  paths: canonical links moved away from the named heading, nested-container
+  headings omitted from claim context, active `supports`/`works` predicates,
+  and representative links outside the representative-artifact cell.
+- Adversarial reviewer `019f8e77-c14d-7c71-875d-eb71b7c20546` reported one P2:
+  positive proof/status verbs before the environment and operation could evade
+  the relation scanner.
+- Five-axis reviewer `019f8e77-c218-7d60-bf79-a47beb6eb725` reported one P2
+  for recovery/remote claim families omitted from the scanner and one P3 for
+  overrejecting bounded negation such as `not fully verified`. Grades were B,
+  B, B+, B, and B+.
+- The combined mutation run failed 14 cases before remediation. The expected
+  heading is now pinned per protected document; the representative artifact
+  must be linked from column five; nested Markdown container headings are
+  tracked; status-before-environment, present-tense support, backup export,
+  restore, disabled-writer, forward-generation, remote, and real-account
+  assertions are rejected; and bounded negation remains accepted while
+  `not only ... but ...` stays a positive claim. A self-review also removed a
+  `Status` word from the mutation heading so the status-before-environment
+  cases prove the clause relation logic independently. All 84 focused cases,
+  477 compatibility tests, 57 related checks, and 1,707 full-suite tests pass.
 
 ## Closeout Pending
 
