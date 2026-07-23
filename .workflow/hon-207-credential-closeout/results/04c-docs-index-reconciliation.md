@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: eleventh review findings remediated; exact-head rereviews and publication pending
+Status: twelfth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -51,13 +51,17 @@ credential section carries the packet's exact no-rerun and no-live-activation
 limitations. Environment context is inherited through nested Markdown
 containers, table headers, and bounded adjacent sentences. User-visible prose
 preserves boundaries between adjacent Markdown inline nodes. Rollout assignment
-checks inherit a live environment from qualified headings or one adjacent
-sentence, enumerate every flag-first, active, and postfix positive predicate,
-bind negation and local-harness exceptions to that exact predicate, and reject
-a later positive assignment after an earlier negative one. The claim scanner
-carries section-scoped operations across neutral blocks, distinguishes current
-and historical staging, production, remote, and real-account
-credential/recovery assertions from explicit negation and future gates, and
+checks inherit a live environment from qualified headings or bounded paragraph
+context, retain it across neutral sentences until an explicit context shift,
+and cover direct flag-first assignments, active and postfix predicates, quoted
+JSON-style values, and flag-subject `is set to true` forms. Every matched
+assignment binds negation and local-harness exceptions to its exact predicate,
+including quoted absence examples, and a later positive assignment cannot be
+masked by an earlier negative one. The claim scanner carries section-scoped
+operations across neutral blocks, distinguishes current and historical
+staging, production, remote, and real-account credential/recovery assertions
+from explicit or contracted negation and genuine future gates, recognizes
+bounded release/rollout status labels and noun-form success claims, and
 associates `live` aliases structurally without treating live documentation as a
 deployment claim. Evidence count tables are compared structurally with the
 registry, and each rollout document must carry exactly one row with all three
@@ -69,17 +73,17 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 260 tests passed.
-- Compatibility suite: 6 files and 653 tests passed.
+- Cross-document credential contract: 297 tests passed.
+- Compatibility suite: 6 files and 690 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 5 files and 57 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
-  HON-229 implementation checkpoint readback was exact at 3,804 bytes and
+  HON-229 implementation checkpoint readback was exact at 4,279 bytes and
   SHA-256
-  `8e55bdafa65269ed3d0f45f3a46e43edabeee8226a263669727beee0058fec9f`;
-  it was updated at `2026-07-23T12:49:22.062Z` for commit `a0be240`.
-- Post-eleventh-remediation full serial suite: 105 files and 1,883 tests passed
-  in 172.14 seconds with file parallelism disabled and one worker.
+  `4eef6d9f1decb90c0c6b27d3465b759aa2603e7845a3a88364cb389b0fbf452d`;
+  it was updated at `2026-07-23T13:27:38.782Z` for commit `5eece6c`.
+- Post-twelfth-remediation full serial suite: 105 files and 1,920 tests passed
+  in 137.02 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -390,6 +394,37 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   preserving genuine future gates. All 260 focused cases, 653 compatibility
   tests, 57 related checks, 6 HON-222 plan tests, and the serial
   105-file/1,883-test suite pass.
+
+## Twelfth Review And Remediation
+
+- Native Codex session `019f8f2a-1c6b-7703-aa9f-d01bdbd23056` reviewed exact
+  commit `5eece6c1579c1bd90db98cc62c168e59c281ce65`, tree
+  `e562fb3eb6246b6f7dc1a962699cf907886e074c`, and reported three P2 gaps:
+  quoted true rollout values, release/rollout completion vocabulary, and
+  adjacent rollout/deployment/release status labels. It also reported one P3
+  false positive for contracted live-claim negation.
+- Adversarial reviewer `019f8f29-f5c3-7703-b080-5a41cdeb3925` reported two P2
+  gaps: common active rollout assignment wording and noun-form `success`
+  claims. Five-axis reviewer `019f8f29-f697-7b70-ab66-82f974643a85` reported
+  no P0-P3 findings, graded the five axes A-/A-/A-/A-/B+, and approved subject
+  to the normal publication gates; that approval is superseded by the
+  actionable standard and adversarial findings on the same exact head.
+- Follow-up false-negative reviewer `019f8f33-3154-7fb3-ab42-c88a62612df4`
+  reported two P2 and one P3 boundaries for neutral sentence carry-over and a
+  flag-subject assignment. False-positive reviewer
+  `019f8f33-51f8-75f1-a9a3-e39704c61ad1` reported two P2 boundaries for
+  quoted negative assignment examples and completed temporal release/rollout
+  predicates.
+- Eighteen initial review mutations, three false-negative follow-up mutations,
+  and nine false-positive/temporal follow-up mutations failed first. Seven
+  explicit negative controls stayed green. Quoted assignments and their
+  absence claims now share predicate-scoped analysis; live environment and
+  operation context survive bounded neutral prose but stop at explicit local
+  context; status vocabulary covers success, release, rollout, and tested
+  completion forms; adjacent status labels and contracted negation are
+  structural controls rather than prose exceptions. All 297 focused cases,
+  690 compatibility tests, 57 related checks, and the serial 105-file/1,920-
+  test suite pass.
 
 ## Closeout Pending
 
