@@ -1,6 +1,6 @@
 # EVIDENCE-1B: Canonical Closeout Packet And Secret Scan
 
-Status: implementation reviews approved; evidence-only closeout review pending
+Status: implementation and evidence reviews approved; publication pending
 
 Linear issue: HON-228
 
@@ -454,36 +454,48 @@ and 1 MiB performance probes, graded all five axes A, and returned `APPROVE`
 with no actionable findings. Native Codex remained unavailable because of its
 account usage limit, so it is not represented as approval evidence.
 
+The evidence-only binding commit
+`058061f051b7a955d47d2744aa51b42eab9df4f4` and tree
+`8c86a99373c2616761be790cb250d5e9da0750b4` then received two further
+read-only reviews. Standard session `ses_0725e50b3ffe568css9iTSg54N` returned
+`APPROVE` with no actionable findings after verifying the complete two-file
+delta and all recorded coordinates. Independent five-axis session
+`ses_0725bf7ffffe0B8TC5hB1DK1VH` graded all five axes A and returned `APPROVE`
+with no actionable findings after independently verifying the same state and
+its conservative remaining gates.
+
 ## Current Verification
 
-| Gate                        | Readback                                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------- |
-| Focused generator/scanner   | 252/252 passed                                                                           |
-| Compatibility impact        | 393/393 across 5 files passed                                                            |
-| Full suite                  | 1,623/1,623 across 104 files passed serially in 77.41 seconds                            |
-| HON-222 plan/state/readback | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
-| Canonical verifier          | 11 claims, 8 artifacts, 20 bindings passed                                               |
-| Canonical packet            | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |
-| Evidence levels             | fixture/local API/local official client present; staging/production 0                    |
-| TypeScript                  | `tsc --noEmit` passed                                                                    |
-| ESLint                      | full repository passed                                                                   |
-| Prettier                    | full repository passed; generated packet has verifier-owned bytes                        |
-| Brand scan                  | passed                                                                                   |
-| Dependency audit            | 0 known vulnerabilities                                                                  |
-| Release gate                | ready, 11 pass / 0 manual / 0 block                                                      |
-| Alpha completion audit      | complete                                                                                 |
-| Implementation coordinates  | commit `fb286783`; tree `4809aed`; base `5b67fbd`                                        |
-| Standard review             | Nemotron session `ses_074e33588ffetKFFweyotsV9pu`; no findings; `APPROVE`                |
-| Independent five-axis       | DeepSeek session `ses_072634f4cffeBIoTXt32DhIR2n`; A/A/A/A/A; `APPROVE`                  |
-| `git diff --check`          | passed                                                                                   |
+| Gate                         | Readback                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| Focused generator/scanner    | 252/252 passed                                                                           |
+| Compatibility impact         | 393/393 across 5 files passed                                                            |
+| Full suite                   | 1,623/1,623 across 104 files passed serially in 77.41 seconds                            |
+| HON-222 plan/state/readback  | 5/5 Node tests passed; renderer/live comment SHA-256 equal                               |
+| Canonical verifier           | 11 claims, 8 artifacts, 20 bindings passed                                               |
+| Canonical packet             | 14,398 bytes; SHA-256 `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58` |
+| Evidence levels              | fixture/local API/local official client present; staging/production 0                    |
+| TypeScript                   | `tsc --noEmit` passed                                                                    |
+| ESLint                       | full repository passed                                                                   |
+| Prettier                     | full repository passed; generated packet has verifier-owned bytes                        |
+| Brand scan                   | passed                                                                                   |
+| Dependency audit             | 0 known vulnerabilities                                                                  |
+| Release gate                 | ready, 11 pass / 0 manual / 0 block                                                      |
+| Alpha completion audit       | complete                                                                                 |
+| Implementation coordinates   | commit `fb286783`; tree `4809aed`; base `5b67fbd`                                        |
+| Standard review              | Nemotron session `ses_074e33588ffetKFFweyotsV9pu`; no findings; `APPROVE`                |
+| Independent five-axis        | DeepSeek session `ses_072634f4cffeBIoTXt32DhIR2n`; A/A/A/A/A; `APPROVE`                  |
+| Evidence binding coordinates | commit `058061f`; tree `8c86a99`; parent `fb28678`                                       |
+| Binding standard review      | Nemotron session `ses_0725e50b3ffe568css9iTSg54N`; no findings; `APPROVE`                |
+| Binding five-axis review     | DeepSeek session `ses_0725bf7ffffe0B8TC5hB1DK1VH`; A/A/A/A/A; `APPROVE`                  |
+| `git diff --check`           | passed                                                                                   |
 
 ## Remaining Gates
 
-An exact review of this evidence-only binding commit, PR/head CI, zero
-unresolved threads, squash tree equality, merged-main CI, and Linear
-Done/archive remain required before HON-229 starts. The parent dynamic-workflow
-verifier remains intentionally incomplete only because `final-report.md` is
-reserved for EVIDENCE-1C and CLOSE-1 completion.
+PR/head CI, zero unresolved threads, squash tree equality, merged-main CI, and
+Linear Done/archive remain required before HON-229 starts. The parent
+dynamic-workflow verifier remains intentionally incomplete only because
+`final-report.md` is reserved for EVIDENCE-1C and CLOSE-1 completion.
 
 No deployment, remote mutation, real credential, production or staging
 activation, destructive operation, paid action, normal browser profile, or
