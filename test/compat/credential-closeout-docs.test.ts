@@ -377,6 +377,7 @@ describe('credential closeout documentation contract', () => {
     'Without staging evidence, production credential writer activation is approved.',
     'Without local evidence, production credential writer is ready.',
     'Before lunch, production credential writer activation is verified.',
+    'After lunch, production credential writer activation is verified.',
     'If convenient, production password change is approved.',
     'The packet verifies credential writer activation in production.',
     'The registry confirms production KDF mutation.',
@@ -396,6 +397,15 @@ describe('credential closeout documentation contract', () => {
     'Remote credential restoration is verified.',
     'Remote D1/R2 restore is operational.',
     'Real-account recovery is confirmed.',
+    'Prod credential writer activation is verified.',
+    'Production credential writer activation: verified.',
+    'Production password change: approved.',
+    'Remote credential restoration: operational.',
+    'Verified in production: credential writer activation.',
+    'Context follows. Verified in production: credential writer activation.',
+    'Status: verified in production: credential writer activation.',
+    'Production credential writer activation evidence exists.',
+    'Production credential writer activation evidence is present.',
     'Production credential writer activation is not only documented but is verified.',
   ])(
     'rejects unsupported live credential claims outside the canonical section: %s',
@@ -427,6 +437,21 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
+  it.each([
+    ['Production', 'Backup export is approved.'],
+    ['Prod', 'Credential writer activation is verified.'],
+  ])(
+    'rejects unsupported live credential claims inherited from a %s heading',
+    (heading, claim) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n## ${heading}\n\n${claim}\n`
+
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /must not claim verified staging or production activation/,
+      )
+    },
+  )
+
   it('rejects unsupported live credential claims inherited from a nested section heading', () => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n> ## Production\n>\n> Credential writer activation is verified.\n`
@@ -445,6 +470,15 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
+  it('rejects unsupported live credential claims in fenced output', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n\`\`\`text\nProduction credential writer activation is verified.\n\`\`\`\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
   it.each([
     'Production credential writer activation is not verified.',
     'No production credential writer activation is verified.',
@@ -455,9 +489,20 @@ describe('credential closeout documentation contract', () => {
     'Remote credential restoration is not completely verified.',
     'Production backup export is not independently approved.',
     'No production recovery restore is verified.',
+    'Production credential writer activation evidence does not exist.',
+    'Production credential writer activation evidence is not present.',
+    'Production credential writer activation: not verified.',
+    'Local evidence is available: production credential writer activation is not verified.',
   ])('accepts an explicitly negated live credential claim: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+  })
+
+  it('accepts generic remote backup export evidence without a credential claim', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\nScheduled remote backup export evidence is recorded.\n\n## Remote\n\nScheduled backup export evidence is recorded.\n`
 
     expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
   })
@@ -470,6 +515,7 @@ describe('credential closeout documentation contract', () => {
     'Production credential writer activation must be verified before the flag is enabled.',
     'Production password change will be verified in a later evidence run.',
     'If remote credential restoration is verified, record separate evidence.',
+    'After production credential writer activation is verified, update this packet.',
   ])('accepts a non-assertive future live credential gate: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
@@ -1123,7 +1169,10 @@ function proseFragments(document: Root): string[] {
     const environmentHeadings = headingContext.filter((heading) =>
       hasLiveEnvironmentContext(heading),
     )
-    if (environmentHeadings.length > 0 && hasCredentialClaimContext(content)) {
+    if (
+      environmentHeadings.length > 0 &&
+      hasCredentialClaimContext([...environmentHeadings, content].join(' '))
+    ) {
       append([...environmentHeadings, ...parts])
     }
   }
@@ -1152,6 +1201,16 @@ function proseFragments(document: Root): string[] {
         }
         continue
       }
+      if (child.type === 'code') {
+        const lines = child.value.split(/\r?\n/)
+        for (const line of lines) {
+          appendWithHeadingContext(headingContext, [line])
+        }
+        if (lines.length > 1) {
+          appendWithHeadingContext(headingContext, lines)
+        }
+        continue
+      }
       if ('children' in child) {
         visitChildren(child.children as Nodes[], headingContext)
       }
@@ -1164,12 +1223,15 @@ function proseFragments(document: Root): string[] {
 
 function unsupportedLiveCredentialClaim(text: string): boolean {
   const normalized = text.replaceAll('|', ' ').replace(/\s+/g, ' ').trim()
-  const clauses = normalized.split(/[.;!?]+/)
+  const clauses = normalized
+    .split(/[.;!?]+/)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0)
 
   for (const clause of clauses) {
     const environments = [
       ...clause.matchAll(
-        /\b(?:staging|production|remote|real[-\s]+account)\b/gi,
+        /\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/gi,
       ),
     ]
     if (environments.length === 0) {
@@ -1180,7 +1242,7 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
     if (hasCredentialContext) {
       const statuses = [
         ...clause.matchAll(
-          /\b(?:verified|proven|recorded|enabled|disabled|activated|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|successful|succeeded|confirmed|demonstrated|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|proves|records|confirms|demonstrates|documents)\b/gi,
+          /\b(?:verified|proven|recorded|enabled|disabled|activated|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|successful|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|proves|records|confirms|demonstrates|documents)\b/gi,
         ),
       ]
       for (const status of statuses) {
@@ -1209,10 +1271,10 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
     }
 
     for (const match of clause.matchAll(
-      /\b(?:packet|registry|closeout|evidence)\s+(?:verifies|proves|records|confirms|demonstrates)\s+(?:tracked\s+)?(?:staging|production|remote|real[-\s]+account)\b/gi,
+      /\b(?:packet|registry|closeout|evidence)\s+(?:verifies|proves|records|confirms|demonstrates)\s+(?:tracked\s+)?(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/gi,
     )) {
       const environmentOffset = match[0].search(
-        /\b(?:staging|production|remote|real[-\s]+account)\b/i,
+        /\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/i,
       )
       const environmentIndex = match.index + environmentOffset
       const statusOffset = match[0].search(
@@ -1263,7 +1325,7 @@ function statusDescribesEnvironmentClaim(
   const start = Math.min(environmentIndex, statusIndex)
   const end = Math.max(environmentIndex, statusIndex)
   const relation = clause.slice(start, end)
-  const boundaryPattern = /[,;:]|\b(?:and|but|however|yet|while|whereas)\b/gi
+  const boundaryPattern = /[,;]|\b(?:and|but|however|yet|while|whereas)\b/gi
   if (boundaryPattern.test(relation)) {
     return false
   }
@@ -1275,8 +1337,13 @@ function statusDescribesEnvironmentClaim(
     ),
   ].at(-1)
   const afterRelation = clause.slice(end)
+  const statusIntroducesTrailingLabel =
+    statusIndex < environmentIndex &&
+    /^(?:status\s*:\s*)?$/i.test(clause.slice(0, statusIndex))
   const rightBoundary = afterRelation.match(
-    /[,;:]|\b(?:and|but|however|yet|while|whereas)\b/i,
+    statusIntroducesTrailingLabel
+      ? /[,;]|\b(?:and|but|however|yet|while|whereas)\b/i
+      : /[,;:]|\b(?:and|but|however|yet|while|whereas)\b/i,
   )
   const segmentStart = leftBoundary
     ? leftBoundary.index + leftBoundary[0].length
@@ -1291,22 +1358,28 @@ function statusDescribesEnvironmentClaim(
 
 function hasCredentialClaimContext(clause: string): boolean {
   if (
-    /\b(?:password[-\s]+(?:changes?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|backup[-\s]+export|restor(?:e|es|ed|ation)|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
+    /\b(?:password[-\s]+(?:changes?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+writer|writer|recovery|restor(?:e|es|ed|ation)|disabled[-\s]+writers?|writers?[-\s]+disabled|forward[-\s]+generation)\b/i.test(
+      clause,
+    )
+  ) {
+    return true
+  }
+  if (
+    /\bcredential\b/i.test(clause) &&
+    /\b(?:activation|evidence|writer|run|operation|lifecycle|mutation|rotation|readback|recovery|backup|restore|restoration|generation)\b/i.test(
       clause,
     )
   ) {
     return true
   }
   return (
-    /\bcredential\b/i.test(clause) &&
-    /\b(?:activation|evidence|writer|run|operation|lifecycle|mutation|rotation|readback|recovery|backup|restore|restoration|generation)\b/i.test(
-      clause,
-    )
+    /\bbackup[-\s]+export\b/i.test(clause) &&
+    /\b(?:staging|prod(?:uction)?|real[-\s]+account)\b/i.test(clause)
   )
 }
 
 function hasLiveEnvironmentContext(value: string): boolean {
-  return /\b(?:staging|production|remote|real[-\s]+account)\b/i.test(value)
+  return /\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/i.test(value)
 }
 
 function liveClaimIsNegated(
@@ -1364,7 +1437,7 @@ function liveClaimIsNonAssertive(
   }
 
   const marker = [
-    ...beforeStatus.matchAll(/\b(?:before|if|when|once|until)\b/gi),
+    ...beforeStatus.matchAll(/\b(?:before|after|if|when|once|until)\b/gi),
   ].at(-1)
   if (!marker) {
     return false
@@ -1375,7 +1448,7 @@ function liveClaimIsNonAssertive(
     return false
   }
   return (
-    (/\b(?:staging|production|remote|real[-\s]+account)\b/i.test(scope) &&
+    (/\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b/i.test(scope) &&
       hasCredentialClaimContext(scope)) ||
     (environmentIndex < marker.index && hasCredentialClaimContext(scope))
   )

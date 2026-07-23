@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: fifth review findings remediated; exact-head rereviews and publication pending
+Status: sixth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -62,15 +62,16 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 84 tests passed.
-- Compatibility suite: 6 files and 477 tests passed.
+- Cross-document credential contract: 103 tests passed.
+- Compatibility suite: 6 files and 496 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 5 files and 57 tests passed.
-- HON-222 workflow renderer/readback: 6 tests passed; live checkpoint exact at
-  2,094 bytes and SHA-256
-  `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`.
-- Post-fifth-remediation full serial suite: 105 files and 1,707 tests passed in
-  171.31 seconds.
+- HON-222 workflow renderer/readback: 6 tests passed. The last managed Linear
+  checkpoint readback was exact at 2,094 bytes and SHA-256
+  `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`;
+  the sixth-remediation checkpoint refresh follows the exact local commit.
+- Post-sixth-remediation full serial suite: 105 files and 1,726 tests passed in
+  179.97 seconds.
 - TypeScript, ESLint, full-repository Prettier, and brand scan passed.
 - Diff whitespace check passed.
 - Dependency audit: no known vulnerabilities.
@@ -214,6 +215,31 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   `Status` word from the mutation heading so the status-before-environment
   cases prove the clause relation logic independently. All 84 focused cases,
   477 compatibility tests, 57 related checks, and 1,707 full-suite tests pass.
+
+## Sixth Review And Remediation
+
+- Native Codex session `019f8e90-cd11-70a3-acf2-780e712b612f` reviewed exact
+  commit `ad62112ce5fc3828d1d614b1790ec6f556e0fdb8`, tree
+  `98671b1a2076b41143ee399e309134213d13659a`, and reported two P2 bypasses:
+  live claims inside fenced output and the repository's `Prod` production
+  alias were not scanned.
+- Adversarial reviewer `019f8e90-f941-7362-be6f-5b15fa735c7b` reported two P2
+  false greens for existence predicates and status/environment colon labels,
+  plus two P3 false positives for `After` future gates and generic remote
+  backup-export evidence.
+- Five-axis reviewer `019f8e90-fa08-71e2-a191-731863e9ce2c` independently
+  reported one P2 covering three colon-delimited status forms. Grades were B-,
+  B, B+, B, and B for framing, diagnosis, design, correctness/tests, and
+  architecture.
+- Ten combined review mutations failed first. The scanner now recognizes the
+  `Prod` alias, checks fenced output, binds colon labels without joining
+  unrelated clauses, recognizes `exists` and `is present` evidence predicates,
+  treats `After` as a scoped future marker, and distinguishes generic remote
+  backup-export records from credential/recovery claims. A further failing
+  self-review mutation fixed leading whitespace after sentence splitting.
+  Explicit negation, unrelated conditional markers, and remote operational
+  backup evidence remain negative controls. All 103 focused cases, 496
+  compatibility tests, and 57 related checks pass.
 
 ## Closeout Pending
 
