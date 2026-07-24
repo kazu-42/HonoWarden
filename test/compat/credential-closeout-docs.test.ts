@@ -174,7 +174,7 @@ const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -456,6 +456,7 @@ describe('credential closeout documentation contract', () => {
     'Production password change has been tested successfully.',
     'Production password change was a success.',
     'Production password change is active.',
+    'Production credential writer is turned on.',
     'Production password change has shipped.',
     'Production password change has rolled out.',
     'Production password change is released.',
@@ -635,6 +636,15 @@ describe('credential closeout documentation contract', () => {
     const content = `${readText(docPath)}\n\`\`\`text\nProduction credential writer activation is verified.\n\`\`\`\n`
 
     expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
+  it('rejects unsupported live credential claims in raw HTML titles', () => {
+    const docPath = 'docs/adr/0009-premium-surface-scope.md'
+    const content = `${readText(docPath)}\n<a title="Production password change is verified.">details</a>\n`
+
+    expect(() => assertCredentialPolicyDocContract(docPath, content)).toThrow(
       /must not claim verified staging or production activation/,
     )
   })
@@ -1040,6 +1050,7 @@ describe('credential closeout documentation contract', () => {
   it.each([
     '| Flag | Top-level | Staging | Production |\n| --- | --- | --- | --- |\n| `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `false` | `false` | `true` |',
     '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
+    '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true (temporary)` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
   ])(
     'rejects a live true rollout assignment regardless of table column order: %s',
     (table) => {
@@ -1051,6 +1062,24 @@ describe('credential closeout documentation contract', () => {
       )
     },
   )
+
+  it('rejects a live true rollout assignment in a multiline deployment command', () => {
+    const docPath = 'docs/release/index.md'
+    const content = [
+      readText(docPath),
+      '## Deployment',
+      '',
+      '```sh',
+      'wrangler deploy --env production \\',
+      '  --var HONOWARDEN_PASSWORD_CHANGE_ENABLED=true',
+      '```',
+      '',
+    ].join('\n')
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /tracked credential rollout flag/,
+    )
+  })
 
   it('scopes a local-harness exception to the assignment it describes', () => {
     const docPath = 'docs/release/index.md'
@@ -1837,7 +1866,9 @@ function rolloutTableFragments(
     ),
   )
   const positiveValueIndexes = row.flatMap((cell, index) =>
-    /^["']?(?:true|1|yes|on|enabled)["']?$/i.test(cell.trim()) ? [index] : [],
+    /^["']?(?:true|1|yes|on|enabled)(?:\s*\([^)]*\))?["']?$/i.test(cell.trim())
+      ? [index]
+      : [],
   )
   if (flags.length === 0 || positiveValueIndexes.length === 0) {
     return []
@@ -2025,7 +2056,7 @@ function proseFragments(document: Root): string[] {
     for (const child of children) {
       if (child.type === 'html') {
         appendWithHeadingContext(headingContext, [
-          child.value.replace(/<[^>]*>/g, ' '),
+          htmlElementProse(child.value),
         ])
         continue
       }
@@ -2086,7 +2117,9 @@ function proseFragments(document: Root): string[] {
         continue
       }
       if (child.type === 'code') {
-        const lines = child.value.split(/\r?\n/)
+        // Join shell line-continuations so `--env production \` + `--var FLAG=true`
+        // is scanned as one live assignment rather than two inert fragments.
+        const lines = joinBackslashContinuedLines(child.value.split(/\r?\n/))
         for (const line of lines) {
           append([line])
         }
@@ -2143,6 +2176,11 @@ function markdownProseText(
   }
   if (node.type === 'inlineCode') {
     return node.value
+  }
+  if (node.type === 'html') {
+    // mdast keeps open/close tags as raw HTML; attribute prose (title/alt)
+    // would otherwise be discarded with the tag.
+    return htmlElementProse(node.value)
   }
   if (node.type === 'code') {
     return ''
@@ -2499,6 +2537,34 @@ function commandFragmentIsInstruction(value: string): boolean {
   return /^(?:[$>#]\s*)?(?:bun|curl|git|node|npm|npx|pnpm|wrangler|yarn)\b[\s\S]*\s--(?:env|mode)\b/i.test(
     value.trim(),
   )
+}
+
+function joinBackslashContinuedLines(lines: string[]): string[] {
+  const joined: string[] = []
+  let pending = ''
+  for (const line of lines) {
+    const continuation = /\\[ \t]*$/.test(line)
+    const body = continuation ? line.replace(/\\[ \t]*$/, '') : line
+    pending = pending.length === 0 ? body : `${pending} ${body.trimStart()}`
+    if (!continuation) {
+      joined.push(pending)
+      pending = ''
+    }
+  }
+  if (pending.length > 0) {
+    joined.push(pending)
+  }
+  return joined
+}
+
+function htmlElementProse(value: string): string {
+  const attributeValues: string[] = []
+  for (const match of value.matchAll(
+    /\b(?:title|alt|aria-label)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"'=]+))/gi,
+  )) {
+    attributeValues.push(match[1] ?? match[2] ?? match[3] ?? '')
+  }
+  return [...attributeValues, value.replace(/<[^>]*>/g, ' ')].join(' ')
 }
 
 function bareLiveStatusUsesEnvironmentAlias(
