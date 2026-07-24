@@ -174,7 +174,7 @@ const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -1190,6 +1190,57 @@ describe('credential closeout documentation contract', () => {
       /rollout flag table/,
     )
   })
+
+  // Seventeenth-round adversarial fail-open probes (exact HEAD review).
+  it('rejects a live true rollout assignment in a multiline deploy command without backslash', () => {
+    const docPath = 'docs/release/index.md'
+    const content = [
+      readText(docPath),
+      '## Deployment',
+      '',
+      '```sh',
+      'wrangler deploy --env production',
+      '  --var HONOWARDEN_PASSWORD_CHANGE_ENABLED=true',
+      '```',
+      '',
+    ].join('\n')
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /tracked credential rollout flag/,
+    )
+  })
+
+  it('rejects a comma-separated production credential claim', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n## Contradictory Credential Claim\n\nProduction password change, verified.\n`
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
+  it('rejects a boolean true production credential status claim', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n## Contradictory Credential Claim\n\nProduction password change is true.\n`
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
+  it('rejects a bare-local sentence that would clear production rollout context', () => {
+    const docPath = 'docs/release/index.md'
+    const content = [
+      readText(docPath),
+      '',
+      'Production runtime configuration is applied next.',
+      '',
+      'Local operator notes follow.',
+      '',
+      '`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
+      '',
+    ].join('\n')
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /tracked credential rollout flag/,
+    )
+  })
 })
 
 function assertCredentialDocContract(docPath: string, content: string): void {
@@ -1671,8 +1722,9 @@ function assertNoLiveRolloutFlagAssignments(
     let pendingLiveEnvironment = false
     for (const segment of segments) {
       const hasLiveEnvironment = environmentPattern.test(segment)
-      const hasExplicitLocalContext =
-        /\b(?:fixture|harness|local|loopback|synthetic)\b/i.test(segment)
+      // Bare "local" alone must not clear production context; only explicit
+      // local-harness / fixture / synthetic scopes may drop pending live env.
+      const hasExplicitLocalContext = hasScopedLocalRolloutContext(segment)
       const inheritsLiveEnvironment =
         !hasLiveEnvironment &&
         pendingLiveEnvironment &&
@@ -1953,7 +2005,7 @@ function proseFragments(document: Root): string[] {
       hasLiveEnvironmentContext(heading),
     )
     const localHeadings = headingContext.filter((heading) =>
-      hasExplicitLocalRolloutContext(heading),
+      hasScopedLocalRolloutContext(heading),
     )
     const contextualParts = [...environmentHeadings, ...parts]
     const contextualContent = contextualParts.join(' ')
@@ -1982,7 +2034,7 @@ function proseFragments(document: Root): string[] {
     }
 
     const hasExplicitLocalContext =
-      localHeadings.length > 0 || hasExplicitLocalRolloutContext(content)
+      localHeadings.length > 0 || hasScopedLocalRolloutContext(content)
     if (
       pendingRolloutContext?.headingKey === headingKey &&
       hasTrackedFlag &&
@@ -2069,7 +2121,7 @@ function proseFragments(document: Root): string[] {
         const nestedNeutralHeading =
           child.depth > previousHeadingDepth &&
           !hasLiveEnvironmentContext(headingText) &&
-          !hasExplicitLocalRolloutContext(headingText)
+          !hasScopedLocalRolloutContext(headingText)
         if (nestedNeutralHeading && pendingRolloutContext !== undefined) {
           pendingRolloutContext.headingKey = headingKey
         } else {
@@ -2117,13 +2169,21 @@ function proseFragments(document: Root): string[] {
         continue
       }
       if (child.type === 'code') {
-        // Join shell line-continuations so `--env production \` + `--var FLAG=true`
-        // is scanned as one live assignment rather than two inert fragments.
+        // Join shell line-continuations and always scan the full fence so
+        // `--env production` on one line and `--var FLAG=true` on the next
+        // cannot hide a live assignment even without trailing `\`.
         const lines = joinBackslashContinuedLines(child.value.split(/\r?\n/))
+        const fullFence = lines
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)
+          .join(' ')
         for (const line of lines) {
           append([line])
         }
-        if (!commandFragmentIsInstruction(lines.join(' '))) {
+        if (fullFence.length > 0) {
+          append([fullFence])
+        }
+        if (!commandFragmentIsInstruction(fullFence || lines.join(' '))) {
           appendWithHeadingContext(headingContext, lines, true)
         }
         continue
@@ -2395,9 +2455,24 @@ function hasExplicitLocalRolloutContext(value: string): boolean {
   return false
 }
 
+function hasScopedLocalRolloutContext(value: string): boolean {
+  // Bare "local" is not enough to drop production pending context.
+  return (
+    /\b(?:fixture|harness|loopback|synthetic)\b/i.test(value) ||
+    /\blocal(?:[-\s]+only)?[-\s]+(?:fixture|harness|runtime|tests?)\b/i.test(
+      value,
+    )
+  )
+}
+
 function unsupportedLiveCredentialClaim(text: string): boolean {
   const normalized = normalizeCredentialSpellings(text)
     .replaceAll('|', ' ')
+    // Appositive status after a comma: "Production password change, verified."
+    .replace(
+      /,\s*(?=(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|shipped|confirmed|demonstrated|true|yes|ok)\b)/gi,
+      ' is ',
+    )
     .replace(/\s+/g, ' ')
     .trim()
   if (commandFragmentIsInstruction(normalized)) {

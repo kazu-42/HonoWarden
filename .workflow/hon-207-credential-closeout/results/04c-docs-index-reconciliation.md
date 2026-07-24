@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: fifteenth review findings remediated; exact-head rereviews and publication pending
+Status: seventeenth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -551,10 +551,54 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   zero known vulnerabilities, credential evidence/closeout verification,
   strict 11-of-11 release gate, and alpha completion audit also pass.
 
+## Sixteenth Review And Remediation
+
+- Concurrent standard and adversarial reviewers against exact commit
+  `41b4000c4c41af4069ab467350cac7615a7346ce` reproduced four durable P2
+  fail-open paths: live-status phrasing `turned on`, credential claims hidden
+  in raw HTML `title`/`alt`/`aria-label` attributes, annotated true rollout
+  cells such as `true (temporary)`, and shell backslash-continued deploy
+  commands that split `--env production` from `--var FLAG=true`.
+- One concurrent P1 about the accepted control
+  `Scheduled remote backup export evidence is recorded.` was re-probed on the
+  remediated head and remains green; generic remote backup evidence is still
+  distinct from credential/recovery live claims.
+- Residual probes for production matrix true columns, credential-bearing
+  header tables, and `Production has password-change evidence` also remain
+  rejected on the remediated head.
+- Remediation commit `c7eba3924d3567a7255ef5ecbd70bef0d1d119bc`, tree
+  `b53365ae2a932edfd39bbaa36e3139cc2be38c4a`, base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`:
+  - live status taxonomy includes `turned on`
+  - HTML attribute prose is extracted before tag stripping and inline HTML
+    nodes contribute that prose
+  - table positive-value cells accept annotated true values
+  - fenced shell line-continuations are joined before rollout scanning
+- Focused contract suite: 363 tests passed. Compatibility suite: 756 tests
+  passed. Full suite: 1986 tests passed. TypeScript, ESLint, Prettier, and
+  brand scan passed on the remediated head.
+
+## Seventeenth Review And Remediation
+
+- Independent adversarial review of exact `c7eba39` / tree `b53365ae`
+  reproduced four executable fail-open paths that remained after the sixteenth
+  pass: multi-line deploy fences without backslash continuation, bare `local`
+  prose clearing pending production rollout context, comma-appositive live
+  status claims, and boolean `true`/`yes` status vocabulary.
+- Independent five-axis review graded framing/diagnosis high but requested
+  changes on residual detector fail-opens and maintainability of the in-test
+  NLP surface. No reconciled live docs content was found incorrect at HEAD.
+- Remediation (test-first) hardens:
+  - full fenced-command scan after line join, not only `\` continuations
+  - scoped local context clear (fixture/harness/runtime/tests, not bare local)
+  - comma-to-copula normalization for appositive statuses
+  - `true`/`yes`/`ok` as affirmative live statuses in credential+env scope
+- Focused contract suite: 367 tests passed after remediation.
+
 ## Closeout Pending
 
 - Exact-head standard, adversarial, and independent five-axis rereview of the
-  remediated tree are pending.
+  seventeenth-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.
