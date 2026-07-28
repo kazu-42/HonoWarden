@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: twenty-fifth review findings remediated; exact-head rereviews and publication pending
+Status: twenty-sixth review finding remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -107,13 +107,14 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 - Compatibility suite: 6 files and 919 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
-- HON-222 workflow renderer/readback: 6 tests passed. The latest managed
-  HON-229 implementation checkpoint readback was exact at 2,762 bytes and
-  SHA-256
-  `17ee848e519a855f508722218a0f9008656adf016ca71e560bf3057722777930`;
-  it was updated at `2026-07-28T04:19:49.648Z` for review target `37019e7`.
-- Post-twenty-fifth-remediation full serial suite: 105 files and 2,149 tests
-  passed in 145.82 seconds with file parallelism disabled and one worker.
+- HON-222 workflow renderer/readback: 6 tests passed.
+- Committed HON-222 readback artifact: 2,094 bytes, SHA-256
+  `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`,
+  updated at `2026-07-23T06:43:06.815Z`.
+- The managed HON-229 implementation checkpoint is external Linear state. It
+  is re-read at publication and is not commit-local proof.
+- Post-twenty-sixth-remediation full serial suite: 105 files and 2,149 tests
+  passed in 144.32 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -800,7 +801,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   related operator/release/security checks pass 60/60, and the serial full
   suite passes 2,105/2,105 across 105 files in 164.66 seconds.
 
-## Twenty-Fifth Review And Remediation
+## Review History: Twenty-Fifth Review And Remediation
 
 - Native Codex session `019fa701-807e-7350-b1b1-388b3d9ada2c`, standard
   reviewer `019fa701-58aa-7933-852e-24e89072cdbe`, and five-axis reviewer
@@ -835,10 +836,33 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   dependency audit, frozen offline install, credential closeout verification,
   strict 11-of-11 release gate, and alpha completion audit also pass.
 
+## Twenty-Sixth Review And Remediation
+
+- Native Codex session `019fa719-6f7f-7560-a79c-dd4b6bb3d5aa`, standard
+  reviewer `019fa719-8573-77c1-9154-e0b36def5095`, and five-axis reviewer
+  `019fa719-9a8e-7cd2-8c63-e804d5da70b4` inspected exact
+  `1e8343388c4f7982128f4cdfb20de78b66ae0d1f`, tree
+  `45889dafa64e9672cdc459d0faa1222f52e60701`, against base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`.
+- Native and standard review reported no actionable finding. Five-axis review
+  reported one P3 evidence-provenance finding and no P0-P2 finding. Exact-head
+  CI run 30330393661 passed, but its green result was not treated as approval
+  after the P3 was accepted.
+- One workflow assertion failed first because the current result described a
+  mutable HON-229 Linear comment as the latest checkpoint beside the committed
+  HON-222 readback check.
+- The verification section now binds commit-local proof to the tracked HON-222
+  readback artifact's byte count, digest, and update time. The managed HON-229
+  checkpoint is explicitly classified as external Linear state that must be
+  re-read at publication rather than as reproducible commit-local evidence.
+- HON-222 renderer tests pass 6/6, release/security documentation checks pass
+  537/537, and the serial full suite passes 2,149/2,149 across 105 files in
+  144.32 seconds.
+
 ## Closeout Pending
 
 - Exact-head native, standard, and independent five-axis rereview of the
-  twenty-fifth-remediated tree are pending.
+  twenty-sixth-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.

@@ -123,9 +123,21 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: twenty-fifth review findings remediated; exact-head rereviews and publication pending$/m,
+    /^Status: twenty-sixth review finding remediated; exact-head rereviews and publication pending$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: twenty-fourth review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: twenty-fifth review/m)
+  assert.match(
+    evidenceResult,
+    /Committed HON-222 readback artifact: 2,094 bytes, SHA-256/,
+  )
+  assert.match(
+    evidenceResult,
+    /0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839/,
+  )
+  assert.doesNotMatch(
+    evidenceResult,
+    /latest managed\s+HON-229 implementation checkpoint readback/i,
+  )
   assert.deepEqual(
     evidencePacket.subpackets.map((packet) => [
       packet.linear,
@@ -140,7 +152,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_twenty_fifth_review_findings_remediated_rereview_pending',
+    'evidence_1c_twenty_sixth_review_finding_remediated_rereview_pending',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -428,7 +440,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_2149_tests_serial_145_82_seconds_post_twenty_fifth_remediation',
+    'passed_105_files_2149_tests_serial_144_32_seconds_post_twenty_sixth_remediation',
   )
   assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
     base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -643,6 +655,30 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
         'rollout_flag_equality_predicates',
         'permitted_live_credential_capabilities',
       ],
+    },
+  )
+  assert.deepEqual(
+    state.verification.results.evidence1cTwentySixthRemediation,
+    {
+      base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+      reviewed_head: '1e8343388c4f7982128f4cdfb20de78b66ae0d1f',
+      reviewed_tree: '45889dafa64e9672cdc459d0faa1222f52e60701',
+      head_ci_run: 30330393661,
+      native_review_session: '019fa719-6f7f-7560-a79c-dd4b6bb3d5aa',
+      standard_review_agent: '019fa719-8573-77c1-9154-e0b36def5095',
+      five_axis_review_agent: '019fa719-9a8e-7cd2-8c63-e804d5da70b4',
+      actionable_p3_instances: 1,
+      consolidated_boundary_classes: 1,
+      initial_red_failures: 1,
+      focused_docs_contract_tests: 526,
+      release_security_tests: 537,
+      compat_tests: 919,
+      related_tests: 60,
+      hon_222_plan_tests: 6,
+      full_suite_files: 105,
+      full_suite_tests: 2149,
+      full_suite_serial_seconds: 144.32,
+      findings_closed: ['committed_vs_external_checkpoint_provenance'],
     },
   )
   assert.deepEqual(
