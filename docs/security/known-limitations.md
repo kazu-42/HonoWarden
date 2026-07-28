@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-19.
+Last reviewed: 2026-07-23.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -68,16 +68,21 @@ inputs, not minor documentation notes.
   production lifecycle evidence is recorded yet.
 - current-password verification and existing master-password change are covered
   by compatibility fixtures and a synthetic local Wrangler/D1 lifecycle. No
-  official client UI or production password-change run is recorded. Non-empty
+  official client password-change UI or production password-change run is
+  recorded. Official-client readback exists only where the canonical credential
+  registry identifies it, and it proves post-mutation login, unlock, sync, and
+  item readback rather than an in-client password-change surface. Non-empty
   password hints are rejected because hint persistence is not implemented. The
   writer is default-off in every tracked environment; HON-226 proves only local
   same-target disable-state equality and one forward official-CLI generation,
   not deployment activation or browser-extension recovery.
 - existing-account PBKDF2/Argon2id KDF change is covered by focused tests and a
-  synthetic local Wrangler/D1 lifecycle. No official client UI or production
-  KDF-change run is recorded, and this local evidence does not promote a client
-  compatibility row. The irreversible writer remains default-off in every
-  tracked environment until a reader-capable rollback target is deployed.
+  synthetic local Wrangler/D1 lifecycle. No official client settings UI or
+  production KDF-change run is recorded. Official-client readback, where
+  recorded in the canonical registry, proves that the resulting generation is
+  readable after an API-driven local mutation; it does not claim a client
+  settings flow. The irreversible writer remains default-off in every tracked
+  environment until a reader-capable rollback target is deployed.
   Unknown-account prelogin decoys match the current client-readable stored KDF
   population by account count but are not a proof of cryptographic
   indistinguishability; the email allowlist remains the primary boundary.
@@ -92,8 +97,11 @@ inputs, not minor documentation notes.
   tuple count is missing instead of allowing silent population drift.
 - authenticated account-key read and one-time V1 initialization are covered by
   pinned route fixtures, focused tests, and a synthetic local Wrangler/D1
-  lifecycle. No official client UI, staging, production, or real-account run is
-  recorded, and every tracked environment keeps the route flag false. The
+  lifecycle. No official client account-key UI, staging, production, or
+  real-account run is recorded. Official-client readback, where recorded in the
+  canonical registry, proves decrypt readback after local initialization rather
+  than an in-client account-key management surface, and every tracked
+  environment keeps the route flag false. The
   initializer accepts only both-null state, preserves the security stamp and
   existing sessions, and cannot repair or replace a partial/different pair.
   True replacement, client data rewrap, V2 signature keys, signed public keys,
@@ -103,6 +111,31 @@ inputs, not minor documentation notes.
   ingestion is implemented, but the mailbox UI, email body or attachment
   storage, AI triage, approved outbound replies, and Linear issue creation
   automation are not implemented yet.
+
+## Credential Closeout Boundary
+
+The canonical credential and recovery evidence is the
+[closeout packet](../../compat/credential-closeout-packet.json) bound to the
+[evidence registry](../../compat/credential-evidence.json). Per-operation
+evidence documents remain supporting detail; the packet and registry define the
+claim ceiling.
+
+| Evidence level          | Claims |
+| ----------------------- | -----: |
+| `fixture`               |      0 |
+| `local_api`             |      4 |
+| `local_official_client` |      7 |
+| `staging`               |      0 |
+| `production`            |      0 |
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
+The `local_official_client` rows are official-client readback evidence after
+isolated local API operations. They are not official-client UI claims, are not
+staging evidence, and are not production evidence.
 
 ## Security Control Gaps
 

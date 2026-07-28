@@ -84,14 +84,18 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^26.1.1",
     "ajv": "8.20.0",
     "eslint": "^10.7.0",
     "jsonc-parser": "^3.3.1",
     "miniflare": "4.20260714.0",
     "prettier": "^3.9.5",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.64.0",
+    "unified": "^11.0.5",
     "vitest": "^4.1.10",
     "wrangler": "^4.112.0"
   }

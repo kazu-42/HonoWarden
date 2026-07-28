@@ -1,8 +1,9 @@
 # Official Client Credential Harness
 
-Status: HON-219, HON-220, and HON-225 are merged. HON-226 same-target disabled
-writer and forward-recovery proof passes locally and is pending exact-head
-review and repository publication gates.
+Status: HON-219, HON-220, HON-225, and HON-226 are merged. HON-226 PR #114 was
+squash-merged as `13f4e895d69b2c2485a10a82d1793cf60e148024`, passed
+merged-main CI, moved to Done, and was archived at
+`2026-07-22T02:39:04.165Z`.
 
 ## Scope
 
@@ -18,6 +19,19 @@ distinct surfaces:
 This harness does not change a HonoWarden route, runtime flag, database, remote
 resource, or compatibility row. Production execution is not supported. Real
 credentials and normal browser profiles are not allowed.
+
+## Credential Closeout Evidence
+
+The canonical [credential closeout packet](../../compat/credential-closeout-packet.json)
+and [credential evidence registry](../../compat/credential-evidence.json)
+index the harness-backed credential and recovery claims. Their evidence ceiling
+is local: `local_api` or `local_official_client`, with zero staging claims and
+zero production claims.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
 
 ## Evidence Levels
 

@@ -1,6 +1,6 @@
 # Security Review Index
 
-Last reviewed: 2026-07-19.
+Last reviewed: 2026-07-23.
 
 Use these documents together when reviewing alpha readiness:
 
@@ -33,6 +33,21 @@ Use these documents together when reviewing alpha readiness:
 - `pnpm format`
 - repository brand scan
 - workflow verifier
+
+## Credential Closeout Evidence
+
+Canonical source: [packet](../../compat/credential-closeout-packet.json) and
+[registry](../../compat/credential-evidence.json). The closeout covers isolated
+local credential and recovery evidence, including official-client readback for
+some API-driven operations, while staging and production writer activation
+remain unclaimed. Existing per-operation release evidence files are supporting
+detail only; this section is the single canonical entry for the reconciled
+credential packet.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
 
 ## Review Rules
 

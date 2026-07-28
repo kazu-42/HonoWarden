@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-19.
+Last updated: 2026-07-23.
 
 Use this index as the feature-freeze entry point:
 
@@ -21,6 +21,7 @@ Use this index as the feature-freeze entry point:
 - [Account KDF Change Local Evidence](account-kdf-change-local-evidence.md)
 - [Account Key Initialization Local Evidence](account-key-initialization-local-evidence.md)
 - [User-Key Rotation Local Evidence](user-key-rotation-local-evidence.md)
+- [Official Client Credential Harness](../operations/official-client-credential-harness.md)
 - [Auth Request Staging Evidence](auth-request-staging-evidence.md)
 - [Two-User Dogfood And Disabled-User Evidence](two-user-dogfood-evidence.md)
 - [Backup Restore Drill Evidence](backup-restore-drill-evidence.md)
@@ -37,6 +38,30 @@ Use this index as the feature-freeze entry point:
 - [Operations Rollback Evidence](ops-rollback-evidence.md)
 - [Secret Rotation Drill Evidence](secret-rotation-drill-evidence.md)
 - [Alpha Release Notes](v0.1.0-alpha-release-notes.md)
+
+## Credential Closeout Evidence
+
+Canonical source: [packet](../../compat/credential-closeout-packet.json) and
+[registry](../../compat/credential-evidence.json). The packet is the release
+index entry for reconciled credential and recovery closeout. The linked
+per-operation local evidence files remain supporting detail, not separate
+canonical entries. Current canonical counts are:
+
+| Evidence level          | Claims |
+| ----------------------- | -----: |
+| `fixture`               |      0 |
+| `local_api`             |      4 |
+| `local_official_client` |      7 |
+| `staging`               |      0 |
+| `production`            |      0 |
+
+The packet must not be used as proof of tracked staging or approved production
+activation.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
 
 ## Freeze Position
 

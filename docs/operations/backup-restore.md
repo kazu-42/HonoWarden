@@ -12,6 +12,35 @@ cipher attachment metadata after recent password authentication. It does not
 export D1 SQL, refresh-token tables, password hashes, raw R2 attachment object
 bodies, or internal R2 object keys.
 
+## Credential Recovery Evidence Boundary
+
+Credential recovery evidence is indexed by the canonical
+[credential closeout packet](../../compat/credential-closeout-packet.json) and
+[credential evidence registry](../../compat/credential-evidence.json). These
+claims are local-only (`local_api` or `local_official_client`) against isolated
+synthetic state. They do not prove staging or production backup execution, do
+not activate staging or production credential writers, and do not imply remote
+credential restoration for real accounts or remote D1/R2 resources.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
+The four recovery claims map to these exact artifacts:
+
+| Claim ID                                        | Exact artifact                                                                                                           | Boundary                                                                                                                                         |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `recovery.backup.export.local-api`              | [03a generation-bound backup](../../.workflow/hon-207-credential-closeout/results/03a-generation-bound-backup.md)        | Local generation-bound export only; no remote backup or production restore.                                                                      |
+| `recovery.restore.fresh-target.client-readback` | [03b fresh restore](../../.workflow/hon-207-credential-closeout/results/03b-fresh-restore.md)                            | Local fresh-target restore with official CLI readback; a consumed failed target is discarded instead of repaired in place.                       |
+| `recovery.writers.disabled.local-api`           | [03c disabled and forward recovery](../../.workflow/hon-207-credential-closeout/results/03c-disable-forward-recovery.md) | Local restored-state proof that tracked credential writers remain disabled; no staging or production request participates.                       |
+| `recovery.forward-generation.client-readback`   | [03c disabled and forward recovery](../../.workflow/hon-207-credential-closeout/results/03c-disable-forward-recovery.md) | Local API-driven forward mutation with official CLI readback; not production recovery, real-account rotation, or historical credential rollback. |
+
+Recovery remains fresh-target, discard-on-failure, and forward-only. After a
+credential generation has committed, rollback is disabling the writer or moving
+forward through a reader-capable version; do not claim restoration of an older
+remote credential generation.
+
 The wrapper script plans and optionally executes Wrangler commands:
 
 ```sh

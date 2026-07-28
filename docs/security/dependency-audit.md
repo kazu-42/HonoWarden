@@ -1,6 +1,6 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-07-22.
+Last scanned: 2026-07-28.
 
 This is a point-in-time dependency audit snapshot for the repository state used
 by the Week 24 security review materials. Re-run the command before every
@@ -44,11 +44,35 @@ The required low-severity audit gate rejected it because
 dependency was upgraded to patched Ajv 8.20.0 instead of accepting a known
 advisory. The audit result above is from the patched lockfile.
 
+## Markdown Contract Parser
+
+The 2026-07-23 HON-229 reconciliation added `unified`, `remark-parse`,
+`remark-gfm`, and the compile-time-only `@types/mdast` package as development
+dependencies. They parse user-facing documentation in tests so canonical
+credential links, heading blocks, and tables are checked structurally instead
+of with partial regular expressions. They are not imported by the Worker
+runtime or production bundle. The audit result above and lockfile digest below
+were regenerated after this dependency change.
+
+## Brace Expansion Advisory Remediation
+
+The 2026-07-28 rescan reported high advisory
+`GHSA-mh99-v99m-4gvg` against `brace-expansion 5.0.7`. The only dependency
+path was development tooling: ESLint and typescript-eslint resolved
+`minimatch 10.2.5`, which pinned the vulnerable version exactly. The repository
+temporarily overrides that exact edge to `brace-expansion 5.0.8`, whose
+`maxLength` bound prevents unbounded output allocation.
+
+Remove the override after all upstream minimatch paths resolve to 10.2.6 or a
+newer release that selects the patched brace-expansion line. Re-run the low
+audit, lint, full tests, and release gate before removal. This override does not
+make attacker-controlled glob patterns an approved runtime input.
+
 ## Lockfile Evidence
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `fc40f82c98925b8bee037d291cfb5093c0361e78fcfb0cbbd52d0359c6b69b2b`
+  `1cc0da4da357c5f3b7b172f62b1f8f5167e600ad09dadf05cfc58f6fb1893628`
 
 ## Scope
 

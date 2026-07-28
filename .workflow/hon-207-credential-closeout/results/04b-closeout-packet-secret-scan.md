@@ -1,6 +1,6 @@
 # EVIDENCE-1B: Canonical Closeout Packet And Secret Scan
 
-Status: implementation and evidence reviews approved; publication pending
+Status: published, merged, CI-verified, Linear Done and archived
 
 Linear issue: HON-228
 
@@ -488,14 +488,26 @@ its conservative remaining gates.
 | Evidence binding coordinates | commit `058061f`; tree `8c86a99`; parent `fb28678`                                       |
 | Binding standard review      | Nemotron session `ses_0725e50b3ffe568css9iTSg54N`; no findings; `APPROVE`                |
 | Binding five-axis review     | DeepSeek session `ses_0725bf7ffffe0B8TC5hB1DK1VH`; A/A/A/A/A; `APPROVE`                  |
+| Publication PR               | PR #116 squash-merged with zero unresolved review threads                                |
+| Squash merge                 | `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`                                               |
+| Reviewed publication tree    | `25d64460775356fabad0b5c76fd4cbc39857bab4`; equal to the squash-merge tree               |
+| Exact-head CI                | run 29985521114 passed                                                                   |
+| Merged-main CI               | run 29985701462 passed                                                                   |
+| Linear closeout              | HON-228 moved to Done and archived at `2026-07-23T06:42:39.292Z`                         |
 | `git diff --check`           | passed                                                                                   |
 
-## Remaining Gates
+## Publication Closeout
 
-PR/head CI, zero unresolved threads, squash tree equality, merged-main CI, and
-Linear Done/archive remain required before HON-229 starts. The parent
-dynamic-workflow verifier remains intentionally incomplete only because
-`final-report.md` is reserved for EVIDENCE-1C and CLOSE-1 completion.
+PR #116 passed exact-head CI run 29985521114 with zero unresolved review
+threads, then squash-merged as
+`32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`. The resulting tree equals the
+reviewed publication tree `25d64460775356fabad0b5c76fd4cbc39857bab4`, and
+merged-main CI run 29985701462 passed. HON-228 was moved to Done and archived
+at `2026-07-23T06:42:39.292Z` before HON-229 entered In Progress.
+
+No HON-228 publication gate remains. The parent dynamic-workflow verifier is
+intentionally incomplete only because `final-report.md` is reserved for
+EVIDENCE-1C and CLOSE-1 completion.
 
 No deployment, remote mutation, real credential, production or staging
 activation, destructive operation, paid action, normal browser profile, or

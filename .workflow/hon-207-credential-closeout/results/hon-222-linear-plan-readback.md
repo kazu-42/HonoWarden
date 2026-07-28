@@ -1,6 +1,6 @@
 # HON-222 Linear Plan Readback
 
-Generated at: `2026-07-22T10:35:26.373Z`
+Generated at: `2026-07-23T07:46:47Z`
 
 Status: exact
 
@@ -10,34 +10,40 @@ Status: exact
 | ------- | ----------- | ------------ | -------------------------- |
 | HON-222 | EVIDENCE-1  | In Progress  | HON-221, completed/archive |
 | HON-227 | EVIDENCE-1A | Done/archive | HON-221, completed/archive |
-| HON-228 | EVIDENCE-1B | In Progress  | HON-227, completed/archive |
-| HON-229 | EVIDENCE-1C | Todo         | HON-228                    |
+| HON-228 | EVIDENCE-1B | Done/archive | HON-227, completed/archive |
+| HON-229 | EVIDENCE-1C | In Progress  | HON-228, completed/archive |
 
 The three children belong directly to HON-222 and the HonoWarden Post-Alpha
 Roadmap. Their exact title, managed description, state, priority, labels,
-parent, project, and workflow state matched the requested plan. HON-227 is the
-only archived child; HON-228 and HON-229 remain non-archived.
+parent, project, and workflow state matched the requested plan. HON-227 and
+HON-228 are archived children; HON-229 remains non-archived and In Progress.
+
+HON-228 closeout is pinned to archive time `2026-07-23T06:42:39.292Z`, PR #116
+squash merge `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`, reviewed
+publication tree `25d64460775356fabad0b5c76fd4cbc39857bab4`, exact-head CI run
+29985521114 passed, and merged-main CI run 29985701462 passed.
 
 ## Relations
 
-- HON-228 blocks HON-229 via
-  `78b340f2-a8e9-48c6-9352-98411b6888fd`.
+- No active block relation remains between the managed children.
 
 HON-227 completion and archive satisfy the first serialized dependency; its
 former block relation is no longer returned by either issue relation
-connection. The remaining active relation exists exactly once and no
-unexpected active block relation exists between the managed children.
+connection. HON-228 completion and archive satisfy the second serialized
+dependency; its former block relation is no longer returned by either issue
+relation connection. No unexpected active block relation exists between the
+managed children.
 
 ## Capacity And Checkpoint
 
 - Total issues including archived: 229.
-- Archived: 132.
-- Active unarchived: 95.
+- Archived: 133.
+- Active unarchived: 94.
 - Completed unarchived: 2.
 - Managed checkpoint:
   `0aead33f-61bd-4223-afd3-cb1c4a382008`.
-- Checkpoint bytes/SHA-256: 1,800 /
-  `254cc8f9fb6e977bcba1c66ec34561870b54251708fa896ae7bdec3f844fdbee`;
+- Checkpoint bytes/SHA-256: 2,094 /
+  `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`;
   exact match to the repository renderer.
-- Team-wide started issues: exactly HON-222 and HON-228.
+- Team-wide started issues: exactly HON-222 and HON-229.
 - Verification errors: 0.

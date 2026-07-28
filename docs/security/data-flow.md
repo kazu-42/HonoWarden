@@ -1,6 +1,6 @@
 # Security Data Flow
 
-Last reviewed: 2026-07-19.
+Last reviewed: 2026-07-23.
 
 This document describes where sensitive data enters, moves, and persists.
 
@@ -18,6 +18,29 @@ operator CLI
   -> Wrangler D1/R2 commands
   -> Wrangler D1 account lifecycle commands
 ```
+
+## Credential And Recovery Evidence Boundary
+
+Credential and recovery claims are reconciled through the canonical
+[closeout packet](../../compat/credential-closeout-packet.json) and
+[evidence registry](../../compat/credential-evidence.json). The packet verifies
+committed metadata and artifact markers for isolated local runs only. It does
+not claim staging activation, production activation, real-account recovery, or
+historical credential rollback.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
+| Operation area                        | Canonical claim IDs                                                                                | Highest evidence level  | Boundary                                                                                                                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| password verification and change      | `account.password.verify.local-api`, `account.password.change.client-readback`                     | `local_official_client` | local API mutation with official-client readback where recorded; no official-client password-change UI, staging, or production writer activation is claimed                         |
+| KDF mutation                          | `account.kdf.pbkdf2-to-argon2id.client-readback`, `account.kdf.argon2id-to-pbkdf2.client-readback` | `local_official_client` | local API mutation with official-client readback; no official-client settings UI, staging writer, production writer, or pre-reader rollback target is claimed                       |
+| account key initialization and read   | `account.key.initialize.client-readback`, `account.key.read.local-api`                             | `local_official_client` | local API initialization/read evidence with decrypt readback after initialization; no replacement, V2 key, staging, or production activation is claimed                             |
+| user-key rotation                     | `account.user-key.rotate.client-readback`                                                          | `local_official_client` | API-driven local generation with pinned official client readback; no official-client rotation UI, shared-vault, staging, production, or real-account rotation is claimed            |
+| backup and restore                    | `recovery.backup.export.local-api`, `recovery.restore.fresh-target.client-readback`                | `local_official_client` | isolated local synthetic D1/R2 export and fresh-target restore; no remote D1/R2 restore, production restore, or restore over the original source is claimed                         |
+| disabled writers and forward recovery | `recovery.writers.disabled.local-api`, `recovery.forward-generation.client-readback`               | `local_official_client` | local restored-state proof that disabled writers fail before auth/D1 and one forward generation can be read back; this is not production recovery or historical credential rollback |
 
 ## Account Bootstrap
 

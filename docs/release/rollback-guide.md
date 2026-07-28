@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-22.
+Last updated: 2026-07-23.
 
 Rollback separates Worker code rollback from data rollback. Do not assume schema
 changes can be safely reversed in place.
@@ -16,6 +16,34 @@ changes can be safely reversed in place.
 | migration applied and new code is bad       | keep data target isolated, deploy compatible fix or restore fresh target |
 | backup restore failed                       | discard restore target and rerun from the same backup                    |
 | secrets exposed                             | rotate affected secrets and invalidate sessions where applicable         |
+
+## Credential Writer Rollback Boundary
+
+Credential rollback evidence is reconciled in the canonical
+[closeout packet](../../compat/credential-closeout-packet.json) and
+[evidence registry](../../compat/credential-evidence.json). The evidence covers
+local API and local official-client readback only. It does not prove staging or
+production writer activation.
+
+Packet limitations:
+
+- The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
+- No claim in this registry proves staging or production activation.
+
+The tracked writer flags remain disabled at every configured scope:
+
+| Flag                                   | Top-level | Staging | Production |
+| -------------------------------------- | --------- | ------- | ---------- |
+| `HONOWARDEN_PASSWORD_CHANGE_ENABLED`   | `false`   | `false` | `false`    |
+| `HONOWARDEN_ACCOUNT_KEYS_ENABLED`      | `false`   | `false` | `false`    |
+| `HONOWARDEN_KDF_MUTATION_ENABLED`      | `false`   | `false` | `false`    |
+| `HONOWARDEN_USER_KEY_ROTATION_ENABLED` | `false`   | `false` | `false`    |
+
+Disabling these writers is a forward-only route stop for new credential
+mutations. It is not a historical restore mechanism: it does not undo a
+committed password, KDF, account-key, user-key, backup, restore, or forward
+generation, and it must not be used to resurrect old hashes, wrapped keys,
+sessions, or encrypted payload generations.
 
 ## Worker Code Rollback
 
