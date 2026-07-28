@@ -351,7 +351,7 @@ describe('credential closeout documentation contract', () => {
 
     expect(() =>
       assertCredentialDocumentationDocContract(docPath, content),
-    ).toThrow(/must not claim verified staging or production activation/)
+    ).toThrow(/exactly one current remediation section/)
   })
 
   it('scans current claims in the latest remediation section', () => {
@@ -365,6 +365,16 @@ describe('credential closeout documentation contract', () => {
     expect(() =>
       assertCredentialDocumentationDocContract(docPath, content),
     ).toThrow(/must not claim verified staging or production activation/)
+  })
+
+  it('rejects review history after the current remediation section', () => {
+    const docPath =
+      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const content = `${readText(docPath)}\n## Review History: Twenty-First Review And Remediation\n\nProduction credential writer activation is verified.\n`
+
+    expect(() =>
+      assertCredentialDocumentationDocContract(docPath, content),
+    ).toThrow(/latest remediation section must remain current/)
   })
 
   it('marks every superseded remediation section as review history', () => {
@@ -538,6 +548,8 @@ describe('credential closeout documentation contract', () => {
     'Production password change has been tested successfully.',
     'Production password change was a success.',
     'Production password change is active.',
+    'Production password change is verified, correct?',
+    "Production password change is verified, isn't it?",
     'Production credential writer is turned on.',
     'Production credential writer is on.',
     'Production enables password changes.',
@@ -866,6 +878,8 @@ describe('credential closeout documentation contract', () => {
   it.each([
     '## Production\n\n### Local harness\n\nCredential writer activation is verified.',
     'Is production password change verified?',
+    'Does production support password changes?',
+    'Production password change: is it verified?',
   ])('accepts a non-live or non-assertive credential status: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
@@ -1268,6 +1282,24 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
+  it('does not treat a negated local heading as local claim scope', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n\n## Production\n\n### Not a local harness\n\nPassword change is verified.\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
+  it('does not let a negated local paragraph clear rollout context', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n\nProduction uses the following setting.\n\nThis is not a local harness.\n\n\`\`\`text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n\`\`\`\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /tracked credential rollout flag/,
+    )
+  })
+
   it.each([
     '## Live deployment\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`',
     '## Cloudflare Workers\n\n`HONOWARDEN_ACCOUNT_KEYS_ENABLED=true`',
@@ -1534,6 +1566,37 @@ function assertWorkflowEvidenceDocContract(
 }
 
 function workflowCurrentClaims(document: Root): Root {
+  const remediationHeadings = document.children.flatMap((child, index) => {
+    if (child.type !== 'heading' || child.depth !== 2) {
+      return []
+    }
+    const heading = markdownText(child, true).trim()
+    if (!/\bReview And Remediation$/i.test(heading)) {
+      return []
+    }
+    return [
+      {
+        index,
+        isHistory: /^Review History:/i.test(heading),
+      },
+    ]
+  })
+  const currentRemediationHeadings = remediationHeadings.filter(
+    (heading) => !heading.isHistory,
+  )
+  if (currentRemediationHeadings.length !== 1) {
+    throw new Error(
+      'active workflow result must contain exactly one current remediation section',
+    )
+  }
+  if (
+    remediationHeadings.at(-1)?.index !== currentRemediationHeadings[0]?.index
+  ) {
+    throw new Error(
+      'active workflow result latest remediation section must remain current',
+    )
+  }
+
   const children: Root['children'] = []
   let insideReviewHistory = false
   for (const child of document.children) {
@@ -2824,21 +2887,37 @@ function hasExplicitLocalRolloutContext(value: string): boolean {
 
 function hasScopedLocalRolloutContext(value: string): boolean {
   // Bare "local" is not enough to drop production pending context.
-  return (
-    /\b(?:fixture|harness|loopback|synthetic)\b/i.test(value) ||
-    /\blocal(?:[-\s]+only)?[-\s]+(?:fixture|harness|runtime|tests?)\b/i.test(
-      value,
-    )
+  return hasUnnegatedLocalScope(
+    value,
+    /\b(?:fixture|harness|loopback|synthetic)\b|\blocal(?:[-\s]+only)?[-\s]+(?:fixture|harness|runtime|tests?)\b/gi,
   )
 }
 
 function hasLocalSectionHeadingContext(value: string): boolean {
-  return (
-    /\b(?:fixture|loopback|synthetic)\b/i.test(value) ||
-    /\blocal(?:[-\s]+only)?[-\s]+(?:fixture|harness|runtime|tests?)\b/i.test(
-      value,
-    )
+  return hasUnnegatedLocalScope(
+    value,
+    /\b(?:fixture|loopback|synthetic)\b|\blocal(?:[-\s]+only)?[-\s]+(?:fixture|harness|runtime|tests?)\b/gi,
   )
+}
+
+function hasUnnegatedLocalScope(value: string, pattern: RegExp): boolean {
+  for (const match of value.matchAll(pattern)) {
+    if (match.index === undefined) {
+      throw new Error('local scope match omitted its index')
+    }
+    const scopedPrefix = rolloutPredicateScope(value.slice(0, match.index))
+      .replace(/\bnot\s+only\b/gi, 'not_only')
+      .trim()
+    if (
+      /(?:\b(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
+        scopedPrefix,
+      )
+    ) {
+      continue
+    }
+    return true
+  }
+  return false
 }
 
 function hasInheritableCredentialHeadingContext(value: string): boolean {
@@ -3287,7 +3366,10 @@ function liveClaimIsNonAssertive(
   if (commandFragmentIsInstruction(clause)) {
     return true
   }
-  if (/\?\s*$/.test(clause)) {
+  if (
+    /\?\s*$/.test(clause) &&
+    interrogativeQuestionGovernsStatus(clause, statusIndex)
+  ) {
     return true
   }
   if (
@@ -3359,6 +3441,19 @@ function liveClaimIsNonAssertive(
   return (
     (hasLiveEnvironmentContext(scope) && hasCredentialClaimContext(scope)) ||
     (environmentIndex < marker.index && hasCredentialClaimContext(scope))
+  )
+}
+
+function interrogativeQuestionGovernsStatus(
+  clause: string,
+  statusIndex: number,
+): boolean {
+  const interrogativeLead = String.raw`(?:are|can|could|did|do|does|has|have|how|is|may|might|must|should|was|were|what|when|where|which|who|why|will|would)`
+  if (new RegExp(`^${interrogativeLead}\\b`, 'i').test(clause.trimStart())) {
+    return true
+  }
+  return new RegExp(`(?:^|[,;:])\\s*${interrogativeLead}\\b[^,;:]*$`, 'i').test(
+    clause.slice(0, statusIndex),
   )
 }
 

@@ -123,9 +123,9 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: twentieth review findings remediated; exact-head rereviews and publication pending$/m,
+    /^Status: twenty-first review findings remediated; exact-head rereviews and publication pending$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: nineteenth review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: twentieth review/m)
   assert.deepEqual(
     evidencePacket.subpackets.map((packet) => [
       packet.linear,
@@ -140,7 +140,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_twentieth_review_findings_remediated_rereview_pending',
+    'evidence_1c_twenty_first_review_findings_remediated_rereview_pending',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -424,11 +424,11 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFocused,
-    'passed_docs_contract_424_compat_817_related_ops_docs_60_hon_222_plan_6',
+    'passed_docs_contract_431_compat_824_related_ops_docs_60_hon_222_plan_6',
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_2047_tests_serial_143_36_seconds_post_twentieth_remediation',
+    'passed_105_files_2054_tests_serial_144_67_seconds_post_twenty_first_remediation',
   )
   assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
     base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -509,6 +509,31 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
       'checkmark_rollout_table_values',
     ],
   })
+  assert.deepEqual(
+    state.verification.results.evidence1cTwentyFirstRemediation,
+    {
+      base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+      reviewed_head: 'ea3038daf9a46ec3ef6f344888dd244fe1840bd8',
+      reviewed_tree: 'f680da563750a26f5c7655dc9cf8ad4257403217',
+      head_ci_run: 30325489707,
+      native_review_session: '019fa6ba-2df6-71a3-8e27-f66101cf6f90',
+      standard_review_agent: '019fa6b9-f30a-77c3-8a13-6c237f615e46',
+      five_axis_review_agent: '019fa6ba-0ce0-7073-8708-0c8f918abca9',
+      actionable_p2_instances: 3,
+      initial_red_failures: 4,
+      focused_docs_contract_tests: 431,
+      compat_tests: 824,
+      related_tests: 60,
+      full_suite_files: 105,
+      full_suite_tests: 2054,
+      full_suite_serial_seconds: 144.67,
+      findings_closed: [
+        'latest_remediation_section_current_invariant',
+        'negated_local_scope_markers',
+        'assertion_tag_question_boundary',
+      ],
+    },
+  )
   assert.deepEqual(
     readback.issues.map((issue) => [
       issue.identifier,

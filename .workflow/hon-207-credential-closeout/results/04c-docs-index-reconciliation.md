@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: twentieth review findings remediated; exact-head rereviews and publication pending
+Status: twenty-first review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -103,17 +103,17 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 424 tests passed.
-- Compatibility suite: 6 files and 817 tests passed.
+- Cross-document credential contract: 431 tests passed.
+- Compatibility suite: 6 files and 824 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
-  HON-229 implementation checkpoint readback was exact at 2,927 bytes and
+  HON-229 implementation checkpoint readback was exact at 2,868 bytes and
   SHA-256
-  `5a1db349cecca9c598a9661a15a7b9d140727ab5f7bbfd7575b5dd5165b7a522`;
-  it was updated at `2026-07-28T02:34:30.945Z` for review target `a6e9114`.
-- Post-twentieth-remediation full serial suite: 105 files and 2,047 tests
-  passed in 143.36 seconds with file parallelism disabled and one worker.
+  `776dd9fe76507e4ef5d71bcba05be2ef22176ebd8c68b1174555f6e16d347df2`;
+  it was updated at `2026-07-28T03:19:10.137Z` for review target `ea3038d`.
+- Post-twenty-first-remediation full serial suite: 105 files and 2,054 tests
+  passed in 144.67 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -668,7 +668,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   395/395, compatibility tests pass 788/788, and the serial full suite passes
   2,018/2,018 across 105 files in 143.85 seconds.
 
-## Twentieth Review And Remediation
+## Review History: Twentieth Review And Remediation
 
 - Native Codex session `019fa692-66e6-7bb1-b673-a3cf94595007`, standard
   reviewer `019fa692-24d6-78a0-aab8-19b32e38dac4`, adversarial reviewer
@@ -696,10 +696,36 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   related operator/release/security checks pass 60/60, and the serial full
   suite passes 2,047/2,047 across 105 files in 143.36 seconds.
 
+## Twenty-First Review And Remediation
+
+- Native Codex session `019fa6ba-2df6-71a3-8e27-f66101cf6f90`, standard
+  reviewer `019fa6b9-f30a-77c3-8a13-6c237f615e46`, and five-axis reviewer
+  `019fa6ba-0ce0-7073-8708-0c8f918abca9` inspected exact
+  `ea3038daf9a46ec3ef6f344888dd244fe1840bd8`, tree
+  `f680da563750a26f5c7655dc9cf8ad4257403217`, against base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`.
+- The five-axis lane found no actionable P0-P2. Standard and native lanes
+  reported three actionable P2 classes. Exact-head CI run 30325489707 passed,
+  but its green result was not treated as merge approval while those findings
+  remained open.
+- Four mutations failed first: review history placed after the current
+  remediation section, a negated local heading, a negated local paragraph
+  clearing pending rollout context, and an affirmative assertion followed by a
+  tag question.
+- The active workflow contract now requires exactly one unmarked current
+  remediation section and requires it to be the final remediation-like heading.
+  Local-scope markers grant an exception only when their scoped prefix is not
+  negated. Question punctuation is nonassertive only when an interrogative lead
+  actually governs the status predicate; direct and colon-delimited questions
+  remain accepted controls.
+- Focused contract tests pass 431/431, compatibility tests pass 824/824,
+  related operator/release/security checks pass 60/60, and the serial full
+  suite passes 2,054/2,054 across 105 files in 144.67 seconds.
+
 ## Closeout Pending
 
 - Exact-head standard and independent five-axis rereview of the
-  twentieth-remediated tree are pending.
+  twenty-first-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.
