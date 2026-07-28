@@ -189,7 +189,7 @@ const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|captured|collected|complete|completed|deployed|documented|in\s+place|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|captured|collected|complete|completed|deployed|documented|in\s+place|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+(?:on|present)|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|activates|deploys|enables|releases|ships|rolls\s+out|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -342,6 +342,48 @@ describe('credential closeout documentation contract', () => {
     expect(() =>
       assertCredentialDocumentationDocContract(docPath, content),
     ).toThrow(/must not claim verified staging or production activation/)
+  })
+
+  it('does not treat an arbitrary remediation heading as review history', () => {
+    const docPath =
+      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const content = `${readText(docPath)}\n## Activation Review And Remediation\n\nProduction credential writer activation is verified.\n`
+
+    expect(() =>
+      assertCredentialDocumentationDocContract(docPath, content),
+    ).toThrow(/must not claim verified staging or production activation/)
+  })
+
+  it('scans current claims in the latest remediation section', () => {
+    const docPath =
+      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const content = readText(docPath).replace(
+      '\n## Closeout Pending',
+      '\nProduction credential writer activation is verified.\n\n## Closeout Pending',
+    )
+
+    expect(() =>
+      assertCredentialDocumentationDocContract(docPath, content),
+    ).toThrow(/must not claim verified staging or production activation/)
+  })
+
+  it('marks every superseded remediation section as review history', () => {
+    const docPath =
+      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const document = parsePolicyMarkdown(readText(docPath))
+    const reviewHeadings = document.children.flatMap((child) => {
+      if (child.type !== 'heading' || child.depth !== 2) {
+        return []
+      }
+      const heading = markdownText(child, true).trim()
+      return /\bReview And Remediation$/i.test(heading) ? [heading] : []
+    })
+    const currentReviewHeadings = reviewHeadings.filter(
+      (heading) => !heading.startsWith('Review History:'),
+    )
+
+    expect(currentReviewHeadings).toHaveLength(1)
+    expect(reviewHeadings.at(-1)).toBe(currentReviewHeadings[0])
   })
 
   it('exposes every credential-supporting document from canonical navigation', () => {
@@ -497,6 +539,13 @@ describe('credential closeout documentation contract', () => {
     'Production password change was a success.',
     'Production password change is active.',
     'Production credential writer is turned on.',
+    'Production credential writer is on.',
+    'Production enables password changes.',
+    'Production activates KDF mutation.',
+    'Production releases account-key rotation.',
+    'Production ships user-key rotation.',
+    'Production deploys password changes.',
+    'Production rolls out KDF mutation.',
     'Production password change has shipped.',
     'Production password change has rolled out.',
     'Production password change is released.',
@@ -767,6 +816,13 @@ describe('credential closeout documentation contract', () => {
     'Production password change has not been validated.',
     'Production password change was not a success.',
     'Production password change is not active.',
+    'Production credential writer is not on.',
+    'Production does not enable password changes.',
+    'Production does not activate KDF mutation.',
+    'Production does not release account-key rotation.',
+    'Production does not ship user-key rotation.',
+    'Production does not deploy password changes.',
+    'Production does not roll out KDF mutation.',
     'Production password change has not shipped.',
     "Production password change isn't verified.",
     "Production password change hasn't shipped.",
@@ -1137,7 +1193,13 @@ describe('credential closeout documentation contract', () => {
     'Production rollout sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from false to true.',
     'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to enabled.',
     'Production flips `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from off to on.',
+    'Production transitions `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production promotes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to enabled.',
     'Production opts into `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production opts in to `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production opted in to `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` off to on.',
+    'Production transitions `HONOWARDEN_PASSWORD_CHANGE_ENABLED` disabled to enabled.',
     'Production activates `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
     "Production's non-local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.",
     'Production and the local harness set `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
@@ -1166,6 +1228,7 @@ describe('credential closeout documentation contract', () => {
     '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true (temporary)` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
     '| Environment | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |\n| --- | --- |\n| Production | `true` |',
     '| Flag | Production |\n| --- | --- |\n| `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `false -> true` |',
+    '| Flag | Production |\n| --- | --- |\n| `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | ✅ |',
   ])(
     'rejects a live true rollout assignment regardless of table column order: %s',
     (table) => {
@@ -1245,6 +1308,11 @@ describe('credential closeout documentation contract', () => {
     'Production does not map `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production does not activate `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
     'Production has not opted into `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production has not opted in to `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production does not transition `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production never promotes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to enabled.',
+    'Production transitions `HONOWARDEN_PASSWORD_CHANGE_ENABLED` enabled to disabled.',
+    '## Production\n\n| Flag | Value |\n| --- | --- |\n| `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | ☐ |',
     'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from true to false.',
     '## Production\n\n| Context | Flag | Value |\n| --- | --- | --- |\n| Local harness | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `true` |',
     'Production remains disabled. The local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
@@ -1472,7 +1540,9 @@ function workflowCurrentClaims(document: Root): Root {
     if (child.type === 'heading' && child.depth <= 2) {
       insideReviewHistory =
         child.depth === 2 &&
-        /\bReview And Remediation$/i.test(markdownText(child, true).trim())
+        /^Review History:\s+.+\bReview And Remediation$/i.test(
+          markdownText(child, true).trim(),
+        )
     }
     if (!insideReviewHistory) {
       children.push(child)
@@ -1969,6 +2039,10 @@ function positiveRolloutAssignments(
       'gi',
     ),
     new RegExp(
+      `\\b(?:promot(?:e|es|ed|ing)|transition(?:s|ed|ing)?)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:(?:from\\s+)?${negativeValue}\\s+)?(?:to|as)\\s*${positiveValue}`,
+      'gi',
+    ),
+    new RegExp(
       `\\b(?:turn(?:s|ed|ing)?|flip(?:s|ped|ping)?)\\s+(?:the\\s+)?${quotedFlag}\\s+on\\b`,
       'gi',
     ),
@@ -1981,11 +2055,11 @@ function positiveRolloutAssignments(
       'gi',
     ),
     new RegExp(
-      `${quotedFlag}\\s+(?:from\\s+${negativeValue}\\s+to\\s+|${negativeValue}\\s*(?:->|→)\\s*)${positiveValue}`,
+      `${quotedFlag}\\s+(?:from\\s+)?${negativeValue}\\s*(?:->|→|\\bto\\b)\\s*${positiveValue}`,
       'gi',
     ),
     new RegExp(
-      `\\b(?:activat(?:e|es|ed|ing)|opt(?:s|ted|ting)?\\s+in(?:to)?)\\s+(?:the\\s+)?${quotedFlag}`,
+      `\\b(?:activat(?:e|es|ed|ing)|opt(?:s|ed|ing)?\\s+in(?:to|\\s+to)?)\\s+(?:the\\s+)?${quotedFlag}`,
       'gi',
     ),
   ]
@@ -2004,9 +2078,15 @@ function positiveRolloutAssignments(
       assignments.set(flagIndex, { flagIndex })
     }
   }
-  return [...assignments.values()].sort(
-    (left, right) => left.flagIndex - right.flagIndex,
-  )
+  return [...assignments.values()]
+    .filter(({ flagIndex }) => {
+      const afterFlag = segment.slice(flagIndex + flag.length)
+      return !new RegExp(
+        `^["']?\\s*${positiveValue}\\s*(?:->|→|\\bto\\b)\\s*${negativeValue}`,
+        'i',
+      ).test(afterFlag)
+    })
+    .sort((left, right) => left.flagIndex - right.flagIndex)
 }
 
 function rolloutAssignmentIsNegated(prefix: string): boolean {
@@ -2014,7 +2094,7 @@ function rolloutAssignmentIsNegated(prefix: string): boolean {
     .replace(/["'`]+\s*$/g, '')
     .trim()
   const assignmentVerb =
-    '(?:activat(?:e|es|ed|ing)|assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|map(?:s|ped|ping)?|opt(?:s|ted|ting)?\\s+in(?:to)?|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
+    '(?:activat(?:e|es|ed|ing)|assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|map(?:s|ped|ping)?|opt(?:s|ed|ing)?\\s+in(?:to|\\s+to)?|promot(?:e|es|ed|ing)|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|transition(?:s|ed|ing)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
 
   if (
     new RegExp(
@@ -2171,6 +2251,9 @@ function rolloutTableFragments(
 
 function rolloutValueIsPositive(value: string): boolean {
   const normalized = value.trim()
+  if (/^(?:✅|☑️?|✓|✔️?)$/u.test(normalized)) {
+    return true
+  }
   if (
     /^["']?(?:true|1|yes|on|enabled)(?:\s*\([^)]*\))?["']?$/i.test(normalized)
   ) {

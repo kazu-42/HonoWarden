@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: nineteenth review findings remediated; exact-head rereviews and publication pending
+Status: twentieth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -44,9 +44,11 @@ repository root and under `compat/`, `docs/`, and `specs/`, plus the
 state-referenced active workflow result, is scanned for unsupported credential
 claims and live rollout assignments, so a new recovery, credential, or active
 workflow document cannot bypass the gate through a narrower discovery
-vocabulary. Historical `Review And Remediation` sections remain explicit
-review-fixture history; current workflow scope, implementation, verification,
-closeout, and activation claims stay guarded. A GFM-aware Markdown AST contract
+vocabulary. Only superseded review sections carrying the explicit
+`Review History:` marker are excluded as review-fixture history; the one
+unmarked current remediation section plus current workflow scope,
+implementation, verification, closeout, and activation claims stay guarded. A
+GFM-aware Markdown AST contract
 resolves inline, angle-bracket,
 escaped, and reference-style local links, rejects unparsed link syntax and raw
 HTML in structurally protected documents, and requires exactly one canonical
@@ -101,17 +103,17 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 395 tests passed.
-- Compatibility suite: 6 files and 788 tests passed.
+- Cross-document credential contract: 424 tests passed.
+- Compatibility suite: 6 files and 817 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
-  HON-229 implementation checkpoint readback was exact at 3,502 bytes and
+  HON-229 implementation checkpoint readback was exact at 2,927 bytes and
   SHA-256
-  `1a33efe1181e94e55288552bf4745493f5aaa2eef9ba59b457b62a96180ebf49`;
-  it was updated at `2026-07-28T02:10:20.852Z` for review target `b8679b0`.
-- Post-nineteenth-remediation full serial suite: 105 files and 2,018 tests
-  passed in 143.85 seconds with file parallelism disabled and one worker.
+  `5a1db349cecca9c598a9661a15a7b9d140727ab5f7bbfd7575b5dd5165b7a522`;
+  it was updated at `2026-07-28T02:34:30.945Z` for review target `a6e9114`.
+- Post-twentieth-remediation full serial suite: 105 files and 2,047 tests
+  passed in 143.36 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -126,7 +128,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   HON-229 has no active relation.
 - Worktree process readback: no residual process owned by this worktree.
 
-## Initial Review And Remediation
+## Review History: Initial Review And Remediation
 
 - Standard Codex review targeted implementation commit
   `50c00be6917aa9f498c17afb5724446af6b93302`, tree
@@ -145,7 +147,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   canonical section, positive staging/production activation wording was
   rejected, and all changed freshness headers were advanced to 2026-07-23.
 
-## Second Review And Remediation
+## Review History: Second Review And Remediation
 
 - Native Codex session `019f8e14-fb88-7d40-bab2-d982fc958d8d` reviewed exact
   commit `9049eea2d35b0ede01a55b6123fb2a08f4152f1b`, tree
@@ -179,7 +181,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   the full suite passed serially. After the final self-review mutations, the
   second-remediation full run passed all 1,640 tests across 105 files.
 
-## Third Review And Remediation
+## Review History: Third Review And Remediation
 
 - Native Codex session `019f8e41-8c6b-75d0-bc00-efe1d1d4c061` reviewed exact
   commit `b6a73ac3e6b7faa51782de279ff412c69c115e4a`, tree
@@ -206,7 +208,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   tests, 69 related document/configuration tests, and 1,656 full-suite tests now
   pass.
 
-## Fourth Review And Remediation
+## Review History: Fourth Review And Remediation
 
 - Native Codex session `019f8e5a-616d-7de2-9ab9-80c0a51247e3` reviewed exact
   commit `3e0aa18f3e2fcd79ef9607d543173a5e668bceed`, tree
@@ -229,7 +231,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   cells, registry-backed document coverage is derived rather than copied, and
   the HON-226 harness now pins PR #114, squash merge, and Linear archive.
 
-## Fifth Review And Remediation
+## Review History: Fifth Review And Remediation
 
 - Native Codex session `019f8e77-d6d6-7340-846e-110e8a6eec61` reviewed exact
   commit `e143396a08b1f77854f4bf7c2bafdadb018fcdff`, tree
@@ -253,7 +255,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   clause-relation cases stand on their own. All 84 focused cases, 477
   compatibility tests, 57 related checks, and 1,707 full-suite tests pass.
 
-## Sixth Review And Remediation
+## Review History: Sixth Review And Remediation
 
 - Native Codex session `019f8e90-cd11-70a3-acf2-780e712b612f` reviewed exact
   commit `ad62112ce5fc3828d1d614b1790ec6f556e0fdb8`, tree
@@ -274,7 +276,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   mutation fixed leading whitespace after sentence splitting. All 103 focused
   cases, 496 compatibility tests, and 57 related checks pass.
 
-## Seventh Review And Remediation
+## Review History: Seventh Review And Remediation
 
 - Native Codex session `019f8ea8-b7ea-7b00-bb0d-50c3186c79cf` reviewed exact
   commit `f9e3fdd668ecd803bff122ecc979a3bac913fdda`, tree
@@ -301,7 +303,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   language plus explicit negation/local-fixture cases remain negative controls.
   All 130 focused cases, 523 compatibility tests, and 57 related checks pass.
 
-## Eighth Review And Remediation
+## Review History: Eighth Review And Remediation
 
 - Native Codex session `019f8ecb-0bd1-7062-a9a6-c32a6faf862b` reviewed exact
   commit `ab4edc72febe201d5944157998d646d0035c7b24`, tree
@@ -326,7 +328,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   protect claim-ID, mixed-alias, postfix-alias, and Markdown-title negation.
   All 144 focused cases, 537 compatibility tests, and 57 related checks pass.
 
-## Ninth Review And Remediation
+## Review History: Ninth Review And Remediation
 
 - Native Codex session `019f8edd-92de-7281-9f60-67051aaf7a56` reviewed exact
   commit `3381cabc37f7def36bb8409d0f6b2a56ea0602e9`, tree
@@ -358,7 +360,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   tests, 57 related checks, 6 HON-222 plan tests, and the serial 105-file/1,807-
   test suite pass.
 
-## Tenth Review And Remediation
+## Review History: Tenth Review And Remediation
 
 - Native Codex session `019f8ef3-8a47-76d0-a9f3-fa8da4b32f21` reviewed exact
   commit `9394010ec55b123aee96975716c5995779e59241`, tree
@@ -383,7 +385,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   related checks, 6 HON-222 plan tests, and the serial 105-file/1,839-test suite
   pass.
 
-## Eleventh Review And Remediation
+## Review History: Eleventh Review And Remediation
 
 - Native Codex session `019f8f07-20f8-7931-b34d-c119e6f14c75` reviewed exact
   commit `a0be24031a711119764a689538353de9ee987c7a`, tree
@@ -417,7 +419,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   tests, 57 related checks, 6 HON-222 plan tests, and the serial
   105-file/1,883-test suite pass.
 
-## Twelfth Review And Remediation
+## Review History: Twelfth Review And Remediation
 
 - Native Codex session `019f8f2a-1c6b-7703-aa9f-d01bdbd23056` reviewed exact
   commit `5eece6c1579c1bd90db98cc62c168e59c281ce65`, tree
@@ -448,7 +450,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   690 compatibility tests, 57 related checks, and the serial 105-file/1,920-
   test suite pass.
 
-## Thirteenth Review And Remediation
+## Review History: Thirteenth Review And Remediation
 
 - Native Codex session `019f8f45-39ae-77f3-8e8d-f469e18ad8d9` reviewed exact
   commit `f63a3a95193778262f75d5442e860ee442347ffd`, tree
@@ -480,7 +482,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   compatibility tests, 57 related checks, 6 HON-222 plan tests, and the serial
   105-file/1,945-test suite pass.
 
-## Fourteenth Review And Remediation
+## Review History: Fourteenth Review And Remediation
 
 - Native Codex session `019f8f7f-0f18-76e2-87bf-17e4f3a2767d` reviewed exact
   commit `c52dd0b29f719a9f6935f1fe62208ba1eda9055f`, tree
@@ -507,7 +509,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   345 focused cases, 738 compatibility tests, 60 related checks, 6 HON-222
   plan tests, and the serial 105-file/1,968-test suite pass.
 
-## Fifteenth Review And Remediation
+## Review History: Fifteenth Review And Remediation
 
 - Native Codex session `019f8fb5-a2cd-7a71-9ca9-ae0b00d1f254` reviewed exact
   commit `b2fbd47f5efbf8557dafb64536ddabc62f0299ed`, tree
@@ -551,7 +553,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   zero known vulnerabilities, credential evidence/closeout verification,
   strict 11-of-11 release gate, and alpha completion audit also pass.
 
-## Sixteenth Review And Remediation
+## Review History: Sixteenth Review And Remediation
 
 - Concurrent standard and adversarial reviewers against exact commit
   `41b4000c4c41af4069ab467350cac7615a7346ce` reproduced four durable P2
@@ -578,7 +580,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   passed. Full suite: 1986 tests passed. TypeScript, ESLint, Prettier, and
   brand scan passed on the remediated head.
 
-## Seventeenth Review And Remediation
+## Review History: Seventeenth Review And Remediation
 
 - Independent adversarial review of exact `c7eba39` / tree `b53365ae`
   reproduced four executable fail-open paths that remained after the sixteenth
@@ -595,7 +597,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   - `true`/`yes`/`ok` as affirmative live statuses in credential+env scope
 - Focused contract suite: 367 tests passed after remediation.
 
-## Eighteenth Review And Remediation
+## Review History: Eighteenth Review And Remediation
 
 - Standard Codex session `019f9000-6f2f-7af3-beb2-530365e09d6e`,
   adversarial agent `019f9000-1882-7783-aee6-68e650a3a855`, and five-axis
@@ -633,7 +635,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   to that package, frozen install succeeds, and the low audit reports no known
   vulnerabilities.
 
-## Nineteenth Review And Remediation
+## Review History: Nineteenth Review And Remediation
 
 - Native Codex session `019fa673-72ec-7371-8b06-9897fdb93926`, standard
   reviewer `019fa673-5917-7841-9347-ead3d1634af6`, adversarial reviewer
@@ -666,10 +668,38 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   395/395, compatibility tests pass 788/788, and the serial full suite passes
   2,018/2,018 across 105 files in 143.85 seconds.
 
+## Twentieth Review And Remediation
+
+- Native Codex session `019fa692-66e6-7bb1-b673-a3cf94595007`, standard
+  reviewer `019fa692-24d6-78a0-aab8-19b32e38dac4`, adversarial reviewer
+  `019fa692-4153-7772-8592-9b61b370a754`, and five-axis reviewer
+  `019fa692-57c4-74c1-b13d-ba8c3f27c98d` inspected exact
+  `a6e91141e97f5d0685e662f18afda1613b0f523c`, tree
+  `aaa97abc967af8b383177d85d52b8620da91f6dc`, against base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`.
+- Seven actionable P2 instances consolidated into six boundary classes.
+  Exact-head CI run 30323451650 passed, but its green result was not treated as
+  merge approval because the review findings remained open.
+- Sixteen mutations failed first. They cover arbitrary remediation headings,
+  current claims inside the latest remediation section, third-person
+  activation predicates, copular bare-on status, explicit transition and
+  spaced opt-in predicates, prose reverse-transition direction, and checkmark
+  values in rollout matrices.
+- Superseded review sections now carry an explicit `Review History:` marker.
+  The active result requires exactly one unmarked current remediation section,
+  and suffix wording alone cannot suppress scanning. Predicate coverage now
+  includes active live-status verbs, spaced opt-in forms, transition and
+  promotion verbs, prose positive transitions, and checkmark table values.
+  Reverse transitions, explicit negation, future gates, and unchecked table
+  values remain accepted controls.
+- Focused contract tests pass 424/424, compatibility tests pass 817/817,
+  related operator/release/security checks pass 60/60, and the serial full
+  suite passes 2,047/2,047 across 105 files in 143.36 seconds.
+
 ## Closeout Pending
 
-- Exact-head standard, adversarial, and independent five-axis rereview of the
-  nineteenth-remediated tree are pending.
+- Exact-head standard and independent five-axis rereview of the
+  twentieth-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.
