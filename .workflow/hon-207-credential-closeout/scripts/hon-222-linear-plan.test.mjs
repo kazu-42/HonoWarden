@@ -106,12 +106,10 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   const state = JSON.parse(
     readFileSync(new URL('../state.json', import.meta.url), 'utf8'),
   )
-  const readback = JSON.parse(
-    readFileSync(
-      new URL('../results/hon-222-linear-plan-readback.json', import.meta.url),
-      'utf8',
-    ),
+  const readbackArtifact = readFileSync(
+    new URL('../results/hon-222-linear-plan-readback.json', import.meta.url),
   )
+  const readback = JSON.parse(readbackArtifact.toString('utf8'))
   const evidencePacket = state.packets.find(
     (packet) => packet.id === '04-compatibility-evidence',
   )
@@ -123,16 +121,37 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: twenty-sixth review finding remediated; exact-head rereviews and publication pending$/m,
+    /^Status: twenty-seventh review findings remediated; exact-head rereviews and publication pending$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: twenty-fifth review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: twenty-sixth review/m)
+  assert.equal(readbackArtifact.byteLength, 1517)
+  assert.equal(
+    createHash('sha256').update(readbackArtifact).digest('hex'),
+    '126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09',
+  )
   assert.match(
     evidenceResult,
-    /Committed HON-222 readback artifact: 2,094 bytes, SHA-256/,
+    /Committed HON-222 readback artifact\s+`results\/hon-222-linear-plan-readback\.json`: 1,517 bytes, SHA-256/,
   )
   assert.match(
     evidenceResult,
-    /0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839/,
+    /126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09/,
+  )
+  assert.match(
+    evidenceResult,
+    /external HON-222 Linear execution checkpoint metadata records a\s+2,094-byte body/i,
+  )
+  assert.match(
+    evidenceResult,
+    /external HON-222 Linear execution checkpoint metadata[\s\S]*0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839/i,
+  )
+  assert.match(
+    evidenceResult,
+    /external HON-222 Linear execution checkpoint metadata[\s\S]*updated at `2026-07-23T06:43:06\.815Z`\./i,
+  )
+  assert.match(
+    evidenceResult,
+    /The managed HON-229 implementation checkpoint is external Linear state\. It\s+is re-read at publication and is not commit-local proof\./,
   )
   assert.doesNotMatch(
     evidenceResult,
@@ -152,7 +171,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_twenty_sixth_review_finding_remediated_rereview_pending',
+    'evidence_1c_twenty_seventh_review_findings_remediated_rereview_pending',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -440,7 +459,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_2149_tests_serial_144_32_seconds_post_twenty_sixth_remediation',
+    'passed_105_files_2149_tests_serial_158_27_seconds_post_twenty_seventh_remediation',
   )
   assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
     base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -679,6 +698,44 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
       full_suite_tests: 2149,
       full_suite_serial_seconds: 144.32,
       findings_closed: ['committed_vs_external_checkpoint_provenance'],
+    },
+  )
+  assert.deepEqual(
+    state.verification.results.evidence1cTwentySeventhRemediation,
+    {
+      base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+      reviewed_head: 'a08fba692a5e1df965296121e285de4db91f29da',
+      reviewed_tree: '2ddfb48a151643a9a848377e83d301165f2b4e23',
+      head_ci_run: 30331482147,
+      native_review_session: '019fa72d-73a5-77a1-9e55-8d38604acfc5',
+      standard_review_agent: '019fa72d-93f8-7162-b431-b1df64cd87dc',
+      five_axis_review_agent: '019fa72d-aac0-7730-a647-59a6db5caee8',
+      actionable_p2_instances: 1,
+      actionable_p3_instances: 1,
+      red_failures: 1,
+      committed_readback_artifact: {
+        path: 'results/hon-222-linear-plan-readback.json',
+        bytes: 1517,
+        sha256:
+          '126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09',
+      },
+      external_hon222_checkpoint_metadata: {
+        id: '0aead33f-61bd-4223-afd3-cb1c4a382008',
+        updated_at: '2026-07-23T06:43:06.815Z',
+        bytes: 2094,
+        sha256:
+          '0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839',
+      },
+      focused_docs_contract_tests: 526,
+      release_security_tests: 537,
+      hon_222_plan_tests: 6,
+      full_suite_files: 105,
+      full_suite_tests: 2149,
+      full_suite_serial_seconds: 158.27,
+      findings_closed: [
+        'tracked_artifact_vs_embedded_external_metadata',
+        'external_timestamp_and_hon229_boundary_regression',
+      ],
     },
   )
   assert.deepEqual(

@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: twenty-sixth review finding remediated; exact-head rereviews and publication pending
+Status: twenty-seventh review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -108,13 +108,17 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed.
-- Committed HON-222 readback artifact: 2,094 bytes, SHA-256
+- Committed HON-222 readback artifact
+  `results/hon-222-linear-plan-readback.json`: 1,517 bytes, SHA-256
+  `126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09`.
+- Its embedded external HON-222 Linear execution checkpoint metadata records a
+  2,094-byte body, SHA-256
   `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`,
   updated at `2026-07-23T06:43:06.815Z`.
 - The managed HON-229 implementation checkpoint is external Linear state. It
   is re-read at publication and is not commit-local proof.
-- Post-twenty-sixth-remediation full serial suite: 105 files and 2,149 tests
-  passed in 144.32 seconds with file parallelism disabled and one worker.
+- Post-twenty-seventh-remediation full serial suite: 105 files and 2,149 tests
+  passed in 158.27 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -836,7 +840,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   dependency audit, frozen offline install, credential closeout verification,
   strict 11-of-11 release gate, and alpha completion audit also pass.
 
-## Twenty-Sixth Review And Remediation
+## Review History: Twenty-Sixth Review And Remediation
 
 - Native Codex session `019fa719-6f7f-7560-a79c-dd4b6bb3d5aa`, standard
   reviewer `019fa719-8573-77c1-9154-e0b36def5095`, and five-axis reviewer
@@ -851,18 +855,40 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 - One workflow assertion failed first because the current result described a
   mutable HON-229 Linear comment as the latest checkpoint beside the committed
   HON-222 readback check.
-- The verification section now binds commit-local proof to the tracked HON-222
-  readback artifact's byte count, digest, and update time. The managed HON-229
-  checkpoint is explicitly classified as external Linear state that must be
-  re-read at publication rather than as reproducible commit-local evidence.
+- The verification section attempted to bind commit-local proof to the
+  HON-222 readback evidence. The next review found that it mislabeled embedded
+  external checkpoint metadata as the tracked artifact's own provenance.
 - HON-222 renderer tests pass 6/6, release/security documentation checks pass
   537/537, and the serial full suite passes 2,149/2,149 across 105 files in
   144.32 seconds.
 
+## Twenty-Seventh Review And Remediation
+
+- Native Codex session `019fa72d-73a5-77a1-9e55-8d38604acfc5`, standard
+  reviewer `019fa72d-93f8-7162-b431-b1df64cd87dc`, and five-axis reviewer
+  `019fa72d-aac0-7730-a647-59a6db5caee8` inspected exact
+  `a08fba692a5e1df965296121e285de4db91f29da`, tree
+  `2ddfb48a151643a9a848377e83d301165f2b4e23`, against base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`.
+- Standard review reported no finding. Native review reported one P2 because
+  the prose called the external checkpoint body's byte count and digest the
+  committed JSON artifact's own provenance. Five-axis review reported one P3
+  because the prose timestamp and external HON-229 classification were not
+  regression-bound. Exact-head CI run 30331482147 passed, but its green result
+  was not treated as approval after those findings were accepted.
+- One workflow test failed first against the old 2,094-byte committed-artifact
+  label. The test now reads and hashes the tracked JSON bytes directly, pins
+  their 1,517-byte size and digest, separately labels the embedded external
+  HON-222 checkpoint body metadata, and binds its update time plus the exact
+  HON-229 external-state publication boundary.
+- HON-222 renderer tests pass 6/6, focused documentation checks pass 526/526,
+  release/security documentation checks pass 537/537, and the serial full suite
+  passes 2,149/2,149 across 105 files in 158.27 seconds.
+
 ## Closeout Pending
 
 - Exact-head native, standard, and independent five-axis rereview of the
-  twenty-sixth-remediated tree are pending.
+  twenty-seventh-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.
