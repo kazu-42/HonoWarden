@@ -123,9 +123,9 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: fifteenth review findings remediated; exact-head rereviews and publication pending$/m,
+    /^Status: eighteenth review findings remediated; exact-head rereviews and publication pending$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: fourteenth review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: seventeenth review/m)
   assert.deepEqual(
     evidencePacket.subpackets.map((packet) => [
       packet.linear,
@@ -140,7 +140,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_fifteenth_review_findings_remediated_rereview_pending',
+    'evidence_1c_eighteenth_review_findings_remediated_rereview_pending',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -424,12 +424,40 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFocused,
-    'passed_docs_contract_359_compat_752_related_ops_docs_60_hon_222_plan_6',
+    'passed_docs_contract_383_compat_776_related_ops_docs_60_hon_222_plan_6',
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_1982_tests_serial_207_61_seconds_post_fifteenth_remediation',
+    'passed_105_files_2006_tests_serial_175_78_seconds_post_eighteenth_remediation',
   )
+  assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
+    base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+    prior_seventeenth_head: '43ed49648a8bfbe2a1775f75a31663055d91ade7',
+    review_target_head: '41b4000c4c41af4069ab467350cac7615a7346ce',
+    focused_docs_contract_tests: 383,
+    compat_tests: 776,
+    related_tests: 60,
+    full_suite_files: 105,
+    full_suite_tests: 2006,
+    full_suite_serial_seconds: 175.78,
+    dependency_audit_advisory: 'GHSA-mh99-v99m-4gvg',
+    dependency_override: 'brace-expansion@5.0.7_to_5.0.8',
+    lockfile_sha256:
+      '1cc0da4da357c5f3b7b172f62b1f8f5167e600ad09dadf05cfc58f6fb1893628',
+    dependency_audit: 'no_known_vulnerabilities',
+    findings_closed: [
+      'table_header_cell_ownership',
+      'flag_bearing_table_headers',
+      'credential_and_status_heading_inheritance',
+      'rendered_inline_link_adjacency',
+      'evidence_subject_status_assertions',
+      'coordinated_live_and_local_rollout_subjects',
+      'local_subsection_claim_scope',
+      'not_yet_rollout_negation',
+      'interrogative_nonassertive_claims',
+      'root_compat_docs_specs_markdown_discovery',
+    ],
+  })
   assert.deepEqual(
     readback.issues.map((issue) => [
       issue.identifier,

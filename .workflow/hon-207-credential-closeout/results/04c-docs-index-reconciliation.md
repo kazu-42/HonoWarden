@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: seventeenth review findings remediated; exact-head rereviews and publication pending
+Status: eighteenth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -39,7 +39,8 @@ Linear issue: HON-229
 The reconciliation now protects 14 canonical user-facing compatibility,
 current-state, operations, release, and security documents, four
 registry-backed evidence documents, and six representative policy documents
-under mutation coverage. In addition, every `docs/**/*.md` file is scanned for
+under mutation coverage. In addition, every user-facing Markdown file at the
+repository root and under `compat/`, `docs/`, and `specs/` is scanned for
 unsupported credential claims and live rollout assignments, so a new recovery
 or credential document cannot bypass the gate through a narrower discovery
 vocabulary. A GFM-aware Markdown AST contract resolves inline, angle-bracket,
@@ -95,8 +96,8 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 359 tests passed.
-- Compatibility suite: 6 files and 752 tests passed.
+- Cross-document credential contract: 383 tests passed.
+- Compatibility suite: 6 files and 776 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
@@ -104,12 +105,12 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   SHA-256
   `be26fcb1180911b9ebdf774170f49b5e927f7db2097665d5a17e02490618a847`;
   it was updated at `2026-07-23T15:00:56.447Z` for commit `c52dd0b`.
-- Post-fifteenth-remediation full serial suite: 105 files and 1,982 tests
-  passed in 207.61 seconds with file parallelism disabled and one worker.
+- Post-eighteenth-remediation full serial suite: 105 files and 2,006 tests
+  passed in 175.78 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
-  `bf9f3c6065cb2265448a4ffb566a0cb7db3a572162c191dd3f01091cb18df4c5`.
+  `1cc0da4da357c5f3b7b172f62b1f8f5167e600ad09dadf05cfc58f6fb1893628`.
 - Credential registry verification: 11 claims and 8 artifacts passed.
 - Credential closeout packet: 14,398 bytes, SHA-256
   `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
@@ -595,10 +596,48 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   - `true`/`yes`/`ok` as affirmative live statuses in credential+env scope
 - Focused contract suite: 367 tests passed after remediation.
 
+## Eighteenth Review And Remediation
+
+- Standard Codex session `019f9000-6f2f-7af3-beb2-530365e09d6e`,
+  adversarial agent `019f9000-1882-7783-aee6-68e650a3a855`, and five-axis
+  agent `019f9000-4c9f-7a33-95d2-260f7b280388` originally inspected
+  `41b4000c4c41af4069ab467350cac7615a7346ce`. The branch advanced through
+  the sixteenth and seventeenth remediations while those reviews were still
+  running, so every remaining finding was re-probed against exact
+  `43ed49648a8bfbe2a1775f75a31663055d91ade7` before it was accepted.
+- Four findings about `turned on`, raw HTML attributes, annotated true table
+  values, and multiline deployment commands were already closed by the
+  sixteenth/seventeenth commits. The claimed P1 conflict around scheduled
+  remote backup evidence was disproved by its existing executable negative
+  control.
+- Fourteen new failing mutations then reproduced the remaining actionable
+  boundary classes: header/cell table ownership, flag-bearing table headers,
+  credential and status heading inheritance, rendered inline-link adjacency,
+  collected/captured/in-place evidence assertions, coordinated production and
+  local subjects, scoped local subsections, `not yet` negation, interrogative
+  prose, and Markdown discovery outside `docs/`.
+- The scanner now builds table fragments from dimension columns and their
+  owned value columns instead of flattening a live header across an entire
+  row. Operation-specific headings may supply a missing credential operation,
+  generic closeout/evidence headings may not, and explicit local subsections
+  suppress only inherited live claim context. Render-adjacent link text keeps
+  word boundaries, rollout negation preserves `not yet`, and coordinated live
+  plus local subjects cannot use the local exception.
+- User-facing discovery covers root Markdown plus `compat/`, `docs/`, and
+  `specs/`. Focused contract tests pass 383/383, compatibility tests pass
+  776/776, related checks pass 60/60, and the serial full suite passes
+  2,006/2,006 across 105 files in 175.78 seconds.
+- A fresh low-level audit then detected high advisory
+  `GHSA-mh99-v99m-4gvg` through the development-only
+  `minimatch 10.2.5 -> brace-expansion 5.0.7` edge. The exact vulnerable
+  version is now overridden to patched `5.0.8`; the lockfile change is limited
+  to that package, frozen install succeeds, and the low audit reports no known
+  vulnerabilities.
+
 ## Closeout Pending
 
 - Exact-head standard, adversarial, and independent five-axis rereview of the
-  seventeenth-remediated tree are pending.
+  eighteenth-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.

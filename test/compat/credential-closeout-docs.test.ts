@@ -174,7 +174,7 @@ const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|captured|collected|complete|completed|deployed|documented|in\s+place|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+present|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -193,7 +193,12 @@ const registryCredentialDocs = [
     ),
   ),
 ].sort()
-const credentialDocumentationDocs = markdownFilesUnder('docs')
+const credentialDocumentationDocs = [
+  ...markdownFilesAtRoot(),
+  ...markdownFilesUnder('compat'),
+  ...markdownFilesUnder('docs'),
+  ...markdownFilesUnder('specs'),
+].sort()
 const credentialSupportingDocs = [
   ...new Set([...registryCredentialDocs, ...credentialPolicyMutationDocs]),
 ].sort()
@@ -297,8 +302,15 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('scans every Markdown document for credential claims and rollout assignments', () => {
-    expect(credentialDocumentationDocs).toContain(
-      'docs/release/feature-freeze-checklist.md',
+    expect(credentialDocumentationDocs).toEqual(
+      expect.arrayContaining([
+        'README.md',
+        'ROADMAP.md',
+        'SECURITY.md',
+        'compat/README.md',
+        'docs/release/feature-freeze-checklist.md',
+        'specs/week-16-dogfood-environment-readiness.md',
+      ]),
     )
     for (const docPath of credentialDocumentationDocs) {
       assertCredentialPolicyDocContract(docPath, readText(docPath))
@@ -499,6 +511,10 @@ describe('credential closeout documentation contract', () => {
     'There is no doubt that production password change is verified.',
     'There is no blocker, but production password-change evidence exists.',
     'Production pass**word** change is verified.',
+    'Production pass[word](feature-freeze-checklist.md) change is verified.',
+    'Production password-change evidence has been collected.',
+    'Production password-change proof has been captured.',
+    'Production password-change evidence is in place.',
     '[details](feature-freeze-checklist.md "Production credential writer activation is verified.")',
     '[details][live-title]\n\n[live-title]: feature-freeze-checklist.md "Production credential writer activation is verified."',
     '![safe alt](assets/hon-95/desktop-vault.png "Production credential writer activation is verified.")',
@@ -529,6 +545,28 @@ describe('credential closeout documentation contract', () => {
     expect(() => assertCredentialDocContract(docPath, content)).toThrow(
       /must not claim verified staging or production activation/,
     )
+  })
+
+  it.each([
+    '| Environment | Password change |\n| --- | --- |\n| Production | Verified |',
+    '| Credential writer activation | Status |\n| --- | --- |\n| Production | Verified |',
+  ])(
+    'rejects unsupported live credential claims using table header semantics: %s',
+    (table) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n${table}\n`
+
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /must not claim verified staging or production activation/,
+      )
+    },
+  )
+
+  it('preserves table column ownership for local and live statuses', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n| Operation | Production | Local |\n| --- | --- | --- |\n| Password change | Not verified | Verified |\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
   })
 
   it('rejects unsupported live credential claims inherited from a section heading', () => {
@@ -562,6 +600,24 @@ describe('credential closeout documentation contract', () => {
   it('rejects unsupported live credential claims inherited from a nested section heading', () => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n> ## Production\n>\n> Credential writer activation is verified.\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
+  it('inherits a credential operation from its section heading', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n## Credential writer activation\n\nProduction status: verified.\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /must not claim verified staging or production activation/,
+    )
+  })
+
+  it('treats a nested status heading as the pending credential status', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n## Production\n\nPassword change.\n\n### Verified\n`
 
     expect(() => assertCredentialDocContract(docPath, content)).toThrow(
       /must not claim verified staging or production activation/,
@@ -640,14 +696,21 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
-  it('rejects unsupported live credential claims in raw HTML titles', () => {
-    const docPath = 'docs/adr/0009-premium-surface-scope.md'
-    const content = `${readText(docPath)}\n<a title="Production password change is verified.">details</a>\n`
+  it.each([
+    '<a title="Production password change is verified.">details</a>',
+    '<img src="proof.png" alt="Production password change is verified.">',
+    '<span aria-label="Production password change is verified.">status</span>',
+  ])(
+    'rejects unsupported live credential claims in raw HTML attributes: %s',
+    (html) => {
+      const docPath = 'docs/adr/0009-premium-surface-scope.md'
+      const content = `${readText(docPath)}\n${html}\n`
 
-    expect(() => assertCredentialPolicyDocContract(docPath, content)).toThrow(
-      /must not claim verified staging or production activation/,
-    )
-  })
+      expect(() => assertCredentialPolicyDocContract(docPath, content)).toThrow(
+        /must not claim verified staging or production activation/,
+      )
+    },
+  )
 
   it('rejects a live alias claim regardless of explanatory clause length', () => {
     const docPath = 'docs/release/index.md'
@@ -706,6 +769,16 @@ describe('credential closeout documentation contract', () => {
   it('accepts generic remote backup export evidence without a credential claim', () => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\nScheduled remote backup export evidence is recorded.\n\n## Remote\n\nScheduled backup export evidence is recorded.\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+  })
+
+  it.each([
+    '## Production\n\n### Local harness\n\nCredential writer activation is verified.',
+    'Is production password change verified?',
+  ])('accepts a non-live or non-assertive credential status: %s', (claim) => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n${claim}\n`
 
     expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
   })
@@ -1028,6 +1101,7 @@ describe('credential closeout documentation contract', () => {
     'Production maps `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` value is `true`.',
     "Production's non-local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.",
+    'Production and the local harness set `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production does not set `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true` while staging sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])('rejects every active live rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
@@ -1051,6 +1125,7 @@ describe('credential closeout documentation contract', () => {
     '| Flag | Top-level | Staging | Production |\n| --- | --- | --- | --- |\n| `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `false` | `false` | `true` |',
     '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
     '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true (temporary)` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
+    '| Environment | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |\n| --- | --- |\n| Production | `true` |',
   ])(
     'rejects a live true rollout assignment regardless of table column order: %s',
     (table) => {
@@ -1147,6 +1222,7 @@ describe('credential closeout documentation contract', () => {
     '## Production\n\n### Local harness\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
     '## Production\n\n### Local harness\n\nConfiguration follows.\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
     'Production uses the following setting.\n\n## Documentation example\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
+    'Production has not yet set `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
   ])('accepts a non-contradictory rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n\n${claim}\n`
@@ -1504,6 +1580,13 @@ function repoPath(path: string): string {
   return resolve(repoRoot, path)
 }
 
+function markdownFilesAtRoot(): string[] {
+  return readdirSync(repoRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => entry.name)
+    .sort()
+}
+
 function markdownFilesUnder(directoryPath: string): string[] {
   return readdirSync(repoPath(directoryPath), { withFileTypes: true })
     .flatMap((entry) => {
@@ -1716,8 +1799,9 @@ function assertNoLiveRolloutFlagAssignments(
 
   for (const fragment of proseFragments(document)) {
     const segments = fragment
+      .replace(/\bnot\s+yet\b/gi, 'not_yet')
       .split(/[.;!?]+|\b(?:but|however|yet)\b/i)
-      .map((segment) => segment.trim())
+      .map((segment) => segment.replaceAll('not_yet', 'not yet').trim())
       .filter((segment) => segment.length > 0)
     let pendingLiveEnvironment = false
     for (const segment of segments) {
@@ -1864,6 +1948,15 @@ function rolloutAssignmentIsNegated(prefix: string): boolean {
 }
 
 function rolloutAssignmentIsExplicitlyLocal(prefix: string): boolean {
+  if (
+    new RegExp(
+      `${liveEnvironmentPatternSource}[^,;.!?]*\\b(?:along\\s+with|and|as\\s+well\\s+as|together\\s+with)\\s+(?:the\\s+)?(?:local|loopback|synthetic)(?:[-\\s]+only)?[-\\s]+(?:fixture|harness|runtime|tests?)\\b`,
+      'i',
+    ).test(prefix)
+  ) {
+    return false
+  }
+
   const scopedPrefix =
     prefix
       .split(
@@ -1899,10 +1992,12 @@ function rolloutAssignmentIsExplicitlyLocal(prefix: string): boolean {
 function rolloutPredicateScope(prefix: string): string {
   return (
     prefix
+      .replace(/\bnot\s+yet\b/gi, 'not_yet')
       .split(
         /[,;:]|\b(?:although|and|because|but|however|though|while|whereas|yet)\b/i,
       )
       .at(-1)
+      ?.replaceAll('not_yet', 'not yet')
       ?.trim() ?? ''
   )
 }
@@ -1913,7 +2008,7 @@ function rolloutTableFragments(
   row: string[],
 ): string[] {
   const flags = rolloutFlags.filter((flag) =>
-    row.some((cell) =>
+    [...header, ...row].some((cell) =>
       new RegExp(`\\b${escapeRegExp(flag)}\\b`, 'i').test(cell),
     ),
   )
@@ -1963,6 +2058,28 @@ function rolloutTableFragments(
   return [...fragments]
 }
 
+function tableRowProseParts(header: string[], row: string[]): string[][] {
+  const dimensionParts = row.flatMap((cell, index) => {
+    const headerCell = header[index] ?? ''
+    if (
+      !/\b(?:environment|feature|operation|claim|flag|setting)\b/i.test(
+        headerCell,
+      ) &&
+      !hasCredentialClaimContext(headerCell) &&
+      !hasTrackedRolloutFlag(headerCell)
+    ) {
+      return []
+    }
+    return [headerCell, cell]
+  })
+
+  return row.map((cell, index) => [
+    ...dimensionParts,
+    header[index] ?? '',
+    cell,
+  ])
+}
+
 function proseFragments(document: Root): string[] {
   const fragments: string[] = []
   const referenceTitles = new Map<string, string | undefined>()
@@ -2007,7 +2124,19 @@ function proseFragments(document: Root): string[] {
     const localHeadings = headingContext.filter((heading) =>
       hasScopedLocalRolloutContext(heading),
     )
-    const contextualParts = [...environmentHeadings, ...parts]
+    const localClaimHeadings = headingContext.filter((heading) =>
+      hasLocalSectionHeadingContext(heading),
+    )
+    const credentialHeadings = headingContext.filter((heading) =>
+      hasInheritableCredentialHeadingContext(heading),
+    )
+    const effectiveEnvironmentHeadings =
+      localClaimHeadings.length > 0 ? [] : environmentHeadings
+    const contextualParts = [
+      ...effectiveEnvironmentHeadings,
+      ...credentialHeadings,
+      ...parts,
+    ]
     const contextualContent = contextualParts.join(' ')
     const headingKey = headingContext.join('\u0000')
     const hasTrackedFlag = hasTrackedRolloutFlag(content)
@@ -2026,7 +2155,9 @@ function proseFragments(document: Root): string[] {
       ...parts,
     ]
     if (
-      environmentHeadings.length > 0 &&
+      contextualParts.length > parts.length &&
+      (effectiveEnvironmentHeadings.length > 0 ||
+        hasLiveEnvironmentContext(content)) &&
       (hasCredentialClaimContext(contextualContent) ||
         hasTrackedRolloutFlag(contextualContent))
     ) {
@@ -2057,7 +2188,10 @@ function proseFragments(document: Root): string[] {
     } else if (hasTrackedFlag) {
       pendingRolloutContext = undefined
       pendingLocalRolloutContext = undefined
-    } else if (hasLiveEnvironmentContext(contextualContent)) {
+    } else if (
+      environmentHeadings.length > 0 ||
+      hasLiveEnvironmentContext(content)
+    ) {
       pendingRolloutContext = { headingKey, contextualParts }
     } else if (pendingRolloutContext?.headingKey !== headingKey) {
       pendingRolloutContext = undefined
@@ -2079,7 +2213,8 @@ function proseFragments(document: Root): string[] {
     }
 
     const nextPendingClaim =
-      hasLiveEnvironmentContext(contextualContent) &&
+      (effectiveEnvironmentHeadings.length > 0 ||
+        hasLiveEnvironmentContext(content)) &&
       hasCredentialClaimContext(contextualContent) &&
       !hasAffirmativeLiveStatus(contextualContent)
         ? { headingKey, contextualParts }
@@ -2115,6 +2250,16 @@ function proseFragments(document: Root): string[] {
       if (child.type === 'heading') {
         const previousHeadingDepth = headingContext.length
         const headingText = markdownProseText(child, referenceTitles).trim()
+        const completesPendingClaim =
+          child.depth > previousHeadingDepth &&
+          pendingAdjacentClaim !== undefined &&
+          pendingAdjacentClaim.headingKey === headingContext.join('\u0000') &&
+          isStandaloneAffirmativeStatus(headingText) &&
+          !hasScopedLocalRolloutContext(headingText)
+        if (completesPendingClaim && pendingAdjacentClaim !== undefined) {
+          append([...pendingAdjacentClaim.contextualParts, headingText])
+          pendingAdjacentClaim = undefined
+        }
         headingContext = headingContext.slice(0, child.depth - 1)
         headingContext[child.depth - 1] = headingText
         const headingKey = headingContext.join('\u0000')
@@ -2132,7 +2277,11 @@ function proseFragments(document: Root): string[] {
         } else {
           pendingLocalRolloutContext = undefined
         }
-        if (nestedNeutralHeading && pendingAdjacentClaim !== undefined) {
+        if (
+          !completesPendingClaim &&
+          nestedNeutralHeading &&
+          pendingAdjacentClaim !== undefined
+        ) {
           pendingAdjacentClaim.headingKey = headingKey
         } else {
           pendingAdjacentClaim = undefined
@@ -2153,10 +2302,8 @@ function proseFragments(document: Root): string[] {
         )
         for (const row of rows) {
           appendWithHeadingContext(headingContext, row)
-          for (const headerCell of header ?? []) {
-            if (hasLiveEnvironmentContext(headerCell)) {
-              append([headerCell, ...row])
-            }
+          for (const parts of tableRowProseParts(header ?? [], row)) {
+            appendWithHeadingContext(headingContext, parts)
           }
           for (const fragment of rolloutTableFragments(
             headingContext,
@@ -2305,7 +2452,21 @@ function inlineFormattingNodesMayJoin(left: Nodes, right: Nodes): boolean {
     'strong',
     'text',
   ])
-  return formattingTypes.has(left.type) && formattingTypes.has(right.type)
+  if (formattingTypes.has(left.type) && formattingTypes.has(right.type)) {
+    return true
+  }
+
+  const renderedTextTypes = new Set([
+    ...formattingTypes,
+    'link',
+    'linkReference',
+  ])
+  return (
+    renderedTextTypes.has(left.type) &&
+    renderedTextTypes.has(right.type) &&
+    left.position?.end.offset !== undefined &&
+    left.position.end.offset === right.position?.start.offset
+  )
 }
 
 function normalizeCredentialSpellings(value: string): string {
@@ -2465,6 +2626,24 @@ function hasScopedLocalRolloutContext(value: string): boolean {
   )
 }
 
+function hasLocalSectionHeadingContext(value: string): boolean {
+  return (
+    /\b(?:fixture|loopback|synthetic)\b/i.test(value) ||
+    /\blocal(?:[-\s]+only)?[-\s]+(?:fixture|harness|runtime|tests?)\b/i.test(
+      value,
+    )
+  )
+}
+
+function hasInheritableCredentialHeadingContext(value: string): boolean {
+  return (
+    hasCredentialClaimContext(value) &&
+    !/\b(?:closeout|documentation|evidence|index|limitations?|packet|registry|summary)\b/i.test(
+      value,
+    )
+  )
+}
+
 function unsupportedLiveCredentialClaim(text: string): boolean {
   const normalized = normalizeCredentialSpellings(text)
     .replaceAll('|', ' ')
@@ -2479,7 +2658,7 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
     return false
   }
   const clauses = normalized
-    .split(/[.;!?]+/)
+    .split(/[.;!]+/)
     .map((clause) => clause.trim())
     .filter((clause) => clause.length > 0)
   const boundedClauses = [...clauses]
@@ -2882,6 +3061,9 @@ function liveClaimIsNonAssertive(
 ): boolean {
   const beforeStatus = clause.slice(0, statusIndex)
   if (commandFragmentIsInstruction(clause)) {
+    return true
+  }
+  if (/\?\s*$/.test(clause)) {
     return true
   }
   if (

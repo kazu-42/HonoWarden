@@ -31,18 +31,22 @@ describe('security review materials', () => {
     }
   })
 
-  it('pins the temporary patched sharp line while Miniflare remains vulnerable', () => {
+  it('pins temporary patched transitive dependencies', () => {
     const workspacePolicy = readFileSync(
       `${repoRoot}/pnpm-workspace.yaml`,
       'utf8',
     )
     const dependencyAudit = readSecurityDoc('dependency-audit.md')
 
-    expect(workspacePolicy).toMatch(/overrides:\s+sharp: 0\.35\.3/)
+    expect(workspacePolicy).toContain('overrides:')
+    expect(workspacePolicy).toContain('sharp: 0.35.3')
+    expect(workspacePolicy).toContain("'brace-expansion@5.0.7': 5.0.8")
     expect(workspacePolicy).toContain('docs/security/dependency-audit.md')
     expect(dependencyAudit).toContain('GHSA-f88m-g3jw-g9cj')
     expect(dependencyAudit).toContain('temporary `overrides` policy')
     expect(dependencyAudit).toContain('Images binding')
+    expect(dependencyAudit).toContain('GHSA-mh99-v99m-4gvg')
+    expect(dependencyAudit).toContain('brace-expansion 5.0.8')
   })
 
   it('records critical security review sections', () => {

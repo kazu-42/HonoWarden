@@ -13,4 +13,5 @@ minimumReleaseAgeExclude:
   - vitest@4.1.10
 # Remove only through the gate in docs/security/dependency-audit.md.
 overrides:
+  'brace-expansion@5.0.7': 5.0.8
   sharp: 0.35.3
