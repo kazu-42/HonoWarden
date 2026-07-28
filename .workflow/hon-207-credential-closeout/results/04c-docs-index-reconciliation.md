@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: twenty-fourth review findings remediated; exact-head rereviews and publication pending
+Status: twenty-fifth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -103,8 +103,8 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 482 tests passed.
-- Compatibility suite: 6 files and 875 tests passed.
+- Cross-document credential contract: 526 tests passed.
+- Compatibility suite: 6 files and 919 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
@@ -112,8 +112,8 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   SHA-256
   `17ee848e519a855f508722218a0f9008656adf016ca71e560bf3057722777930`;
   it was updated at `2026-07-28T04:19:49.648Z` for review target `37019e7`.
-- Post-twenty-fourth-remediation full serial suite: 105 files and 2,105 tests
-  passed in 164.66 seconds with file parallelism disabled and one worker.
+- Post-twenty-fifth-remediation full serial suite: 105 files and 2,149 tests
+  passed in 145.82 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -774,7 +774,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   related operator/release/security checks pass 60/60, and the serial full
   suite passes 2,071/2,071 across 105 files in 143.96 seconds.
 
-## Twenty-Fourth Review And Remediation
+## Review History: Twenty-Fourth Review And Remediation
 
 - Native Codex session `019fa6f0-37e7-7c30-b33d-be4f3642ff74`, standard
   reviewer `019fa6ef-ea01-7a23-aad5-72d376835915`, and five-axis reviewer
@@ -800,10 +800,45 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   related operator/release/security checks pass 60/60, and the serial full
   suite passes 2,105/2,105 across 105 files in 164.66 seconds.
 
+## Twenty-Fifth Review And Remediation
+
+- Native Codex session `019fa701-807e-7350-b1b1-388b3d9ada2c`, standard
+  reviewer `019fa701-58aa-7933-852e-24e89072cdbe`, and five-axis reviewer
+  `019fa701-6fad-7680-a438-b97963b55fe4` inspected exact
+  `686cf5f476cb0dcc238c195c0a1fc1d667e65e4e`, tree
+  `9e0bbaf9890bae938b9dfb79e19b80e643561bf8`, against base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`.
+- The native and standard lanes reported five actionable P2 instances
+  consolidated into four boundary classes; the five-axis lane reported no
+  actionable finding. Exact-head CI run 30329153308 passed, but its green
+  result was not treated as merge approval while those findings remained open.
+- Nineteen mutations failed first. They cover impossible local-scope headings,
+  compound live-status polarity, rollout-flag equality and evaluation
+  predicates, and permitted credential capabilities. Remediation sidecar
+  `019fa70a-37a4-7f70-8a89-a557dc80a8d7` then exposed one additional RED
+  paragraph case where a coordinated negation failed to govern the shared
+  `harness` noun.
+- Live-status negation now treats `no longer disabled`, `no longer off`, and
+  `no longer false` as affirmative activation claims while preserving
+  `cannot` and `unable to` capability statements as negative controls.
+  Impossible local and synthetic scope wording cannot clear inherited
+  production context; coordinated negation governs the complete allowed scope
+  phrase. Rollout checks reject `equal to true` and `evaluates as` or
+  `evaluates to true` forms while retaining false and explicitly negated
+  controls. The capability taxonomy recognizes active and passive
+  `permit`/`permitted` forms without rejecting negated, interrogative, or future
+  statements.
+- Focused contract tests pass 526/526, compatibility tests pass 919/919,
+  related operator/release/security checks pass 60/60, HON-222 renderer tests
+  pass 6/6, and the serial full suite passes 2,149/2,149 across 105 files in
+  145.82 seconds. TypeScript, ESLint, full-repository Prettier, brand scan,
+  dependency audit, frozen offline install, credential closeout verification,
+  strict 11-of-11 release gate, and alpha completion audit also pass.
+
 ## Closeout Pending
 
-- Exact-head standard and independent five-axis rereview of the
-  twenty-fourth-remediated tree are pending.
+- Exact-head native, standard, and independent five-axis rereview of the
+  twenty-fifth-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.

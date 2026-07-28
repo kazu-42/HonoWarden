@@ -191,7 +191,7 @@ const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|rem
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
 const negativeLiveStatusPatternSource = String.raw`(?:disabled|false|off)`
 const appositiveLiveStatusPatternSource = String.raw`(?:verified|validated|proven|recorded|enabled|${negativeLiveStatusPatternSource}|activated|active|approved|available|usable|useable|complete|completed|deployed|documented|live|operational|passed|possible|ready|released|shipped|confirmed|demonstrated|true|yes|ok)`
-const liveCapabilityPatternSource = String.raw`(?:can(?!\s+not\b)|accept(?:s|ed|ing)?|allow(?:s|ed|ing)?|offer(?:s|ed|ing)?|possible)`
+const liveCapabilityPatternSource = String.raw`(?:can(?!\s+not\b)|accept(?:s|ed|ing)?|allow(?:s|ed|ing)?|offer(?:s|ed|ing)?|permit(?:s|ted|ting)?|possible)`
 const liveStatusPatternSource = String.raw`\b(?:${appositiveLiveStatusPatternSource}|${liveCapabilityPatternSource}|captured|collected|in\s+place|rolled\s+out|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|exists?|(?:is|are|was|were)\s+(?:on|present)|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|activates|deploys|enables|releases|ships|rolls\s+out|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
@@ -562,6 +562,13 @@ describe('credential closeout documentation contract', () => {
     "Production password change isn't disabled.",
     'Production password change is not off.',
     'Production password change is not false.',
+    'Production password change is no longer disabled.',
+    'Production password change is no longer off.',
+    'Production password change is no longer false.',
+    'Production permits password changes.',
+    'Production permitted password changes.',
+    'Production password changes are permitted.',
+    'Users are permitted to change passwords in production.',
     'Production password change is verified, correct?',
     "Production password change is verified, isn't it?",
     'What matters is that production password change is verified, correct?',
@@ -848,6 +855,12 @@ describe('credential closeout documentation contract', () => {
     'Production does not allow password changes.',
     'Production cannot change passwords.',
     'Production can not change passwords.',
+    'Production cannot support password changes.',
+    'Production is unable to support password changes.',
+    'Production cannot permit password changes.',
+    'Production is unable to permit password changes.',
+    'Production does not permit password changes.',
+    'Production password changes are not permitted.',
     'Production credential writer is not on.',
     'Production does not enable password changes.',
     'Production does not activate KDF mutation.',
@@ -918,6 +931,9 @@ describe('credential closeout documentation contract', () => {
     'Does production support password changes?',
     'Can users change passwords in production?',
     'Does production allow password changes?',
+    'Does production permit password changes?',
+    'Are production password changes permitted?',
+    'Are users permitted to change passwords in production?',
     'Is password change possible in production?',
     'Is production password change usable?',
     'Production password change: is it verified?',
@@ -962,6 +978,9 @@ describe('credential closeout documentation contract', () => {
     'Production credential writer activation must be verified before the flag is enabled.',
     'Production password change will be verified in a later evidence run.',
     'Production will allow password changes only after a separate evidence run.',
+    'Production will permit password changes only after a separate evidence run.',
+    'Production password changes will be permitted only after a separate evidence run.',
+    'Users will be permitted to change passwords in production only after a separate evidence run.',
     'Password change will be live only after a separate production evidence run.',
     'Password change will go live only after a separate production evidence run.',
     'If remote credential restoration is verified, record separate evidence.',
@@ -1261,6 +1280,10 @@ describe('credential closeout documentation contract', () => {
     'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` off to on.',
     'Production transitions `HONOWARDEN_PASSWORD_CHANGE_ENABLED` disabled to enabled.',
     'Production activates `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production has `HONOWARDEN_PASSWORD_CHANGE_ENABLED` equal to true.',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` is equal to "true".',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` evaluates as true.',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` evaluates to true.',
     "Production's non-local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.",
     'Production without a local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production no longer a local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
@@ -1339,6 +1362,12 @@ describe('credential closeout documentation contract', () => {
     'Not a local fixture or local harness',
     'No longer a local or synthetic harness',
     "Isn't a local or synthetic harness",
+    'Cannot be a local harness',
+    'Unable to be a local harness',
+    'Cannot be a synthetic harness',
+    'Unable to be a synthetic harness',
+    'Cannot be a local or synthetic harness',
+    'Unable to be a local or synthetic harness',
   ])(
     'does not treat a negated local heading as local claim scope: %s',
     (heading) => {
@@ -1351,19 +1380,30 @@ describe('credential closeout documentation contract', () => {
     },
   )
 
-  it('does not let a coordinated negated local heading clear rollout context', () => {
-    const docPath = 'docs/release/index.md'
-    const content = `${readText(docPath)}\n\n## Production\n\n### Not a local or synthetic harness\n\n\`\`\`text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n\`\`\`\n`
+  it.each([
+    'Not a local or synthetic harness',
+    'Cannot be a local harness',
+    'Unable to be a local harness',
+    'Cannot be a synthetic harness',
+    'Unable to be a synthetic harness',
+  ])(
+    'does not let a negated local heading clear rollout context: %s',
+    (heading) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n\n## Production\n\n### ${heading}\n\n\`\`\`text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n\`\`\`\n`
 
-    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
-      /tracked credential rollout flag/,
-    )
-  })
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /tracked credential rollout flag/,
+      )
+    },
+  )
 
   it.each([
     'This is not a local harness.',
     'This is no longer a local harness.',
     'This is not a local harness anymore.',
+    'Cannot be a local harness.',
+    'Unable to be a local or synthetic harness.',
   ])(
     'does not let a negated local paragraph clear rollout context: %s',
     (scope) => {
@@ -1444,8 +1484,17 @@ describe('credential closeout documentation contract', () => {
     '## Production\n\n### Local harness\n\nConfiguration follows.\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
     'Production uses the following setting.\n\n## Documentation example\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
     'Production has not yet set `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production has `HONOWARDEN_PASSWORD_CHANGE_ENABLED` equal to false.',
+    'Production does not have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` equal to true.',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` is equal to "false".',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` is not equal to true.',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` does not evaluate as true.',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` evaluates as false.',
+    'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` evaluates to false.',
     '## Production\n\n### Local or synthetic harness\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
     '## Production\n\n### Not only a local or synthetic harness\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
+    '## Production\n\n### Can be a local harness\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
+    '## Production\n\n### Able to be a local harness\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])('accepts a non-contradictory rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n\n${claim}\n`
@@ -2169,6 +2218,14 @@ function positiveRolloutAssignments(
   const patterns = [
     new RegExp(`${quotedFlag}\\s*(?:=|:|\\bis\\b)\\s*${positiveValue}`, 'gi'),
     new RegExp(`${quotedFlag}\\s+${positiveValue}`, 'gi'),
+    new RegExp(
+      `${quotedFlag}\\s+(?:(?:is|was)\\s+)?equal\\s+to\\s*${positiveValue}`,
+      'gi',
+    ),
+    new RegExp(
+      `${quotedFlag}\\s+evaluat(?:e|es|ed|ing)\\s+(?:as|to)\\s*${positiveValue}`,
+      'gi',
+    ),
     new RegExp(
       `${quotedFlag}\\s+(?:current\\s+)?value\\s*(?:=|:|\\bis\\b)\\s*${positiveValue}`,
       'gi',
@@ -3004,7 +3061,7 @@ function localScopeMatchIsNegated(value: string, matchIndex: number): boolean {
     .replace(/\bnot\s+only\b/gi, 'not_only')
     .trim()
   if (
-    /(?:\b(?:no\s+longer|without|(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?)(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
+    /(?:\b(?:cannot|unable\s+to)(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+be)?(?:\s+(?:a|an|the))?|\b(?:no\s+longer|without|(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?)(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
       scopedPrefix,
     )
   ) {
@@ -3013,7 +3070,7 @@ function localScopeMatchIsNegated(value: string, matchIndex: number): boolean {
 
   const coordinatedNegator = [
     ...scopedPrefix.matchAll(
-      /\bno\s+longer\b|\b(?:no|not|never|without)\b|\b\w+n['’]t\b/gi,
+      /\bno\s+longer\b|\b(?:cannot|no|not|never|without)\b|\bunable\s+to\b|\b\w+n['’]t\b/gi,
     ),
   ].at(-1)
   if (coordinatedNegator?.index === undefined) {
@@ -3023,8 +3080,8 @@ function localScopeMatchIsNegated(value: string, matchIndex: number): boolean {
     .slice(coordinatedNegator.index + coordinatedNegator[0].length)
     .trim()
   return (
-    /\bor\s*$/i.test(governedScope) &&
-    /^(?:(?:a|an|the|or|only|local|loopback|synthetic|fixture|harness|runtime|tests?)\b[\s-]*)+$/i.test(
+    /\bor\b/i.test(governedScope) &&
+    /^(?:(?:a|an|the|be|or|only|local|loopback|synthetic|fixture|harness|runtime|tests?)\b[\s-]*)+$/i.test(
       governedScope,
     )
   )
@@ -3602,7 +3659,10 @@ function hasCredentialCapabilityContext(value: string): boolean {
 
 function statusPredicateIsNegated(beforeStatus: string): boolean {
   return (
-    /\b(?:not|never)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
+    /\b(?:no\s+longer|not|never)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
+      beforeStatus,
+    ) ||
+    /\b(?:cannot|unable\s+to)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+be(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?)?\s*$/i.test(
       beforeStatus,
     ) ||
     /\b(?:(?:ain|are|ca|could|did|do|does|had|has|have|is|might|must|need|should|was|were|wo|would)n['’]t)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
