@@ -117,17 +117,25 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
     new URL('../results/04c-docs-index-reconciliation.md', import.meta.url),
     'utf8',
   )
+  const gitAttributes = readFileSync(
+    new URL('../../../.gitattributes', import.meta.url),
+    'utf8',
+  )
 
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: twenty-seventh review findings remediated; exact-head rereviews and publication pending$/m,
+    /^Status: twenty-eighth review finding remediated; publication candidate with exact-head gates external$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: twenty-sixth review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: twenty-seventh review/m)
   assert.equal(readbackArtifact.byteLength, 1517)
   assert.equal(
     createHash('sha256').update(readbackArtifact).digest('hex'),
     '126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09',
+  )
+  assert.match(
+    gitAttributes,
+    /^\.workflow\/hon-207-credential-closeout\/results\/hon-222-linear-plan-readback\.json text eol=lf$/m,
   )
   assert.match(
     evidenceResult,
@@ -171,7 +179,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_twenty_seventh_review_findings_remediated_rereview_pending',
+    'evidence_1c_twenty_eighth_review_finding_remediated_publication_candidate',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -459,7 +467,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_2149_tests_serial_158_27_seconds_post_twenty_seventh_remediation',
+    'passed_105_files_2149_tests_serial_147_49_seconds_post_twenty_eighth_remediation',
   )
   assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
     base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -736,6 +744,37 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
         'tracked_artifact_vs_embedded_external_metadata',
         'external_timestamp_and_hon229_boundary_regression',
       ],
+    },
+  )
+  assert.deepEqual(
+    state.verification.results.evidence1cTwentyEighthRemediation,
+    {
+      base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+      reviewed_head: '90a23025feae145178d2e57347bb48c5366aa0e5',
+      reviewed_tree: '49499817719882c11170c160dff30ab2a2d9dc3d',
+      head_ci_run: 30332049141,
+      native_review_session: '019fa738-1eab-7f81-8f94-2a411acdd7fe',
+      standard_review_agent: '019fa737-fa71-7273-bab8-0ab6d1b0a74e',
+      five_axis_review_agent: '019fa738-0f21-77e0-a173-8dd2714a53c8',
+      actionable_p2_instances: 1,
+      red_failures: 1,
+      autocrlf_reproduction: {
+        bytes: 1571,
+        sha256:
+          '3d42c125e6c74b58802d39b0a652751a692a8c4e649556ae75072c930ad15c60',
+        workflow_tests_passed: 5,
+        workflow_tests_total: 6,
+      },
+      lf_attribute:
+        '.workflow/hon-207-credential-closeout/results/hon-222-linear-plan-readback.json text eol=lf',
+      focused_docs_contract_tests: 526,
+      release_security_tests: 537,
+      credential_evidence_tests: 36,
+      hon_222_plan_tests: 6,
+      full_suite_files: 105,
+      full_suite_tests: 2149,
+      full_suite_serial_seconds: 147.49,
+      findings_closed: ['digest_bound_artifact_checkout_eol'],
     },
   )
   assert.deepEqual(

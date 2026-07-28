@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: twenty-seventh review findings remediated; exact-head rereviews and publication pending
+Status: twenty-eighth review finding remediated; publication candidate with exact-head gates external
 
 Linear issue: HON-229
 
@@ -117,8 +117,8 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   updated at `2026-07-23T06:43:06.815Z`.
 - The managed HON-229 implementation checkpoint is external Linear state. It
   is re-read at publication and is not commit-local proof.
-- Post-twenty-seventh-remediation full serial suite: 105 files and 2,149 tests
-  passed in 158.27 seconds with file parallelism disabled and one worker.
+- Post-twenty-eighth-remediation full serial suite: 105 files and 2,149 tests
+  passed in 147.49 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -862,7 +862,7 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   537/537, and the serial full suite passes 2,149/2,149 across 105 files in
   144.32 seconds.
 
-## Twenty-Seventh Review And Remediation
+## Review History: Twenty-Seventh Review And Remediation
 
 - Native Codex session `019fa72d-73a5-77a1-9e55-8d38604acfc5`, standard
   reviewer `019fa72d-93f8-7162-b431-b1df64cd87dc`, and five-axis reviewer
@@ -885,10 +885,38 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   release/security documentation checks pass 537/537, and the serial full suite
   passes 2,149/2,149 across 105 files in 158.27 seconds.
 
+## Twenty-Eighth Review And Remediation
+
+- Native Codex session `019fa738-1eab-7f81-8f94-2a411acdd7fe`, standard
+  reviewer `019fa737-fa71-7273-bab8-0ab6d1b0a74e`, and five-axis reviewer
+  `019fa738-0f21-77e0-a173-8dd2714a53c8` inspected exact
+  `90a23025feae145178d2e57347bb48c5366aa0e5`, tree
+  `49499817719882c11170c160dff30ab2a2d9dc3d`, against base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`.
+- Standard and five-axis review reported zero P0-P3 findings. Native review
+  reported one P2 after reproducing the workflow test under
+  `core.autocrlf=true`: the digest-bound JSON had no canonical checkout rule,
+  became 1,571 bytes with SHA-256
+  `3d42c125e6c74b58802d39b0a652751a692a8c4e649556ae75072c930ad15c60`,
+  and failed the raw-byte assertion. Exact-head CI run 30332049141 passed, but
+  its green result was not treated as approval after the P2 was accepted.
+- One workflow assertion failed first because the digest-bound readback path
+  was absent from `.gitattributes`. The artifact now has an exact
+  `text eol=lf` rule alongside the repository's other credential evidence, and
+  the workflow test pins that rule before trusting the 1,517-byte digest.
+- HON-222 renderer tests pass 6/6, focused documentation checks pass 526/526,
+  release/security documentation checks pass 537/537, credential evidence
+  checks pass 36/36, and the serial full suite passes 2,149/2,149 across 105
+  files in 147.49 seconds.
+- This tracked result deliberately does not claim the current bookkeeping
+  commit reviewed itself. The publication candidate's exact-head reviews, CI,
+  review-thread readback, merge tree, merged-main CI, and Linear closeout are
+  external gates recorded in the PR and managed Linear checkpoint.
+
 ## Closeout Pending
 
 - Exact-head native, standard, and independent five-axis rereview of the
-  twenty-seventh-remediated tree are pending.
+  twenty-eighth publication candidate are pending as external gates.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.
