@@ -123,9 +123,9 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: eighteenth review findings remediated; exact-head rereviews and publication pending$/m,
+    /^Status: nineteenth review findings remediated; exact-head rereviews and publication pending$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: seventeenth review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: eighteenth review/m)
   assert.deepEqual(
     evidencePacket.subpackets.map((packet) => [
       packet.linear,
@@ -140,7 +140,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_eighteenth_review_findings_remediated_rereview_pending',
+    'evidence_1c_nineteenth_review_findings_remediated_rereview_pending',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -424,11 +424,11 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFocused,
-    'passed_docs_contract_383_compat_776_related_ops_docs_60_hon_222_plan_6',
+    'passed_docs_contract_395_compat_788_related_ops_docs_60_hon_222_plan_6',
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_2006_tests_serial_175_78_seconds_post_eighteenth_remediation',
+    'passed_105_files_2018_tests_serial_143_85_seconds_post_nineteenth_remediation',
   )
   assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
     base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -456,6 +456,30 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
       'not_yet_rollout_negation',
       'interrogative_nonassertive_claims',
       'root_compat_docs_specs_markdown_discovery',
+    ],
+  })
+  assert.deepEqual(state.verification.results.evidence1cNineteenthRemediation, {
+    base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+    reviewed_head: 'b8679b0dad8ea640218b8866fa3f2ca3fad0029b',
+    reviewed_tree: 'a80c9ed719911982ca286de3e2f9087cd233ca98',
+    head_ci_run: 30321825914,
+    native_review_session: '019fa673-72ec-7371-8b06-9897fdb93926',
+    standard_review_agent: '019fa673-5917-7841-9347-ead3d1634af6',
+    adversarial_review_agent: '019fa673-2a82-7a93-9bb0-6139cdf82afd',
+    five_axis_review_agent: '019fa673-40e7-7ca3-aaed-fe191de9fd3a',
+    actionable_p2_instances: 5,
+    initial_red_failures: 9,
+    focused_docs_contract_tests: 395,
+    compat_tests: 788,
+    related_tests: 60,
+    full_suite_files: 105,
+    full_suite_tests: 2018,
+    full_suite_serial_seconds: 143.85,
+    findings_closed: [
+      'rollout_transition_and_activation_predicates',
+      'verb_before_password_credential_context',
+      'scheduled_remote_backup_false_positive_boundary',
+      'state_referenced_active_workflow_current_claim_scan',
     ],
   })
   assert.deepEqual(

@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: eighteenth review findings remediated; exact-head rereviews and publication pending
+Status: nineteenth review findings remediated; exact-head rereviews and publication pending
 
 Linear issue: HON-229
 
@@ -40,10 +40,14 @@ The reconciliation now protects 14 canonical user-facing compatibility,
 current-state, operations, release, and security documents, four
 registry-backed evidence documents, and six representative policy documents
 under mutation coverage. In addition, every user-facing Markdown file at the
-repository root and under `compat/`, `docs/`, and `specs/` is scanned for
-unsupported credential claims and live rollout assignments, so a new recovery
-or credential document cannot bypass the gate through a narrower discovery
-vocabulary. A GFM-aware Markdown AST contract resolves inline, angle-bracket,
+repository root and under `compat/`, `docs/`, and `specs/`, plus the
+state-referenced active workflow result, is scanned for unsupported credential
+claims and live rollout assignments, so a new recovery, credential, or active
+workflow document cannot bypass the gate through a narrower discovery
+vocabulary. Historical `Review And Remediation` sections remain explicit
+review-fixture history; current workflow scope, implementation, verification,
+closeout, and activation claims stay guarded. A GFM-aware Markdown AST contract
+resolves inline, angle-bracket,
 escaped, and reference-style local links, rejects unparsed link syntax and raw
 HTML in structurally protected documents, and requires exactly one canonical
 packet and registry entry under the expected per-document heading. The
@@ -66,10 +70,11 @@ literal block, while local section headings remain scoped by Markdown
 hierarchy. Assignment coverage includes direct flag-first forms, active and
 postfix predicates, quoted JSON-style values, flag-subject `is set to true`,
 and environment-subject `has FLAG set to true` forms, declarative
-`defines/maps FLAG as/to true` forms, value-qualified assignments, and
-flag/value pairs split across tables. Long-form environment/flag/value tables
-are column-order independent, and matrix tables bind positive values to their
-environment headers. Every matched assignment
+`defines/maps FLAG as/to true` forms, value-qualified assignments, activation
+and opt-in predicates, disabled-to-enabled transitions in prose and tables,
+and flag/value pairs split across tables. Long-form environment/flag/value
+tables are column-order independent, and matrix tables bind positive values to
+their environment headers. Every matched assignment
 binds full or contracted negation and local-harness exceptions to its exact
 predicate, including quoted absence examples, and a later positive assignment
 cannot be masked by an earlier negative one. The claim scanner carries
@@ -96,17 +101,17 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
 
 ## Verification
 
-- Cross-document credential contract: 383 tests passed.
-- Compatibility suite: 6 files and 776 tests passed.
+- Cross-document credential contract: 395 tests passed.
+- Compatibility suite: 6 files and 788 tests passed.
 - Related operator, release, completion-audit, brand, and official-client
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed. The latest managed
-  HON-229 implementation checkpoint readback was exact at 4,384 bytes and
+  HON-229 implementation checkpoint readback was exact at 3,502 bytes and
   SHA-256
-  `be26fcb1180911b9ebdf774170f49b5e927f7db2097665d5a17e02490618a847`;
-  it was updated at `2026-07-23T15:00:56.447Z` for commit `c52dd0b`.
-- Post-eighteenth-remediation full serial suite: 105 files and 2,006 tests
-  passed in 175.78 seconds with file parallelism disabled and one worker.
+  `1a33efe1181e94e55288552bf4745493f5aaa2eef9ba59b457b62a96180ebf49`;
+  it was updated at `2026-07-28T02:10:20.852Z` for review target `b8679b0`.
+- Post-nineteenth-remediation full serial suite: 105 files and 2,018 tests
+  passed in 143.85 seconds with file parallelism disabled and one worker.
 - TypeScript, ESLint, full-repository Prettier, brand scan, dependency audit,
   strict release gate, and alpha completion audit passed.
 - Dependency-audit lockfile evidence: SHA-256
@@ -241,14 +246,12 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   B, B+, B, and B+.
 - The combined mutation run failed 14 cases before remediation. The expected
   heading is now pinned per protected document; the representative artifact
-  must be linked from column five; nested Markdown container headings are
-  tracked; status-before-environment, present-tense support, backup export,
-  restore, disabled-writer, forward-generation, remote, and real-account
-  assertions are rejected; and bounded negation remains accepted while
-  `not only ... but ...` stays a positive claim. A self-review also removed a
-  `Status` word from the mutation heading so the status-before-environment
-  cases prove the clause relation logic independently. All 84 focused cases,
-  477 compatibility tests, 57 related checks, and 1,707 full-suite tests pass.
+  must be linked from column five; and nested Markdown container headings are
+  tracked. The scanner now covers every claim family listed in the preceding
+  reviewer findings while preserving bounded-negation controls. A self-review
+  also removed an unrelated vocabulary cue from the mutation heading so the
+  clause-relation cases stand on their own. All 84 focused cases, 477
+  compatibility tests, 57 related checks, and 1,707 full-suite tests pass.
 
 ## Sixth Review And Remediation
 
@@ -265,15 +268,11 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   reported one P2 covering three colon-delimited status forms. Grades were B-,
   B, B+, B, and B for framing, diagnosis, design, correctness/tests, and
   architecture.
-- Ten combined review mutations failed first. The scanner now recognizes the
-  `Prod` alias, checks fenced output, binds colon labels without joining
-  unrelated clauses, recognizes `exists` and `is present` evidence predicates,
-  treats `After` as a scoped future marker, and distinguishes generic remote
-  backup-export records from credential/recovery claims. A further failing
-  self-review mutation fixed leading whitespace after sentence splitting.
-  Explicit negation, unrelated conditional markers, and remote operational
-  backup evidence remain negative controls. All 103 focused cases, 496
-  compatibility tests, and 57 related checks pass.
+- Ten combined review mutations failed first. The scanner now covers every
+  syntax form and claim family listed in the preceding reviewer findings while
+  preserving the corresponding negative controls. A further failing self-review
+  mutation fixed leading whitespace after sentence splitting. All 103 focused
+  cases, 496 compatibility tests, and 57 related checks pass.
 
 ## Seventh Review And Remediation
 
@@ -634,10 +633,43 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   to that package, frozen install succeeds, and the low audit reports no known
   vulnerabilities.
 
+## Nineteenth Review And Remediation
+
+- Native Codex session `019fa673-72ec-7371-8b06-9897fdb93926`, standard
+  reviewer `019fa673-5917-7841-9347-ead3d1634af6`, adversarial reviewer
+  `019fa673-2a82-7a93-9bb0-6139cdf82afd`, and five-axis reviewer
+  `019fa673-40e7-7ca3-aaed-fe191de9fd3a` inspected exact
+  `b8679b0dad8ea640218b8866fa3f2ca3fad0029b`, tree
+  `a80c9ed719911982ca286de3e2f9087cd233ca98`, against base
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3`.
+- The standard lane returned clean. Native, adversarial, and five-axis lanes
+  reported five actionable P2 instances, consolidated into four boundary
+  classes. Exact-head CI run 30321825914 passed, but its green result was not
+  treated as merge approval because the review findings remained open.
+- Nine mutations failed first: disabled-to-enabled prose and table transitions,
+  activation/opt-in predicates, verb-before-object password-change wording,
+  an explicitly scheduled production D1 backup record misclassified as
+  credential evidence, and the active workflow result omitted from discovery.
+  Negated activation, reverse transitions, historical review examples, and
+  current workflow claim scope were added as false-positive and ownership
+  controls.
+- Positive rollout parsing now recognizes transitions and activation predicates
+  while binding negation to the expanded verb family. Credential context covers
+  inflected verb-before-password wording. Only explicitly scheduled or
+  operator-driven D1/R2/remote backup-export prose remains operational backup
+  context; ambiguous production backup claims and any credential/recovery
+  wording remain rejected.
+- The active result is resolved from `state.json` instead of a second
+  hand-maintained filename. Its current-claim sections pass the same rollout and
+  live-claim checks as user-facing docs, while historical review sections may
+  retain the exact rejected examples they document. Focused contract tests pass
+  395/395, compatibility tests pass 788/788, and the serial full suite passes
+  2,018/2,018 across 105 files in 143.85 seconds.
+
 ## Closeout Pending
 
 - Exact-head standard, adversarial, and independent five-axis rereview of the
-  eighteenth-remediated tree are pending.
+  nineteenth-remediated tree are pending.
 - PR/head CI, zero unresolved review threads, squash tree equality, and
   merged-main CI are pending.
 - Linear Done/archive for HON-229 is pending.

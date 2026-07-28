@@ -83,6 +83,17 @@ interface WranglerConfig {
   env?: Record<string, { vars?: Record<string, string> }>
 }
 
+interface WorkflowPacket {
+  id: string
+  result: string | null
+  subpackets?: WorkflowPacket[]
+}
+
+interface CredentialWorkflowState {
+  active_packet: string
+  packets: WorkflowPacket[]
+}
+
 interface ResolvedRepoTarget {
   kind: 'image' | 'link'
   path: string
@@ -91,6 +102,10 @@ interface ResolvedRepoTarget {
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 const registryPath = 'compat/credential-evidence.json'
 const packetPath = 'compat/credential-closeout-packet.json'
+const credentialWorkflowRoot = '.workflow/hon-207-credential-closeout'
+const credentialWorkflowState = readJson<CredentialWorkflowState>(
+  `${credentialWorkflowRoot}/state.json`,
+)
 
 const credentialDocs = [
   'compat/README.md',
@@ -195,6 +210,7 @@ const registryCredentialDocs = [
 ].sort()
 const credentialDocumentationDocs = [
   ...markdownFilesAtRoot(),
+  ...activeWorkflowResultDocs(credentialWorkflowRoot, credentialWorkflowState),
   ...markdownFilesUnder('compat'),
   ...markdownFilesUnder('docs'),
   ...markdownFilesUnder('specs'),
@@ -307,14 +323,25 @@ describe('credential closeout documentation contract', () => {
         'README.md',
         'ROADMAP.md',
         'SECURITY.md',
+        '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md',
         'compat/README.md',
         'docs/release/feature-freeze-checklist.md',
         'specs/week-16-dogfood-environment-readiness.md',
       ]),
     )
     for (const docPath of credentialDocumentationDocs) {
-      assertCredentialPolicyDocContract(docPath, readText(docPath))
+      assertCredentialDocumentationDocContract(docPath, readText(docPath))
     }
+  })
+
+  it('rejects unsupported current claims in the active workflow result', () => {
+    const docPath =
+      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const content = `${readText(docPath)}\n## Contradictory Current State\n\nProduction credential writer activation is verified.\n`
+
+    expect(() =>
+      assertCredentialDocumentationDocContract(docPath, content),
+    ).toThrow(/must not claim verified staging or production activation/)
   })
 
   it('exposes every credential-supporting document from canonical navigation', () => {
@@ -442,6 +469,7 @@ describe('credential closeout documentation contract', () => {
     'The registry confirms the production KDF mutation.',
     'Evidence demonstrates the staging password change.',
     'Production supports password changes.',
+    'Production supports changing passwords.',
     'Password changes work in production.',
     'Production recovery restore is verified.',
     'Production backup export is approved.',
@@ -766,12 +794,18 @@ describe('credential closeout documentation contract', () => {
     expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
   })
 
-  it('accepts generic remote backup export evidence without a credential claim', () => {
-    const docPath = 'docs/release/index.md'
-    const content = `${readText(docPath)}\nScheduled remote backup export evidence is recorded.\n\n## Remote\n\nScheduled backup export evidence is recorded.\n`
+  it.each([
+    'Scheduled remote backup export evidence is recorded.',
+    'Production scheduled D1 backup export evidence is recorded.',
+  ])(
+    'accepts generic remote backup export evidence without a credential claim: %s',
+    (claim) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n${claim}\n`
 
-    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
-  })
+      expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+    },
+  )
 
   it.each([
     '## Production\n\n### Local harness\n\nCredential writer activation is verified.',
@@ -1100,6 +1134,11 @@ describe('credential closeout documentation contract', () => {
     'Production defines `HONOWARDEN_PASSWORD_CHANGE_ENABLED` as true.',
     'Production maps `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` value is `true`.',
+    'Production rollout sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from false to true.',
+    'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to enabled.',
+    'Production flips `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from off to on.',
+    'Production opts into `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production activates `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
     "Production's non-local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.",
     'Production and the local harness set `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production does not set `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true` while staging sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
@@ -1126,6 +1165,7 @@ describe('credential closeout documentation contract', () => {
     '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
     '| Environment | Value | Flag |\n| --- | --- | --- |\n| Production | `true (temporary)` | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |',
     '| Environment | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` |\n| --- | --- |\n| Production | `true` |',
+    '| Flag | Production |\n| --- | --- |\n| `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `false -> true` |',
   ])(
     'rejects a live true rollout assignment regardless of table column order: %s',
     (table) => {
@@ -1203,6 +1243,9 @@ describe('credential closeout documentation contract', () => {
     "Production doesn't have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.",
     'Production does not define `HONOWARDEN_PASSWORD_CHANGE_ENABLED` as true.',
     'Production does not map `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production does not activate `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production has not opted into `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
+    'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from true to false.',
     '## Production\n\n| Context | Flag | Value |\n| --- | --- | --- |\n| Local harness | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `true` |',
     'Production remains disabled. The local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
     '## Production\n\nThe local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`; production remains false.',
@@ -1397,6 +1440,47 @@ function assertCredentialPolicyDocContract(
   }
 }
 
+function assertCredentialDocumentationDocContract(
+  docPath: string,
+  content: string,
+): void {
+  if (docPath.startsWith(`${credentialWorkflowRoot}/results/`)) {
+    assertWorkflowEvidenceDocContract(docPath, content)
+    return
+  }
+  assertCredentialPolicyDocContract(docPath, content)
+}
+
+function assertWorkflowEvidenceDocContract(
+  docPath: string,
+  content: string,
+): void {
+  const currentClaims = workflowCurrentClaims(parsePolicyMarkdown(content))
+  assertNoLiveRolloutFlagAssignments(docPath, currentClaims)
+  for (const fragment of proseFragments(currentClaims)) {
+    expect(
+      unsupportedLiveCredentialClaim(fragment),
+      `${docPath} must not claim verified staging or production activation: ${fragment}`,
+    ).toBe(false)
+  }
+}
+
+function workflowCurrentClaims(document: Root): Root {
+  const children: Root['children'] = []
+  let insideReviewHistory = false
+  for (const child of document.children) {
+    if (child.type === 'heading' && child.depth <= 2) {
+      insideReviewHistory =
+        child.depth === 2 &&
+        /\bReview And Remediation$/i.test(markdownText(child, true).trim())
+    }
+    if (!insideReviewHistory) {
+      children.push(child)
+    }
+  }
+  return { type: 'root', children }
+}
+
 function assertOperationInventoryContract(
   inventoryPath: string,
   inventory: string,
@@ -1585,6 +1669,26 @@ function markdownFilesAtRoot(): string[] {
     .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
     .map((entry) => entry.name)
     .sort()
+}
+
+function activeWorkflowResultDocs(
+  workflowRoot: string,
+  state: CredentialWorkflowState,
+): string[] {
+  const packets = state.packets.flatMap(flattenWorkflowPacket)
+  const activePacket = packets.find(
+    (packet) => packet.id === state.active_packet,
+  )
+  if (!activePacket?.result?.endsWith('.md')) {
+    throw new Error(
+      `${workflowRoot} active packet ${state.active_packet} has no Markdown result`,
+    )
+  }
+  return [join(workflowRoot, activePacket.result)]
+}
+
+function flattenWorkflowPacket(packet: WorkflowPacket): WorkflowPacket[] {
+  return [packet, ...(packet.subpackets?.flatMap(flattenWorkflowPacket) ?? [])]
 }
 
 function markdownFilesUnder(directoryPath: string): string[] {
@@ -1848,6 +1952,7 @@ function positiveRolloutAssignments(
   const escapedFlag = escapeRegExp(flag)
   const quotedFlag = `["']?\\b${escapedFlag}\\b["']?`
   const positiveValue = `["']?(?:true|1|yes|on|enabled)\\b["']?`
+  const negativeValue = `["']?(?:false|0|no|off|disabled)\\b["']?`
   const patterns = [
     new RegExp(`${quotedFlag}\\s*(?:=|:|\\bis\\b)\\s*${positiveValue}`, 'gi'),
     new RegExp(`${quotedFlag}\\s+${positiveValue}`, 'gi'),
@@ -1860,7 +1965,7 @@ function positiveRolloutAssignments(
       'gi',
     ),
     new RegExp(
-      `\\b(?:assign(?:s|ed|ing)?|configur(?:e|es|ed|ing)|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|map(?:s|ped|ping)?|set(?:s|ting)?|use(?:s|d|ing)?)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:(?:to|as|=)\\s*)?${positiveValue}`,
+      `\\b(?:assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|map(?:s|ped|ping)?|set(?:s|ting)?|use(?:s|d|ing)?)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:(?:to|as|=)\\s*)?${positiveValue}`,
       'gi',
     ),
     new RegExp(
@@ -1873,6 +1978,14 @@ function positiveRolloutAssignments(
     ),
     new RegExp(
       `${quotedFlag}\\s+(?:(?:is|was)|(?:has|had)\\s+been)\\s+(?:(?:set|configured)\\s+(?:to|as)\\s*${positiveValue}|turned\\s+on\\b)`,
+      'gi',
+    ),
+    new RegExp(
+      `${quotedFlag}\\s+(?:from\\s+${negativeValue}\\s+to\\s+|${negativeValue}\\s*(?:->|→)\\s*)${positiveValue}`,
+      'gi',
+    ),
+    new RegExp(
+      `\\b(?:activat(?:e|es|ed|ing)|opt(?:s|ted|ting)?\\s+in(?:to)?)\\s+(?:the\\s+)?${quotedFlag}`,
       'gi',
     ),
   ]
@@ -1901,7 +2014,7 @@ function rolloutAssignmentIsNegated(prefix: string): boolean {
     .replace(/["'`]+\s*$/g, '')
     .trim()
   const assignmentVerb =
-    '(?:assign(?:s|ed|ing)?|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|map(?:s|ped|ping)?|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
+    '(?:activat(?:e|es|ed|ing)|assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|map(?:s|ped|ping)?|opt(?:s|ted|ting)?\\s+in(?:to)?|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
 
   if (
     new RegExp(
@@ -2013,9 +2126,7 @@ function rolloutTableFragments(
     ),
   )
   const positiveValueIndexes = row.flatMap((cell, index) =>
-    /^["']?(?:true|1|yes|on|enabled)(?:\s*\([^)]*\))?["']?$/i.test(cell.trim())
-      ? [index]
-      : [],
+    rolloutValueIsPositive(cell) ? [index] : [],
   )
   if (flags.length === 0 || positiveValueIndexes.length === 0) {
     return []
@@ -2056,6 +2167,18 @@ function rolloutTableFragments(
     }
   }
   return [...fragments]
+}
+
+function rolloutValueIsPositive(value: string): boolean {
+  const normalized = value.trim()
+  if (
+    /^["']?(?:true|1|yes|on|enabled)(?:\s*\([^)]*\))?["']?$/i.test(normalized)
+  ) {
+    return true
+  }
+  return /^(?:false|0|no|off|disabled)\s*(?:->|→|\bto\b)\s*(?:true|1|yes|on|enabled)$/i.test(
+    normalized,
+  )
 }
 
 function tableRowProseParts(header: string[], row: string[]): string[][] {
@@ -2924,6 +3047,13 @@ function hasCredentialClaimContext(clause: string): boolean {
     return true
   }
   if (
+    /\b(?:chang(?:e|es|ed|ing)|mutat(?:e|es|ed|ing)|reset(?:s|ting)?|rotat(?:e|es|ed|ing)|updat(?:e|es|ed|ing)|verif(?:y|ies|ied|ying))\s+(?:the\s+)?(?:(?:master|account)\s+)?passwords?\b/i.test(
+      normalizedClause,
+    )
+  ) {
+    return true
+  }
+  if (
     /\brestor(?:e|es|ed|ation)\b/i.test(normalizedClause) &&
     /\b(?:account|backup|credential|d1|r2|recovery|vault|writer)\b/i.test(
       normalizedClause,
@@ -2939,11 +3069,22 @@ function hasCredentialClaimContext(clause: string): boolean {
   ) {
     return true
   }
+  if (operationalBackupExportContext(normalizedClause)) {
+    return false
+  }
   return (
     /\bbackup[-\s]+export\b/i.test(normalizedClause) &&
     /\b(?:staging|prod(?:uction)?|live|cloudflare|real[-\s]+account)\b/i.test(
       normalizedClause,
     )
+  )
+}
+
+function operationalBackupExportContext(value: string): boolean {
+  return (
+    /\bbackup[-\s]+export\b/i.test(value) &&
+    /\b(?:scheduled|operator[-\s]+driven)\b/i.test(value) &&
+    /\b(?:d1|r2|database|object[-\s]+storage|remote)\b/i.test(value)
   )
 }
 
