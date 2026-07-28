@@ -189,7 +189,10 @@ const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|usable|useable|captured|collected|complete|completed|deployed|documented|in\s+place|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+(?:on|present)|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|activates|deploys|enables|releases|ships|rolls\s+out|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const negativeLiveStatusPatternSource = String.raw`(?:disabled|false|off)`
+const appositiveLiveStatusPatternSource = String.raw`(?:verified|validated|proven|recorded|enabled|${negativeLiveStatusPatternSource}|activated|active|approved|available|usable|useable|complete|completed|deployed|documented|live|operational|passed|possible|ready|released|shipped|confirmed|demonstrated|true|yes|ok)`
+const liveCapabilityPatternSource = String.raw`(?:can(?!\s+not\b)|accept(?:s|ed|ing)?|allow(?:s|ed|ing)?|offer(?:s|ed|ing)?|possible)`
+const liveStatusPatternSource = String.raw`\b(?:${appositiveLiveStatusPatternSource}|${liveCapabilityPatternSource}|captured|collected|in\s+place|rolled\s+out|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|exists?|(?:is|are|was|were)\s+(?:on|present)|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|activates|deploys|enables|releases|ships|rolls\s+out|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -525,7 +528,6 @@ describe('credential closeout documentation contract', () => {
     'Password changes work in production.',
     'Production recovery restore is verified.',
     'Production backup export is approved.',
-    'Production recovery writers are disabled.',
     'Production recovery forward generation is verified.',
     'Remote credential restoration is verified.',
     'Remote D1/R2 restore is operational.',
@@ -549,6 +551,17 @@ describe('credential closeout documentation contract', () => {
     'Production password change was a success.',
     'Production password change is active.',
     'Production password change is usable.',
+    'Production password change, usable.',
+    'Production password change, useable.',
+    'Users can change passwords in production.',
+    'Production allows password changes.',
+    'Password changes are possible in production.',
+    'Production offers KDF mutation.',
+    'Production accepts account-key initialization.',
+    'Production password change is not disabled.',
+    "Production password change isn't disabled.",
+    'Production password change is not off.',
+    'Production password change is not false.',
     'Production password change is verified, correct?',
     "Production password change is verified, isn't it?",
     'What matters is that production password change is verified, correct?',
@@ -832,6 +845,9 @@ describe('credential closeout documentation contract', () => {
     'Production password change was not a success.',
     'Production password change is not active.',
     'Production password change is not usable.',
+    'Production does not allow password changes.',
+    'Production cannot change passwords.',
+    'Production can not change passwords.',
     'Production credential writer is not on.',
     'Production does not enable password changes.',
     'Production does not activate KDF mutation.',
@@ -867,8 +883,25 @@ describe('credential closeout documentation contract', () => {
   })
 
   it.each([
+    'Production recovery writers are disabled.',
+    'Production password change is disabled.',
+    'Password changes are disabled in production.',
+    'The production KDF writer is disabled.',
+    'Production password change is off.',
+    'Production password change is false.',
+    'Production password change, disabled.',
+    'Is production password change disabled?',
+  ])('accepts an explicitly disabled live credential boundary: %s', (claim) => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n${claim}\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).not.toThrow()
+  })
+
+  it.each([
     'Scheduled remote backup export evidence is recorded.',
     'Production scheduled D1 backup export evidence is recorded.',
+    '## Backup And Restore\n\nRemote R2 backup can discover object keys through the S3-compatible ListObjectsV2 API.',
   ])(
     'accepts generic remote backup export evidence without a credential claim: %s',
     (claim) => {
@@ -883,6 +916,9 @@ describe('credential closeout documentation contract', () => {
     '## Production\n\n### Local harness\n\nCredential writer activation is verified.',
     'Is production password change verified?',
     'Does production support password changes?',
+    'Can users change passwords in production?',
+    'Does production allow password changes?',
+    'Is password change possible in production?',
     'Is production password change usable?',
     'Production password change: is it verified?',
     'Why is production password change verified?',
@@ -925,6 +961,7 @@ describe('credential closeout documentation contract', () => {
     'Once production KDF mutation is verified, update the release index.',
     'Production credential writer activation must be verified before the flag is enabled.',
     'Production password change will be verified in a later evidence run.',
+    'Production will allow password changes only after a separate evidence run.',
     'Password change will be live only after a separate production evidence run.',
     'Password change will go live only after a separate production evidence run.',
     'If remote credential restoration is verified, record separate evidence.',
@@ -1294,7 +1331,15 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
-  it.each(['Not a local harness', 'Without a local harness'])(
+  it.each([
+    'Not a local harness',
+    'Without a local harness',
+    'Not a local or synthetic harness',
+    'Not a fixture or synthetic harness',
+    'Not a local fixture or local harness',
+    'No longer a local or synthetic harness',
+    "Isn't a local or synthetic harness",
+  ])(
     'does not treat a negated local heading as local claim scope: %s',
     (heading) => {
       const docPath = 'docs/release/index.md'
@@ -1305,6 +1350,15 @@ describe('credential closeout documentation contract', () => {
       )
     },
   )
+
+  it('does not let a coordinated negated local heading clear rollout context', () => {
+    const docPath = 'docs/release/index.md'
+    const content = `${readText(docPath)}\n\n## Production\n\n### Not a local or synthetic harness\n\n\`\`\`text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n\`\`\`\n`
+
+    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+      /tracked credential rollout flag/,
+    )
+  })
 
   it.each([
     'This is not a local harness.',
@@ -1390,6 +1444,8 @@ describe('credential closeout documentation contract', () => {
     '## Production\n\n### Local harness\n\nConfiguration follows.\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
     'Production uses the following setting.\n\n## Documentation example\n\n```text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n```',
     'Production has not yet set `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    '## Production\n\n### Local or synthetic harness\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
+    '## Production\n\n### Not only a local or synthetic harness\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])('accepts a non-contradictory rollout assignment: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n\n${claim}\n`
@@ -2644,6 +2700,12 @@ function proseFragments(document: Root): string[] {
 
 function isStandaloneAffirmativeStatus(value: string): boolean {
   return liveStatusMatches(value).some((status) => {
+    if (
+      liveStatusIsNegativeBoundary(status[0]) &&
+      !statusPredicateIsNegated(value.slice(0, status.index))
+    ) {
+      return false
+    }
     const prefixWords = value
       .slice(0, status.index)
       .replace(/[:|]/g, ' ')
@@ -2941,8 +3003,30 @@ function localScopeMatchIsNegated(value: string, matchIndex: number): boolean {
   const scopedPrefix = rolloutPredicateScope(value.slice(0, matchIndex))
     .replace(/\bnot\s+only\b/gi, 'not_only')
     .trim()
-  return /(?:\b(?:no\s+longer|without|(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?)(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
-    scopedPrefix,
+  if (
+    /(?:\b(?:no\s+longer|without|(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?)(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
+      scopedPrefix,
+    )
+  ) {
+    return true
+  }
+
+  const coordinatedNegator = [
+    ...scopedPrefix.matchAll(
+      /\bno\s+longer\b|\b(?:no|not|never|without)\b|\b\w+n['’]t\b/gi,
+    ),
+  ].at(-1)
+  if (coordinatedNegator?.index === undefined) {
+    return false
+  }
+  const governedScope = scopedPrefix
+    .slice(coordinatedNegator.index + coordinatedNegator[0].length)
+    .trim()
+  return (
+    /\bor\s*$/i.test(governedScope) &&
+    /^(?:(?:a|an|the|or|only|local|loopback|synthetic|fixture|harness|runtime|tests?)\b[\s-]*)+$/i.test(
+      governedScope,
+    )
   )
 }
 
@@ -2960,7 +3044,7 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
     .replaceAll('|', ' ')
     // Appositive status after a comma: "Production password change, verified."
     .replace(
-      /,\s*(?=(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|complete|completed|deployed|documented|live|operational|passed|ready|released|shipped|confirmed|demonstrated|true|yes|ok)\b)/gi,
+      new RegExp(`,\\s*(?=${appositiveLiveStatusPatternSource}\\b)`, 'gi'),
       ' is ',
     )
     .replace(/\s+/g, ' ')
@@ -3012,6 +3096,12 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
     if (hasCredentialContext) {
       const statuses = liveStatusMatches(clause)
       for (const status of statuses) {
+        if (
+          liveStatusIsCapability(status[0]) &&
+          !hasCredentialCapabilityContext(clause)
+        ) {
+          continue
+        }
         const distinctEnvironmentCandidates =
           status[0].toLowerCase() === 'live'
             ? environments.filter(
@@ -3053,8 +3143,14 @@ function unsupportedLiveCredentialClaim(text: string): boolean {
         ) {
           continue
         }
+        const claimIsNegated = liveClaimIsNegated(
+          clause,
+          environment.index,
+          status.index,
+        )
+        const negativeBoundary = liveStatusIsNegativeBoundary(status[0])
         if (
-          !liveClaimIsNegated(clause, environment.index, status.index) &&
+          (negativeBoundary ? claimIsNegated : !claimIsNegated) &&
           !liveClaimIsNonAssertive(
             clause,
             environment.index,
@@ -3292,21 +3388,10 @@ function liveClaimIsNegated(
 ): boolean {
   const beforeStatus = clause.slice(0, statusIndex)
   const beforeEnvironment = clause.slice(0, environmentIndex)
-  if (
-    /\b(?:not|never)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
-      beforeStatus,
-    )
-  ) {
+  if (statusPredicateIsNegated(beforeStatus)) {
     return true
   }
   if (/\b(?:unexecuted|unperformed)(?:\s+future)?\s*$/i.test(beforeStatus)) {
-    return true
-  }
-  if (
-    /\b(?:(?:ain|are|ca|could|did|do|does|had|has|have|is|might|must|need|should|was|were|wo|would)n['’]t)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
-      beforeStatus,
-    )
-  ) {
     return true
   }
   const neither = [...beforeStatus.matchAll(/\bneither\b/gi)].at(-1)
@@ -3394,7 +3479,7 @@ function liveClaimIsNonAssertive(
   }
   if (
     /\?\s*$/.test(clause) &&
-    interrogativeQuestionGovernsStatus(clause, statusIndex)
+    interrogativeQuestionGovernsStatus(clause, statusIndex, status)
   ) {
     return true
   }
@@ -3473,13 +3558,57 @@ function liveClaimIsNonAssertive(
 function interrogativeQuestionGovernsStatus(
   clause: string,
   statusIndex: number,
+  status: string,
 ): boolean {
   const auxiliaryLead = String.raw`(?:are|can|could|did|do|does|has|have|is|may|might|must|should|was|were|will|would)`
   const whLead = String.raw`(?:how|what|when|where|which|who|why)\s+${auxiliaryLead}`
+  if (
+    new RegExp(`^\\s*(?:${auxiliaryLead}|${whLead})\\s*$`, 'i').test(
+      clause.slice(0, statusIndex + status.length),
+    )
+  ) {
+    return true
+  }
   return new RegExp(
     `(?:^|[,;:])\\s*(?:${auxiliaryLead}|${whLead})\\b[^,;:]*$`,
     'i',
   ).test(clause.slice(0, statusIndex))
+}
+
+function liveStatusIsNegativeBoundary(status: string): boolean {
+  return new RegExp(`^${negativeLiveStatusPatternSource}$`, 'i').test(
+    status.trim(),
+  )
+}
+
+function liveStatusIsCapability(status: string): boolean {
+  return new RegExp(`^${liveCapabilityPatternSource}$`, 'i').test(status.trim())
+}
+
+function hasCredentialCapabilityContext(value: string): boolean {
+  const normalized = normalizeCredentialSpellings(value)
+  return (
+    registryCredentialSpellings.some(({ prose }) =>
+      normalized.toLowerCase().includes(prose.toLowerCase()),
+    ) ||
+    /\b(?:(?:master[-\s]+)?password[-\s]+(?:changes?|updates?|resets?|verify|verification|mutation|rotation)|kdf(?:[-\s]+mutation)?|account[-\s]+key(?:[-\s]+(?:initialization|rotation|read))?|user[-\s]+key(?:[-\s]+rotation)?|credential[-\s]+(?:restoration|writer)|recovery[-\s]+(?:backup[-\s]+export|forward[-\s]+generation|restore|writers?))\b/i.test(
+      normalized,
+    ) ||
+    /\b(?:chang(?:e|es|ed|ing)|mutat(?:e|es|ed|ing)|reset(?:s|ting)?|rotat(?:e|es|ed|ing)|updat(?:e|es|ed|ing)|verif(?:y|ies|ied|ying))\s+(?:the\s+)?(?:(?:master|account)\s+)?passwords?\b/i.test(
+      normalized,
+    )
+  )
+}
+
+function statusPredicateIsNegated(beforeStatus: string): boolean {
+  return (
+    /\b(?:not|never)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
+      beforeStatus,
+    ) ||
+    /\b(?:(?:ain|are|ca|could|did|do|does|had|has|have|is|might|must|need|should|was|were|wo|would)n['’]t)(?:\s+(?:actually|currently|ever|yet|fully|completely|independently))?(?:\s+been)?(?:\s+an?)?\s*$/i.test(
+      beforeStatus,
+    )
+  )
 }
 
 function tablesIn(document: Root): Table[] {
