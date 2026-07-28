@@ -189,7 +189,7 @@ const registry = readJson<EvidenceRegistry>(registryPath)
 const packet = readJson<CloseoutPacket>(packetPath)
 const liveEnvironmentPatternSource = String.raw`\b(?:staging|prod(?:uction)?|remote|real[-\s]+account)\b`
 const liveEnvironmentAliasPatternSource = String.raw`\b(?:live|cloudflare)\b`
-const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|captured|collected|complete|completed|deployed|documented|in\s+place|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+(?:on|present)|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|activates|deploys|enables|releases|ships|rolls\s+out|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
+const liveStatusPatternSource = String.raw`\b(?:verified|validated|proven|recorded|enabled|disabled|activated|active|approved|available|usable|useable|captured|collected|complete|completed|deployed|documented|in\s+place|live|operational|passed|ready|released|rolled\s+out|shipped|tested(?:\s+successfully)?|success(?:ful(?:ly)?)?|succeeded|confirmed|demonstrated|exists?|(?:is|are|was|were)\s+(?:on|present)|support(?:ed|s)?|work(?:ed|s|ing)?|function(?:al|ed|s|ing)?|turned\s+on|true|yes|ok|activates|deploys|enables|releases|ships|rolls\s+out|verifies|validates|proves|records|confirms|demonstrates|documents)\b`
 const registryCredentialSpellings = [
   ...new Set(registry.claims.flatMap((claim) => [claim.id, claim.operation])),
 ]
@@ -548,6 +548,7 @@ describe('credential closeout documentation contract', () => {
     'Production password change has been tested successfully.',
     'Production password change was a success.',
     'Production password change is active.',
+    'Production password change is usable.',
     'Production password change is verified, correct?',
     "Production password change is verified, isn't it?",
     'What matters is that production password change is verified, correct?',
@@ -830,6 +831,7 @@ describe('credential closeout documentation contract', () => {
     'Production password change has not been validated.',
     'Production password change was not a success.',
     'Production password change is not active.',
+    'Production password change is not usable.',
     'Production credential writer is not on.',
     'Production does not enable password changes.',
     'Production does not activate KDF mutation.',
@@ -881,6 +883,7 @@ describe('credential closeout documentation contract', () => {
     '## Production\n\n### Local harness\n\nCredential writer activation is verified.',
     'Is production password change verified?',
     'Does production support password changes?',
+    'Is production password change usable?',
     'Production password change: is it verified?',
     'Why is production password change verified?',
     'What is verified for production password change?',
@@ -894,6 +897,7 @@ describe('credential closeout documentation contract', () => {
   it.each([
     'Production is verified for release documentation.',
     'Staging is ready for ordinary website traffic.',
+    'Staging is usable for ordinary website traffic.',
     'The live documentation index is ready for password change updates.',
     '## Cloudflare documentation\n\nPassword change is verified.',
   ])('accepts a non-credential environment status: %s', (claim) => {
@@ -1221,6 +1225,9 @@ describe('credential closeout documentation contract', () => {
     'Production transitions `HONOWARDEN_PASSWORD_CHANGE_ENABLED` disabled to enabled.',
     'Production activates `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
     "Production's non-local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.",
+    'Production without a local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production no longer a local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production not a local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production and the local harness set `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production does not set `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true` while staging sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
   ])('rejects every active live rollout assignment: %s', (claim) => {
@@ -1364,6 +1371,7 @@ describe('credential closeout documentation contract', () => {
     'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from true to false.',
     '## Production\n\n| Context | Flag | Value |\n| --- | --- | --- |\n| Local harness | `HONOWARDEN_PASSWORD_CHANGE_ENABLED` | `true` |',
     'Production remains disabled. The local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
+    "Production's local harness sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.",
     '## Production\n\nThe local harness uses `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`; production remains false.',
     '## Production\n\nThe local harness enables `HONOWARDEN_PASSWORD_CHANGE_ENABLED`; production remains disabled.',
     '## Production\n\nLocal harness: `HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`.',
@@ -2240,16 +2248,15 @@ function rolloutAssignmentIsExplicitlyLocal(prefix: string): boolean {
     ...scopedPrefix.matchAll(
       /\b(?:local|loopback|synthetic)(?:[-\s]+only)?[-\s]+(?:fixture|harness|runtime|tests?)\b/gi,
     ),
-  ].at(-1)
+  ]
+    .filter((match) => {
+      if (match.index === undefined) {
+        throw new Error('local rollout assignment match omitted its index')
+      }
+      return !localScopeMatchIsNegated(scopedPrefix, match.index)
+    })
+    .at(-1)
   if (!localScope || localScope.index === undefined) {
-    return false
-  }
-  const beforeLocalScope = scopedPrefix.slice(0, localScope.index)
-  if (
-    /\b(?:non[-\s]*|not(?:\s+(?:actually|explicitly|truly))?\s+|isn['’]t\s+)$/i.test(
-      beforeLocalScope,
-    )
-  ) {
     return false
   }
   const afterLocalScope = scopedPrefix.slice(
@@ -2922,19 +2929,21 @@ function hasUnnegatedLocalScope(value: string, pattern: RegExp): boolean {
     if (match.index === undefined) {
       throw new Error('local scope match omitted its index')
     }
-    const scopedPrefix = rolloutPredicateScope(value.slice(0, match.index))
-      .replace(/\bnot\s+only\b/gi, 'not_only')
-      .trim()
-    if (
-      /(?:\b(?:no\s+longer|without|(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?)(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
-        scopedPrefix,
-      )
-    ) {
+    if (localScopeMatchIsNegated(value, match.index)) {
       continue
     }
     return true
   }
   return false
+}
+
+function localScopeMatchIsNegated(value: string, matchIndex: number): boolean {
+  const scopedPrefix = rolloutPredicateScope(value.slice(0, matchIndex))
+    .replace(/\bnot\s+only\b/gi, 'not_only')
+    .trim()
+  return /(?:\b(?:no\s+longer|without|(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?)(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
+    scopedPrefix,
+  )
 }
 
 function hasInheritableCredentialHeadingContext(value: string): boolean {

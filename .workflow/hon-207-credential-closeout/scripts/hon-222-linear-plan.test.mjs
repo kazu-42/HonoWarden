@@ -123,9 +123,9 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: twenty-second review findings remediated; exact-head rereviews and publication pending$/m,
+    /^Status: twenty-third review findings remediated; exact-head rereviews and publication pending$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: twenty-first review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: twenty-second review/m)
   assert.deepEqual(
     evidencePacket.subpackets.map((packet) => [
       packet.linear,
@@ -424,11 +424,11 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFocused,
-    'passed_docs_contract_440_compat_833_related_ops_docs_60_hon_222_plan_6',
+    'passed_docs_contract_448_compat_841_related_ops_docs_60_hon_222_plan_6',
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_2063_tests_serial_140_29_seconds_post_twenty_second_remediation',
+    'passed_105_files_2071_tests_serial_143_96_seconds_post_twenty_third_remediation',
   )
   assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
     base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -558,6 +558,31 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
         'interrogative_lead_predicate_governance',
         'adjacent_current_status_label',
         'defaulted_enabled_rollout_assignment',
+      ],
+    },
+  )
+  assert.deepEqual(
+    state.verification.results.evidence1cTwentyThirdRemediation,
+    {
+      base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+      reviewed_head: 'd134cf270d7e19ffc83202a3675c2b15462f8619',
+      reviewed_tree: '5c7d28921fb971f6d38c72e64c27a62f5831b8d1',
+      head_ci_run: 30327116938,
+      native_review_session: '019fa6da-58c0-7562-94d2-9a05f24ddadc',
+      standard_review_agent: '019fa6da-1192-79b0-a24f-8cdcde07eae2',
+      five_axis_review_agent: '019fa6da-2962-7690-acd1-be5576694168',
+      actionable_p2_instances: 3,
+      consolidated_boundary_classes: 2,
+      initial_red_failures: 4,
+      focused_docs_contract_tests: 448,
+      compat_tests: 841,
+      related_tests: 60,
+      full_suite_files: 105,
+      full_suite_tests: 2071,
+      full_suite_serial_seconds: 143.96,
+      findings_closed: [
+        'shared_negated_local_scope_assignment_semantics',
+        'affirmative_credential_usability_status',
       ],
     },
   )
