@@ -550,6 +550,7 @@ describe('credential closeout documentation contract', () => {
     'Production password change is active.',
     'Production password change is verified, correct?',
     "Production password change is verified, isn't it?",
+    'What matters is that production password change is verified, correct?',
     'Production credential writer is turned on.',
     'Production credential writer is on.',
     'Production enables password changes.',
@@ -731,6 +732,7 @@ describe('credential closeout documentation contract', () => {
     '## Production\n\n- Credential writer activation\n- Verified',
     '## Production\n\nPassword change.\n\nRollout status: complete.',
     '## Production\n\nPassword change.\n\nDeployment status: verified.',
+    '## Production\n\nCredential writer activation.\n\nCurrent status: verified.',
     '## Production\n\nPassword change.\n\n### Current status\n\nVerified.',
     'Production password change.\n\nRelease status: ready.',
     'Production password change. Deployment notes remain unchanged. Release status: ready.',
@@ -880,6 +882,8 @@ describe('credential closeout documentation contract', () => {
     'Is production password change verified?',
     'Does production support password changes?',
     'Production password change: is it verified?',
+    'Why is production password change verified?',
+    'What is verified for production password change?',
   ])('accepts a non-live or non-assertive credential status: %s', (claim) => {
     const docPath = 'docs/release/index.md'
     const content = `${readText(docPath)}\n${claim}\n`
@@ -1203,6 +1207,7 @@ describe('credential closeout documentation contract', () => {
     'Production has `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.',
     'Production defines `HONOWARDEN_PASSWORD_CHANGE_ENABLED` as true.',
     'Production maps `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
+    'Production defaults `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production `HONOWARDEN_PASSWORD_CHANGE_ENABLED` value is `true`.',
     'Production rollout sets `HONOWARDEN_PASSWORD_CHANGE_ENABLED` from false to true.',
     'Production changes `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to enabled.',
@@ -1282,23 +1287,33 @@ describe('credential closeout documentation contract', () => {
     )
   })
 
-  it('does not treat a negated local heading as local claim scope', () => {
-    const docPath = 'docs/release/index.md'
-    const content = `${readText(docPath)}\n\n## Production\n\n### Not a local harness\n\nPassword change is verified.\n`
+  it.each(['Not a local harness', 'Without a local harness'])(
+    'does not treat a negated local heading as local claim scope: %s',
+    (heading) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n\n## Production\n\n### ${heading}\n\nPassword change is verified.\n`
 
-    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
-      /must not claim verified staging or production activation/,
-    )
-  })
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /must not claim verified staging or production activation/,
+      )
+    },
+  )
 
-  it('does not let a negated local paragraph clear rollout context', () => {
-    const docPath = 'docs/release/index.md'
-    const content = `${readText(docPath)}\n\nProduction uses the following setting.\n\nThis is not a local harness.\n\n\`\`\`text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n\`\`\`\n`
+  it.each([
+    'This is not a local harness.',
+    'This is no longer a local harness.',
+    'This is not a local harness anymore.',
+  ])(
+    'does not let a negated local paragraph clear rollout context: %s',
+    (scope) => {
+      const docPath = 'docs/release/index.md'
+      const content = `${readText(docPath)}\n\nProduction uses the following setting.\n\n${scope}\n\n\`\`\`text\nHONOWARDEN_PASSWORD_CHANGE_ENABLED=true\n\`\`\`\n`
 
-    expect(() => assertCredentialDocContract(docPath, content)).toThrow(
-      /tracked credential rollout flag/,
-    )
-  })
+      expect(() => assertCredentialDocContract(docPath, content)).toThrow(
+        /tracked credential rollout flag/,
+      )
+    },
+  )
 
   it.each([
     '## Live deployment\n\n`HONOWARDEN_PASSWORD_CHANGE_ENABLED=true`',
@@ -1337,6 +1352,7 @@ describe('credential closeout documentation contract', () => {
     'Production does not have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.',
     "Production doesn't have `HONOWARDEN_PASSWORD_CHANGE_ENABLED` set to true.",
     'Production does not define `HONOWARDEN_PASSWORD_CHANGE_ENABLED` as true.',
+    'Production does not default `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production does not map `HONOWARDEN_PASSWORD_CHANGE_ENABLED` to true.',
     'Production does not activate `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
     'Production has not opted into `HONOWARDEN_PASSWORD_CHANGE_ENABLED`.',
@@ -2098,7 +2114,7 @@ function positiveRolloutAssignments(
       'gi',
     ),
     new RegExp(
-      `\\b(?:assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|map(?:s|ped|ping)?|set(?:s|ting)?|use(?:s|d|ing)?)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:(?:to|as|=)\\s*)?${positiveValue}`,
+      `\\b(?:assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|declar(?:e|es|ed|ing)|default(?:s|ed|ing)?|defin(?:e|es|ed|ing)|map(?:s|ped|ping)?|set(?:s|ting)?|use(?:s|d|ing)?)\\s+(?:the\\s+)?${quotedFlag}\\s+(?:(?:to|as|=)\\s*)?${positiveValue}`,
       'gi',
     ),
     new RegExp(
@@ -2157,7 +2173,7 @@ function rolloutAssignmentIsNegated(prefix: string): boolean {
     .replace(/["'`]+\s*$/g, '')
     .trim()
   const assignmentVerb =
-    '(?:activat(?:e|es|ed|ing)|assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|declar(?:e|es|ed|ing)|defin(?:e|es|ed|ing)|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|map(?:s|ped|ping)?|opt(?:s|ed|ing)?\\s+in(?:to|\\s+to)?|promot(?:e|es|ed|ing)|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|transition(?:s|ed|ing)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
+    '(?:activat(?:e|es|ed|ing)|assign(?:s|ed|ing)?|chang(?:e|es|ed|ing)|configur(?:e|es|ed|ing)|contain(?:s|ed|ing)?|declar(?:e|es|ed|ing)|default(?:s|ed|ing)?|defin(?:e|es|ed|ing)|enable(?:s|d|ing)?|flip(?:s|ped|ping)?|has|have|keep(?:s|ing)?|map(?:s|ped|ping)?|opt(?:s|ed|ing)?\\s+in(?:to|\\s+to)?|promot(?:e|es|ed|ing)|run(?:s|ning)?(?:\\s+with)?|set(?:s|ting)?|transition(?:s|ed|ing)?|turn(?:s|ed|ing)?(?:\\s+on)?|use(?:s|d|ing)?)'
 
   if (
     new RegExp(
@@ -2631,6 +2647,7 @@ function isStandaloneAffirmativeStatus(value: string): boolean {
     return (
       prefixWords.every((word) =>
         [
+          'current',
           'deployment',
           'environment',
           'operation',
@@ -2909,7 +2926,7 @@ function hasUnnegatedLocalScope(value: string, pattern: RegExp): boolean {
       .replace(/\bnot\s+only\b/gi, 'not_only')
       .trim()
     if (
-      /(?:\b(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
+      /(?:\b(?:no\s+longer|without|(?:no|not|never)(?:\s+(?:actually|currently|explicitly|really|truly))?)(?:\s+(?:a|an|the))?|\b\w+n['’]t(?:\s+(?:actually|currently|explicitly|really|truly))?(?:\s+(?:a|an|the))?|\bnon[-\s]*)$/i.test(
         scopedPrefix,
       )
     ) {
@@ -3448,13 +3465,12 @@ function interrogativeQuestionGovernsStatus(
   clause: string,
   statusIndex: number,
 ): boolean {
-  const interrogativeLead = String.raw`(?:are|can|could|did|do|does|has|have|how|is|may|might|must|should|was|were|what|when|where|which|who|why|will|would)`
-  if (new RegExp(`^${interrogativeLead}\\b`, 'i').test(clause.trimStart())) {
-    return true
-  }
-  return new RegExp(`(?:^|[,;:])\\s*${interrogativeLead}\\b[^,;:]*$`, 'i').test(
-    clause.slice(0, statusIndex),
-  )
+  const auxiliaryLead = String.raw`(?:are|can|could|did|do|does|has|have|is|may|might|must|should|was|were|will|would)`
+  const whLead = String.raw`(?:how|what|when|where|which|who|why)\s+${auxiliaryLead}`
+  return new RegExp(
+    `(?:^|[,;:])\\s*(?:${auxiliaryLead}|${whLead})\\b[^,;:]*$`,
+    'i',
+  ).test(clause.slice(0, statusIndex))
 }
 
 function tablesIn(document: Root): Table[] {
