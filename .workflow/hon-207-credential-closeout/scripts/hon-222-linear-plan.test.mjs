@@ -14,6 +14,10 @@ import {
   validateHon222Plan,
 } from './hon-222-linear-plan.mjs'
 
+function canonicalRepositoryTextBytes(checkoutBytes) {
+  return Buffer.from(checkoutBytes.toString('utf8').replace(/\r\n/g, '\n'))
+}
+
 test('defines three serialized evidence packets with one active entry', () => {
   validateHon222Plan()
   assert.deepEqual(
@@ -106,9 +110,10 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   const state = JSON.parse(
     readFileSync(new URL('../state.json', import.meta.url), 'utf8'),
   )
-  const readbackArtifact = readFileSync(
+  const readbackCheckoutBytes = readFileSync(
     new URL('../results/hon-222-linear-plan-readback.json', import.meta.url),
   )
+  const readbackArtifact = canonicalRepositoryTextBytes(readbackCheckoutBytes)
   const readback = JSON.parse(readbackArtifact.toString('utf8'))
   const evidencePacket = state.packets.find(
     (packet) => packet.id === '04-compatibility-evidence',
@@ -125,13 +130,19 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.equal(state.active_packet, '04c-docs-index-reconciliation')
   assert.match(
     evidenceResult,
-    /^Status: twenty-eighth review finding remediated; publication candidate with exact-head gates external$/m,
+    /^Status: twenty-ninth review finding remediated; publication candidate with exact-head gates external$/m,
   )
-  assert.doesNotMatch(evidenceResult, /^Status: twenty-seventh review/m)
+  assert.doesNotMatch(evidenceResult, /^Status: twenty-eighth review/m)
   assert.equal(readbackArtifact.byteLength, 1517)
   assert.equal(
     createHash('sha256').update(readbackArtifact).digest('hex'),
     '126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09',
+  )
+  assert.deepEqual(
+    canonicalRepositoryTextBytes(
+      Buffer.from(readbackArtifact.toString('utf8').replace(/\n/g, '\r\n')),
+    ),
+    readbackArtifact,
   )
   assert.match(
     gitAttributes,
@@ -179,7 +190,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.status,
-    'evidence_1c_twenty_eighth_review_finding_remediated_publication_candidate',
+    'evidence_1c_twenty_ninth_review_finding_remediated_publication_candidate',
   )
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
@@ -467,7 +478,7 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.equal(
     state.verification.results.evidence1cFullSuite,
-    'passed_105_files_2149_tests_serial_147_49_seconds_post_twenty_eighth_remediation',
+    'passed_105_files_2149_tests_serial_153_82_seconds_post_twenty_ninth_remediation',
   )
   assert.deepEqual(state.verification.results.evidence1cEighteenthRemediation, {
     base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -775,6 +786,39 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
       full_suite_tests: 2149,
       full_suite_serial_seconds: 147.49,
       findings_closed: ['digest_bound_artifact_checkout_eol'],
+    },
+  )
+  assert.deepEqual(
+    state.verification.results.evidence1cTwentyNinthRemediation,
+    {
+      base: '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
+      reviewed_head: '78b148c4d48a071671a8804f8000b42ab419accf',
+      reviewed_tree: '0dd69349e1243a3e368cdbbe6d604f9dce125b2b',
+      head_ci_run: 30332781778,
+      native_review_session: '019fa746-3058-72d2-aeb8-270af0fda127',
+      standard_review_agent: '019fa745-fdcc-75f3-9e28-23ef7efa858f',
+      five_axis_review_agent: '019fa746-1af2-75a3-b502-50d72e4da42f',
+      actionable_p1_instances: 1,
+      red_failures: 1,
+      existing_checkout_reproduction: {
+        from_head: '90a23025feae145178d2e57347bb48c5366aa0e5',
+        to_head: '78b148c4d48a071671a8804f8000b42ab419accf',
+        effective_attribute: 'text eol=lf',
+        worktree_eol: 'crlf',
+        bytes: 1571,
+        workflow_tests_passed: 5,
+        workflow_tests_total: 6,
+      },
+      canonicalization:
+        'crlf_checkout_to_lf_repository_bytes_before_size_and_sha256',
+      focused_docs_contract_tests: 526,
+      release_security_tests: 537,
+      credential_evidence_tests: 36,
+      hon_222_plan_tests: 6,
+      full_suite_files: 105,
+      full_suite_tests: 2149,
+      full_suite_serial_seconds: 153.82,
+      findings_closed: ['existing_autocrlf_checkout_digest_stability'],
     },
   )
   assert.deepEqual(
