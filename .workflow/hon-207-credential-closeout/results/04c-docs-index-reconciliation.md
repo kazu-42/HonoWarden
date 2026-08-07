@@ -1,6 +1,6 @@
 # EVIDENCE-1C: Docs Index Reconciliation
 
-Status: twenty-ninth review finding remediated; publication candidate with exact-head gates external
+Status: merged, verified on exact main, Done, and archived
 
 Linear issue: HON-229
 
@@ -19,8 +19,9 @@ Linear issue: HON-229
 
 ## Canonical Sources
 
-- Workflow parent: HON-222 remains In Progress.
-- Active child: HON-229 is In Progress and non-archived.
+- Workflow parent HON-222 is Done and archived at
+  `2026-07-28T06:14:05.262Z`.
+- HON-229 is Done and archived at `2026-07-28T06:13:13.622Z`.
 - Completed prerequisite: HON-228 is Done and archived at
   `2026-07-23T06:42:39.292Z`.
 - HON-228 publication: PR #116 was squash-merged as
@@ -29,10 +30,15 @@ Linear issue: HON-229
   `25d64460775356fabad0b5c76fd4cbc39857bab4`.
 - HON-228 exact-head CI run 29985521114 passed.
 - HON-228 merged-main CI run 29985701462 passed.
-- Team WIP invariant: exactly HON-222 plus HON-229 are In Progress.
-- Local workflow projection: `active_packet` is
-  `04c-docs-index-reconciliation`; HON-228 is completed; HON-229 is
-  in_progress.
+- HON-229 publication: PR #117 was squash-merged as
+  `1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3`.
+- HON-229 reviewed publication tree:
+  `b02c6f2ae945a4eddb4332a379721a28db9c33f4`.
+- HON-229 exact-head CI run 30333366333 and merged-main CI run 30333830513
+  passed.
+- Team WIP invariant: exactly HON-207 plus HON-223 are In Progress.
+- Local workflow projection: `active_packet` is `05-review-closeout`;
+  EVIDENCE-1 and all three subpackets are completed.
 
 ## Implementation Result
 
@@ -97,9 +103,10 @@ compared structurally with the registry, and each rollout document must carry
 exactly one row with all three configured scopes set to `false` for each of the
 four credential flags.
 
-The local workflow state points at the 04c packet. The completed 04b result is
-now bound to PR #116, exact-head and merged-main CI, squash-tree equality, and
-the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
+The completed EVIDENCE-1 result binds PRs #115 through #117, their exact-head
+and merged-main CI, squash-tree equality, and all three child archive
+timestamps. HON-222 closed only after the HON-229 Done/archive readback. The
+local workflow state now points at the 05 closeout packet.
 
 ## Verification
 
@@ -109,12 +116,12 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   harness checks: 6 files and 60 tests passed.
 - HON-222 workflow renderer/readback: 6 tests passed.
 - Committed HON-222 readback artifact
-  `results/hon-222-linear-plan-readback.json`: 1,517 bytes, SHA-256
-  `126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09`.
+  `results/hon-222-linear-plan-readback.json`: 1,843 bytes, SHA-256
+  `327b9c443936f5bc0619c14bdec84b93d07156820d24d04fc55aed226ab936ab`.
 - Its embedded external HON-222 Linear execution checkpoint metadata records a
-  2,094-byte body, SHA-256
-  `0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839`,
-  updated at `2026-07-23T06:43:06.815Z`.
+  2,251-byte body, SHA-256
+  `6dd58a8ef478eb0223a774ef5370bf7481b4d87d109b5bf204e73bad5c6c209e`,
+  updated at `2026-07-28T06:33:43.190Z`.
 - The managed HON-229 implementation checkpoint is external Linear state. It
   is re-read at publication and is not commit-local proof.
 - Post-twenty-ninth-remediation full serial suite: 105 files and 2,149 tests
@@ -128,9 +135,9 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   `7e1501caa7db4f38957788b97c4685602ebd7b3f54e38429ab840f9905b3be58`.
 - Release gate: 11 pass, 0 manual, 0 block.
 - Alpha completion audit: complete.
-- Live Linear readback: exactly HON-222 and HON-229 are started; capacity is
-  229 total, 133 archived, 94 active unarchived, and 2 completed unarchived;
-  HON-229 has no active relation.
+- Final Linear readback: HON-229 and HON-222 are Done and archived. Exactly
+  HON-207 and HON-223 are started; team capacity is 94 unarchived issues with
+  two completed unarchived issues.
 - Worktree process readback: no residual process owned by this worktree.
 
 ## Review History: Initial Review And Remediation
@@ -937,19 +944,25 @@ the HON-228 Done/archive timestamp. HON-229 and HON-222 remain In Progress.
   release/security documentation checks pass 537/537, credential evidence
   checks pass 36/36, and the serial full suite passes 2,149/2,149 across 105
   files in 153.82 seconds.
-- This tracked result deliberately does not claim the current bookkeeping
-  commit reviewed itself. The publication candidate's exact-head reviews, CI,
-  review-thread readback, merge tree, merged-main CI, and Linear closeout are
-  external gates recorded in the PR and managed Linear checkpoint.
+- At this remediation commit, exact-head review, CI, merge, and Linear
+  closeout were still external gates. The publication closeout below records
+  their later readback without treating this result as self-review evidence.
 
-## Closeout Pending
+## Publication Closeout
 
-- Exact-head native, standard, and independent five-axis rereview of the
-  twenty-ninth publication candidate are pending as external gates.
-- PR/head CI, zero unresolved review threads, squash tree equality, and
-  merged-main CI are pending.
-- Linear Done/archive for HON-229 is pending.
-- HON-222 integration closeout is pending.
+- Candidate `a8c8e62997b95c7c5f4090258cdcd53a0ffeceaf`, tree
+  `b02c6f2ae945a4eddb4332a379721a28db9c33f4`, passed native Codex session
+  `019fa750-1e0f-7200-af26-a34ff48ccbb6`, standard reviewer
+  `019fa74f-c9d7-7210-ac0f-427b1823604b`, and five-axis reviewer
+  `019fa74f-f7d3-74c1-abc9-b66e953ad780` with zero actionable findings.
+- PR #117 exact-head CI run `30333366333` passed and no unresolved review
+  thread remained.
+- Squash merge `1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3` has parent
+  `32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3` and the exact reviewed tree.
+- Merged-main CI run `30333830513` passed all jobs.
+- HON-229 moved to Done, was read back, and was archived at
+  `2026-07-28T06:13:13.622Z`. HON-222 then moved to Done, was read back, and
+  was archived at `2026-07-28T06:14:05.262Z`.
 
 ## Activation Boundary
 

@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import {
   advanceLinearPlanVerificationStatus,
+  assertArchivedPacketsPresent,
+  assertImmutableArchivedPacket,
   canonicalMarker,
   hon207LinearPlan,
   renderChildDescription,
@@ -28,14 +30,25 @@ test('advances initial Linear sync status without downgrading later verification
   )
 })
 
-test('defines five serialized packets with one active entry', () => {
+test('defines five serialized packets with only CLOSE-1 active', () => {
   validatePlan()
   assert.equal(hon207LinearPlan.issues.length, 5)
   assert.deepEqual(
     hon207LinearPlan.issues.map((issue) => issue.stateType),
-    ['started', 'unstarted', 'unstarted', 'unstarted', 'unstarted'],
+    ['completed', 'completed', 'completed', 'completed', 'started'],
+  )
+  assert.deepEqual(
+    hon207LinearPlan.issues.map((issue) => issue.archivedAt ?? null),
+    [
+      '2026-07-20T10:10:30.198Z',
+      '2026-07-21T04:28:10.664Z',
+      '2026-07-22T02:41:53.724Z',
+      '2026-07-28T06:14:05.262Z',
+      null,
+    ],
   )
   assert.equal(summarizePlan().relations.length, 4)
+  assert.deepEqual(summarizePlan().activeRelations, [])
   assert.deepEqual(
     hon207LinearPlan.issues.map((issue) => issue.packet),
     [
@@ -86,6 +99,8 @@ test('renders exact managed markers, dependencies, and safety boundaries', () =>
   assert.match(checkpoint, /local official-client/)
   assert.match(checkpoint, /normal Brave/i)
   assert.match(checkpoint, /trash false/)
+  assert.match(checkpoint, /CLOSE-1 is the only active child/)
+  assert.match(checkpoint, /HON-222.*2026-07-28T06:14:05\.262Z/)
 })
 
 test('rejects unknown dependencies and cycles', () => {
@@ -96,4 +111,66 @@ test('rejects unknown dependencies and cycles', () => {
   const cyclic = globalThis.structuredClone(hon207LinearPlan)
   cyclic.issues[0].blockers = ['CLOSE-1']
   assert.throws(() => validatePlan(cyclic), /dependency cycle/)
+
+  const noActive = globalThis.structuredClone(hon207LinearPlan)
+  noActive.issues[4].stateType = 'unstarted'
+  assert.throws(() => validatePlan(noActive), /exactly one started packet/)
+
+  const archivedActive = globalThis.structuredClone(hon207LinearPlan)
+  archivedActive.issues[4].archivedAt = '2026-07-28T00:00:00.000Z'
+  assert.throws(() => validatePlan(archivedActive), /active packet.*archived/)
+})
+
+test('refuses to recreate a missing completed and archived packet', () => {
+  const discovered = new Map([
+    ['CLOSE-1', { identifier: 'HON-223', archivedAt: null }],
+  ])
+
+  assert.throws(
+    () => assertArchivedPacketsPresent(discovered),
+    /CLIENT-1: completed archived packet is missing/,
+  )
+})
+
+test('rejects completed archived packet drift before any Linear mutation', () => {
+  const definition = hon207LinearPlan.issues[0]
+  const identifiers = Object.fromEntries(
+    hon207LinearPlan.issues.map((issue, index) => [
+      issue.key,
+      `HON-${219 + index}`,
+    ]),
+  )
+  const expectedDescription = renderChildDescription(definition, identifiers)
+  const exact = {
+    title: definition.title,
+    description: expectedDescription,
+    archivedAt: definition.archivedAt,
+    state: { id: 'done-state-id', type: 'completed' },
+    parent: { id: 'hon-207-id' },
+    project: { id: 'roadmap-id' },
+    priority: hon207LinearPlan.priority,
+  }
+  const options = {
+    definition,
+    issue: exact,
+    expectedDescription,
+    expectedStateId: 'done-state-id',
+    parentId: 'hon-207-id',
+    projectId: 'roadmap-id',
+    priority: hon207LinearPlan.priority,
+  }
+
+  assert.doesNotThrow(() => assertImmutableArchivedPacket(options))
+  assert.throws(
+    () =>
+      assertImmutableArchivedPacket({
+        ...options,
+        issue: {
+          ...exact,
+          description: `${expectedDescription}\nunauthorized drift`,
+          state: { id: 'different-done-state-id', type: 'completed' },
+        },
+      }),
+    /CLIENT-1: archived managed issue drifted in description, state/,
+  )
 })

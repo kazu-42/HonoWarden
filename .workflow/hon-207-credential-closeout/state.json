@@ -3,7 +3,7 @@
   "slug": "hon-207-credential-closeout",
   "created_at": "2026-07-20T04:50:00Z",
   "status": "in_progress",
-  "active_packet": "04c-docs-index-reconciliation",
+  "active_packet": "05-review-closeout",
   "approval": {
     "required": false,
     "granted": true,
@@ -60,9 +60,9 @@
     },
     {
       "id": "04-compatibility-evidence",
-      "status": "in_progress",
+      "status": "completed",
       "linear": "HON-222",
-      "result": null,
+      "result": "results/04-compatibility-evidence.md",
       "subpackets": [
         {
           "id": "04a-evidence-contract",
@@ -81,7 +81,7 @@
         {
           "id": "04c-docs-index-reconciliation",
           "key": "EVIDENCE-1C",
-          "status": "in_progress",
+          "status": "completed",
           "linear": "HON-229",
           "result": "results/04c-docs-index-reconciliation.md"
         }
@@ -89,13 +89,13 @@
     },
     {
       "id": "05-review-closeout",
-      "status": "pending",
+      "status": "in_progress",
       "linear": "HON-223",
-      "result": null
+      "result": "results/05-review-closeout.md"
     }
   ],
   "verification": {
-    "status": "evidence_1c_twenty_ninth_review_finding_remediated_publication_candidate",
+    "status": "close_1_reset_candidate",
     "results": {
       "officialAssetProvenance": "passed_exact_size_and_sha256",
       "runtimeIntegrity": "passed_exact_archive_entries_and_10_file_manifest",
@@ -721,6 +721,63 @@
         "full_suite_tests": 2149,
         "full_suite_serial_seconds": 153.82,
         "findings_closed": ["existing_autocrlf_checkout_digest_stability"]
+      },
+      "evidence1cPublication": {
+        "base": "32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3",
+        "reviewed_head": "a8c8e62997b95c7c5f4090258cdcd53a0ffeceaf",
+        "reviewed_tree": "b02c6f2ae945a4eddb4332a379721a28db9c33f4",
+        "pull_request": 117,
+        "exact_head_ci_run": 30333366333,
+        "native_review_session": "019fa750-1e0f-7200-af26-a34ff48ccbb6",
+        "standard_review_agent": "019fa74f-c9d7-7210-ac0f-427b1823604b",
+        "five_axis_review_agent": "019fa74f-f7d3-74c1-abc9-b66e953ad780",
+        "unresolved_review_threads": 0,
+        "merge_commit": "1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3",
+        "merge_parent": "32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3",
+        "merge_tree": "b02c6f2ae945a4eddb4332a379721a28db9c33f4",
+        "merged_main_ci_run": 30333830513
+      },
+      "evidence1cLinearCloseout": {
+        "hon_229_archived_at": "2026-07-28T06:13:13.622Z",
+        "hon_222_archived_at": "2026-07-28T06:14:05.262Z"
+      },
+      "close1StartReadback": {
+        "main": "1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3",
+        "main_tree": "b02c6f2ae945a4eddb4332a379721a28db9c33f4",
+        "team_wip": ["HON-207", "HON-223"],
+        "hon_207_state": "In Progress",
+        "hon_223_state": "In Progress",
+        "hon_160_state": "Todo",
+        "hon_164_state": "Backlog",
+        "hon_164_blockers": [
+          {
+            "identifier": "HON-160",
+            "relation_id": "20f54857-e200-4214-b59b-da99ef5555c0"
+          }
+        ]
+      },
+      "close1Reset": {
+        "decided_at": "2026-08-07T02:22:04Z",
+        "base": "1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3",
+        "dependency_prerequisite": "b18d6f754dc12edb746169c01e19dfdab81cd9b8",
+        "rejected_head": "386f24f15a5b6b89417badfee4635d8e4dc0e10d",
+        "recovery_ref": "archive/hon-223-nonconvergent-20260807",
+        "replacement_branch": "feat/hon-223-closeout-reset",
+        "reason": "repository_wide_presentation_scanner_nonconvergent",
+        "scanner_scope": "origin_main_unchanged"
+      },
+      "close1LinearPlanReadback": {
+        "generated_at": "2026-08-07T02:20:11.393Z",
+        "children": 5,
+        "active_relations": 0,
+        "unexpected_relations": 0,
+        "managed_comment": {
+          "id": "fcab1e0f-a29d-49a5-b0ee-f34c6f072082",
+          "updated_at": "2026-07-28T06:37:07.705Z",
+          "bytes": 2395,
+          "sha256": "697d4f728ffa81642955c81ad800d4679a2da5bb12805061e48ae8cbc82ea08b"
+        },
+        "errors": 0
       }
     },
     "checks": [

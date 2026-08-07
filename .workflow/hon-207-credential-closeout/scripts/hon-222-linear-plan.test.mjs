@@ -18,11 +18,11 @@ function canonicalRepositoryTextBytes(checkoutBytes) {
   return Buffer.from(checkoutBytes.toString('utf8').replace(/\r\n/g, '\n'))
 }
 
-test('defines three serialized evidence packets with one active entry', () => {
+test('defines three completed serialized evidence packets', () => {
   validateHon222Plan()
   assert.deepEqual(
     hon222LinearPlan.issues.map((issue) => issue.stateType),
-    ['completed', 'completed', 'started'],
+    ['completed', 'completed', 'completed'],
   )
   assert.deepEqual(summarizeHon222Plan().relations, [
     { blocker: 'EVIDENCE-1A', blocked: 'EVIDENCE-1B' },
@@ -68,6 +68,15 @@ test('pins exact parent, children, labels, and workflow packets', () => {
     exactHeadCiRun: 29985521114,
     mainCiRun: 29985701462,
   })
+  assert.deepEqual(hon222LinearPlan.issues[2].closeout, {
+    archivedAt: '2026-07-28T06:13:13.622Z',
+    pullRequest: 117,
+    reviewedHead: 'a8c8e62997b95c7c5f4090258cdcd53a0ffeceaf',
+    reviewedTree: 'b02c6f2ae945a4eddb4332a379721a28db9c33f4',
+    exactHeadCiRun: 30333366333,
+    mergeCommit: '1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3',
+    mainCiRun: 30333830513,
+  })
 })
 
 test('renders exact managed descriptions and checkpoint dependencies', () => {
@@ -90,23 +99,28 @@ test('renders exact managed descriptions and checkpoint dependencies', () => {
     checkpoint.match(/honowarden-managed:HON-222:execution-plan/g)?.length,
     1,
   )
-  assert.match(checkpoint, /EVIDENCE-1C is the only active child/)
+  assert.match(
+    checkpoint,
+    /all three evidence packets are complete and archived/i,
+  )
   assert.match(checkpoint, /PR #115 was squash-merged/)
   assert.match(checkpoint, /PR #116 was squash-merged/)
+  assert.match(checkpoint, /PR #117 was squash-merged/)
   assert.match(checkpoint, /PR\/head CI run `29985521114`/)
-  assert.match(checkpoint, /exactly HON-222 plus child HON-229/)
+  assert.match(checkpoint, /merged-main CI run `30333830513`/)
+  assert.match(checkpoint, /HON-222.*Done and archived/i)
   assert.match(checkpoint, /HON-227 ->|HON-227 \(EVIDENCE-1A\)/)
   assert.match(checkpoint, /lower-level artifacts cannot satisfy/)
   assert.match(checkpoint, /merged-main CI/)
   assert.equal(checkpoint.endsWith('\n'), true)
-  assert.equal(Buffer.byteLength(checkpoint), 2094)
+  assert.equal(Buffer.byteLength(checkpoint), 2251)
   assert.equal(
     createHash('sha256').update(checkpoint).digest('hex'),
-    '0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839',
+    '6dd58a8ef478eb0223a774ef5370bf7481b4d87d109b5bf204e73bad5c6c209e',
   )
 })
 
-test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
+test('pins EVIDENCE-1C publication and advances the workflow to CLOSE-1', () => {
   const state = JSON.parse(
     readFileSync(new URL('../state.json', import.meta.url), 'utf8'),
   )
@@ -127,16 +141,16 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
     'utf8',
   )
 
-  assert.equal(state.active_packet, '04c-docs-index-reconciliation')
+  assert.equal(state.active_packet, '05-review-closeout')
   assert.match(
     evidenceResult,
-    /^Status: twenty-ninth review finding remediated; publication candidate with exact-head gates external$/m,
+    /^Status: merged, verified on exact main, Done, and archived$/m,
   )
   assert.doesNotMatch(evidenceResult, /^Status: twenty-eighth review/m)
-  assert.equal(readbackArtifact.byteLength, 1517)
+  assert.equal(readbackArtifact.byteLength, 1843)
   assert.equal(
     createHash('sha256').update(readbackArtifact).digest('hex'),
-    '126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09',
+    '327b9c443936f5bc0619c14bdec84b93d07156820d24d04fc55aed226ab936ab',
   )
   assert.deepEqual(
     canonicalRepositoryTextBytes(
@@ -150,23 +164,23 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   )
   assert.match(
     evidenceResult,
-    /Committed HON-222 readback artifact\s+`results\/hon-222-linear-plan-readback\.json`: 1,517 bytes, SHA-256/,
+    /Committed HON-222 readback artifact\s+`results\/hon-222-linear-plan-readback\.json`: 1,843 bytes, SHA-256/,
   )
   assert.match(
     evidenceResult,
-    /126a55deaded64b96a3020881d5287cfe09d2b09be514add2b828c0a31e69a09/,
+    /327b9c443936f5bc0619c14bdec84b93d07156820d24d04fc55aed226ab936ab/,
   )
   assert.match(
     evidenceResult,
-    /external HON-222 Linear execution checkpoint metadata records a\s+2,094-byte body/i,
+    /external HON-222 Linear execution checkpoint metadata records a\s+2,251-byte body/i,
   )
   assert.match(
     evidenceResult,
-    /external HON-222 Linear execution checkpoint metadata[\s\S]*0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839/i,
+    /external HON-222 Linear execution checkpoint metadata[\s\S]*6dd58a8ef478eb0223a774ef5370bf7481b4d87d109b5bf204e73bad5c6c209e/i,
   )
   assert.match(
     evidenceResult,
-    /external HON-222 Linear execution checkpoint metadata[\s\S]*updated at `2026-07-23T06:43:06\.815Z`\./i,
+    /external HON-222 Linear execution checkpoint metadata[\s\S]*updated at `2026-07-28T06:33:43\.190Z`\./i,
   )
   assert.match(
     evidenceResult,
@@ -185,13 +199,18 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
     [
       ['HON-227', 'completed', 'results/04a-evidence-contract.md'],
       ['HON-228', 'completed', 'results/04b-closeout-packet-secret-scan.md'],
-      ['HON-229', 'in_progress', 'results/04c-docs-index-reconciliation.md'],
+      ['HON-229', 'completed', 'results/04c-docs-index-reconciliation.md'],
     ],
   )
-  assert.equal(
-    state.verification.status,
-    'evidence_1c_twenty_ninth_review_finding_remediated_publication_candidate',
+  assert.equal(evidencePacket.status, 'completed')
+  assert.equal(evidencePacket.result, 'results/04-compatibility-evidence.md')
+  assert.deepEqual(
+    state.packets
+      .filter((packet) => packet.status === 'in_progress')
+      .map((packet) => [packet.id, packet.linear, packet.result]),
+    [['05-review-closeout', 'HON-223', 'results/05-review-closeout.md']],
   )
+  assert.equal(state.verification.status, 'close_1_reset_candidate')
   assert.equal(
     state.verification.results.evidence1cFifthReviewedHead,
     'e143396a08b1f77854f4bf7c2bafdadb018fcdff',
@@ -830,10 +849,16 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
     [
       ['HON-227', 'Done', true],
       ['HON-228', 'Done', true],
-      ['HON-229', 'In Progress', false],
+      ['HON-229', 'Done', true],
     ],
   )
-  assert.deepEqual(readback.teamWip, ['HON-222', 'HON-229'])
+  assert.deepEqual(readback.teamWip, ['HON-207', 'HON-223'])
+  assert.deepEqual(readback.parent, {
+    id: '0879badf-b4b1-4c56-9da5-64d6fb71a994',
+    identifier: 'HON-222',
+    state: 'Done',
+    archivedAt: '2026-07-28T06:14:05.262Z',
+  })
   assert.equal(
     readback.issues[1].mergeCommit,
     '32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3',
@@ -841,9 +866,9 @@ test('pins current workflow state and Linear readback to EVIDENCE-1C', () => {
   assert.deepEqual(readback.checkpoint, {
     id: '0aead33f-61bd-4223-afd3-cb1c4a382008',
     createdAt: '2026-07-22T02:46:54.160Z',
-    updatedAt: '2026-07-23T06:43:06.815Z',
-    bytes: 2094,
-    sha256: '0eb00451b0eab0f1beeccdca634513e01bb8de2fe6fe771170b99c5ec77b6839',
+    updatedAt: '2026-07-28T06:33:43.190Z',
+    bytes: 2251,
+    sha256: '6dd58a8ef478eb0223a774ef5370bf7481b4d87d109b5bf204e73bad5c6c209e',
   })
 })
 
@@ -862,13 +887,10 @@ test('keeps the completed EVIDENCE-1B result bound to publication closeout', () 
   assert.match(result, /2026-07-23T06:42:39\.292Z/)
 })
 
-test('rejects invalid active count, unknown blockers, duplicate identity, and cycles', () => {
-  const noActive = globalThis.structuredClone(hon222LinearPlan)
-  noActive.issues[2].stateType = 'unstarted'
-  assert.throws(
-    () => validateHon222Plan(noActive),
-    /exactly one started packet/,
-  )
+test('rejects reopened packets, unknown blockers, duplicate identity, and cycles', () => {
+  const reopened = globalThis.structuredClone(hon222LinearPlan)
+  reopened.issues[2].stateType = 'started'
+  assert.throws(() => validateHon222Plan(reopened), /closed plan/)
 
   const unknown = globalThis.structuredClone(hon222LinearPlan)
   unknown.issues[1].blockers = ['MISSING']
