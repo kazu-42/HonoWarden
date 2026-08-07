@@ -1,6 +1,6 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-07-28.
+Last scanned: 2026-08-07.
 
 This is a point-in-time dependency audit snapshot for the repository state used
 by the Week 24 security review materials. Re-run the command before every
@@ -60,19 +60,46 @@ The 2026-07-28 rescan reported high advisory
 `GHSA-mh99-v99m-4gvg` against `brace-expansion 5.0.7`. The only dependency
 path was development tooling: ESLint and typescript-eslint resolved
 `minimatch 10.2.5`, which pinned the vulnerable version exactly. The repository
-temporarily overrides that exact edge to `brace-expansion 5.0.8`, whose
-`maxLength` bound prevents unbounded output allocation.
+temporarily overrode that exact edge to `brace-expansion 5.0.8`, whose
+`maxLength` bound prevented unbounded output allocation.
 
-Remove the override after all upstream minimatch paths resolve to 10.2.6 or a
-newer release that selects the patched brace-expansion line. Re-run the low
-audit, lint, full tests, and release gate before removal. This override does not
-make attacker-controlled glob patterns an approved runtime input.
+The 2026-08-05 rescan reported follow-up high advisory
+`GHSA-rgw5-rvv9-x895` against versions before `5.0.9`. The exact transitive
+edge now resolves to `brace-expansion 5.0.9`. Remove the override after all
+upstream minimatch paths select the patched line. Re-run the low audit, lint,
+full tests, and release gate before removal. This override does not make
+attacker-controlled glob patterns an approved runtime input.
+
+## 2026-08-07 Advisory Remediation
+
+The fresh release-candidate audit found nine current advisories: three high and
+six moderate:
+
+- `GHSA-4cwx-7wf7-3272`, `GHSA-8xcm-r25x-g524`,
+  `GHSA-m8rv-5g2x-5cg5`, `GHSA-jr45-8vmc-qm54`, and
+  `GHSA-v3r7-h72x-cjcm` for `undici`;
+- `GHSA-7p8r-x3mc-p8w7` for `fast-uri`;
+- `GHSA-rgw5-rvv9-x895` for `brace-expansion`;
+- `GHSA-fxqj-rqcc-2cmp` for `postcss`; and
+- `GHSA-8j4g-w8fx-2239` for Hono.
+
+The production Worker dependency moved from Hono `4.12.30` to the patched
+same-minor release `4.12.34`.
+
+The remaining paths are development and release tooling. Exact transitive
+overrides move Miniflare's `undici` to `7.29.0`, Ajv's `fast-uri` to `3.1.5`,
+Vite's `postcss` to `8.5.23`, and minimatch's `brace-expansion` to `5.0.9`.
+These are the first patched releases for the reported ranges. They do not
+expand runtime features or authorize untrusted tooling inputs. Remove each
+override only after its direct parent selects a patched version and the audit,
+typecheck, lint, full test suite, local Worker coverage, and release gate pass
+without it.
 
 ## Lockfile Evidence
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `1cc0da4da357c5f3b7b172f62b1f8f5167e600ad09dadf05cfc58f6fb1893628`
+  `6eaad7091aaec6b07484c0d855776eeb2fd88a49fd8a400660d8d6015f656a8e`
 
 ## Scope
 

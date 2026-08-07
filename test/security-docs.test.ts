@@ -32,6 +32,9 @@ describe('security review materials', () => {
   })
 
   it('pins temporary patched transitive dependencies', () => {
+    const packageJson = JSON.parse(
+      readFileSync(`${repoRoot}/package.json`, 'utf8'),
+    ) as { dependencies: Record<string, string> }
     const workspacePolicy = readFileSync(
       `${repoRoot}/pnpm-workspace.yaml`,
       'utf8',
@@ -40,13 +43,25 @@ describe('security review materials', () => {
 
     expect(workspacePolicy).toContain('overrides:')
     expect(workspacePolicy).toContain('sharp: 0.35.3')
-    expect(workspacePolicy).toContain("'brace-expansion@5.0.7': 5.0.8")
+    expect(workspacePolicy).toContain("'brace-expansion@5.0.7': 5.0.9")
+    expect(workspacePolicy).toContain("'fast-uri@3.1.4': 3.1.5")
+    expect(workspacePolicy).toContain("'postcss@8.5.19': 8.5.23")
+    expect(workspacePolicy).toContain("'undici@7.28.0': 7.29.0")
+    expect(packageJson.dependencies.hono).toBe('~4.12.34')
     expect(workspacePolicy).toContain('docs/security/dependency-audit.md')
     expect(dependencyAudit).toContain('GHSA-f88m-g3jw-g9cj')
     expect(dependencyAudit).toContain('temporary `overrides` policy')
     expect(dependencyAudit).toContain('Images binding')
     expect(dependencyAudit).toContain('GHSA-mh99-v99m-4gvg')
-    expect(dependencyAudit).toContain('brace-expansion 5.0.8')
+    expect(dependencyAudit).toContain('GHSA-rgw5-rvv9-x895')
+    expect(dependencyAudit).toContain('GHSA-7p8r-x3mc-p8w7')
+    expect(dependencyAudit).toContain('GHSA-fxqj-rqcc-2cmp')
+    expect(dependencyAudit).toContain('GHSA-4cwx-7wf7-3272')
+    expect(dependencyAudit).toContain('GHSA-8j4g-w8fx-2239')
+    expect(dependencyAudit).toContain('brace-expansion 5.0.9')
+    expect(dependencyAudit).toContain('fast-uri` to `3.1.5')
+    expect(dependencyAudit).toContain('postcss` to `8.5.23')
+    expect(dependencyAudit).toContain('undici` to `7.29.0')
   })
 
   it('records critical security review sections', () => {
