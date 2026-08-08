@@ -25,7 +25,8 @@ export const hon207LinearPlan = {
       key: 'CLIENT-1',
       packet: '01-official-client-harness',
       title: 'Account A2f.1: pinned official-client crypto harness',
-      stateType: 'started',
+      stateType: 'completed',
+      archivedAt: '2026-07-20T10:10:30.198Z',
       blockers: [],
       goal: 'Build a deterministic, redaction-safe harness around exact official CLI and browser release assets.',
       scope: [
@@ -43,7 +44,8 @@ export const hon207LinearPlan = {
       key: 'CLIENT-2',
       packet: '02-credential-lifecycle',
       title: 'Account A2f.2: single-account credential generation lifecycle',
-      stateType: 'unstarted',
+      stateType: 'completed',
+      archivedAt: '2026-07-21T04:28:10.664Z',
       blockers: ['CLIENT-1'],
       goal: 'Prove every existing-account credential mutation on one real local D1/R2 account that official clients can still unlock.',
       scope: [
@@ -61,7 +63,8 @@ export const hon207LinearPlan = {
       key: 'RECOVERY-1',
       packet: '03-recovery-restore',
       title: 'Account A2f.3: backup restore, disable, and forward recovery',
-      stateType: 'unstarted',
+      stateType: 'completed',
+      archivedAt: '2026-07-22T02:41:53.724Z',
       blockers: ['CLIENT-2'],
       goal: 'Prove that the approved final generation survives fresh-target restore and that recovery never rolls credentials backward.',
       scope: [
@@ -80,7 +83,8 @@ export const hon207LinearPlan = {
       packet: '04-compatibility-evidence',
       title:
         'Account A2f.4: compatibility and operations evidence reconciliation',
-      stateType: 'unstarted',
+      stateType: 'completed',
+      archivedAt: '2026-07-28T06:14:05.262Z',
       blockers: ['RECOVERY-1'],
       goal: 'Make every credential claim reviewable at its exact fixture, local API, local official-client, staging, or production level.',
       scope: [
@@ -98,7 +102,7 @@ export const hon207LinearPlan = {
       key: 'CLOSE-1',
       packet: '05-review-closeout',
       title: 'Account A2f.5: review, publication, and parent closeout',
-      stateType: 'unstarted',
+      stateType: 'started',
       blockers: ['EVIDENCE-1'],
       goal: 'Publish one exact reviewed source generation and close HON-207 and HON-160 only after merged-main evidence.',
       scope: [
@@ -167,14 +171,18 @@ export function renderExecutionCheckpoint(identifiers) {
     const blockers = definition.blockers
       .map((key) => identifiers[key] ?? key)
       .join(', ')
-    return `- ${identifier} (${definition.key}): ${definition.title}; ${stateLabel(definition.stateType)}; blockers: ${blockers || 'none'}.`
+    const archive =
+      definition.stateType === 'completed'
+        ? ` and archived at ${definition.archivedAt}`
+        : ''
+    return `- ${identifier} (${definition.key}): ${definition.title}; ${stateLabel(definition.stateType)}${archive}; blockers: ${blockers || 'none'}.`
   })
 
   return [
     parentCommentMarker,
     '# HON-207 execution plan',
     '',
-    'Status: HON-207 is the active AUTH-2F closeout slice. Five visible packets serialize official-client proof, recovery, evidence, and publication.',
+    'Status: CLIENT-1 through EVIDENCE-1 are complete and archived; CLOSE-1 is the only active child.',
     '',
     'Source pins:',
     `- Server: ${hon207LinearPlan.sourcePins.server}.`,
@@ -216,6 +224,7 @@ export function validatePlan(plan = hon207LinearPlan) {
   const keys = new Set()
   const titles = new Set()
   const packets = new Set()
+  let started = 0
 
   for (const issue of plan.issues) {
     if (keys.has(issue.key)) {
@@ -230,9 +239,26 @@ export function validatePlan(plan = hon207LinearPlan) {
     if (!['completed', 'started', 'unstarted'].includes(issue.stateType)) {
       throw new Error(`invalid state type for ${issue.key}`)
     }
+    if (issue.stateType === 'completed') {
+      if (
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
+          issue.archivedAt ?? '',
+        )
+      ) {
+        throw new Error(`completed packet ${issue.key} requires archivedAt`)
+      }
+    } else if (issue.archivedAt !== undefined) {
+      throw new Error(`active packet ${issue.key} must not be archived`)
+    }
+    if (issue.stateType === 'started') {
+      started += 1
+    }
     keys.add(issue.key)
     titles.add(issue.title)
     packets.add(issue.packet)
+  }
+  if (started !== 1) {
+    throw new Error(`exactly one started packet is required; found ${started}`)
   }
 
   for (const issue of plan.issues) {
@@ -277,6 +303,7 @@ function stateLabel(stateType) {
 
 export function summarizePlan(plan = hon207LinearPlan) {
   validatePlan(plan)
+  const byKey = new Map(plan.issues.map((issue) => [issue.key, issue]))
   return {
     parent: plan.parentIdentifier,
     sourcePins: plan.sourcePins,
@@ -291,5 +318,54 @@ export function summarizePlan(plan = hon207LinearPlan) {
     relations: plan.issues.flatMap((issue) =>
       issue.blockers.map((blocker) => ({ blocker, blocked: issue.key })),
     ),
+    activeRelations: plan.issues.flatMap((issue) =>
+      issue.blockers.flatMap((blocker) =>
+        byKey.get(blocker)?.stateType === 'completed'
+          ? []
+          : [{ blocker, blocked: issue.key }],
+      ),
+    ),
+  }
+}
+
+export function assertArchivedPacketsPresent(
+  issueByKey,
+  plan = hon207LinearPlan,
+) {
+  validatePlan(plan)
+  for (const issue of plan.issues) {
+    if (issue.stateType === 'completed' && !issueByKey.has(issue.key)) {
+      throw new Error(`${issue.key}: completed archived packet is missing`)
+    }
+  }
+}
+
+export function assertImmutableArchivedPacket({
+  definition,
+  issue,
+  expectedDescription,
+  expectedStateId,
+  parentId,
+  projectId,
+  priority,
+}) {
+  if (definition.stateType !== 'completed') return
+
+  const checks = {
+    archive: issue.archivedAt === definition.archivedAt,
+    title: issue.title === definition.title,
+    description: issue.description === expectedDescription,
+    state: issue.state?.id === expectedStateId,
+    parent: issue.parent?.id === parentId,
+    project: issue.project?.id === projectId,
+    priority: issue.priority === priority,
+  }
+  const failures = Object.entries(checks)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => name)
+  if (failures.length > 0) {
+    throw new Error(
+      `${definition.key}: archived managed issue drifted in ${failures.join(', ')}`,
+    )
   }
 }

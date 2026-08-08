@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-23
+Last updated: 2026-07-28
 
 ## Week 1 Status
 
@@ -701,6 +701,11 @@ Not implemented:
 
 ## Week 26 Staging Dry Run Evidence
 
+Historical checkpoint: this section records the pre-deployment state and is
+superseded by `Week 26 Release Publication, Worker Smoke, And Website Live
+Evidence` below. Its `Not implemented` list is not the current capability
+state.
+
 Implemented:
 
 - local `pnpm staging:dry-run` wrapper around
@@ -725,6 +730,11 @@ Not implemented:
 - desktop and iOS live client evidence
 
 ## Week 26 Cloudflare Resource Evidence
+
+Historical checkpoint: this section records the resource-provisioning state
+before Worker publication and is superseded by `Week 26 Release Publication,
+Worker Smoke, And Website Live Evidence` below. Its `Not implemented` list is
+not the current capability state.
 
 Implemented:
 
@@ -754,6 +764,11 @@ Not implemented:
 - desktop/mobile live client evidence
 
 ## Week 26 Live Client Evidence
+
+Historical checkpoint: this section records the client matrix before later
+Desktop and login-with-device evidence and is superseded by `Official Desktop
+And Login-With-Device Live Evidence` below. Its `Not implemented` list is not
+the current capability state.
 
 Implemented:
 
@@ -838,6 +853,27 @@ official-client readback. These rows do not claim official-client UI flows, Web
 Vault or shared-vault behavior, tracked staging/production activation, or remote
 D1/R2 backup and restore operations. Remote backup operations remain separate
 from the local synthetic backup/export and fresh-target restore evidence.
+
+## 2026-07-28 HON-222 Evidence Parent Closeout
+
+Implemented:
+
+- HON-229 / PR #117 exact-head native, standard, and five-axis review with zero
+  actionable findings
+- exact-head CI run `30333366333` and zero unresolved review threads
+- squash merge `1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3` with tree
+  `b02c6f2ae945a4eddb4332a379721a28db9c33f4`, equal to the reviewed tree
+- merged-main CI run `30333830513`
+- HON-229 Done/readback/archive followed by HON-222
+  Done/readback/archive
+- aggregate EVIDENCE-1 result for HON-227 through HON-229
+- source-owned workflow transition to HON-223 / CLOSE-1 without reopening
+  archived packets
+
+No staging or production credential activation was performed. The result
+remains local synthetic evidence at its registered level; it does not add Web
+Vault publication, remote D1/R2 mutation, real-account credential mutation, or
+real secret handling.
 
 ## Week 26 Server Config Fixture Coverage
 

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import {
   advanceLinearPlanVerificationStatus,
+  assertArchivedPacketsPresent,
+  assertImmutableArchivedPacket,
   canonicalMarker,
   executionCheckpointMarker,
   hon207LinearPlan,
@@ -84,6 +86,7 @@ async function applyPlan(before) {
   if (discovery.errors.length > 0) {
     throw new Error(discovery.errors.join('; '))
   }
+  assertArchivedPacketsPresent(discovery.issueByKey)
 
   const missingCount =
     hon207LinearPlan.issues.length - discovery.issueByKey.size
@@ -148,6 +151,12 @@ async function applyPlan(before) {
 
   for (const definition of hon207LinearPlan.issues) {
     const issue = requiredIssue(issueByKey, definition.key)
+    if (
+      definition.stateType === 'completed' &&
+      issue.archivedAt === definition.archivedAt
+    ) {
+      continue
+    }
     const state = expectedState(definition, workflowStates)
     await updateIssue(issue.id, {
       title: definition.title,
@@ -198,7 +207,7 @@ async function verifyFinalState() {
       project: issue.project?.id === context.parent.project.id,
       state: issue.state?.id === state.id,
       priority: issue.priority === hon207LinearPlan.priority,
-      nonArchived: issue.archivedAt === null,
+      archivedAt: issue.archivedAt === (definition.archivedAt ?? null),
     }
     for (const [name, passed] of Object.entries(checks)) {
       if (!passed) {
@@ -415,14 +424,26 @@ function expectedState(definition, workflowStates) {
 }
 
 function assertExistingChildrenMutable(issueByKey, parent, workflowStates) {
+  const identifiers = identifiersFor(issueByKey)
   for (const definition of hon207LinearPlan.issues) {
     const issue = issueByKey.get(definition.key)
     if (!issue) {
       continue
     }
     const failures = []
-    if (issue.archivedAt !== null) failures.push('archived')
     const expected = expectedState(definition, workflowStates)
+    assertImmutableArchivedPacket({
+      definition,
+      issue,
+      expectedDescription: renderChildDescription(definition, identifiers),
+      expectedStateId: expected?.id,
+      parentId: parent.id,
+      projectId: parent.project.id,
+      priority: hon207LinearPlan.priority,
+    })
+    if (issue.archivedAt !== (definition.archivedAt ?? null)) {
+      failures.push('archive')
+    }
     if (!['unstarted', 'started', 'completed'].includes(issue.state.type)) {
       failures.push(`terminal state ${issue.state.type}`)
     } else if (
@@ -507,17 +528,17 @@ async function verifyRelations(issueByKey) {
 }
 
 function expectedRelationPairs(issueByKey) {
-  return hon207LinearPlan.issues.flatMap((definition) =>
-    definition.blockers.map((blockerKey) => {
+  return summarizePlan().activeRelations.map(
+    ({ blocker: blockerKey, blocked: blockedKey }) => {
       const blocker = requiredIssue(issueByKey, blockerKey)
-      const blocked = requiredIssue(issueByKey, definition.key)
+      const blocked = requiredIssue(issueByKey, blockedKey)
       return {
         blocker: blocker.identifier,
         blocked: blocked.identifier,
         sourceId: blocker.id,
         targetId: blocked.id,
       }
-    }),
+    },
   )
 }
 
@@ -703,7 +724,7 @@ async function writeReadback(verification, phase) {
     },
     expectedChildren: hon207LinearPlan.issues.length,
     verifiedChildren: verification.issueRows.length,
-    expectedBlockRelations: summarizePlan().relations.length,
+    expectedBlockRelations: verification.relationRows.length,
     verifiedBlockRelations: verification.relationRows.filter((row) => row.exact)
       .length,
     unexpectedBlockRelations: verification.unexpectedRelationRows.length,

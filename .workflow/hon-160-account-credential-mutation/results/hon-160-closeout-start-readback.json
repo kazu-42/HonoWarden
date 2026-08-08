@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-28T06:51:18Z",
+  "status": "exact",
+  "parent": {
+    "id": "45d3d581-4ad0-48fe-963d-4a46d74131f9",
+    "identifier": "HON-160",
+    "state": "Todo",
+    "stateType": "unstarted",
+    "archivedAt": null
+  },
+  "childrenConnection": {
+    "visibleIdentifiers": ["HON-207"],
+    "hasNextPage": false,
+    "archivedChildrenExcluded": true
+  },
+  "children": [
+    {
+      "id": "970db431-0888-47b6-a299-bf6b81573462",
+      "identifier": "HON-202",
+      "state": "Done",
+      "stateType": "completed",
+      "archivedAt": "2026-07-19T00:23:14.457Z"
+    },
+    {
+      "id": "e3378a23-0180-4f92-a074-7aaf63654d96",
+      "identifier": "HON-203",
+      "state": "Done",
+      "stateType": "completed",
+      "archivedAt": "2026-07-19T02:41:41.914Z"
+    },
+    {
+      "id": "9b14915b-b377-48af-8fdd-74686ff19edb",
+      "identifier": "HON-204",
+      "state": "Done",
+      "stateType": "completed",
+      "archivedAt": "2026-07-19T15:11:55.287Z"
+    },
+    {
+      "id": "4eeebb24-7112-4e05-9d91-9b1fabbea57c",
+      "identifier": "HON-205",
+      "state": "Done",
+      "stateType": "completed",
+      "archivedAt": "2026-07-19T23:37:53.258Z"
+    },
+    {
+      "id": "027b6b48-ce60-4bfd-9442-496342a8db8b",
+      "identifier": "HON-206",
+      "state": "Done",
+      "stateType": "completed",
+      "archivedAt": "2026-07-20T04:43:38.669Z"
+    },
+    {
+      "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
+      "identifier": "HON-207",
+      "state": "In Progress",
+      "stateType": "started",
+      "archivedAt": null
+    }
+  ],
+  "teamWip": ["HON-207", "HON-223"],
+  "hon164Gate": {
+    "relationId": "20f54857-e200-4214-b59b-da99ef5555c0",
+    "type": "blocks",
+    "blocker": "HON-160",
+    "blocked": "HON-164",
+    "archivedAt": null,
+    "blockedState": "Backlog"
+  },
+  "closeoutOrder": ["HON-223", "HON-207", "HON-160"],
+  "boundary": "This is a pre-publication start readback. It does not claim the current HON-223 candidate is reviewed, merged, or closed, and it does not authorize deployment, remote mutation, credential rotation, or HON-164 advancement."
+}

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-20T09:59:17.758Z",
+  "generatedAt": "2026-08-07T02:20:11.393Z",
   "phase": "verify",
   "status": "exact",
   "sourcePins": {
@@ -15,9 +15,9 @@
     }
   },
   "inventory": {
-    "total": 223,
-    "archived": 125,
-    "activeUnarchived": 96,
+    "total": 229,
+    "archived": 135,
+    "activeUnarchived": 92,
     "completedUnarchived": 2
   },
   "parent": {
@@ -33,8 +33,8 @@
   },
   "expectedChildren": 5,
   "verifiedChildren": 5,
-  "expectedBlockRelations": 4,
-  "verifiedBlockRelations": 4,
+  "expectedBlockRelations": 0,
+  "verifiedBlockRelations": 0,
   "unexpectedBlockRelations": 0,
   "issues": [
     {
@@ -45,9 +45,9 @@
       "url": "https://linear.app/honowarden/issue/HON-219/account-a2f1-pinned-official-client-crypto-harness",
       "title": "Account A2f.1: pinned official-client crypto harness",
       "state": {
-        "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
-        "name": "In Progress",
-        "type": "started"
+        "id": "64a2ae05-d774-4806-abb5-b9d93ab7afef",
+        "name": "Done",
+        "type": "completed"
       },
       "parent": {
         "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
@@ -58,7 +58,7 @@
         "name": "HonoWarden Post-Alpha Roadmap"
       },
       "priority": 0,
-      "archivedAt": null,
+      "archivedAt": "2026-07-20T10:10:30.198Z",
       "descriptionBytes": 1390,
       "descriptionSha256": "78a7671ed2bc84283e597a92d0a2d67a181b2a1f020063ccc24f1e8df26250b8",
       "checks": {
@@ -69,7 +69,7 @@
         "project": true,
         "state": true,
         "priority": true,
-        "nonArchived": true
+        "archivedAt": true
       }
     },
     {
@@ -80,9 +80,9 @@
       "url": "https://linear.app/honowarden/issue/HON-220/account-a2f2-single-account-credential-generation-lifecycle",
       "title": "Account A2f.2: single-account credential generation lifecycle",
       "state": {
-        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
-        "name": "Todo",
-        "type": "unstarted"
+        "id": "64a2ae05-d774-4806-abb5-b9d93ab7afef",
+        "name": "Done",
+        "type": "completed"
       },
       "parent": {
         "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
@@ -93,7 +93,7 @@
         "name": "HonoWarden Post-Alpha Roadmap"
       },
       "priority": 0,
-      "archivedAt": null,
+      "archivedAt": "2026-07-21T04:28:10.664Z",
       "descriptionBytes": 1482,
       "descriptionSha256": "d19508cbd194a39c6350c42789e0b897529ed073102146325c2ece2ca67f0191",
       "checks": {
@@ -104,7 +104,7 @@
         "project": true,
         "state": true,
         "priority": true,
-        "nonArchived": true
+        "archivedAt": true
       }
     },
     {
@@ -115,9 +115,9 @@
       "url": "https://linear.app/honowarden/issue/HON-221/account-a2f3-backup-restore-disable-and-forward-recovery",
       "title": "Account A2f.3: backup restore, disable, and forward recovery",
       "state": {
-        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
-        "name": "Todo",
-        "type": "unstarted"
+        "id": "64a2ae05-d774-4806-abb5-b9d93ab7afef",
+        "name": "Done",
+        "type": "completed"
       },
       "parent": {
         "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
@@ -128,7 +128,7 @@
         "name": "HonoWarden Post-Alpha Roadmap"
       },
       "priority": 0,
-      "archivedAt": null,
+      "archivedAt": "2026-07-22T02:41:53.724Z",
       "descriptionBytes": 1359,
       "descriptionSha256": "5bac99e8b0a996405f738383b39fae619084c4d6ab267b06fd1bbf49913c5efb",
       "checks": {
@@ -139,7 +139,7 @@
         "project": true,
         "state": true,
         "priority": true,
-        "nonArchived": true
+        "archivedAt": true
       }
     },
     {
@@ -150,9 +150,9 @@
       "url": "https://linear.app/honowarden/issue/HON-222/account-a2f4-compatibility-and-operations-evidence-reconciliation",
       "title": "Account A2f.4: compatibility and operations evidence reconciliation",
       "state": {
-        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
-        "name": "Todo",
-        "type": "unstarted"
+        "id": "64a2ae05-d774-4806-abb5-b9d93ab7afef",
+        "name": "Done",
+        "type": "completed"
       },
       "parent": {
         "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
@@ -163,7 +163,7 @@
         "name": "HonoWarden Post-Alpha Roadmap"
       },
       "priority": 0,
-      "archivedAt": null,
+      "archivedAt": "2026-07-28T06:14:05.262Z",
       "descriptionBytes": 1425,
       "descriptionSha256": "8540609d6bddeecab7cbe74d5e89cf84fbd635a4dc436ffaac540f84619ff342",
       "checks": {
@@ -174,7 +174,7 @@
         "project": true,
         "state": true,
         "priority": true,
-        "nonArchived": true
+        "archivedAt": true
       }
     },
     {
@@ -185,9 +185,9 @@
       "url": "https://linear.app/honowarden/issue/HON-223/account-a2f5-review-publication-and-parent-closeout",
       "title": "Account A2f.5: review, publication, and parent closeout",
       "state": {
-        "id": "25d6b2f5-fa8a-4a5a-9194-5b67f66afb2a",
-        "name": "Todo",
-        "type": "unstarted"
+        "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+        "name": "In Progress",
+        "type": "started"
       },
       "parent": {
         "id": "928bbc28-2ad2-425f-bcbf-a5b9e3087969",
@@ -209,50 +209,17 @@
         "project": true,
         "state": true,
         "priority": true,
-        "nonArchived": true
+        "archivedAt": true
       }
     }
   ],
-  "relations": [
-    {
-      "blocker": "HON-219",
-      "blocked": "HON-220",
-      "sourceId": "28f520af-b5f8-4d39-8690-9724178c6c2c",
-      "targetId": "a75389ff-5d34-4851-8ecb-d77df5be4b99",
-      "count": 1,
-      "exact": true
-    },
-    {
-      "blocker": "HON-220",
-      "blocked": "HON-221",
-      "sourceId": "a75389ff-5d34-4851-8ecb-d77df5be4b99",
-      "targetId": "7f868193-8232-4d35-b905-f7c73515f889",
-      "count": 1,
-      "exact": true
-    },
-    {
-      "blocker": "HON-221",
-      "blocked": "HON-222",
-      "sourceId": "7f868193-8232-4d35-b905-f7c73515f889",
-      "targetId": "0879badf-b4b1-4c56-9da5-64d6fb71a994",
-      "count": 1,
-      "exact": true
-    },
-    {
-      "blocker": "HON-222",
-      "blocked": "HON-223",
-      "sourceId": "0879badf-b4b1-4c56-9da5-64d6fb71a994",
-      "targetId": "a0ec81b7-56fa-4e52-83f7-af8e7500cb7a",
-      "count": 1,
-      "exact": true
-    }
-  ],
+  "relations": [],
   "unexpectedRelations": [],
   "managedComment": {
     "id": "fcab1e0f-a29d-49a5-b0ee-f34c6f072082",
-    "updatedAt": "2026-07-20T05:02:44.498Z",
-    "bytes": 2279,
-    "sha256": "8f3616aa25770769ce162997848f7b9dd05cc0bfad4633f945d40880990fe435",
+    "updatedAt": "2026-07-28T06:37:07.705Z",
+    "bytes": 2395,
+    "sha256": "697d4f728ffa81642955c81ad800d4679a2da5bb12805061e48ae8cbc82ea08b",
     "checks": {
       "single": true,
       "body": true,

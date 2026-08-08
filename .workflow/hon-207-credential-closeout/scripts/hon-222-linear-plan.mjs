@@ -95,7 +95,16 @@ export const hon222LinearPlan = {
       packet: '04c-docs-index-reconciliation',
       title:
         'Account A2f.4c: compatibility and operations documentation reconciliation',
-      stateType: 'started',
+      stateType: 'completed',
+      closeout: {
+        archivedAt: '2026-07-28T06:13:13.622Z',
+        pullRequest: 117,
+        reviewedHead: 'a8c8e62997b95c7c5f4090258cdcd53a0ffeceaf',
+        reviewedTree: 'b02c6f2ae945a4eddb4332a379721a28db9c33f4',
+        exactHeadCiRun: 30333366333,
+        mergeCommit: '1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3',
+        mainCiRun: 30333830513,
+      },
       blockers: ['EVIDENCE-1B'],
       labels: [
         'type:docs',
@@ -173,16 +182,16 @@ export function renderHon222ExecutionCheckpoint(identifiers) {
   const evidence1c = identifiers['EVIDENCE-1C'] ?? 'EVIDENCE-1C'
   return [
     checkpointMarker,
-    '# HON-222 compatibility evidence execution plan',
+    '# HON-222 compatibility evidence closeout',
     '',
-    'Status: EVIDENCE-1A and EVIDENCE-1B are complete and archived; EVIDENCE-1C is the only active child.',
+    'Status: all three evidence packets are complete and archived. HON-222 is Done and archived after bottom-up readback.',
     '',
     'Sub-issue sequence:',
     `- ${evidence1a} (EVIDENCE-1A): Done and archived at 2026-07-22T10:11:52.647Z. PR #115 was squash-merged as \`5b67fbdcf6d32942e5786f4cc49684c479778de8\`; merged-main CI run \`29910713312\` passed and the squash tree equals the reviewed branch tree.`,
     `- ${evidence1b} (EVIDENCE-1B): Done and archived at 2026-07-23T06:42:39.292Z. PR #116 was squash-merged as \`32a7bdd6bf54e61c0cfd3c5dd7df2ceab8f177f3\`; PR/head CI run \`29985521114\` and merged-main CI run \`29985701462\` passed, zero review threads remained, and squash tree \`25d64460775356fabad0b5c76fd4cbc39857bab4\` equals the reviewed branch tree.`,
-    `- ${evidence1c} (EVIDENCE-1C): In Progress. Reconciles compatibility, operations, security, and release documentation against the canonical closeout packet without promoting local evidence to staging or production.`,
+    `- ${evidence1c} (EVIDENCE-1C): Done and archived at 2026-07-28T06:13:13.622Z. PR #117 was squash-merged as \`1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3\`; exact-head CI run \`30333366333\` and merged-main CI run \`30333830513\` passed, zero review threads remained, and squash tree \`b02c6f2ae945a4eddb4332a379721a28db9c33f4\` equals the reviewed branch tree.`,
     '',
-    'Current WIP invariant: exactly HON-222 plus child HON-229 are In Progress in this execution lane.',
+    'HON-222 moved to Done only after all three children were Done and archived; it was archived at 2026-07-28T06:14:05.262Z.',
     '',
     'Integration invariants:',
     '- Evidence levels are ordered fixture < local API < local official client < staging < production, and lower-level artifacts cannot satisfy higher-level claims.',
@@ -190,7 +199,7 @@ export function renderHon222ExecutionCheckpoint(identifiers) {
     '- Documentation remains bound to the machine-readable registry and cannot promote local synthetic evidence to staging or production.',
     '- Web Vault publication, remote activation, real-account mutation, and untested client surfaces remain explicit limitations.',
     '',
-    'Per-child closeout requires focused/full gates, exact-head standard and independent five-axis review, PR/head CI, zero unresolved threads, squash tree equality, merged-main CI, and Linear Done/archive.',
+    'The final HON-229 candidate passed 2,149/2,149 serial tests, exact-head native, standard, and five-axis review, PR/head CI, zero unresolved threads, squash tree equality, and merged-main CI.',
     '',
     'Boundary: no deployment, remote mutation, production or staging activation, real credential or secret, destructive operation, paid action, or third-party contact is authorized.',
     '',
@@ -207,8 +216,6 @@ export function validateHon222Plan(plan = hon222LinearPlan) {
   const ids = new Set()
   const titles = new Set()
   const packets = new Set()
-  let started = 0
-
   for (const issue of plan.issues) {
     for (const [set, value, label] of [
       [keys, issue.key, 'issue key'],
@@ -223,10 +230,9 @@ export function validateHon222Plan(plan = hon222LinearPlan) {
     if (!['completed', 'started', 'unstarted'].includes(issue.stateType)) {
       throw new Error(`invalid state type for ${issue.key}`)
     }
-    if (issue.stateType === 'started') started += 1
   }
-  if (started !== 1) {
-    throw new Error(`exactly one started packet is required; found ${started}`)
+  if (plan.issues.some((issue) => issue.stateType !== 'completed')) {
+    throw new Error('closed plan requires every packet completed')
   }
 
   for (const issue of plan.issues) {

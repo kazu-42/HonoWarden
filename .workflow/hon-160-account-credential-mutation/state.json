@@ -2,8 +2,8 @@
   "title": "HON-160 Account Credential Mutation",
   "slug": "hon-160-account-credential-mutation",
   "created_at": "2026-07-18T16:14:20+00:00",
-  "updated_at": "2026-07-19T00:00:27Z",
-  "status": "pr_remediation_ready",
+  "updated_at": "2026-07-28T06:51:18Z",
+  "status": "closeout_candidate",
   "approval": {
     "required": true,
     "granted": true,
@@ -15,20 +15,55 @@
     "server": "v2026.6.1@a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
   },
   "linear_checkpoint": {
-    "issue": "HON-202",
-    "state": "In Progress",
     "status": "exact",
-    "comment_id": "0c373036-cfb6-4b39-aeae-d397852645ef",
-    "comment_bytes": 1667,
-    "comment_sha256": "d6e492c056bee7afbaa0accbf12ba98b666887e254254ef4c810cf8cae8380af",
-    "sync_readback": "results/hon-202-source-ready-readback.json",
-    "independent_readback": "results/hon-202-source-ready-independent-readback.json"
+    "readback": "results/hon-160-closeout-start-readback.json",
+    "parent": {
+      "identifier": "HON-160",
+      "state": "Todo",
+      "archived_at": null
+    },
+    "children": [
+      {
+        "identifier": "HON-202",
+        "state": "Done",
+        "archived_at": "2026-07-19T00:23:14.457Z"
+      },
+      {
+        "identifier": "HON-203",
+        "state": "Done",
+        "archived_at": "2026-07-19T02:41:41.914Z"
+      },
+      {
+        "identifier": "HON-204",
+        "state": "Done",
+        "archived_at": "2026-07-19T15:11:55.287Z"
+      },
+      {
+        "identifier": "HON-205",
+        "state": "Done",
+        "archived_at": "2026-07-19T23:37:53.258Z"
+      },
+      {
+        "identifier": "HON-206",
+        "state": "Done",
+        "archived_at": "2026-07-20T04:43:38.669Z"
+      },
+      {
+        "identifier": "HON-207",
+        "state": "In Progress",
+        "archived_at": null
+      }
+    ],
+    "team_wip": ["HON-207", "HON-223"],
+    "hon_164_blocker_relation": "20f54857-e200-4214-b59b-da99ef5555c0"
   },
   "publication": {
-    "pull_request": 101,
-    "status": "draft",
-    "superseded_published_head": "62bcd08b4fc2556456fcec84f3bc38be6cb87d9e",
-    "latest_local_state": "Two published-head P1 and four P2 findings remediated; commit, push, fresh CI, and clean exact-head review pending",
+    "status": "closeout_candidate",
+    "merged_child_pull_requests": [101, 103, 104, 105, 106],
+    "credential_evidence_pull_request": 117,
+    "credential_evidence_merge": "1fb0aa1dcf6d31795a49d2a6ae447a8a49a8f9a3",
+    "closeout_pull_request": null,
+    "latest_local_state": "HON-202 through HON-206 are Done and archived. HON-207 and HON-223 remain In Progress until this closeout candidate passes publication and merged-main gates.",
     "admin_merge_authorized": true
   },
   "wave2_rebase_verification": {
@@ -54,7 +89,7 @@
     { "id": "06-verification-review", "status": "done" }
   ],
   "verification": {
-    "status": "passed",
+    "status": "closeout_candidate",
     "checks": [
       "complete app and notification hub: 257 tests",
       "scheduled retention: 9 tests",
@@ -69,6 +104,6 @@
       "independent complete-diff review: no actionable findings",
       "focused managed-checkpoint review: no actionable findings"
     ],
-    "boundary": "Draft PR #101 exists. The current local generation-guarded session-issuance remediation still needs commit, push, exact-head CI and review, admin merge, main readback, and Linear closeout. Deployment, production operation, and compatibility promotion remain pending."
+    "boundary": "Historical child verification remains valid, but HON-160 is not closed by this source candidate. The current HON-223 candidate still needs exact-head review and CI, merge-tree equality, merged-main CI, then bottom-up HON-223, HON-207, and HON-160 Linear closeout. Deployment, production operation, credential rotation, and compatibility promotion remain outside this gate."
   }
 }

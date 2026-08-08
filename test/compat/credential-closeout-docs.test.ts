@@ -106,6 +106,15 @@ const credentialWorkflowRoot = '.workflow/hon-207-credential-closeout'
 const credentialWorkflowState = readJson<CredentialWorkflowState>(
   `${credentialWorkflowRoot}/state.json`,
 )
+const activeCredentialWorkflowPacket = credentialWorkflowState.packets.find(
+  (packet) => packet.id === credentialWorkflowState.active_packet,
+)
+if (!activeCredentialWorkflowPacket?.result) {
+  throw new Error(
+    `active credential workflow packet ${credentialWorkflowState.active_packet} has no result`,
+  )
+}
+const activeCredentialWorkflowResultPath = `${credentialWorkflowRoot}/${activeCredentialWorkflowPacket.result}`
 
 const credentialDocs = [
   'compat/README.md',
@@ -161,14 +170,14 @@ const rolloutFlagDocs = [
   'docs/release/rollback-guide.md',
 ] as const
 
-const freshnessDocs = [
-  'docs/current-state.md',
-  'docs/release/index.md',
-  'docs/release/rollback-guide.md',
-  'docs/security/data-flow.md',
-  'docs/security/known-limitations.md',
-  'docs/security/review-index.md',
-] as const
+const freshnessDocs = {
+  'docs/current-state.md': '2026-07-28',
+  'docs/release/index.md': '2026-07-23',
+  'docs/release/rollback-guide.md': '2026-07-23',
+  'docs/security/data-flow.md': '2026-07-23',
+  'docs/security/known-limitations.md': '2026-07-23',
+  'docs/security/review-index.md': '2026-07-23',
+} as const
 
 const rolloutFlags = [
   'HONOWARDEN_PASSWORD_CHANGE_ENABLED',
@@ -326,7 +335,7 @@ describe('credential closeout documentation contract', () => {
         'README.md',
         'ROADMAP.md',
         'SECURITY.md',
-        '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md',
+        '.workflow/hon-207-credential-closeout/results/05-review-closeout.md',
         'compat/README.md',
         'docs/release/feature-freeze-checklist.md',
         'specs/week-16-dogfood-environment-readiness.md',
@@ -338,8 +347,7 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('rejects unsupported current claims in the active workflow result', () => {
-    const docPath =
-      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const docPath = activeCredentialWorkflowResultPath
     const content = `${readText(docPath)}\n## Contradictory Current State\n\nProduction credential writer activation is verified.\n`
 
     expect(() =>
@@ -348,8 +356,7 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('does not treat an arbitrary remediation heading as review history', () => {
-    const docPath =
-      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const docPath = activeCredentialWorkflowResultPath
     const content = `${readText(docPath)}\n## Activation Review And Remediation\n\nProduction credential writer activation is verified.\n`
 
     expect(() =>
@@ -358,8 +365,7 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('scans current claims in the latest remediation section', () => {
-    const docPath =
-      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const docPath = activeCredentialWorkflowResultPath
     const content = readText(docPath).replace(
       '\n## Closeout Pending',
       '\nProduction credential writer activation is verified.\n\n## Closeout Pending',
@@ -371,8 +377,7 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('rejects review history after the current remediation section', () => {
-    const docPath =
-      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const docPath = activeCredentialWorkflowResultPath
     const content = `${readText(docPath)}\n## Review History: Twenty-First Review And Remediation\n\nProduction credential writer activation is verified.\n`
 
     expect(() =>
@@ -381,8 +386,7 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('marks every superseded remediation section as review history', () => {
-    const docPath =
-      '.workflow/hon-207-credential-closeout/results/04c-docs-index-reconciliation.md'
+    const docPath = activeCredentialWorkflowResultPath
     const document = parsePolicyMarkdown(readText(docPath))
     const reviewHeadings = document.children.flatMap((child) => {
       if (child.type !== 'heading' || child.depth !== 2) {
@@ -456,9 +460,9 @@ describe('credential closeout documentation contract', () => {
   })
 
   it('keeps reconciled document freshness metadata current', () => {
-    for (const docPath of freshnessDocs) {
+    for (const [docPath, expectedDate] of Object.entries(freshnessDocs)) {
       expect(readText(docPath), `${docPath} freshness metadata`).toMatch(
-        /^Last (?:updated|reviewed): 2026-07-23\.?$/m,
+        new RegExp(`^Last (?:updated|reviewed): ${expectedDate}\\.?$`, 'm'),
       )
     }
   })

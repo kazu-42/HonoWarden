@@ -1,16 +1,21 @@
 # Final Report: HON-160 Account Credential Mutation
 
-Status: AUTH-2A generation and session-issuance remediations verified locally
-for draft PR #101; HON-160 remains In Progress.
+Status: closeout candidate. HON-202 through HON-206 are Done and archived;
+HON-207 and HON-223 remain In Progress, and HON-160 remains Todo.
 
 ## Outcome
 
 HON-160 was decomposed into six one-PR Linear children with nine exact blocking
-relations. The first child, HON-202 / AUTH-2A, now has a locally verified
-credential-generation primitive and explicit security-stamp rotation route.
-The parent and child remain open because fresh publication checks, reviewed
-merge, main-branch readback, later credential children, deployment, and
-production evidence are outside this checkpoint.
+relations. HON-202 through HON-206 delivered the credential-generation
+foundation, password change, KDF mutation, account-key initialization, and
+atomic personal-vault user-key rotation through reviewed merges and archived
+Linear closeout. HON-207 owns the remaining official-client, recovery,
+publication, and parent-closeout evidence.
+
+The parent remains open because the current HON-223 source candidate still
+requires exact-head review and CI, reviewed merge-tree equality, merged-main
+CI, and bottom-up Linear closeout. Deployment, production credential mutation,
+and runtime activation remain outside this checkpoint.
 
 ## Accepted Results
 
@@ -24,6 +29,11 @@ production evidence are outside this checkpoint.
   authorization, monotonic generation rotation, owner-wide session revocation,
   outstanding login-with-device authorization invalidation, and a required
   redacted audit row in one guarded D1 batch.
+- HON-203 through HON-206 were reviewed, merged through PRs #103 through #106,
+  moved to Done, and archived without trashing.
+- The archived-inclusive closeout start readback records all six direct
+  children by exact ID, rather than treating Linear's one visible unarchived
+  child as the complete hierarchy.
 - Focused, full, policy, real local D1, and independent-review gates passed.
 
 ## Rejected Results
@@ -36,7 +46,11 @@ production evidence are outside this checkpoint.
   resource, or browser/simulator session was used.
 - API-only evidence was not promoted to official-client compatibility.
 
-## Conflicts Resolved
+## Historical HON-202 Review And Remediation Record
+
+The following findings and verification counts record the HON-202 publication
+sequence as it happened before PR #101 merged. They are retained as historical
+security evidence and are not the current HON-160 queue state.
 
 The first independent review found that required credential audit rows were
 written even with optional audit emission disabled, while scheduled retention
@@ -90,7 +104,7 @@ batch. A stale generation creates no token and the failure path invalidates the
 device session. Unit tests and a fresh real-D1 password, refresh, and sync smoke
 cover the corrected writer boundary.
 
-## Verification Evidence
+## Historical Child Verification Evidence
 
 - Complete app and notification-hub tests after all remediations: 257 tests
   passed.
@@ -113,8 +127,13 @@ cover the corrected writer boundary.
 - Pre-publication independent code review: no actionable findings at that head.
 - Focused managed-checkpoint safety and evidence review: no actionable
   findings.
+- PRs #101, #103, #104, #105, and #106 subsequently merged; HON-202 through
+  HON-206 are Done and archived.
+- `results/hon-160-closeout-start-readback.json` records the 2026-07-28 live
+  parent, six-child archived-inclusive inventory, team WIP, and HON-164 blocker
+  boundary.
 
-## Wave 2 Rebase Verification
+## Historical Wave 2 Rebase Verification
 
 - The implementation was fixed in commit `bdfdd5b` before integration and is
   recoverable through `backup/hon-202-pre-wave2-bdfdd5b`.
@@ -144,12 +163,13 @@ cover the corrected writer boundary.
 
 ## Remaining Risks
 
-- PR #101's current published head and CI are superseded by the locally verified
-  generation-guarded session-issuance remediation; the exact remediated head
-  still needs commit, push, CI, and a clean review.
-- No merge or `main` readback exists, so HON-202 must not move to Done.
-- HON-203 through HON-207 remain blocked or pending and own password, KDF,
-  keypair, user-key rotation, and official-client lifecycle work.
+- The current HON-223 source candidate still needs exact-head CI, standard and
+  five-axis review, zero unresolved review threads, reviewed-tree equality,
+  merge, and merged-main CI.
+- HON-223 must close and archive before HON-207; HON-207 must close and archive
+  before HON-160. Each transition requires a fresh archived-inclusive readback.
+- HON-164 remains blocked by the active HON-160 relation and must not advance
+  until a fresh complete relation readback proves that blocker has disappeared.
 - Deployment, production behavior, and compatibility levels are unchanged.
 
 ## Reusable Follow-up
