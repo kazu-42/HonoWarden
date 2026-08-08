@@ -1,6 +1,6 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-08-07.
+Last scanned: 2026-08-08.
 
 This is a point-in-time dependency audit snapshot for the repository state used
 by the Week 24 security review materials. Re-run the command before every
@@ -95,11 +95,21 @@ override only after its direct parent selects a patched version and the audit,
 typecheck, lint, full test suite, local Worker coverage, and release gate pass
 without it.
 
+## 2026-08-08 Nanoid Advisory Remediation
+
+The next-day rescan reported high advisory `GHSA-2v37-7h3g-55p8` against
+`nanoid 3.3.16`, reached only through Vitest's Vite/PostCSS development-tooling
+path. An exact transitive override moves PostCSS's `nanoid` to `3.3.17`, the
+first patched release in that line. Remove the override after the direct parent
+selects a patched version and the same audit, static, test, local Worker, and
+release gates pass without it. This override does not authorize custom Nanoid
+generators with attacker-controlled sizes.
+
 ## Lockfile Evidence
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `6eaad7091aaec6b07484c0d855776eeb2fd88a49fd8a400660d8d6015f656a8e`
+  `7ad9c3ce791152759a897dc0f7aa7a5bc2e2e7dcf99d30ebd8b702c1ed2c4814`
 
 ## Scope
 
