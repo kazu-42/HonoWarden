@@ -1,0 +1,48 @@
+{
+  "title": "HON-183 Send slice S1 contract",
+  "slug": "hon-183-send-contract",
+  "created_at": "2026-07-18T17:32:48Z",
+  "updated_at": "2026-08-08T20:03:52Z",
+  "status": "source_ready",
+  "approval": {
+    "required": "External/runtime mutations only",
+    "granted": "Local implementation, normal Linear writes, and GitHub publication through reviewed PR and merge",
+    "notes": "The user authorized continued issue delivery through completion. Do not deploy, mutate production data, DNS, bindings, secrets, users, credentials, or contact external recipients without separate explicit approval."
+  },
+  "packets": [
+    {
+      "id": "01-contract-research",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "02-design-docs-tests",
+      "status": "completed",
+      "owner": "main"
+    },
+    {
+      "id": "03-verification-linear",
+      "status": "completed",
+      "owner": "main"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "focused tests: 4 files / 314 tests",
+      "full tests: 114 files / 2206 tests",
+      "compatibility tests: 6 files / 919 tests",
+      "typecheck",
+      "lint",
+      "format",
+      "strict release gate: 11 pass / 0 manual / 0 block",
+      "brand scan",
+      "git diff --check",
+      "workflow verifier",
+      "pre-rebase security/operations and compatibility targeted reviews: clean",
+      "current-main manual risk review: no actionable finding",
+      "current-main Codex review: bounded at 120 seconds without a final verdict",
+      "Linear canonical and independent exact readback: 3058 bytes"
+    ]
+  }
+}

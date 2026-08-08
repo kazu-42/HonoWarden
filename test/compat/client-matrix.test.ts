@@ -337,12 +337,15 @@ describe('client compatibility matrix', () => {
     )
 
     expect(compatibilityDoc).toContain('## Send And Public Sharing Boundary')
-    expect(compatibilityDoc).toContain('ADR 0003')
-    expect(compatibilityDoc).toContain('unauthenticated access')
-    expect(compatibilityDoc).toContain('rate limiting')
+    expect(compatibilityDoc).toContain('ADR 0011')
+    expect(compatibilityDoc).toContain('accepted future Send product line')
+    expect(compatibilityDoc).toContain('runtime support')
+    expect(compatibilityDoc).toContain('send-enabled: false')
+    expect(compatibilityDoc).toContain('501')
     expect(compatibilityMatrixDoc).toContain(
       'There is intentionally no Send or public file-sharing row',
     )
+    expect(compatibilityMatrixDoc).toContain('ADR 0011')
     expect(matrix.entries.map((entry) => entry.surface)).not.toContain('send')
   })
 

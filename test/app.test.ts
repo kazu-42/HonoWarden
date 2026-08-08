@@ -2026,6 +2026,7 @@ describe('HonoWarden app', () => {
       { method: 'POST', path: '/api/sends/access' },
       { method: 'GET', path: '/api/sends' },
       { method: 'PUT', path: '/api/sends/send-id/remove-password' },
+      { method: 'PUT', path: '/api/sends/send-id/remove-auth' },
       { method: 'DELETE', path: '/api/sends/send-id' },
       { method: 'PUT', path: '/api/sends/send-id' },
       // V2 public Send access obtains a Send-scoped token first.
@@ -2042,7 +2043,7 @@ describe('HonoWarden app', () => {
           send_id: 'send-id',
         }).toString(),
       },
-      // Text Send creation remains unsupported under ADR 0003 as well.
+      // ADR 0011 is design-only; text creation stays guarded until activation.
       { method: 'POST', path: '/api/sends' },
     ]
 
@@ -2057,6 +2058,10 @@ describe('HonoWarden app', () => {
       })
 
       expect(response.status, `${request.method} ${request.path}`).toBe(501)
+      expect(
+        response.headers.get('Cache-Control'),
+        `${request.method} ${request.path}`,
+      ).toBe('no-store')
       await expect(response.json()).resolves.toEqual({
         Message: message,
         error: {
@@ -2064,6 +2069,62 @@ describe('HonoWarden app', () => {
           message,
         },
         requestId: 'unsupported-premium-surface-request',
+      })
+    }
+  })
+
+  it('runs enabled global quota before the unsupported Send guards', async () => {
+    const requests = [
+      { method: 'GET', path: '/api/sends' },
+      { method: 'GET', path: '/api/sends/send-id' },
+      {
+        method: 'POST',
+        path: '/identity/connect/token',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: 'send',
+          grant_type: 'send_access',
+          scope: 'api.send.access',
+          send_id: 'send-id',
+        }).toString(),
+      },
+    ]
+
+    for (const request of requests) {
+      const database = new FakeD1Database(null, [], {
+        requestQuotaBucket: {
+          bucketKey: 'request:anonymous:existing-hash',
+          scope: 'anonymous',
+          requestCount: 1,
+          windowStartedAt: '2026-07-19T00:00:00.000Z',
+          blockedUntil: null,
+          updatedAt: '2026-07-19T00:00:00.000Z',
+        },
+      })
+      const response = await app.request(
+        request.path,
+        {
+          method: request.method,
+          headers: {
+            'CF-Connecting-IP': '203.0.113.10',
+            'X-Request-Id': 'quota-before-send-guard-request',
+            ...request.headers,
+          },
+          ...(request.body === undefined ? {} : { body: request.body }),
+        },
+        {
+          DB: database,
+          HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
+        },
+      )
+
+      expect(response.status, `${request.method} ${request.path}`).toBe(501)
+      expect(database.requestQuotaWrites).toHaveLength(1)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'unsupported_feature' },
+        requestId: 'quota-before-send-guard-request',
       })
     }
   })
@@ -13954,6 +14015,7 @@ describe('HonoWarden app', () => {
     const response = await app.request('https://vault.example.test/api/config')
 
     expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
     await expect(response.json()).resolves.toMatchObject({
       version: '0.1.0-alpha',
       server: null,
@@ -13969,6 +14031,15 @@ describe('HonoWarden app', () => {
       },
       object: 'config',
     })
+  })
+
+  it('keeps both server config aliases out of shared caches', async () => {
+    for (const path of ['/api/config', '/config']) {
+      const response = await app.request(path)
+
+      expect(response.status, path).toBe(200)
+      expect(response.headers.get('Cache-Control'), path).toBe('no-store')
+    }
   })
 
   it('rejects notification hub requests that are not websocket upgrades', async () => {

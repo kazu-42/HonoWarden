@@ -29,7 +29,8 @@ Out of scope for the initial product:
 - organization membership mutation, invitations, role administration,
   organization cipher sharing/assignment, and policy enforcement beyond the
   ADR 0010 organization foundation and collection CRUD slices
-- Send and public file-sharing
+- Send and public file-sharing runtime activation; ADR 0011 is an accepted
+  future design contract, not implemented capability
 - Emergency Access
 - browser-side cryptography review of third-party clients
 - Cloudflare account hardening outside repository-controlled configuration
@@ -132,12 +133,14 @@ Explicitly bounded sharing and organization surfaces:
   assignment, non-owner membership selection, and collection audit events
   remain unsupported or unverified. ADR 0007 is the superseded historical empty
   collection boundary rather than the current source claim.
-- `/api/sends` and `/api/sends/*` return typed unsupported-feature errors.
+- `/api/sends` and `/api/sends/*` return typed `501` unsupported-feature errors.
 - Top-level `/api/attachments` and `/api/attachments/*` return typed
   unsupported-feature errors.
-- Public sharing must not be implemented until ADR 0003's expiration,
-  revocation, rate-limit, abuse, cache, audit, and retention controls are
-  designed and verified.
+- ADR 0003 required a replacement design before public sharing could be
+  reconsidered. ADR 0011 supplies that design and the dedicated
+  `send-public-sharing-threat-model.md` / `send-wire-contract.md`, but runtime
+  implementation remains prohibited until its text, file, public-control,
+  abuse, cleanup, activation, rollback, and live-evidence gates are verified.
 - `/api/emergency-access` and `/api/emergency-access/*` return typed
   unsupported-feature errors. Emergency Access must not be implemented until ADR
   0004's identity, delay, cancellation, notification, cryptographic handoff,
@@ -206,9 +209,11 @@ Explicitly bounded sharing and organization surfaces:
 
 10. Public-link abuse or unauthorized sharing.
     Current mitigation: Send and top-level public attachment routes remain
-    unsupported. ADR 0003 requires access-token entropy, expiration, revocation,
-    rate limits, abuse reporting, cache policy, encrypted/opaque object handling,
-    and retention/deletion design before implementation.
+    explicit `501` responses and config remains disabled. ADR 0003 required the
+    replacement design now accepted as ADR 0011; the dedicated Send threat model
+    defines capability entropy, token, concurrency, D1/R2, rate-limit, abuse,
+    cache, audit, retention, activation, and rollback gates that still require
+    implementation and evidence.
 
 11. Delegated recovery privilege escalation.
     Current mitigation: Emergency Access routes remain unsupported. ADR 0004

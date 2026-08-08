@@ -15,8 +15,10 @@ server capability.
 
 HonoWarden does not implement the delegated authorization state machine required
 by Emergency Access, the server-side account lookup required by the bundled HIBP
-service, or Send metadata and public sharing. ADR 0003 already excludes all Send
-and public file-sharing behavior, and ADR 0004 excludes Emergency Access.
+service, or active Send metadata and public sharing. ADR 0011 accepts a future
+Send product line and supersedes ADR 0003's permanent exclusion, but explicitly
+preserves this runtime guard until the stateful, public-control, operational, and
+live-evidence gates pass. ADR 0004 still excludes Emergency Access.
 Returning the general route catch-all for any of these calls would make an
 intentional product boundary look like an accidental missing route.
 
@@ -41,8 +43,10 @@ Keep these premium surfaces intentionally unsupported:
   the `send_access` grant at `POST /identity/connect/token` that precedes V2
   public Send access.
 
-Return HTTP `501` before authentication, database, or object-storage work with
-this contract:
+When the optional global request quota is enabled, its ingress check runs first
+and may perform its shared D1 quota write. The route then returns HTTP `501`
+before route-specific authentication, Send-specific database work, or
+object-storage work with this contract:
 
 ```json
 {
@@ -79,8 +83,10 @@ their existing authenticated contract.
   message on `501`, but its upstream RxJS action wrapper can also report the
   rejected promise to the global error handler. A `404` is not used because it
   activates cached-URL fallback behavior.
-- Future support requires replacing the relevant guard with a fully designed,
-  authenticated implementation and updating the exhaustive route tests and the
-  applicable ADR. Reverting this decision requires no data migration because
-  these guards persist no state.
+- ADR 0011 defines the future Send product line. Its HON-184/HON-185 stateful
+  slices remain hidden behind this guard, and only HON-186 may replace it after
+  quotas, audit, cleanup, kill-switch, rollback, and live compatibility gates
+  pass. Until then, reverting this guard would be a security regression.
+- Reverting the current guard requires no data migration because it persists no
+  state. Later Send rollback follows ADR 0011 and is separately evidenced.
 - No compatibility verification level is promoted by this decision.
