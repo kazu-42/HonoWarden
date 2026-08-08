@@ -5,6 +5,19 @@ import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
+import { deliverAccountLifecycleToken } from './account-lifecycle-mailer'
+import {
+  accountLifecycleTokenExpiresAt,
+  accountDeletionRecoverUntil,
+  createAccountLifecycleToken,
+  digestAccountLifecycleToken,
+  isAccountLifecycleEnabled,
+  parseAccountEmailChangeBody,
+  parseAccountEmailTokenBody,
+  parseAccountDeletionRecoveryBody,
+  parseAccountLifecycleTokenConfirmationBody,
+  requireAccountLifecycleTokenSecret,
+} from './domain/account-lifecycle'
 import {
   attachmentStoragePolicy,
   pendingAttachmentExpiredBefore,
@@ -124,6 +137,14 @@ import {
   reserveCipherAttachmentUpload,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
+import {
+  changeAccountEmail,
+  beginRecoverableAccountDeletion,
+  markAccountLifecycleTokenDeliveryAccepted,
+  markAccountLifecycleTokenDeliveryFailed,
+  reserveAccountLifecycleToken,
+  verifyAccountEmail,
+} from './repositories/account-lifecycle-repository'
 import {
   changeAccountKdf,
   changeAccountMasterPassword,
@@ -323,6 +344,17 @@ const maxR2DeleteKeysPerRequest = 1_000
 const signalRHeartbeatIntervalMs = 15_000
 const notificationSessionInvalidationDeadlineMs = 10_000
 const signalRRecordSeparator = '\u001e'
+const accountLifecycleRequestJsonMaxLength = 32_768
+const accountLifecycleRoutePaths = new Set([
+  '/api/accounts/email-token',
+  '/api/accounts/email',
+  '/api/accounts/verify-email',
+  '/api/accounts/verify-email-token',
+  '/api/accounts',
+  '/api/accounts/delete',
+  '/api/accounts/delete-recover',
+  '/api/accounts/delete-recover-token',
+])
 
 const defaultCorsHeaders = [
   'Accept',
@@ -497,6 +529,13 @@ function isRequestQuotaBypass(c: AppContext): boolean {
   }
 
   const pathname = new URL(c.req.url).pathname
+
+  if (
+    accountLifecycleRoutePaths.has(pathname) &&
+    !isAccountLifecycleEnabled(c.env?.HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED)
+  ) {
+    return true
+  }
 
   if (
     pathname === '/api/accounts/keys' &&
@@ -2925,6 +2964,534 @@ app.on(
   },
 )
 
+for (const path of accountLifecycleRoutePaths) {
+  app.get(path, (c) => {
+    const runtime = resolveAccountLifecycleRuntime(c)
+    if (!runtime.ok) return runtime.response
+
+    c.header('Allow', path === '/api/accounts' ? 'DELETE' : 'POST')
+    return c.body(null, 405)
+  })
+}
+
+app.post('/api/accounts/email-token', async (c) => {
+  const runtime = resolveAccountLifecycleRuntime(c)
+  if (!runtime.ok) return runtime.response
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  const body = await readBoundedJsonBody(
+    c.req.raw,
+    accountLifecycleRequestJsonMaxLength,
+  )
+  const request = body.ok
+    ? parseAccountEmailTokenBody(body.value)
+    : { ok: false as const }
+  if (!request.ok) return invalidCredentialRequest(c)
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidCredentialProofResponse(c, proofGate.rateLimited)
+    }
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.currentMasterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidCredentialProofResponse(c, rateLimited)
+    }
+
+    const now = new Date().toISOString()
+    const expiresAt = accountLifecycleTokenExpiresAt('email_change', now)
+    const token = await createAccountLifecycleToken({
+      secret: runtime.secret,
+      purpose: 'email_change',
+      userId: auth.user.id,
+      generation: auth.user.securityStamp,
+    })
+    const tokenId = crypto.randomUUID()
+    const reservation = await reserveAccountLifecycleToken(c.env.DB, {
+      id: tokenId,
+      userId: auth.user.id,
+      purpose: 'email_change',
+      tokenDigest: token.digest,
+      targetEmailNormalized: request.newEmailNormalized,
+      expectedCredentialGeneration: auth.user.securityStamp,
+      now,
+      expiresAt,
+    })
+    if (reservation.status === 'unavailable') {
+      return c.body(null, 200)
+    }
+
+    try {
+      await deliverAccountLifecycleToken(runtime.mailer, {
+        disposition: 'deliver',
+        purpose: 'email_change',
+        recipientEmail: request.newEmail,
+        token: token.token,
+        userId: auth.user.id,
+        expiresAt,
+      })
+    } catch {
+      await markAccountLifecycleTokenDeliveryFailed(
+        c.env.DB,
+        tokenId,
+        new Date().toISOString(),
+      ).catch(() => ({ status: 'unavailable' as const }))
+      throw new Error('delivery_failed')
+    }
+    const delivery = await markAccountLifecycleTokenDeliveryAccepted(
+      c.env.DB,
+      tokenId,
+      new Date().toISOString(),
+    )
+    if (delivery.status !== 'updated')
+      throw new Error('delivery_state_conflict')
+
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_email_change_token_failed',
+        requestId: c.get('requestId'),
+        reason: 'lifecycle_dependency_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'lifecycle_unavailable',
+        'Account email change is temporarily unavailable.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/email', async (c) => {
+  const runtime = resolveAccountLifecycleRuntime(c)
+  if (!runtime.ok) return runtime.response
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  const body = await readBoundedJsonBody(
+    c.req.raw,
+    accountLifecycleRequestJsonMaxLength,
+  )
+  const request = body.ok
+    ? parseAccountEmailChangeBody(body.value)
+    : { ok: false as const }
+  if (
+    !request.ok ||
+    !auth.user.userKey ||
+    request.nextMasterPasswordHash === auth.user.masterPasswordHash ||
+    request.nextUserKey === auth.user.userKey
+  ) {
+    return invalidCredentialRequest(c)
+  }
+  if (
+    isDurableNotificationEnabled(
+      c.env.HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED,
+    ) &&
+    !c.env.NOTIFICATION_HUB
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Notification hub is unavailable.',
+      ),
+      503,
+    )
+  }
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidCredentialProofResponse(c, proofGate.rateLimited)
+    }
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.currentMasterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidCredentialProofResponse(c, rateLimited)
+    }
+
+    const nextRevisionDate = nextCredentialRevisionDate(
+      auth.user.revisionDate,
+      new Date().toISOString(),
+    )
+    const nextSecurityStamp = crypto.randomUUID()
+    const auditEvent = buildAuditEvent({
+      name: 'account.email.change',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: nextRevisionDate,
+      actor: {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+      },
+      target: { type: 'account', id: auth.user.id },
+      context: {
+        d1SessionsRevoked: true,
+        organizationMembershipsUpdated: true,
+        kdfUnchanged: true,
+      },
+    })
+    const tokenDigest = await digestAccountLifecycleToken({
+      secret: runtime.secret,
+      token: request.token,
+      purpose: 'email_change',
+      userId: auth.user.id,
+      generation: auth.user.securityStamp,
+    })
+    const result = await changeAccountEmail(c.env.DB, {
+      userId: auth.user.id,
+      expectedEmailNormalized: auth.user.emailNormalized,
+      expectedMasterPasswordHash: auth.user.masterPasswordHash,
+      expectedUserKey: auth.user.userKey,
+      expectedSecurityStamp: auth.user.securityStamp,
+      expectedRevisionDate: auth.user.revisionDate,
+      tokenDigest,
+      tokenCredentialGeneration: auth.user.securityStamp,
+      nextEmail: request.newEmail,
+      nextEmailNormalized: request.newEmailNormalized,
+      nextMasterPasswordHash: request.nextMasterPasswordHash,
+      nextUserKey: request.nextUserKey,
+      nextSecurityStamp,
+      nextRevisionDate,
+      auditEventId: crypto.randomUUID(),
+      auditEvent,
+    })
+    if (result.status === 'conflict') {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'The account email change could not be committed.',
+        ),
+        409,
+      )
+    }
+
+    scheduleDurableNotificationSessionInvalidation(c, auth.user.id, {
+      securityStamp: nextSecurityStamp,
+      revisionDate: nextRevisionDate,
+    })
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_email_change_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account email change failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/verify-email', async (c) => {
+  const runtime = resolveAccountLifecycleRuntime(c)
+  if (!runtime.ok) return runtime.response
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+
+  const now = new Date().toISOString()
+  const expiresAt = accountLifecycleTokenExpiresAt('email_verify', now)
+  const tokenId = crypto.randomUUID()
+  try {
+    const token = await createAccountLifecycleToken({
+      secret: runtime.secret,
+      purpose: 'email_verify',
+      userId: auth.user.id,
+      generation: auth.user.securityStamp,
+    })
+    const reservation = await reserveAccountLifecycleToken(c.env.DB, {
+      id: tokenId,
+      userId: auth.user.id,
+      purpose: 'email_verify',
+      tokenDigest: token.digest,
+      targetEmailNormalized: null,
+      expectedCredentialGeneration: auth.user.securityStamp,
+      now,
+      expiresAt,
+    })
+    if (reservation.status !== 'reserved')
+      throw new Error('reservation_conflict')
+
+    try {
+      await deliverAccountLifecycleToken(runtime.mailer, {
+        disposition: 'deliver',
+        purpose: 'email_verify',
+        recipientEmail: auth.user.email,
+        token: token.token,
+        userId: auth.user.id,
+        expiresAt,
+      })
+    } catch {
+      await markAccountLifecycleTokenDeliveryFailed(
+        c.env.DB,
+        tokenId,
+        new Date().toISOString(),
+      ).catch(() => ({ status: 'unavailable' as const }))
+      throw new Error('delivery_failed')
+    }
+    const delivery = await markAccountLifecycleTokenDeliveryAccepted(
+      c.env.DB,
+      tokenId,
+      new Date().toISOString(),
+    )
+    if (delivery.status !== 'updated')
+      throw new Error('delivery_state_conflict')
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_email_verification_token_failed',
+        requestId: c.get('requestId'),
+        reason: 'lifecycle_dependency_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'lifecycle_unavailable',
+        'Account email verification is temporarily unavailable.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/verify-email-token', async (c) => {
+  const runtime = resolveAccountLifecycleRuntime(c)
+  if (!runtime.ok) return runtime.response
+  const body = await readBoundedJsonBody(
+    c.req.raw,
+    accountLifecycleRequestJsonMaxLength,
+  )
+  const request = body.ok
+    ? parseAccountLifecycleTokenConfirmationBody(body.value)
+    : { ok: false as const }
+  if (!request.ok) return invalidCredentialRequest(c)
+
+  try {
+    const user = await findAuthUserById(c.env.DB, request.userId)
+    if (!user || user.disabledAt) return invalidAccountLifecycleTokenResponse(c)
+    const now = new Date().toISOString()
+    const tokenDigest = await digestAccountLifecycleToken({
+      secret: runtime.secret,
+      token: request.token,
+      purpose: 'email_verify',
+      userId: user.id,
+      generation: user.securityStamp,
+    })
+    const auditEvent = buildAuditEvent({
+      name: 'account.email.verify',
+      outcome: 'success',
+      requestId: c.get('requestId'),
+      occurredAt: now,
+      target: { type: 'account', id: user.id },
+    })
+    const result = await verifyAccountEmail(c.env.DB, {
+      userId: user.id,
+      credentialGeneration: user.securityStamp,
+      tokenDigest,
+      now,
+      auditEventId: crypto.randomUUID(),
+      auditEvent,
+    })
+    if (result.status !== 'verified') {
+      return invalidAccountLifecycleTokenResponse(c)
+    }
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(serializeAuditEvent(auditEvent))
+    }
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_email_verification_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account email verification failed.',
+      ),
+      503,
+    )
+  }
+})
+app.delete('/api/accounts', deleteAccountRoute)
+app.post('/api/accounts/delete', deleteAccountRoute)
+
+app.post('/api/accounts/delete-recover', async (c) => {
+  const runtime = resolveAccountLifecycleRuntime(c)
+  if (!runtime.ok) return runtime.response
+  const body = await readBoundedJsonBody(
+    c.req.raw,
+    accountLifecycleRequestJsonMaxLength,
+  )
+  const request = body.ok
+    ? parseAccountDeletionRecoveryBody(body.value)
+    : { ok: false as const }
+  if (!request.ok) return invalidCredentialRequest(c)
+
+  let tokenId: string | null = null
+  try {
+    const user = await findAuthUserByEmail(c.env.DB, request.emailNormalized)
+    const eligibleUser = user && !user.disabledAt ? user : null
+    const tokenUserId = eligibleUser?.id ?? 'anonymous-suppressed-account'
+    const generation =
+      eligibleUser?.securityStamp ?? 'anonymous-suppressed-generation'
+    const now = new Date().toISOString()
+    const expiresAt = accountLifecycleTokenExpiresAt('account_delete', now)
+    const token = await createAccountLifecycleToken({
+      secret: runtime.secret,
+      purpose: 'account_delete',
+      userId: tokenUserId,
+      generation,
+    })
+    let disposition: 'deliver' | 'suppress' = 'suppress'
+    if (eligibleUser) {
+      tokenId = crypto.randomUUID()
+      const reservation = await reserveAccountLifecycleToken(c.env.DB, {
+        id: tokenId,
+        userId: eligibleUser.id,
+        purpose: 'account_delete',
+        tokenDigest: token.digest,
+        targetEmailNormalized: null,
+        expectedCredentialGeneration: eligibleUser.securityStamp,
+        now,
+        expiresAt,
+      })
+      disposition = reservation.status === 'reserved' ? 'deliver' : 'suppress'
+      if (disposition === 'suppress') tokenId = null
+    }
+
+    try {
+      await deliverAccountLifecycleToken(runtime.mailer, {
+        disposition,
+        purpose: 'account_delete',
+        recipientEmail: request.email,
+        token: token.token,
+        userId: tokenUserId,
+        expiresAt,
+      })
+    } catch {
+      if (tokenId) {
+        await markAccountLifecycleTokenDeliveryFailed(
+          c.env.DB,
+          tokenId,
+          new Date().toISOString(),
+        ).catch(() => ({ status: 'unavailable' as const }))
+      }
+      throw new Error('delivery_failed')
+    }
+    if (tokenId) {
+      const delivery = await markAccountLifecycleTokenDeliveryAccepted(
+        c.env.DB,
+        tokenId,
+        new Date().toISOString(),
+      )
+      if (delivery.status !== 'updated') {
+        throw new Error('delivery_state_conflict')
+      }
+    }
+    return c.body(null, 200)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_deletion_token_failed',
+        requestId: c.get('requestId'),
+        reason: 'lifecycle_dependency_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'lifecycle_unavailable',
+        'Account deletion confirmation is temporarily unavailable.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/accounts/delete-recover-token', async (c) => {
+  const runtime = resolveAccountLifecycleRuntime(c)
+  if (!runtime.ok) return runtime.response
+  const body = await readBoundedJsonBody(
+    c.req.raw,
+    accountLifecycleRequestJsonMaxLength,
+  )
+  const request = body.ok
+    ? parseAccountLifecycleTokenConfirmationBody(body.value)
+    : { ok: false as const }
+  if (!request.ok) return invalidCredentialRequest(c)
+
+  try {
+    const user = await findAuthUserById(c.env.DB, request.userId)
+    if (!user || user.disabledAt) return invalidAccountLifecycleTokenResponse(c)
+    const tokenDigest = await digestAccountLifecycleToken({
+      secret: runtime.secret,
+      token: request.token,
+      purpose: 'account_delete',
+      userId: user.id,
+      generation: user.securityStamp,
+    })
+    return await commitRecoverableAccountDeletion(c, user, tokenDigest, null)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_deletion_confirmation_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account deletion confirmation failed.',
+      ),
+      503,
+    )
+  }
+})
+
 app.get('/api/accounts/password', (c) => {
   c.header('Cache-Control', 'no-store')
   if (!isPasswordChangeEnabled(c.env?.HONOWARDEN_PASSWORD_CHANGE_ENABLED)) {
@@ -3535,6 +4102,197 @@ function invalidCredentialRequest(c: AppContext): Response {
     ),
     400,
   )
+}
+
+function invalidAccountLifecycleTokenResponse(c: AppContext): Response {
+  c.header('Cache-Control', 'no-store')
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'invalid_request',
+      'The account lifecycle token is invalid.',
+    ),
+    400,
+  )
+}
+
+type AccountLifecycleRuntime =
+  | { ok: true; secret: string; mailer: Fetcher }
+  | { ok: false; response: Response }
+
+function resolveAccountLifecycleRuntime(
+  c: AppContext,
+): AccountLifecycleRuntime {
+  c.header('Cache-Control', 'no-store')
+  if (!isAccountLifecycleEnabled(c.env?.HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED)) {
+    return {
+      ok: false,
+      response: unsupportedFeatureResponse(
+        c,
+        'Account lifecycle mutations are not activated on this server.',
+        true,
+      ),
+    }
+  }
+
+  try {
+    const secret = requireAccountLifecycleTokenSecret(
+      c.env.HONOWARDEN_ACCOUNT_LIFECYCLE_TOKEN_SECRET,
+    )
+    if (!c.env.ACCOUNT_LIFECYCLE_MAILER) throw new Error('missing_mailer')
+    return { ok: true, secret, mailer: c.env.ACCOUNT_LIFECYCLE_MAILER }
+  } catch {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Account lifecycle service is unavailable.',
+        ),
+        503,
+      ),
+    }
+  }
+}
+
+async function deleteAccountRoute(c: AppContext): Promise<Response> {
+  const runtime = resolveAccountLifecycleRuntime(c)
+  if (!runtime.ok) return runtime.response
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  const body = await readBoundedJsonBody(
+    c.req.raw,
+    accountLifecycleRequestJsonMaxLength,
+  )
+  const request = body.ok
+    ? parseCurrentPasswordProofBody(body.value)
+    : { ok: false as const }
+  if (!request.ok) return invalidCredentialRequest(c)
+
+  try {
+    const proofGate = await checkCredentialProofDefense(c, auth.user)
+    if (!proofGate.allowed) {
+      return invalidCredentialProofResponse(c, proofGate.rateLimited)
+    }
+    if (
+      !verifyPresentedPasswordHash(
+        auth.user.masterPasswordHash,
+        request.masterPasswordHash,
+      )
+    ) {
+      const rateLimited = await recordCredentialProofFailure(
+        c,
+        auth.user,
+        proofGate.state,
+        true,
+      )
+      return invalidCredentialProofResponse(c, rateLimited)
+    }
+    return await commitRecoverableAccountDeletion(
+      c,
+      auth.user,
+      null,
+      auth.deviceIdentifier,
+    )
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'account_deletion_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account deletion failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function commitRecoverableAccountDeletion(
+  c: AppContext,
+  user: AuthUserRecord,
+  tokenDigest: string | null,
+  actorDeviceIdentifier: string | null,
+): Promise<Response> {
+  const now = nextCredentialRevisionDate(
+    user.revisionDate,
+    new Date().toISOString(),
+  )
+  const recoverUntil = accountDeletionRecoverUntil(now)
+  const nextSecurityStamp = crypto.randomUUID()
+  const lifecycleGeneration = crypto.randomUUID()
+  const auditEvent = buildAuditEvent({
+    name: 'account.deletion.request',
+    outcome: 'success',
+    requestId: c.get('requestId'),
+    occurredAt: now,
+    ...(actorDeviceIdentifier
+      ? {
+          actor: {
+            userId: user.id,
+            deviceIdentifier: actorDeviceIdentifier,
+          },
+        }
+      : {}),
+    target: { type: 'account', id: user.id },
+    context: {
+      lifecycleGeneration,
+      recoveryWindowDays: 30,
+      d1SessionsRevoked: true,
+      encryptedDataRetained: true,
+    },
+  })
+  const result = await beginRecoverableAccountDeletion(c.env.DB, {
+    userId: user.id,
+    expectedMasterPasswordHash: user.masterPasswordHash,
+    expectedSecurityStamp: user.securityStamp,
+    expectedRevisionDate: user.revisionDate,
+    tokenDigest,
+    lifecycleGeneration,
+    nextSecurityStamp,
+    now,
+    recoverUntil,
+    auditEventId: crypto.randomUUID(),
+    auditEvent,
+  })
+  if (result.status === 'last_owner') {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'account_last_owner',
+        'Transfer organization ownership before deleting this account.',
+      ),
+      409,
+    )
+  }
+  if (result.status === 'conflict') {
+    return tokenDigest
+      ? invalidAccountLifecycleTokenResponse(c)
+      : c.json(
+          apiError(
+            c.get('requestId'),
+            'revision_conflict',
+            'The account deletion could not be committed.',
+          ),
+          409,
+        )
+  }
+
+  scheduleDurableNotificationSessionInvalidation(c, user.id, {
+    securityStamp: nextSecurityStamp,
+    revisionDate: now,
+  })
+  if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+    console.info(serializeAuditEvent(auditEvent))
+  }
+  return c.body(null, 200)
 }
 
 function buildEmptyMasterPasswordPolicyResponse() {
@@ -5638,7 +6396,7 @@ function buildAccessTokenClaims(input: {
   return {
     sub: input.user.id,
     email: input.user.emailNormalized,
-    email_verified: true,
+    email_verified: input.user.emailVerifiedAt !== null,
     name: input.user.displayName,
     premium: input.premiumFeaturesEnabled,
     amr: ['Application'],
@@ -6417,7 +7175,7 @@ function buildSyncProfileResponse(
     premiumFromOrganization: false,
     forcePasswordReset: false,
     avatarColor: '#3366cc',
-    emailVerified: true,
+    emailVerified: user.emailVerifiedAt !== null,
     twoFactorEnabled: user.totpEnabled,
     privateKey: accountKeyProjection.privateKey,
     accountKeys: accountKeyProjection.accountKeys,
@@ -6456,7 +7214,7 @@ function buildProfileResponse(
     premiumFromOrganization: false,
     forcePasswordReset: false,
     avatarColor: '#3366cc',
-    emailVerified: true,
+    emailVerified: user.emailVerifiedAt !== null,
     twoFactorEnabled: user.totpEnabled,
     privateKey: accountKeyProjection.privateKey,
     accountKeys: accountKeyProjection.accountKeys,
@@ -6783,6 +7541,7 @@ function apiError(
     | 'account_not_found'
     | 'account_key_conflict'
     | 'account_key_state_invalid'
+    | 'account_last_owner'
     | 'account_keys_uninitialized'
     | 'attachment_not_found'
     | 'attachment_size_mismatch'
@@ -6796,6 +7555,7 @@ function apiError(
     | 'folder_not_found'
     | 'invalid_request'
     | 'invalid_token'
+    | 'lifecycle_unavailable'
     | 'missing_token'
     | 'notification_unavailable'
     | 'organization_not_found'

@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-22.
+Last updated: 2026-08-09.
 
 This guide covers upgrading an existing alpha environment. HonoWarden is
 pre-alpha, so operators should assume upgrades can require maintenance windows
@@ -70,6 +70,18 @@ pnpm backup:export -- \
   Worker has been recorded. Enable writers only in a later reviewed rollout;
   disable all four again before rollback. The migration
   cannot reconstruct wrappers superseded before `0016`.
+- `0017_account_lifecycle.sql` must be applied before deploying a Worker that
+  can serve account email-change, email-verification, recoverable deletion, or
+  purge operations. Keep `HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED=false` at every
+  scope while applying the migration and deploying the complete lifecycle
+  reader/operator surface. Verify `/health/db`, the `email_verified_at`
+  backfill, and both lifecycle tables before any later activation. The tracked
+  configuration remains default-off, and activation requires a separately
+  reviewed mailer service binding, a 32-byte-or-longer lifecycle token secret,
+  synthetic environment evidence, and an operator rollback decision. Never
+  enable the feature before the named `AccountLifecycleOperator` entrypoint and
+  retryable purge reader are deployed: a pre-reader Worker cannot safely
+  recover or finish an account already placed into lifecycle state.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.
 - Update `docs/release/migration-freeze.md` in the same change when migrations

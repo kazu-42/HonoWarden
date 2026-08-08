@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-23.
+Last updated: 2026-08-09.
 
 Rollback separates Worker code rollback from data rollback. Do not assume schema
 changes can be safely reversed in place.
@@ -166,6 +166,44 @@ sessions. Recovery from a committed but unusable generation requires a
 separately authenticated forward generation or a separately reviewed account-
 recovery procedure. Keep R2 object keys and bytes untouched; this flow changes
 only their D1 encrypted metadata.
+
+## Account Lifecycle Rollback
+
+Migration `0017` is forward-only. Keep `email_verified_at`,
+`account_lifecycle_tokens`, and `account_deletions` in place during Worker
+rollback. Deploy a complete lifecycle reader and private operator surface with
+`HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED=false`; disabling the public routes stops
+new requests but does not recover an account, cancel an accepted email change,
+or finish an in-progress purge.
+
+An email change that committed is a credential generation: the old email,
+password hash, wrapped key, security stamp, devices, refresh tokens, and auth
+requests must not be restored independently. Reauthenticate with the committed
+generation and roll forward.
+
+For a `recoverable` deletion, use the private named
+`AccountLifecycleOperator.recover` operation before `recover_until`. Recovery
+must atomically return the account to active state with a new security stamp;
+old sessions remain revoked. Do not use a direct `users.status` edit or the
+retired account disable/enable CLI path because it bypasses the lifecycle
+generation and audit invariants.
+
+After the recovery cutoff, or once state is `purge_ready`, `purging_r2`, or
+`tombstoned`, recovery is forbidden. Preserve the D1 row and R2 error metadata,
+then retry the same private purge operation. R2 deletion is idempotent and
+bounded; D1 finalization is allowed only after the recorded personal-object
+count is complete. Organization ciphers, organization attachments, and the
+user tombstone are preservation boundaries and must not be restored or deleted
+by an incident shortcut. A failed purge is a roll-forward incident, not a
+reason to restore a partially deleted backup over the source environment.
+
+Rotating `HONOWARDEN_ACCOUNT_LIFECYCLE_TOKEN_SECRET` invalidates outstanding email
+and deletion tokens. First set the feature flag false, allow in-flight requests
+to drain, record the affected token window, rotate the secret, and issue new
+tokens only after the complete reader/operator deployment is verified. Mailer
+outage rollback is limited to disabling new public requests and retrying token
+delivery with a new token; provider responses and raw tokens must never be
+copied into incident evidence.
 
 ## Data Rollback
 

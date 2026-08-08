@@ -205,6 +205,16 @@ describe('wrangler deployment environments', () => {
     )
   })
 
+  it('keeps account lifecycle mutation disabled in every tracked environment', () => {
+    expect(config.vars.HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED).toBe('false')
+    expect(config.env.staging.vars.HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED).toBe(
+      'false',
+    )
+    expect(
+      config.env.production.vars.HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED,
+    ).toBe('false')
+  })
+
   it('keeps user-key rotation disabled in every tracked environment', () => {
     expect(config.vars.HONOWARDEN_USER_KEY_ROTATION_ENABLED).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_USER_KEY_ROTATION_ENABLED).toBe(

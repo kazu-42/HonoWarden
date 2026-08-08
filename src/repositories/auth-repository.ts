@@ -7,6 +7,7 @@ export type AuthUserRecord = {
   id: string
   email: string
   emailNormalized: string
+  emailVerifiedAt: string | null
   displayName: string | null
   kdfAlgorithm: string
   kdfIterations: number
@@ -260,6 +261,7 @@ type AuthUserRow = {
   id: string
   email: string
   emailNormalized: string
+  emailVerifiedAt: string | null
   displayName: string | null
   kdfAlgorithm: string
   kdfIterations: number
@@ -304,6 +306,7 @@ type RefreshTokenSessionRow = {
   deviceRevokedAt: string | null
   email: string
   emailNormalized: string
+  emailVerifiedAt: string | null
   displayName: string | null
   kdfAlgorithm: string
   kdfIterations: number
@@ -493,6 +496,7 @@ export async function findAuthUserByEmail(
           u.id,
           u.email,
           u.email_normalized as emailNormalized,
+          u.email_verified_at as emailVerifiedAt,
           u.display_name as displayName,
           u.kdf_algorithm as kdfAlgorithm,
           u.kdf_iterations as kdfIterations,
@@ -535,6 +539,7 @@ export async function findAuthUserById(
           u.id,
           u.email,
           u.email_normalized as emailNormalized,
+          u.email_verified_at as emailVerifiedAt,
           u.display_name as displayName,
           u.kdf_algorithm as kdfAlgorithm,
           u.kdf_iterations as kdfIterations,
@@ -1027,6 +1032,7 @@ export async function findRefreshTokenSessionByHash(
           d.revoked_at as deviceRevokedAt,
           u.email,
           u.email_normalized as emailNormalized,
+          u.email_verified_at as emailVerifiedAt,
           u.display_name as displayName,
           u.kdf_algorithm as kdfAlgorithm,
           u.kdf_iterations as kdfIterations,
@@ -1065,6 +1071,7 @@ export async function findRefreshTokenSessionByHash(
     id: row.userId,
     email: row.email,
     emailNormalized: row.emailNormalized,
+    emailVerifiedAt: row.emailVerifiedAt,
     displayName: row.displayName,
     kdfAlgorithm: row.kdfAlgorithm,
     kdfIterations: row.kdfIterations,
@@ -1646,6 +1653,7 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     id: row.id,
     email: row.email,
     emailNormalized: row.emailNormalized,
+    emailVerifiedAt: row.emailVerifiedAt,
     displayName: row.displayName,
     kdfAlgorithm: row.kdfAlgorithm,
     kdfIterations: row.kdfIterations,

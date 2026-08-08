@@ -88,6 +88,27 @@ describe('release feature-freeze docs', () => {
     )
   })
 
+  it('locks the account lifecycle migration rollout and recovery boundary', () => {
+    const upgradeGuide = readReleaseDoc('upgrade-guide.md')
+    const rollbackGuide = readReleaseDoc('rollback-guide.md')
+    const index = readReleaseDoc('index.md')
+
+    for (const requirement of [
+      '0017_account_lifecycle.sql',
+      'HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED=false',
+      'AccountLifecycleOperator',
+      'email_verified_at',
+      '/health/db',
+    ]) {
+      expect(upgradeGuide).toContain(requirement)
+    }
+    expect(rollbackGuide).toContain('Migration `0017` is forward-only')
+    expect(rollbackGuide).toContain('AccountLifecycleOperator.recover')
+    expect(rollbackGuide).toContain('recovery is forbidden')
+    expect(rollbackGuide).toContain('Organization ciphers')
+    expect(index).toContain('account-lifecycle-local-evidence.md')
+  })
+
   it('keeps release notes explicit about alpha exclusions and gates', () => {
     const releaseNotes = readReleaseDoc('v0.1.0-alpha-release-notes.md')
 
