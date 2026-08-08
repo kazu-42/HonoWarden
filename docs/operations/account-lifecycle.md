@@ -1,136 +1,159 @@
 # Account Lifecycle Operator Runbook
 
-HonoWarden represents account disablement in D1 with `users.disabled_at`.
-Runtime auth, refresh, sync, and vault CRUD paths already reject disabled users
-through the active-user guards. This runbook covers the operator CLI that plans
-or applies that lifecycle flag without exposing a public admin API.
+HonoWarden account deletion is a recoverable, generation-bound state machine.
+It is not a direct `users.disabled_at` toggle and it never uses
+`DELETE FROM users` as a purge shortcut.
 
-The wrapper is dry-run by default:
+The public account-lifecycle routes and mailer integration are default-off.
+Production deployment, real email delivery, real-account mutation, and purge
+execution require separate approval and live evidence.
 
-```sh
-pnpm account:lifecycle -- \
-  disable \
-  --email owner@example.test \
-  --database honowarden \
-  --mode remote \
-  --env production \
-  --reason owner-request-20260709
-```
+Before any later activation, the mailer must handle `deliver` and `suppress`
+through the same bounded enqueue path, return exact `202` without waiting for a
+provider, never deliver a suppressed request, and never log the JSON body or raw
+token. Record a synthetic latency-envelope comparison for known and unknown
+addresses; equal API status alone is not enumeration-resistance evidence.
 
-Dry-run output is a JSON packet with:
+## Safety Model
 
-- the pre-operation D1 readback command
-- the guarded mutation command
-- the post-operation D1 readback command
-- the inverse rollback command
-- an audit block with action, reason, generated timestamp, and target hash
+- `recoverable` rejects password grant, refresh grant, sync, and vault access
+  while retaining encrypted data for 30 days.
+- Recovery is allowed only for the exact lifecycle generation before its
+  `recover_until` cutoff. Existing sessions remain revoked.
+- `purge_ready` requires a reviewed post-cutoff plan and an exact attachment
+  count. The plan and every later purge gate recheck that the disabled account
+  has not become the last confirmed owner during the recovery window.
+- `purging_r2` deletes personal R2 objects first. D1 attachment metadata stays
+  intact after an R2 error so the same keys can be retried idempotently, and
+  durable deletion progress cannot move backward when calls overlap.
+- `tombstoned` removes personal rows and identity material but preserves
+  organization ciphertext and an opaque user reference.
+- No automatic transition performs irreversible deletion at the cutoff.
 
-The packet does not print vault payloads, encrypted item bodies, password
-hashes, token hashes, private keys, or decrypted values. It does include the
-operator-selected account selector in the SQL command, so treat packets as
-sensitive operational metadata.
+The `AccountLifecycleOperator` named WorkerEntrypoint exposes the mutation
+methods through Cloudflare service-binding RPC. It has no public HTTP route.
+Cloudflare documents that a named `WorkerEntrypoint` is reachable only by a
+caller Worker with an explicit service binding and `entrypoint` selection.
 
-## Disable An Account
+## Read-Only Planning CLI
 
-Plan by normalized email:
-
-```sh
-pnpm account:lifecycle -- \
-  disable \
-  --email owner@example.test \
-  --database honowarden \
-  --mode remote \
-  --env production \
-  --reason owner-request-20260709
-```
-
-Execute only after reviewing the packet and confirming the target:
+The CLI is dry-run by default and executes readback only. It replaced the old
+direct `disable` / `enable` commands because those commands bypassed token,
+session, audit, last-owner, and recovery-window invariants.
 
 ```sh
 pnpm account:lifecycle -- \
-  disable \
-  --email owner@example.test \
-  --database honowarden \
-  --mode remote \
-  --env production \
-  --reason owner-request-20260709 \
-  --execute \
-  --confirm owner@example.test
-```
-
-`--confirm <target>` must exactly match the normalized email or user id. The
-disable mutation updates `disabled_at`, `updated_at`, and `revision_date` only
-when `disabled_at IS NULL`.
-
-## Enable An Account
-
-Plan by user id when an email address is ambiguous in incident notes or should
-not be reprinted:
-
-```sh
-pnpm account:lifecycle -- \
-  enable \
+  plan \
+  --operation status \
   --user-id user-id-from-approved-ticket \
+  --generation exact-lifecycle-generation \
   --database honowarden \
   --mode remote \
   --env production \
-  --reason restore-approved-access
+  --reason owner-request \
+  --request-id HON-164-readback
 ```
 
-Execute after owner approval and target confirmation:
+The packet contains:
 
-```sh
-pnpm account:lifecycle -- \
-  enable \
-  --user-id user-id-from-approved-ticket \
-  --database honowarden \
-  --mode remote \
-  --env production \
-  --reason restore-approved-access \
-  --execute \
-  --confirm user-id-from-approved-ticket
+- a lifecycle-state and aggregate-count D1 readback command;
+- a hash of the user/generation target;
+- the private RPC entrypoint, method, and bounded input to hand to the approved
+  operator Worker;
+- explicit limitations showing that mutation execution is not included.
+
+It does not print vault payloads, R2 object keys, token digests, authentication
+hashes, wrapped keys, or encrypted item bodies. `--execute` is accepted only
+for the read-only `status` operation and requires
+`--confirm <lifecycle-generation>`.
+
+## Private Operator Binding
+
+The separately deployed operator Worker must bind to this Worker explicitly:
+
+```json
+{
+  "services": [
+    {
+      "binding": "ACCOUNT_LIFECYCLE",
+      "service": "honowarden",
+      "entrypoint": "AccountLifecycleOperator"
+    }
+  ]
+}
 ```
 
-The enable mutation clears `disabled_at` and updates account revision metadata
-only when `disabled_at IS NOT NULL`.
+Do not add a public proxy route for this binding. The operator Worker owns
+human authorization, operator identity, and the reviewed ticket correlation.
+The HonoWarden entrypoint owns D1/R2 invariants and secret-safe audit rows.
 
-## Verification
+Every RPC input includes:
 
-For a disable operation, verify:
+- exact `userId`;
+- exact `lifecycleGeneration`;
+- bounded `requestId` and `reason`;
+- for mutations, `confirmedLifecycleGeneration` equal to the target
+  generation.
 
-- pre-operation readback shows exactly one matched active account
-- mutation completes without errors
-- post-operation readback shows exactly one matched disabled account
-- password grant returns the generic invalid-grant response
-- refresh grant fails before rotation
-- sync and vault CRUD reject the disabled user
-- no real vault data appears in the packet or recorded evidence
+The planning CLI applies the same 128-character user/generation/request-ID and
+256-character reason bounds as the private entrypoint, rejecting surrounding
+whitespace and control characters before it emits a packet.
 
-For an enable operation, verify:
+## Recovery
 
-- pre-operation readback shows exactly one matched disabled account
-- mutation completes without errors
-- post-operation readback shows exactly one matched active account
-- the owner-approved client smoke can authenticate again with synthetic or
-  approved test data
+1. Generate a status plan and verify `state=recoverable`.
+2. Verify the current time is strictly before `recover_until`.
+3. Verify the user is not being recovered as a substitute for ownership
+   transfer or incident response.
+4. Through the approved operator Worker, call `plan` again and then `recover`
+   with the exact confirmed generation.
+5. Read back `state=recovered`, `users.disabled_at IS NULL`, a new security
+   stamp, and the `account.deletion.recover` audit event.
+6. Perform only the owner-approved login smoke. Old access and refresh tokens
+   must remain invalid.
 
-The existing automated test suite covers disabled-user behavior for password
-grant, refresh grant, sync, and vault owner-scoped data access. In short,
-password grant, refresh grant, sync, and vault CRUD must all reject disabled
-users. Production evidence still needs an operator-owned live lifecycle record
-before non-operator accounts are invited.
+Recovery after the cutoff, recovery from `purge_ready`, and recovery from
+`purging_r2` fail closed.
 
-## Rollback And Recovery
+## Irreversible Purge
 
-Each packet prints the inverse `rollbackCommand`.
+1. Generate a status plan after the cutoff.
+2. Review personal cipher count, organization cipher count, and personal
+   attachment count. The plan intentionally contains counts, not R2 keys.
+3. Call `preparePurge` with the exact confirmed lifecycle generation. This
+   rechecks last-owner safety, records `purge_ready` and the expected personal
+   R2 count, but deletes nothing.
+4. Obtain a separate irreversible-action approval.
+5. Call `purge` through the private operator binding. Each call deletes at most
+   1,000 personal R2 objects and returns durable deleted/remaining counts. While
+   the result is `purging_r2`, repeat the same generation-confirmed call; obtain
+   a fresh plan and stop if any count or state differs from the approved plan.
+   R2 start and final D1 tombstoning each recheck last-owner safety so an
+   ownership change after the original deletion request fails closed.
+6. Read back all of the following:
+   - `state=tombstoned`;
+   - deleted R2 count equals the prepared count;
+   - personal attachments, personal ciphers, and folders are absent;
+   - organization ciphers and organization-scoped attachments remain;
+   - the user and linked organization membership contain the same opaque
+     tombstone email and no wrapped user/org key;
+   - exactly one `account.deletion.purge` audit event exists.
 
-- If a disable was applied to the wrong account, run the printed enable command
-  only after owner approval and incident lead confirmation.
-- If an enable was applied incorrectly, run the printed disable command and
-  invalidate active sessions through the existing device/session revoke routes
-  when appropriate.
-- Record the packet, reason, command output, post-operation readback counts,
-  source commit, operator approval, and recovery action in Linear.
+If R2 deletion fails, do not manually delete D1 rows. The state remains
+retryable, metadata stays present, and the same `purge` call reissues that
+bounded idempotent object page. If D1 progress persistence fails after R2
+success, retrying re-deletes the same already-absent page safely. If D1
+finalization conflicts after the final R2 page, read the plan before retrying so
+a response loss after a committed tombstone is not mistaken for an incomplete
+purge.
 
-Do not edit vault rows, refresh-token hashes, device rows, or encrypted payload
-columns to perform account lifecycle operations.
+## Rollback And Evidence
+
+Recoverable deletion has a forward recovery path, not an inverse SQL command.
+Purge has no rollback after tombstoning. Restore from a separately validated
+backup is an incident procedure, not a normal lifecycle operation.
+
+Record the source commit, exact lifecycle generation, plan packet, approval,
+RPC method, redacted result, post-operation readback, and caller-visible smoke
+in Linear. A successful source test or merged PR is not production execution
+evidence.

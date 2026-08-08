@@ -14288,6 +14288,7 @@ function authUserRecord() {
     id: 'user-id',
     email: 'Person@Example.Test',
     emailNormalized: 'person@example.test',
+    emailVerifiedAt: '2026-07-06T00:00:00.000Z',
     displayName: 'Person',
     kdfAlgorithm: 'pbkdf2-sha256',
     kdfIterations: 600000,

@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-08-08.
+Last reviewed: 2026-08-09.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -72,8 +72,12 @@ inputs, not minor documentation notes.
   `POST /api/accounts/export` behind recent password authentication, but no
   live official-client export run has been captured yet.
 - read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented. Login-with-device request, approval, owner notification, anonymous requester notification, and one-time token exchange are live-tested with synthetic data in staging. Repeated resend atomically supersedes the previous owner/device pending request, and a partial unique index prevents two approvable requests. Production remains disabled, and the current official extension still relies on response notification rather than automatic timed polling.
-- account disable/enable operator CLI is dry-run-first, but no admin UI or live
-  production lifecycle evidence is recorded yet.
+- account lifecycle operator CLI is dry-run-first and read-only; recovery and
+  purge require the private `AccountLifecycleOperator` service-binding RPC, but
+  no admin UI or live production lifecycle evidence is recorded yet. Anonymous
+  deletion-token source tests prove equal HTTP status and explicit mailer
+  `deliver`/`suppress` dispositions; they do not prove deployed mailer latency,
+  provider suppression, or request-body logging controls.
 - current-password verification and existing master-password change are covered
   by compatibility fixtures and a synthetic local Wrangler/D1 lifecycle. No
   official client password-change UI or production password-change run is

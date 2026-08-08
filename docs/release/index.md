@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-23.
+Last updated: 2026-08-09.
 
 Use this index as the feature-freeze entry point:
 
@@ -21,6 +21,7 @@ Use this index as the feature-freeze entry point:
 - [Account KDF Change Local Evidence](account-kdf-change-local-evidence.md)
 - [Account Key Initialization Local Evidence](account-key-initialization-local-evidence.md)
 - [User-Key Rotation Local Evidence](user-key-rotation-local-evidence.md)
+- [Account Lifecycle Local Evidence](account-lifecycle-local-evidence.md)
 - [Official Client Credential Harness](../operations/official-client-credential-harness.md)
 - [Auth Request Staging Evidence](auth-request-staging-evidence.md)
 - [Two-User Dogfood And Disabled-User Evidence](two-user-dogfood-evidence.md)

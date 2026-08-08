@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-20.
+Last updated: 2026-08-09.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -29,6 +29,7 @@ changes and update this document in the same change.
 | `migrations/0014_organizations.sql`                     | `95cc696e345d309a32e548f44e7ab7ebd91e8b2ba335f59c2048e36b9f27f9cb` |
 | `migrations/0014a_kdf_population.sql`                   | `96ec8647d11519c99ff14b88b89a0213472f5ad5c3af618adea958b9f920657f` |
 | `migrations/0016_user_key_rotation_wrapper_history.sql` | `5c99ca3973711d0031ed2b48bed77f3191ec2773af9ae570b1e48f5dfae209ac` |
+| `migrations/0017_account_lifecycle.sql`                 | `5ed91a78fea52d661b07bdebbc4d74654b4bab0a84010829874202bd6bf219dc` |
 
 ## Required Tables At Freeze
 
@@ -57,6 +58,8 @@ changes and update this document in the same change.
 - `collection_ciphers`
 - `account_kdf_population`
 - `user_key_rotation_wrapper_history`
+- `account_lifecycle_tokens`
+- `account_deletions`
 
 ## Policy
 

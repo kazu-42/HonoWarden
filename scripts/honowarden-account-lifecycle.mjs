@@ -5,217 +5,184 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import process from 'node:process'
 
-const schemaVersion = 1
+const schemaVersion = 2
+const mutationOperations = new Set(['recover', 'prepare-purge', 'purge'])
+const rpcMethods = {
+  status: 'plan',
+  recover: 'recover',
+  'prepare-purge': 'preparePurge',
+  purge: 'purge',
+}
 
 async function main(argv = process.argv.slice(2)) {
   const normalizedArgv = argv[0] === '--' ? argv.slice(1) : argv
   const [action, ...rest] = normalizedArgv
-
-  if (action !== 'disable' && action !== 'enable') {
+  if (action === 'disable' || action === 'enable') {
+    throw new Error(
+      'Direct disable/enable was removed because it bypasses the recoverable account lifecycle.',
+    )
+  }
+  if (action !== 'plan') {
     printUsage()
     process.exitCode = 1
     return
   }
 
   const options = parseOptions(rest)
-  const packet = buildPacket(action, options)
-
+  const packet = buildPacket(options)
   if (options.execute) {
-    requireExecutionConfirmation(action, packet.selector, options)
+    if (packet.operation !== 'status') {
+      throw new Error(
+        '--execute is read-only; mutation RPC must run from a separately approved operator Worker binding.',
+      )
+    }
+    requireReadbackConfirmation(packet, options)
     packet.executions = await runCommands(packet.commands)
-    packet.audit.event = `account.${action}.executed`
+    packet.executed = true
   }
-
   writeJson(packet)
 }
 
-function buildPacket(action, options) {
+function buildPacket(options) {
   const database = requireValue(options.database, '--database')
   const mode = parseMode(options.mode)
   rejectRemotePersistence(mode, options)
-
-  const selector = parseSelector(options)
-  const at = parseTimestamp(options.at)
-  const reason = requireValue(options.reason, '--reason')
+  const operation = parseOperation(options.operation)
+  const userId = normalizeOperatorValue(options.userId, '--user-id', 128)
+  const lifecycleGeneration = normalizeOperatorValue(
+    options.generation,
+    '--generation',
+    128,
+  )
+  const reason = normalizeOperatorValue(options.reason, '--reason', 256)
+  const requestId = normalizeOperatorValue(
+    options.requestId,
+    '--request-id',
+    128,
+  )
+  const generatedAt = parseTimestamp(options.at)
   const readbackCommand = buildD1ExecuteCommand({
     database,
     mode,
-    sql: readbackSql(selector.sqlWhere),
-    json: true,
-    yes: false,
+    sql: lifecycleReadbackSql(userId, lifecycleGeneration),
     options,
   })
-  const mutationCommand = buildD1ExecuteCommand({
-    database,
-    mode,
-    sql: mutationSql(action, selector.sqlWhere, at),
-    json: false,
-    yes: true,
-    options,
-  })
-  const rollbackCommand = buildD1ExecuteCommand({
-    database,
-    mode,
-    sql: mutationSql(oppositeAction(action), selector.sqlWhere, at),
-    json: false,
-    yes: true,
-    options,
-  })
+  const rpcInput = {
+    userId,
+    lifecycleGeneration,
+    requestId,
+    reason,
+    ...(mutationOperations.has(operation)
+      ? { confirmedLifecycleGeneration: lifecycleGeneration }
+      : {}),
+  }
 
   return {
     schemaVersion,
-    action,
-    generatedAt: at,
-    executed: Boolean(options.execute),
+    action: 'plan',
+    operation,
+    generatedAt,
+    executed: false,
     mode,
     database,
-    selector,
+    target: {
+      userId,
+      lifecycleGeneration,
+      targetHash: hashTarget(userId, lifecycleGeneration),
+    },
     audit: {
-      event: `account.${action}.plan`,
       reason,
-      targetHash: targetHash(selector),
+      requestId,
       containsVaultData: false,
     },
-    commands: [readbackCommand, mutationCommand, readbackCommand],
-    rollbackCommand,
+    commands: [readbackCommand],
+    operatorRpc: {
+      entrypoint: 'AccountLifecycleOperator',
+      method: rpcMethods[operation],
+      input: rpcInput,
+      publiclyAccessible: false,
+      executionIncluded: false,
+    },
     limitations: [
-      'The CLI mutates only the users.disabled_at lifecycle flag and account revision timestamp.',
-      'The CLI does not inspect or print vault payloads, encryption keys, password hashes, or refresh token bodies.',
-      'Use the post-operation readback counts and application smoke tests to verify disabled-user behavior.',
+      'This CLI executes read-only lifecycle readback only.',
+      'Recovery and purge mutations require the AccountLifecycleOperator named WorkerEntrypoint through a separately approved service binding.',
+      'The packet never includes token digests, R2 object keys, credentials, or encrypted vault payloads.',
     ],
   }
 }
 
-function buildD1ExecuteCommand({ database, mode, sql, json, yes, options }) {
+function lifecycleReadbackSql(userId, lifecycleGeneration) {
+  return [
+    'SELECT deletion.state, deletion.requested_at, deletion.recover_until,',
+    'deletion.personal_r2_expected_count, deletion.personal_r2_deleted_count,',
+    '(SELECT COUNT(*) FROM ciphers WHERE user_id = deletion.user_id AND organization_id IS NULL) AS personal_cipher_count,',
+    '(SELECT COUNT(*) FROM ciphers WHERE user_id = deletion.user_id AND organization_id IS NOT NULL) AS organization_cipher_count,',
+    '(SELECT COUNT(*) FROM cipher_attachments attachment JOIN ciphers cipher ON cipher.id = attachment.cipher_id',
+    'WHERE cipher.user_id = deletion.user_id AND cipher.organization_id IS NULL) AS personal_attachment_count',
+    'FROM account_deletions deletion',
+    `WHERE deletion.user_id = ${sqlLiteral(userId)}`,
+    `AND deletion.lifecycle_generation = ${sqlLiteral(lifecycleGeneration)};`,
+  ].join(' ')
+}
+
+function buildD1ExecuteCommand({ database, mode, sql, options }) {
   return [
     'wrangler',
     'd1',
     'execute',
     database,
-    modeFlag(mode),
+    mode === 'remote' ? '--remote' : '--local',
     '--command',
     sql,
-    ...(json ? ['--json'] : []),
-    ...(yes ? ['--yes'] : []),
+    '--json',
     ...wranglerEnvFlags(options),
     ...localPersistenceFlags(mode, options),
   ]
 }
 
-function readbackSql(sqlWhere) {
-  return [
-    'SELECT COUNT(*) AS matched_users,',
-    'SUM(CASE WHEN disabled_at IS NULL THEN 1 ELSE 0 END) AS active_users,',
-    'SUM(CASE WHEN disabled_at IS NOT NULL THEN 1 ELSE 0 END) AS disabled_users',
-    `FROM users WHERE ${sqlWhere};`,
-  ].join(' ')
-}
-
-function mutationSql(action, sqlWhere, at) {
-  if (action === 'disable') {
-    return [
-      `UPDATE users SET disabled_at = ${sqlLiteral(at)},`,
-      `updated_at = ${sqlLiteral(at)},`,
-      `revision_date = ${sqlLiteral(at)}`,
-      `WHERE ${sqlWhere} AND disabled_at IS NULL;`,
-    ].join(' ')
-  }
-
-  return [
-    'UPDATE users SET disabled_at = NULL,',
-    `updated_at = ${sqlLiteral(at)},`,
-    `revision_date = ${sqlLiteral(at)}`,
-    `WHERE ${sqlWhere} AND disabled_at IS NOT NULL;`,
-  ].join(' ')
-}
-
-function parseSelector(options) {
-  const hasEmail = Boolean(options.email)
-  const hasUserId = Boolean(options.userId)
-
-  if (hasEmail === hasUserId) {
-    throw new Error('Exactly one of --email or --user-id is required')
-  }
-
-  if (hasEmail) {
-    const normalizedValue = normalizeEmail(options.email)
-    return {
-      type: 'email',
-      value: options.email,
-      normalizedValue,
-      sqlWhere: `email_normalized = ${sqlLiteral(normalizedValue)}`,
-    }
-  }
-
-  const normalizedValue = normalizeIdentifier(options.userId, '--user-id')
-  return {
-    type: 'user_id',
-    value: options.userId,
-    normalizedValue,
-    sqlWhere: `id = ${sqlLiteral(normalizedValue)}`,
-  }
-}
-
-function normalizeEmail(value) {
-  const normalized = normalizeIdentifier(value, '--email').toLowerCase()
-
-  if (!normalized.includes('@')) {
-    throw new Error('--email must include @')
-  }
-
-  return normalized
-}
-
-function normalizeIdentifier(value, flagName) {
-  const normalized = requireValue(value, flagName).trim()
-
-  if (!normalized || normalized.includes('\0')) {
-    throw new Error(`${flagName} must not be empty`)
-  }
-
-  return normalized
-}
-
 function parseOptions(args) {
   const options = {}
-
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
-
-    switch (arg) {
-      case '--execute':
-        options.execute = true
-        break
-      case '--email':
-      case '--user-id':
-      case '--database':
-      case '--mode':
-      case '--env':
-      case '--persist-to':
-      case '--reason':
-      case '--confirm':
-      case '--at': {
-        const value = args[index + 1]
-        if (!value) {
-          throw new Error(`${arg} requires a value`)
-        }
-        options[toCamelCase(arg.slice(2))] = value
-        index += 1
-        break
-      }
-      default:
-        throw new Error(`Unknown option: ${arg}`)
+    if (arg === '--execute') {
+      options.execute = true
+      continue
     }
+    if (
+      [
+        '--operation',
+        '--user-id',
+        '--generation',
+        '--database',
+        '--mode',
+        '--env',
+        '--persist-to',
+        '--reason',
+        '--request-id',
+        '--confirm',
+        '--at',
+      ].includes(arg)
+    ) {
+      const value = args[index + 1]
+      if (!value) throw new Error(`${arg} requires a value`)
+      options[toCamelCase(arg.slice(2))] = value
+      index += 1
+      continue
+    }
+    throw new Error(`Unknown option: ${arg}`)
   }
-
   return options
 }
 
-function parseMode(value = 'local') {
-  if (value === 'local' || value === 'remote') {
-    return value
-  }
+function parseOperation(value = 'status') {
+  if (Object.hasOwn(rpcMethods, value)) return value
+  throw new Error(
+    '--operation must be status, recover, prepare-purge, or purge',
+  )
+}
 
+function parseMode(value = 'local') {
+  if (value === 'local' || value === 'remote') return value
   throw new Error('--mode must be local or remote')
 }
 
@@ -226,33 +193,25 @@ function rejectRemotePersistence(mode, options) {
 }
 
 function parseTimestamp(value) {
-  if (!value) {
-    return new Date().toISOString()
-  }
-
+  if (!value) return new Date().toISOString()
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     throw new Error('--at must be an ISO-8601 timestamp')
   }
-
   return date.toISOString()
 }
 
-function requireExecutionConfirmation(action, selector, options) {
-  if (options.confirm !== selector.normalizedValue) {
+function requireReadbackConfirmation(packet, options) {
+  if (options.confirm !== packet.target.lifecycleGeneration) {
     throw new Error(
-      `--confirm ${selector.normalizedValue} is required before ${action} --execute`,
+      `--confirm ${packet.target.lifecycleGeneration} is required before readback --execute`,
     )
   }
 }
 
 async function runCommands(commands) {
   const executions = []
-
-  for (const command of commands) {
-    executions.push(await runCommand(command))
-  }
-
+  for (const command of commands) executions.push(await runCommand(command))
   return executions
 }
 
@@ -264,13 +223,8 @@ function runCommand(command) {
     })
     let stdout = ''
     let stderr = ''
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString()
-    })
+    child.stdout.on('data', (chunk) => (stdout += chunk.toString()))
+    child.stderr.on('data', (chunk) => (stderr += chunk.toString()))
     child.on('error', rejectCommand)
     child.on('exit', (code) => {
       const result = {
@@ -279,17 +233,8 @@ function runCommand(command) {
         stdout: stdout.trim(),
         stderr: stderr.trim(),
       }
-
-      if (code === 0) {
-        resolveCommand(result)
-        return
-      }
-
-      rejectCommand(
-        new Error(
-          `Command failed with exit code ${code}: ${command.join(' ')}`,
-        ),
-      )
+      if (code === 0) resolveCommand(result)
+      else rejectCommand(new Error(`Command failed: ${command.join(' ')}`))
     })
   })
 }
@@ -304,29 +249,33 @@ function localPersistenceFlags(mode, options) {
     : []
 }
 
-function modeFlag(mode) {
-  return mode === 'remote' ? '--remote' : '--local'
+function normalizeOperatorValue(value, flagName, maxLength) {
+  const normalized = requireValue(value, flagName)
+  if (
+    normalized.length > maxLength ||
+    normalized.trim() !== normalized ||
+    [...normalized].some((character) => {
+      const code = character.charCodeAt(0)
+      return code <= 31 || code === 127
+    })
+  ) {
+    throw new Error(`${flagName} is invalid`)
+  }
+  return normalized
 }
 
 function sqlLiteral(value) {
   return `'${value.replaceAll("'", "''")}'`
 }
 
-function targetHash(selector) {
+function hashTarget(userId, lifecycleGeneration) {
   return `sha256:${createHash('sha256')
-    .update(`${selector.type}:${selector.normalizedValue}`)
+    .update(`${userId}:${lifecycleGeneration}`)
     .digest('hex')}`
 }
 
-function oppositeAction(action) {
-  return action === 'disable' ? 'enable' : 'disable'
-}
-
 function requireValue(value, flagName) {
-  if (!value) {
-    throw new Error(`${flagName} is required`)
-  }
-
+  if (!value) throw new Error(`${flagName} is required`)
   return value
 }
 
@@ -340,13 +289,11 @@ function writeJson(value) {
 
 function printUsage() {
   process.stderr.write(`Usage:
-  node scripts/honowarden-account-lifecycle.mjs disable --email <email> --database <name> --reason <reason> [--mode local|remote] [--execute --confirm <target>]
-  node scripts/honowarden-account-lifecycle.mjs enable --user-id <id> --database <name> --reason <reason> [--mode local|remote] [--execute --confirm <target>]
+  node scripts/honowarden-account-lifecycle.mjs plan --operation <status|recover|prepare-purge|purge> --user-id <id> --generation <generation> --database <name> --reason <reason> --request-id <id> [--mode local|remote]
 `)
 }
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url)
-
 if (isMain) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`)

@@ -15,34 +15,37 @@ const lifecycleScript = join(
 
 type LifecyclePacket = {
   schemaVersion: number
-  action: 'disable' | 'enable'
+  action: 'plan'
+  operation: 'status' | 'recover' | 'prepare-purge' | 'purge'
   executed: boolean
   mode: 'local' | 'remote'
-  database: string
-  selector: {
-    type: 'email' | 'user_id'
-    value: string
-    normalizedValue: string
-    sqlWhere: string
-  }
-  audit: {
-    event: string
-    reason: string
+  target: {
+    userId: string
+    lifecycleGeneration: string
     targetHash: string
-    containsVaultData: boolean
   }
   commands: string[][]
-  rollbackCommand: string[]
+  operatorRpc: {
+    entrypoint: string
+    method: string
+    input: Record<string, string>
+    publiclyAccessible: boolean
+    executionIncluded: boolean
+  }
 }
 
 describe('account lifecycle operator CLI', () => {
-  it('plans a remote account disable with readback and no vault-data output', async () => {
+  it('plans redacted remote purge readback and a private named-entrypoint RPC', async () => {
     const result = await execFileAsync('node', [
       lifecycleScript,
       '--',
-      'disable',
-      '--email',
-      'Owner+Prod@example.test',
+      'plan',
+      '--operation',
+      'purge',
+      '--user-id',
+      'user-123',
+      '--generation',
+      'generation-456',
       '--database',
       'honowarden-prod',
       '--mode',
@@ -50,144 +53,135 @@ describe('account lifecycle operator CLI', () => {
       '--env',
       'production',
       '--reason',
-      'owner-request-2026-07-09',
+      'approved-owner-request',
+      '--request-id',
+      'HON-164-purge',
       '--at',
-      '2026-07-09T10:30:00.000Z',
+      '2026-08-09T00:00:00.000Z',
     ])
     const packet = JSON.parse(result.stdout) as LifecyclePacket
 
     expect(packet).toMatchObject({
-      schemaVersion: 1,
-      action: 'disable',
+      schemaVersion: 2,
+      action: 'plan',
+      operation: 'purge',
       executed: false,
       mode: 'remote',
-      database: 'honowarden-prod',
-      selector: {
-        type: 'email',
-        normalizedValue: 'owner+prod@example.test',
-        sqlWhere: "email_normalized = 'owner+prod@example.test'",
+      target: {
+        userId: 'user-123',
+        lifecycleGeneration: 'generation-456',
       },
-      audit: {
-        event: 'account.disable.plan',
-        reason: 'owner-request-2026-07-09',
-        containsVaultData: false,
+      operatorRpc: {
+        entrypoint: 'AccountLifecycleOperator',
+        method: 'purge',
+        input: {
+          userId: 'user-123',
+          lifecycleGeneration: 'generation-456',
+          confirmedLifecycleGeneration: 'generation-456',
+          requestId: 'HON-164-purge',
+          reason: 'approved-owner-request',
+        },
+        publiclyAccessible: false,
+        executionIncluded: false,
       },
     })
-    expect(packet.audit.targetHash).toMatch(/^sha256:[a-f0-9]{64}$/)
-    expect(packet.commands).toHaveLength(3)
-    expect(packet.commands[0]).toEqual([
+    expect(packet.target.targetHash).toMatch(/^sha256:[a-f0-9]{64}$/)
+    expect(packet.commands).toHaveLength(1)
+    expect(packet.commands[0]?.slice(0, 6)).toEqual([
       'wrangler',
       'd1',
       'execute',
       'honowarden-prod',
       '--remote',
       '--command',
-      "SELECT COUNT(*) AS matched_users, SUM(CASE WHEN disabled_at IS NULL THEN 1 ELSE 0 END) AS active_users, SUM(CASE WHEN disabled_at IS NOT NULL THEN 1 ELSE 0 END) AS disabled_users FROM users WHERE email_normalized = 'owner+prod@example.test';",
-      '--json',
-      '--env',
-      'production',
     ])
-    expect(packet.commands[1]).toEqual([
-      'wrangler',
-      'd1',
-      'execute',
-      'honowarden-prod',
-      '--remote',
-      '--command',
-      "UPDATE users SET disabled_at = '2026-07-09T10:30:00.000Z', updated_at = '2026-07-09T10:30:00.000Z', revision_date = '2026-07-09T10:30:00.000Z' WHERE email_normalized = 'owner+prod@example.test' AND disabled_at IS NULL;",
-      '--yes',
-      '--env',
-      'production',
-    ])
-    expect(packet.commands[2]).toEqual(packet.commands[0])
-    expect(packet.rollbackCommand).toContain(
-      "UPDATE users SET disabled_at = NULL, updated_at = '2026-07-09T10:30:00.000Z', revision_date = '2026-07-09T10:30:00.000Z' WHERE email_normalized = 'owner+prod@example.test' AND disabled_at IS NOT NULL;",
-    )
-    expect(result.stdout).not.toContain('master_password_hash')
-    expect(result.stdout).not.toContain('encrypted_json')
-    expect(result.stdout).not.toContain('private_key')
+    expect(packet.commands[0]).toContain('--json')
+    expect(packet.commands[0]).toContain('--env')
+    const output = result.stdout
+    expect(output).not.toContain('DELETE FROM users')
+    expect(output).not.toContain('UPDATE users SET disabled_at')
+    expect(output).not.toContain('object_key')
+    expect(output).not.toContain('master_password_hash')
+    expect(output).not.toContain('encrypted_json')
   })
 
-  it('requires exact target confirmation before execution', async () => {
+  it('retires direct disable and enable because they bypass recovery invariants', async () => {
+    for (const action of ['disable', 'enable']) {
+      await expect(
+        execFileAsync('node', [lifecycleScript, action]),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          'Direct disable/enable was removed because it bypasses the recoverable account lifecycle.',
+        ),
+      })
+    }
+  })
+
+  it('refuses mutation execution from the read-only CLI', async () => {
     await expect(
       execFileAsync('node', [
         lifecycleScript,
-        'disable',
-        '--email',
-        'owner@example.test',
+        'plan',
+        '--operation',
+        'recover',
+        '--user-id',
+        'user-123',
+        '--generation',
+        'generation-456',
         '--database',
-        'honowarden-prod',
-        '--mode',
-        'remote',
+        'honowarden',
         '--reason',
-        'owner-request',
+        'approved-recovery',
+        '--request-id',
+        'HON-164-recover',
         '--execute',
       ]),
     ).rejects.toMatchObject({
       stderr: expect.stringContaining(
-        '--confirm owner@example.test is required before disable --execute',
+        'mutation RPC must run from a separately approved operator Worker binding',
       ),
     })
   })
 
-  it('plans local account enable by user id with local persistence flags', async () => {
-    const result = await execFileAsync('node', [
+  it('rejects operator values that exceed or bypass the private RPC boundary', async () => {
+    const baseArgs = [
       lifecycleScript,
-      'enable',
+      'plan',
       '--user-id',
       'user-123',
+      '--generation',
+      'generation-456',
       '--database',
       'honowarden',
-      '--mode',
-      'local',
-      '--persist-to',
-      'test/.tmp/d1',
       '--reason',
-      'restore-access',
-      '--at',
-      '2026-07-09T10:45:00.000Z',
-    ])
-    const packet = JSON.parse(result.stdout) as LifecyclePacket
-
-    expect(packet).toMatchObject({
-      action: 'enable',
-      executed: false,
-      selector: {
-        type: 'user_id',
-        normalizedValue: 'user-123',
-        sqlWhere: "id = 'user-123'",
-      },
-      audit: {
-        event: 'account.enable.plan',
-        reason: 'restore-access',
-        containsVaultData: false,
-      },
+      'approved-recovery',
+      '--request-id',
+      'HON-164-recover',
+    ]
+    await expect(
+      execFileAsync('node', [...baseArgs, '--reason', `approved\nrecovery`]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('--reason is invalid'),
     })
-    expect(packet.commands[1]).toEqual([
-      'wrangler',
-      'd1',
-      'execute',
-      'honowarden',
-      '--local',
-      '--command',
-      "UPDATE users SET disabled_at = NULL, updated_at = '2026-07-09T10:45:00.000Z', revision_date = '2026-07-09T10:45:00.000Z' WHERE id = 'user-123' AND disabled_at IS NOT NULL;",
-      '--yes',
-      '--persist-to',
-      'test/.tmp/d1',
-    ])
+    await expect(
+      execFileAsync('node', [...baseArgs, '--generation', 'g'.repeat(129)]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('--generation is invalid'),
+    })
   })
 
-  it('documents the operator runbook and package script', () => {
+  it('documents the dry-run boundary, private RPC, and package script', () => {
     const packageJson = readRepoFile('package.json')
     const runbook = readRepoFile('docs/operations/account-lifecycle.md')
     const knownLimitations = readRepoFile('docs/security/known-limitations.md')
 
     expect(packageJson).toContain('"account:lifecycle"')
     expect(runbook).toContain('dry-run by default')
-    expect(runbook).toContain('--confirm <target>')
+    expect(runbook).toContain('AccountLifecycleOperator')
+    expect(runbook).toContain('named WorkerEntrypoint')
     expect(runbook).toContain('password grant, refresh grant, sync, and vault')
     expect(runbook).toContain('does not print vault payloads')
-    expect(knownLimitations).toContain('account disable/enable operator CLI')
+    expect(knownLimitations).toContain('account lifecycle operator CLI')
   })
 })
 

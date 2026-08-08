@@ -7,6 +7,7 @@ import { handleInquiryEmail } from './inquiry-email'
 import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
 
 export { NotificationHub } from './notification-hub'
+export { AccountLifecycleOperator } from './account-lifecycle-operator'
 
 export default {
   fetch(request: Request, env: Bindings, context: ExecutionContext) {

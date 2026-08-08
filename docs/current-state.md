@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-08
+Last updated: 2026-08-09
 
 ## Week 1 Status
 
@@ -2613,3 +2613,39 @@ Not implemented or not yet verified:
 - organization policy mutation or enforcement
 - organization creation and collection mutation audit events
 - broad official-client organization or shared-vault compatibility
+
+## Account Email And Deletion Lifecycle
+
+Implemented in source for HON-164:
+
+- forward-only migration `0017_account_lifecycle.sql`, including verified-email
+  backfill, digest-only lifecycle tokens, and explicit recoverable/purge states
+- default-off official-contract email-token, email-change, email-verification,
+  account-delete, and deletion-recovery HTTP routes
+- single-use HMAC-SHA256 token digests bound to purpose, user, and credential
+  generation; raw tokens are sent only through the mailer port and never stored
+- anonymous deletion-token requests with identical HTTP responses and explicit
+  mailer `deliver`/`suppress` dispositions to equalize account enumeration
+- atomic email credential-generation replacement, organization membership email
+  projection, session/auth-request revoke, wrapper-history record, and required
+  audit event
+- recoverable deletion with a 30-day cutoff, last-confirmed-owner rejection,
+  preserved personal and organization data, and atomic session revocation
+- private named `AccountLifecycleOperator` methods for redacted planning,
+  before-cutoff recovery, purge preparation, and retryable purge execution
+- personal-R2-first purge progress capped at 1,000 objects per private RPC,
+  idempotent retry, TOTP-challenge and personal-setting cleanup, and D1
+  tombstone finalization that preserves organization ciphers and attachments
+- read-only CLI plan generation; the old direct disable/enable mutation path is
+  intentionally retired because it bypassed the lifecycle state machine
+- local synthetic route, repository, real-D1, and R2-failure/retry coverage
+  recorded in `docs/release/account-lifecycle-local-evidence.md`
+
+Not implemented or not yet verified:
+
+- tracked staging or production activation; the feature flag remains false at
+  every tracked scope
+- live mail-provider delivery, official-client lifecycle behavior, or remote
+  D1/R2 purge evidence
+- account lifecycle admin UI, scheduled purge orchestration, or production
+  account/data mutation
