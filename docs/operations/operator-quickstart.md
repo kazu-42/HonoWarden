@@ -91,8 +91,10 @@ Point an official upstream client (browser extension, desktop, mobile) at the se
 URL. Compatibility is pinned against real client bundles — see
 [compatibility-matrix.md](../compatibility-matrix.md) and
 [compatibility.md](../compatibility.md). Bulk vault actions, premium TOTP/attachment surfaces, and
-login‑with‑device are exercised with live‑client evidence; unsupported surfaces (organizations,
-collections, Send, emergency access) fail as explicitly unavailable.
+login‑with‑device are exercised with live‑client evidence. The ADR 0010 organization foundation and
+owner-administered collection CRUD are source-verified slices, not broad official-client
+compatibility. Organization membership/roles/cipher assignment/policies, Send, and Emergency
+Access remain explicitly unavailable or unverified as documented in the compatibility boundary.
 
 ## 6. Inquiry inbox loop
 

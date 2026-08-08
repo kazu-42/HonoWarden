@@ -62,31 +62,39 @@ Vault would require a new ADR, a dedicated compatibility row, browser security
 review, CSP and static-asset provenance rules, deployment/rollback separation,
 and live evidence before any support claim.
 
-## Organizations And Shared Vault Boundary
+## Organizations And Shared Vault Product Line
 
-HonoWarden does not expose Organizations or shared vaults in the alpha
-personal-vault product line. Shared vault support would add membership,
-ownership, role, collection-access, cross-user isolation, encrypted key sharing,
-audit, migration, and rollback requirements. [ADR 0005](adr/0005-organizations-shared-vault-scope.md)
-defines the scope as a non-goal for this product line and the minimum gates
-before any future shared or team-vault support claim.
+[ADR 0010](adr/0010-organizations-team-vault-product-line.md) supersedes ADR 0005's
+organization non-goal for an incrementally verified team-vault product line.
+The merged organization foundation provides authenticated organization
+create/get plus confirmed-member organization and collection projection in sync
+and profile responses. Owner-administered organization collection CRUD is also
+implemented with existence-obscuring authorization failures and bounded access
+selection.
+
+These source slices are not a broad compatibility claim. Membership and role
+lifecycle, invitations, organization cipher sharing and assignment, policy
+enforcement, complete cross-user isolation evidence, audit, export/rollback,
+and official-client verification advance only through their own bounded slices.
+Routes outside the merged slices remain explicit typed unsupported responses.
 
 ## Policy Management Boundary
 
 HonoWarden exposes authenticated empty policy metadata reads only. It does not
-implement policy mutation or organization policy enforcement in the alpha
-personal-vault product line. [ADR 0006](adr/0006-policy-management-scope.md)
+implement policy mutation or organization policy enforcement in the current
+team-vault slices. [ADR 0006](adr/0006-policy-management-scope.md)
 defines the no-policy default behavior and the schema, enforcement, audit,
 rollback, and compatibility gates required before future policy support.
 
 ## Collection Mutation Boundary
 
-HonoWarden exposes authenticated empty collection metadata reads only. It does
-not implement collection create, update, delete, cipher assignment, or
-organization-scoped collections in the alpha personal-vault product line.
-[ADR 0007](adr/0007-collection-mutation-scope.md) defines the read-only default
-behavior and the ownership, membership, assignment, audit, migration, rollback,
-and fixture gates required before future collection mutation support.
+Current main implements confirmed-member organization collection reads and
+owner-administered organization collection CRUD, including bounded create,
+update, single/bulk delete, details, and owner-only access-selection reads.
+[ADR 0010](adr/0010-organizations-team-vault-product-line.md) supersedes ADR 0007's original
+empty collection boundary for those merged routes. Organization cipher
+assignment, non-owner membership selection, membership lifecycle, audit, and
+broad official-client compatibility remain unimplemented or unverified.
 
 ## Send And Public Sharing Boundary
 
@@ -132,8 +140,8 @@ Response shape:
 }
 ```
 
-Other typed alpha-scope guards, including Organizations, keep the same HTTP
-status and structural code but may omit the top-level client compatibility
-message.
+Other typed alpha-scope guards, including unimplemented organization cipher and
+membership routes, keep the same HTTP status and structural code but may omit
+the top-level client compatibility message.
 
 This project is independent and not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.

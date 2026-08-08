@@ -2,7 +2,7 @@
 
 A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.
 
-HonoWarden focuses on personal and small-team vault sync using official clients for the upstream encrypted-vault protocol. It intentionally avoids Web Vault, public registration, organization features, and public file-sharing features in the initial scope to reduce attack surface.
+HonoWarden focuses on personal and incrementally verified small-team vault sync using official clients for the upstream encrypted-vault protocol. The current source includes an organization foundation and owner-administered collection CRUD, while broader membership, role, organization-cipher, and policy workflows remain outside the supported boundary. It intentionally avoids Web Vault, public registration, and public file-sharing features in the initial scope to reduce attack surface.
 
 ## Status
 
@@ -19,7 +19,7 @@ The first milestone is a narrow compatibility target:
 
 - hosted multi-tenant service
 - public account registration
-- organization features
+- broad organization administration and shared-cipher workflows
 - public file sharing
 - Web Vault
 - browser extension or mobile client forks
@@ -119,6 +119,10 @@ Local operator environment setup is documented in [docs/operations/operator-envi
 
 Website and email operations are organized in [docs/operations/website-email.md](docs/operations/website-email.md).
 Email Routing preflight is available with `pnpm email:preflight`.
+The active operator queue, redaction-first AI triage, approval-gated replies,
+and duplicate-safe Linear workflow run in the separately deployed
+[`HonoWarden-inquiry-inbox`](https://github.com/kazu-42/HonoWarden-inquiry-inbox)
+service; raw MIME retention and autonomous actions remain disabled.
 
 HonoWarden is an independent project and is not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.
 

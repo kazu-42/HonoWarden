@@ -262,7 +262,7 @@ describe('client compatibility matrix', () => {
     )
   })
 
-  it('keeps Organizations and shared vaults outside the alpha compatibility surface', () => {
+  it('records the slice-based Organizations compatibility boundary', () => {
     const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
     const compatibilityMatrixDoc = readFileSync(
       compatibilityMatrixDocPath,
@@ -270,14 +270,18 @@ describe('client compatibility matrix', () => {
     )
 
     expect(compatibilityDoc).toContain(
-      '## Organizations And Shared Vault Boundary',
+      '## Organizations And Shared Vault Product Line',
     )
     expect(compatibilityDoc).toContain('ADR 0005')
+    expect(compatibilityDoc).toContain('ADR 0010')
+    expect(compatibilityDoc).toMatch(/organization\s+foundation/i)
+    expect(compatibilityDoc).toMatch(/collection\s+CRUD/i)
     expect(compatibilityDoc).toContain('membership')
-    expect(compatibilityDoc).toContain('cross-user isolation')
-    expect(compatibilityMatrixDoc).toContain(
-      'There is intentionally no Organizations or shared vault row',
+    expect(compatibilityDoc).toMatch(/cross-user\s+isolation/i)
+    expect(compatibilityMatrixDoc).toMatch(
+      /not yet a broad Organizations or shared vault verification row/i,
     )
+    expect(compatibilityMatrixDoc).toMatch(/slice-specific evidence/i)
     expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
       'organizations',
     )
@@ -307,7 +311,7 @@ describe('client compatibility matrix', () => {
     )
   })
 
-  it('keeps collection mutation outside the alpha compatibility surface', () => {
+  it('records implemented organization collection CRUD without broad promotion', () => {
     const compatibilityDoc = readFileSync(compatibilityDocPath, 'utf8')
     const compatibilityMatrixDoc = readFileSync(
       compatibilityMatrixDocPath,
@@ -315,15 +319,11 @@ describe('client compatibility matrix', () => {
     )
 
     expect(compatibilityDoc).toContain('## Collection Mutation Boundary')
-    expect(compatibilityDoc).toMatch(/ADR\s+0007/)
-    expect(compatibilityDoc).toContain('empty collection metadata reads')
-    expect(compatibilityDoc).toContain('cipher assignment')
-    expect(compatibilityMatrixDoc).toContain(
-      'Collection metadata remains fixture-covered',
-    )
-    expect(compatibilityMatrixDoc).toMatch(
-      /Collection mutation and cipher assignment are\s+not\s+compatibility claims/,
-    )
+    expect(compatibilityDoc).toMatch(/ADR\s+0010/)
+    expect(compatibilityDoc).toMatch(/organization collection\s+CRUD/i)
+    expect(compatibilityDoc).toContain('Organization cipher')
+    expect(compatibilityMatrixDoc).toMatch(/route-tested source capabilities/i)
+    expect(compatibilityMatrixDoc).toMatch(/cipher assignment/i)
     expect(matrix.entries.map((entry) => entry.surface)).not.toContain(
       'collection_mutation',
     )
