@@ -725,12 +725,14 @@ app.get('/health/db', async (c) => {
 
 app.get('/api/config', (c) => {
   const origin = resolvePublicOrigin(c.req.raw)
+  c.header('Cache-Control', 'no-store')
 
   return c.json(buildServerConfig(origin))
 })
 
 app.get('/config', (c) => {
   const origin = resolvePublicOrigin(c.req.raw)
+  c.header('Cache-Control', 'no-store')
 
   return c.json(buildServerConfig(origin))
 })
@@ -7601,6 +7603,8 @@ function unsupportedFeatureResponse(
   message: string,
   exposeClientMessage: boolean,
 ) {
+  c.header('Cache-Control', 'no-store')
+
   return c.json(
     {
       ...(exposeClientMessage ? { Message: message } : {}),

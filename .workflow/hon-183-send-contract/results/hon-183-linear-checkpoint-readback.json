@@ -1,0 +1,33 @@
+{
+  "generatedAt": "2026-08-08T20:06:19.333Z",
+  "status": "exact",
+  "issue": "HON-183",
+  "parent": "HON-182",
+  "commentId": "e569e999-cf5c-4e22-9943-6b2a0b2dc324",
+  "requestBytes": 3058,
+  "responseBytes": 3058,
+  "requestSha256": "d16d51082adbb36a9828447e32c07c5584fe2cf9ba4b36a566da39925a100b3e",
+  "responseSha256": "d16d51082adbb36a9828447e32c07c5584fe2cf9ba4b36a566da39925a100b3e",
+  "managedCommentCount": 1,
+  "issueState": {
+    "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+    "name": "In Progress",
+    "type": "started"
+  },
+  "parentState": {
+    "id": "afa8fa07-abd6-4aaa-99f7-fb77ee41cb33",
+    "name": "In Progress",
+    "type": "started"
+  },
+  "checks": {
+    "issueIdentity": true,
+    "parentIdentity": true,
+    "issueInProgress": true,
+    "parentInProgress": true,
+    "singleManagedComment": true,
+    "body": true,
+    "bytes": true,
+    "sha256": true
+  },
+  "errors": []
+}

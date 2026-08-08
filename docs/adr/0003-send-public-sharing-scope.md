@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0011 for the future Send product line. The alpha/runtime
+exclusion remains active until ADR 0011's activation gates pass.
 
 ## Context
 
@@ -46,3 +47,12 @@ design packet or ADR that defines:
   is implemented and verified.
 - The compatibility matrix must not claim Send or public file-sharing support in
   the alpha release.
+
+## Supersession
+
+ADR 0011 supplies the replacement product decision, dedicated threat model,
+wire/storage contract, sliced implementation order, and activation/rollback
+gates required above. This satisfies the design-first prerequisite; it does not
+itself implement or activate Send. ADR 0009's `501` guards and
+`send-enabled: false` remain the current runtime contract until the later slices
+produce environment-specific evidence.

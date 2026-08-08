@@ -99,11 +99,12 @@ broad official-client compatibility remain unimplemented or unverified.
 ## Send And Public Sharing Boundary
 
 HonoWarden does not expose Send or public file-sharing in the alpha release.
-Cipher-scoped attachments remain authenticated and owner-scoped. Public sharing
-would add unauthenticated access, link enumeration risk, expiration, revocation,
-rate limiting, abuse reporting, cache policy, and separate retention/deletion
-semantics. [ADR 0003](adr/0003-send-public-sharing-scope.md) defines the
-minimum design gates before any support claim.
+Cipher-scoped attachments remain authenticated and owner-scoped. ADR 0011 now
+defines the accepted future Send product line, dedicated threat model, wire and
+storage contract, sliced implementation, activation, evidence, and rollback
+gates. That design decision is not source capability or runtime support: all
+Send routes and `send_access` still return `501`, and config remains
+`send-enabled: false` until the later slices pass environment-specific gates.
 
 ## Emergency Access Boundary
 

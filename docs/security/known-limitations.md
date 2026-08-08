@@ -50,9 +50,13 @@ inputs, not minor documentation notes.
   vault breach lookup at `GET /api/hibp/breach` is unsupported; the pinned
   extension performs weak/reused-password evaluation locally and calls the
   external Pwned Passwords range API directly for its manual exposed-password
-  check. File Sends and all other Send/public-sharing operations remain excluded
-  by ADR 0003 until public access-token entropy, expiration, revocation,
-  rate-limit, abuse, cache, audit, and retention/deletion controls are designed.
+  check. ADR 0011 accepts and specifies a future Send product line, including
+  public access-token entropy, but no stateful Send source or runtime support is
+  implemented by that design slice.
+  File Sends and all other Send/public-sharing operations remain behind the
+  existing `501` guards, with `send-enabled: false`, until the text, file,
+  public-control, abuse, cleanup, activation, rollback, and live-evidence slices
+  pass.
 - Unsupported Emergency Access, breach-lookup, and Send routes return state-free
   HTTP `501` responses with `error.code = unsupported_feature` and a top-level
   `Message` that official clients can render. This includes the `send_access`

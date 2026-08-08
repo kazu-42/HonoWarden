@@ -204,8 +204,9 @@ Implemented:
 - explicit collection mutation/assignment exclusion and personal-vault
   read-only empty collection metadata default in ADR 0007, threat model, and
   compatibility docs
-- explicit Send/public-sharing exclusion and future design gates in ADR 0003,
-  threat model, and compatibility docs
+- explicit Send/public-sharing runtime exclusion plus the accepted future
+  product-line contract in ADR 0011, its dedicated threat model/wire contract,
+  and compatibility docs; runtime remains `501` and config remains disabled
 - explicit Emergency Access exclusion and future delegated-recovery design gates
   in ADR 0004, threat model, and compatibility docs
 - compatibility matrix validation in `pnpm compat:test`

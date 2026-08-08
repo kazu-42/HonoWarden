@@ -154,9 +154,11 @@ official-client evidence remain outside the current claim.
 
 There is intentionally no Send or public file-sharing row. Cipher-scoped
 attachments are authenticated owner-scoped vault operations; public sharing
-would require [ADR 0003](adr/0003-send-public-sharing-scope.md)'s access-token,
-expiration, revocation, rate-limit, abuse, cache, and retention controls before
-compatibility can be claimed.
+now has an accepted design contract under ADR 0011, but no stateful source,
+runtime activation, or live compatibility evidence. The current `501` boundary
+and `send-enabled: false` remain authoritative. A Send row can be added only for
+the exact flow and client version proven after the ADR 0011 implementation,
+abuse, cleanup, activation, rollback, and live-evidence gates pass.
 
 There is intentionally no Emergency Access row. Delegated recovery requires
 [ADR 0004](adr/0004-emergency-access-scope.md)'s grantee identity, delay,
