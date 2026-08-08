@@ -1,8 +1,15 @@
 # AI Inquiry Inbox Architecture
 
-Status: phase 1 metadata-only ingestion implemented; UI, AI triage, outbound
-reply, raw MIME storage, attachment storage, and Linear automation remain
-future phases.
+Status: the active inquiry route and bounded workflow are deployed from the
+dedicated
+[`HonoWarden-inquiry-inbox`](https://github.com/kazu-42/HonoWarden-inquiry-inbox)
+repository for metadata-only inbound handling, an operator queue,
+redaction-first AI triage, human-reviewed drafts, duplicate-safe Linear
+creation, and approval-gated outbound delivery. HON-99 records one
+human-approved staging reply with exactly-once state/audit readback. HON-129
+records Resend staging/production deployment and direct provider
+`Sent -> Delivered` evidence. Raw MIME and attachment storage remain disabled;
+autonomous send and Linear writes remain out of scope.
 
 This document defines the safe architecture for a HonoWarden contact,
 support, and security inquiry inbox. It is intentionally narrower than a full
@@ -27,11 +34,13 @@ Build a HonoWarden-specific inquiry inbox Worker rather than importing the
 whole Agentic Inbox application.
 
 Agentic Inbox is a good reference for the Cloudflare-native shape: Email
-Routing receives mail, Email Service sends replies, mailbox state can live in
-Durable Objects with SQLite, attachments can live in R2, and an Agent can draft
-replies. It is not a drop-in fit for HonoWarden because its own README states
-that Cloudflare Access is the single trust boundary and there is no per-mailbox
-authorization. HonoWarden needs a stricter security/support workflow:
+Routing receives mail, an outbound provider sends replies, mailbox state can
+live in Durable Objects with SQLite, attachments can live in R2, and an Agent
+can draft replies. HonoWarden uses Resend because Cloudflare Email Service only
+reached verified destinations in the tested account. The reference app is not a
+drop-in fit because its own README states that Cloudflare Access is the single
+trust boundary and there is no per-mailbox authorization. HonoWarden needs a
+stricter security/support workflow:
 
 - mailbox-level authorization for `security@`, `support@`, and `hello@`
 - human approval before any external reply
@@ -40,11 +49,15 @@ authorization. HonoWarden needs a stricter security/support workflow:
   or encrypted vault payloads
 - Linear issue creation with redacted summaries instead of raw email content
 
-The first implementation should live outside the vault API Worker blast radius.
-It may be implemented in the website repository or a new inbox Worker
-repository, but it must use separate Cloudflare bindings, secrets, and storage.
-This repository remains the source of truth for the design, operations evidence,
-and Linear tracking until a dedicated implementation repository exists.
+After HON-76, active Email Routing and the full workflow live outside the vault
+API Worker blast radius in the dedicated `HonoWarden-inquiry-inbox` repository.
+It uses separate Cloudflare bindings, secrets, storage, deployment, and Access
+boundaries. This vault repository still exports the legacy metadata-only
+`email()` handler, carries `INQUIRY_DB`, and retains migration `0011` as a
+rollback surface; no active public Email Routing rule targets that legacy
+surface. This repository remains the source of truth for cross-product design
+and release boundaries, while the dedicated repository owns the active
+implementation and slice-specific evidence.
 
 ## Context Diagram
 
@@ -57,7 +70,7 @@ flowchart LR
   InboxWorker --> InboxState[(Inbox D1)]
   InboxWorker --> InboxObjects[(Inbox R2)]
   InboxWorker --> AI[Workers AI / Agent]
-  InboxWorker --> EmailService[Cloudflare Email Service]
+  InboxWorker --> OutboundProvider[Resend HTTPS API]
   InboxWorker --> Linear[Linear API]
   InboxWorker -. no direct access .- VaultApi[HonoWarden Vault API Worker]
 ```
@@ -76,7 +89,7 @@ flowchart TB
     InboxR2[(Inbox R2<br/>raw MIME and attachments)]
     TriageQueue[Optional Queue<br/>parse, redact, classify, draft]
     AgentDO[Optional InquiryAgent Durable Object<br/>long-running draft sessions]
-    EmailBinding[send_email binding]
+    OutboundProvider[Resend HTTPS API]
   end
 
   EmailRouting --> InboxWorker
@@ -85,7 +98,7 @@ flowchart TB
   InboxWorker --> TriageQueue
   TriageQueue --> AgentDO
   AgentDO --> InboxD1
-  AgentDO --> EmailBinding
+  AgentDO --> OutboundProvider
 ```
 
 Recommended initial split:
@@ -98,7 +111,7 @@ Recommended initial split:
 | Inbox R2                    | Optional raw MIME and attachment storage after retention policy is active.   | HON-24+       |
 | Queue                       | Decouple SMTP event handling from parsing, redaction, AI, and Linear writes. | HON-26        |
 | InquiryAgent Durable Object | Stateful AI drafting session and tool boundary, not canonical storage.       | HON-26        |
-| Email Service binding       | Send approved replies only.                                                  | HON-25        |
+| Resend adapter              | Send approved replies only after provider-level validation.                  | HON-25        |
 | Linear adapter              | Create/update issues from redacted summaries after human approval.           | HON-27        |
 
 Do not start with the full Agentic Inbox UI. Start with a compact operator
@@ -106,15 +119,15 @@ workflow for project contact, support, and security reports.
 
 ## Trust Boundaries
 
-| Boundary                      | Input                                              | Required control                                                                                                            |
-| ----------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Public SMTP to Email Routing  | Sender, recipient, headers, MIME body, attachments | Treat all fields as untrusted; enforce size and recipient allowlists before parsing.                                        |
-| Email handler to storage      | Raw MIME, parsed text, attachment metadata         | Store metadata first; enable raw body and attachment persistence only after retention/deletion controls are implemented.    |
-| Operator UI to inbox API      | Cloudflare Access JWT and browser requests         | Require Access in all shared environments; enforce mailbox-level roles after Access, not only Access policy membership.     |
-| Inbox Worker to AI            | Redacted subject/body snippets and metadata        | AI receives minimum content needed for classification/drafting; attachments are not sent to AI by default.                  |
-| Inbox Worker to Email Service | Approved draft and recipient                       | Send only a draft with an approval event tied to an Access identity.                                                        |
-| Inbox Worker to Linear        | Redacted summary, labels, mailbox, status          | Never send raw MIME, attachment bodies, private destination addresses, or vulnerability details that should remain private. |
-| Inbox Worker to Vault API     | None                                               | No direct binding, no shared D1, no shared token secret, no service token in phase 1.                                       |
+| Boundary                     | Input                                              | Required control                                                                                                            |
+| ---------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Public SMTP to Email Routing | Sender, recipient, headers, MIME body, attachments | Treat all fields as untrusted; enforce size and recipient allowlists before parsing.                                        |
+| Email handler to storage     | Raw MIME, parsed text, attachment metadata         | Store metadata first; enable raw body and attachment persistence only after retention/deletion controls are implemented.    |
+| Operator UI to inbox API     | Cloudflare Access JWT and browser requests         | Require Access in all shared environments; enforce mailbox-level roles after Access, not only Access policy membership.     |
+| Inbox Worker to AI           | Redacted subject/body snippets and metadata        | AI receives minimum content needed for classification/drafting; attachments are not sent to AI by default.                  |
+| Inbox Worker to Resend       | Approved draft and recipient                       | Send only a draft with an approval event tied to an Access identity; keep the provider credential isolated.                 |
+| Inbox Worker to Linear       | Redacted summary, labels, mailbox, status          | Never send raw MIME, attachment bodies, private destination addresses, or vulnerability details that should remain private. |
+| Inbox Worker to Vault API    | None                                               | No direct binding, no shared D1, no shared token secret, no service token in phase 1.                                       |
 
 Cloudflare Access is necessary but not sufficient. Access identifies the human
 operator; the inbox must still enforce mailbox-level permissions. For example,
@@ -223,14 +236,14 @@ sequenceDiagram
   participant Worker as Inquiry Inbox Worker
   participant D1 as Inbox D1
   participant Operator
-  participant Email as Email Service
+  participant Provider as Resend
 
   Queue->>Redactor: Load message metadata and allowed body snippet
   Redactor->>Agent: Send redacted classification prompt
   Agent->>D1: Store classification and proposed draft
   Operator->>Worker: Review thread and approve draft
   Worker->>D1: Record approval with Access identity
-  Worker->>Email: Send approved reply
+  Worker->>Provider: Send approved reply
   Worker->>D1: Record sent event only after provider success
 ```
 
@@ -242,7 +255,8 @@ writes.
 
 ## Linear Integration
 
-HON-27 should implement Linear integration as a separate adapter:
+The dedicated service implements Linear integration as a separate adapter with
+these continuing constraints:
 
 - AI or rules can propose issue title, labels, priority, and description.
 - The proposed body must be redacted and must not include raw message bodies,
@@ -280,7 +294,7 @@ The implementation Worker needs separate configuration from the vault API:
 | ---------------------------------- | ---------------------------------------------------- | ----------------------------- |
 | `INQUIRY_DB`                       | inbox D1 tables                                      | no, but environment-specific  |
 | `INQUIRY_OBJECTS`                  | raw MIME and attachments                             | no, but sensitive data store  |
-| `EMAIL`                            | outbound Email Service binding                       | no secret value in repo       |
+| `HONOWARDEN_RESEND_API_KEY`        | approval-gated outbound provider credential          | secret                        |
 | `HONOWARDEN_INQUIRY_MAILBOXES`     | allowed local parts and mailbox roles                | operationally sensitive       |
 | `HONOWARDEN_INQUIRY_DOMAINS`       | accepted recipient domains                           | no, but environment-specific  |
 | `HONOWARDEN_INQUIRY_FORWARD_TO`    | verified forwarding destination                      | operationally sensitive       |
@@ -294,13 +308,18 @@ API D1 binding in the inbox Worker.
 
 ## Phased Implementation Map
 
-| Linear issue | Implementation boundary                                                                                                                 |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| HON-24       | Email handler, metadata-only D1 ingestion, generated R2 object references, retention flags, tests for reject/forward/storage-off paths. |
-| HON-25       | Access-protected operator review surface, draft approval records, Email Service send path, sent-event readback.                         |
-| HON-26       | AI triage and draft generation with redaction, prompt/version tracking, model failure states, no autonomous send.                       |
-| HON-27       | Human-approved Linear issue creation/update from redacted summaries.                                                                    |
-| HON-28       | Public security contact metadata only after inbound route, destination verification, and smoke evidence pass.                           |
+| Linear issue | Implementation boundary                                                                                                                 | Current boundary                                      |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| HON-24       | Email handler, metadata-only D1 ingestion, generated R2 object references, retention flags, tests for reject/forward/storage-off paths. | Implemented; raw MIME and attachments remain disabled |
+| HON-25       | Access-protected operator review surface, draft approval records, provider send path, sent-event readback.                              | Done; deployed human-approved workflow                |
+| HON-26       | AI triage and draft generation with redaction, prompt/version tracking, model failure states, no autonomous send.                       | Implemented with synthetic staging evidence           |
+| HON-27       | Human-approved Linear issue creation/update from redacted summaries.                                                                    | Implemented with duplicate-safe Linear behavior       |
+| HON-28       | Public security contact metadata only after inbound route, destination verification, and smoke evidence pass.                           | Published after routing and mailbox smoke             |
+
+Operational closeout is split across HON-76 (active routing migration), HON-99
+(one human-approved staging reply), and HON-129 (Resend configuration,
+staging/production deployment, and `Sent -> Delivered`). These prove the
+synthetic workflow, not real security-report handling or autonomous authority.
 
 ## Rollback
 
@@ -308,7 +327,7 @@ Rollback must be possible without affecting the vault API:
 
 1. Disable the Email Routing rule that targets the inbox Worker, or switch back
    to forwarding-only rules.
-2. Disable outbound `send_email` binding or remove the sending route from the
+2. Remove the outbound provider secret or disable the sending route from the
    operator UI.
 3. Suspend queue consumers and AI draft jobs.
 4. Preserve D1/R2 data for incident review until retention/deletion policy says
@@ -318,11 +337,9 @@ Rollback must be possible without affecting the vault API:
 
 ## Open Questions
 
-- Whether the implementation belongs in `HonoWarden-website` or a separate
-  `HonoWarden-inquiry-inbox` repository.
-- Whether Cloudflare Access JWT validation should be enforced only at the route
-  level or also verified in the Worker for audit identity binding.
 - Exact retention periods for `security@` reports once real vulnerability
   reports are accepted.
-- Whether low-risk `hello@` acknowledgments may become autonomous after live
-  evidence, or whether every outbound message remains approval-gated.
+- Whether low-risk `hello@` acknowledgments should ever become autonomous.
+  Autonomous sending and autonomous Linear writes remain out of scope until a
+  separate policy decision, abuse review, and live evidence explicitly change
+  that boundary.

@@ -139,3 +139,11 @@ was `0` bytes. Staging was redeployed with an empty
   their fixed expiry. Fingerprint matching remains mandatory, and superseding
   older pending requests should be tracked separately rather than hidden in
   this evidence.
+
+### Superseded status update (HON-115)
+
+The original 2026-07-12 observation above remains historical evidence for that
+run. Current source atomically supersedes the previous pending request for the
+same owner/requester device pair and enforces at most one approvable request.
+A post-HON-115 official-client resend rerun is not recorded, so this update is a
+source-level correction rather than a new live-client claim.

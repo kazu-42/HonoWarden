@@ -1,6 +1,6 @@
 # Security Known Limitations
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-08-08.
 
 HonoWarden remains pre-alpha. These limitations are release and operations
 inputs, not minor documentation notes.
@@ -26,18 +26,23 @@ inputs, not minor documentation notes.
   browser-delivered vault UI, browser session boundary, or static app asset
   supply chain in the alpha scope.
 - Public registration is disabled.
-- Organizations and shared vaults are intentionally not implemented; ADR 0005
-  keeps them out of the alpha personal-vault product line unless membership,
-  ownership, role, collection-access, cross-user isolation, encrypted key
-  sharing, audit, migration, and rollback design is completed first.
+- Organizations are an active team-vault product line under ADR 0010, which
+  supersedes ADR 0005's non-goal for the merged slices. The organization
+  foundation provides authenticated create/get and confirmed-member
+  sync/profile projection. Owner-administered organization collection CRUD is
+  also implemented. Membership and role lifecycle, invitations, organization
+  cipher sharing and assignment, policy enforcement, complete cross-user
+  isolation evidence, organization audit coverage, and broad official-client
+  compatibility remain incomplete.
 - Organization policy management and enforcement are intentionally not
   implemented; ADR 0006 keeps policy metadata reads empty for personal vaults
   until policy schema, enforcement points, audit, rollback, and compatibility
   fixtures are designed.
-- Collection mutation and assignment are intentionally not implemented; ADR
-  0007 keeps collection metadata read-only and empty for personal vaults until
-  ownership, membership, assignment, audit, migration, rollback, and
-  compatibility fixtures are designed.
+- ADR 0010 supersedes ADR 0007's empty collection boundary for confirmed-member
+  organization reads and owner-administered organization collection CRUD.
+  Non-owner membership selection, organization cipher assignment, collection
+  audit events, and broad official-client compatibility remain unimplemented or
+  unverified.
 - Premium-gated surfaces outside TOTP and cipher-scoped attachments are
   intentionally unavailable under ADR 0009. Emergency Access requires ADR
   0004's grantee identity, delayed access, cancellation, notification,
@@ -58,12 +63,15 @@ inputs, not minor documentation notes.
   global error handler after clearing loading state; returning `404` instead
   would activate a misleading cached attachment URL fallback.
 - Cipher-scoped attachment upload, download, delete, and sync metadata are
-  implemented for opaque client-encrypted payloads, but no live official-client
-  attachment run has been captured yet.
+  implemented for opaque client-encrypted payloads. HON-124 records a synthetic
+  staging allocation, upload, download, and delete run with official Desktop
+  `2026.6.1` plus clean teardown. That narrow issue-local evidence does not
+  promote the Desktop matrix row or prove browser, mobile, production, or broad
+  regression behavior.
 - User-triggered server-side export is implemented at
   `POST /api/accounts/export` behind recent password authentication, but no
   live official-client export run has been captured yet.
-- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented. Login-with-device request, approval, owner notification, anonymous requester notification, and one-time token exchange are live-tested with synthetic data in staging. Production remains disabled, the current official extension relies on response notification rather than automatic timed polling, and repeated resend attempts can leave older pending requests visible until fixed expiry.
+- read-only device list endpoints (`GET /api/devices`, `GET /api/devices/identifier/:identifier`), anonymous preflight (`GET /api/devices/knowndevice`), device metadata mutation, device encrypted-key update routes, and bulk trusted-device rotation (`POST /api/devices/update-trust`) are implemented. Login-with-device request, approval, owner notification, anonymous requester notification, and one-time token exchange are live-tested with synthetic data in staging. Repeated resend atomically supersedes the previous owner/device pending request, and a partial unique index prevents two approvable requests. Production remains disabled, and the current official extension still relies on response notification rather than automatic timed polling.
 - account disable/enable operator CLI is dry-run-first, but no admin UI or live
   production lifecycle evidence is recorded yet.
 - current-password verification and existing master-password change are covered
@@ -107,10 +115,16 @@ inputs, not minor documentation notes.
   True replacement, client data rewrap, V2 signature keys, signed public keys,
   security state, TDE, and Key Connector remain unsupported pending HON-206 or
   later reviewed work.
-- AI inquiry inbox architecture is documented and metadata-only inbound Worker
-  ingestion is implemented, but the mailbox UI, email body or attachment
-  storage, AI triage, approved outbound replies, and Linear issue creation
-  automation are not implemented yet.
+- The dedicated
+  [`HonoWarden-inquiry-inbox`](https://github.com/kazu-42/HonoWarden-inquiry-inbox)
+  service implements metadata-only inbound ingestion, redaction-first AI
+  triage, human-reviewed drafts, duplicate-safe Linear issue creation, an
+  Access-protected operator queue/API, and approval-gated outbound delivery.
+  HON-99 records one human-approved staging reply with exactly-once state/audit
+  readback, while HON-129 records Resend staging/production deployment and a
+  direct provider `Sent -> Delivered` result. Raw MIME and attachments remain
+  unretained, autonomous send/Linear writes remain disabled, and synthetic
+  evidence does not prove handling of a real vulnerability report.
 
 ## Credential Closeout Boundary
 
@@ -140,9 +154,14 @@ staging evidence, and are not production evidence.
 ## Security Control Gaps
 
 - Required credential-generation events are persisted atomically in D1, and
-  optional route events can be persisted when audit logging is enabled. Event
-  coverage and retention operations are still incomplete across the full API.
-- Audit event coverage does not include every vault CRUD route.
+  optional route events can be persisted in D1 `audit_events` when audit logging
+  is enabled. Persistence fails loudly and bounded 365-day retention is
+  implemented, but every tracked environment remains default-off until an
+  approved target enablement and readback.
+- Secret-safe audit coverage includes personal folder, cipher, and attachment
+  mutations. Organization creation and collection mutations are not yet audited;
+  the audit event and target contracts do not currently include organization or
+  collection events.
 - Operator backup/restore evidence now includes a scheduled GitHub Actions
   workflow, remote D1/R2 backup evidence, and a local fresh-target restore
   drill with a synthetic R2 object.
@@ -183,8 +202,8 @@ staging evidence, and are not production evidence.
 - Production usage remains blocked by pre-alpha safety limits, unsupported
   surfaces, and lack of real-data dogfood evidence.
 - D1 audit-event persistence has a 365-day retention policy, but staging and
-  production audit logging remain disabled by default until `0007` is migrated
-  and operator access is explicitly approved.
+  production audit logging remain disabled by default until operator access and
+  target enablement are explicitly approved and read back.
 - External Worker runtime logs now ship to a dedicated Cloudflare R2 Logpush
   sink with operator-only access, but downstream SIEM/vendor alerting and
   automated retention deletion are still operator-run rather than productized.
@@ -192,7 +211,9 @@ staging evidence, and are not production evidence.
   encrypted GitHub artifact policy and a 35-day operator archive target, but
   long-term archive storage is still operator-owned rather than automated in
   the repository.
-- `security@honowarden.com` inbound routing and public metadata are
-  smoke-tested, and metadata-only inquiry inbox retention/redaction tables
-  exist. Real vulnerability-report handling still needs mailbox UI, triage,
-  and outbound reply controls.
+- `security@honowarden.com` inbound routing and public metadata are smoke-tested.
+  The dedicated inquiry service has a deployed operator queue, redaction-first
+  triage, approval-gated reply, and duplicate-safe Linear workflow with
+  HON-99/HON-129 synthetic delivery evidence. Real vulnerability-report
+  handling is not externally assessed, and raw body or attachment retention
+  remains disabled pending a separately approved retention and access design.

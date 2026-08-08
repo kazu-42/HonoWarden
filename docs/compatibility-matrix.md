@@ -131,12 +131,14 @@ embedded vault UI. Adding a Web Vault row requires a new ADR, browser security
 review, CSP/static-asset provenance rules, deployment and rollback boundaries,
 and live evidence.
 
-There is intentionally no Organizations or shared vault row. HonoWarden's alpha
-compatibility target is the personal-vault protocol surface. Shared vault
-support would require [ADR 0005](adr/0005-organizations-shared-vault-scope.md)'s
-membership, ownership, role, collection-access, cross-user isolation, encrypted
-key sharing, audit, migration, rollback, and compatibility fixture gates before
-compatibility can be claimed.
+There is not yet a broad Organizations or shared vault verification row.
+[ADR 0010](adr/0010-organizations-team-vault-product-line.md)'s organization foundation and
+owner-administered organization collection CRUD are merged source capabilities,
+but they advance through slice-specific evidence rather than promoting an
+entire client row. Membership, ownership transfer, role administration,
+organization cipher sharing and assignment, policy enforcement, complete
+cross-user isolation evidence, audit, migration/rollback, and official-client
+verification remain required before broad compatibility can be claimed.
 
 Policy metadata remains fixture-covered as authenticated empty list responses
 for personal vaults. Policy mutation and organization policy enforcement are
@@ -144,11 +146,11 @@ not compatibility claims; [ADR 0006](adr/0006-policy-management-scope.md)
 requires policy schema, enforcement points, default behavior, audit, rollback,
 and compatibility fixture design before support can be claimed.
 
-Collection metadata remains fixture-covered as authenticated empty read-only
-responses for personal vaults. Collection mutation and cipher assignment are not
-compatibility claims; [ADR 0007](adr/0007-collection-mutation-scope.md) requires
-ownership, membership, assignment, audit, migration, rollback, and compatibility
-fixture design before support can be claimed.
+Organization collection reads and owner-administered organization collection
+CRUD are route-tested source capabilities under ADR 0010. They do not establish
+an independent matrix row or organization cipher compatibility. Membership
+selection beyond the confirmed owner, cipher assignment, audit, and live
+official-client evidence remain outside the current claim.
 
 There is intentionally no Send or public file-sharing row. Cipher-scoped
 attachments are authenticated owner-scoped vault operations; public sharing
@@ -162,8 +164,10 @@ cancellation, notification, cryptographic handoff, abuse-control, audit,
 rollback, and incident-response design before compatibility can be claimed.
 
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
-Live official-client attachment upload, download, and delete evidence is still
-not recorded for any tracked client surface.
+HON-124 records an issue-local official Desktop `2026.6.1` staging allocation,
+upload, download, and delete lifecycle with cleanup. That evidence does not
+promote the Desktop matrix row or prove browser, mobile, production, or broad
+regression behavior.
 
 ## Verification Levels
 

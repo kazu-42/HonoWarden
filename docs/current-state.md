@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-28
+Last updated: 2026-08-08
 
 ## Week 1 Status
 
@@ -2403,26 +2403,24 @@ Implemented:
 - rollback rehearsal health checks passed for staging and production
   `/health`, `/healthz`, `/health/db`, `/api/config`, and synthetic prelogin
   denial, with decision `continue`
-- AI-driven inquiry inbox architecture is documented in
-  `docs/operations/ai-inquiry-inbox.md`, including trust boundaries,
-  Cloudflare Email Routing and Email Service responsibilities, D1/R2/Durable
-  Object state boundaries, human approval rules, retention/redaction controls,
-  and follow-up implementation split for `HON-24` through `HON-27`
-- HON-24 metadata-only inquiry inbox ingestion implemented with Worker
-  `email()` handler, `migrations/0011_inquiry_inbox.sql`, allowed mailbox
-  enforcement, header/sender hashing, retention deadlines, optional verified
-  forwarding through `HONOWARDEN_INQUIRY_FORWARD_TO`, and attachment rejection
-  while storage is disabled
-- Inquiry metadata is persisted before optional forwarding. If initial storage
-  fails, the Email Worker fails before forwarding; if a post-forward status
-  update fails, it logs a structured error and returns success to avoid
-  duplicate forwarding on Cloudflare retry.
+- active public inquiry routing now targets the dedicated
+  `HonoWarden-inquiry-inbox` service, which has separate Cloudflare bindings,
+  secrets, storage, deployment, and Access boundaries from the vault API
+- the dedicated service implements metadata-only ingestion, an operator queue,
+  redaction-first AI triage, human-reviewed drafts, duplicate-safe Linear
+  creation, and approval-gated outbound delivery
+- HON-99 records one human-approved staging reply with exactly-once state/audit
+  readback; HON-129 records Resend staging/production deployment and a direct
+  provider `Sent -> Delivered` result
+- this vault repository retains its legacy metadata-only `email()` handler,
+  `INQUIRY_DB` binding, and migration chain as an explicit rollback surface; no
+  active public Email Routing rule targets it
 
 Not implemented:
 
 - custom API domain routing for the alpha API Worker
-- inquiry mailbox UI, body or attachment storage, AI triage, approved outbound
-  replies, and Linear issue creation automation
+- raw MIME or attachment retention, autonomous outbound replies, autonomous
+  Linear writes, or externally assessed real vulnerability-report handling
 - actual traffic-changing rollback execution, because the current live services
   passed health checks and no incident required rollback
 - production secret writes, public registration enablement, or real vault-data
@@ -2577,10 +2575,14 @@ Not implemented or not yet verified:
 - Desktop item create/update/delete and logout/login persistence lifecycle
 - automatic timed polling in the current official extension when anonymous
   response notification delivery is unavailable
-- superseding older pending requests created by repeated resend attempts
 - production login-with-device enablement or any real-vault-data run
 
-## Organizations Slice 1 Foundation
+Source now atomically supersedes the previous pending request for the same
+owner/requester device pair and prevents two approvable requests. The original
+2026-07-12 official-client evidence remains historical; a post-HON-115
+official-client resend rerun is not recorded.
+
+## Organizations Foundation And Collection CRUD
 
 Implemented:
 
@@ -2598,10 +2600,16 @@ Implemented:
   join predicates
 - a reusable single-cipher access resolver for personal ownership and confirmed
   managed-collection organization access
+- confirmed-member organization collection list/read routes
+- owner-administered organization collection CRUD, including create, update,
+  single/bulk delete, details, and owner-only access-selection reads
+- existence-obscuring authorization failures and same-organization repository
+  predicates for collection reads and mutations
 
-Not implemented in this slice:
+Not implemented or not yet verified:
 
 - organization membership mutation, invitations, or role administration
-- organization collection CRUD
 - organization cipher sharing or collection assignment APIs
 - organization policy mutation or enforcement
+- organization creation and collection mutation audit events
+- broad official-client organization or shared-vault compatibility

@@ -283,7 +283,7 @@ describe('HON-223 review closeout packet', () => {
   it('publishes the parent closeout in current-state without inflating evidence', () => {
     const currentState = readText('docs/current-state.md')
 
-    expect(currentState).toMatch(/^Last updated: 2026-07-28$/m)
+    expect(currentState).toMatch(/^Last updated: 2026-08-08$/m)
     expect(currentState).toContain(
       '## 2026-07-28 HON-222 Evidence Parent Closeout',
     )
