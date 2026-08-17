@@ -80,7 +80,7 @@
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "@microsoft/signalr-protocol-msgpack": "^10.0.0",
-    "hono": "~4.12.34"
+    "hono": "~4.13.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
