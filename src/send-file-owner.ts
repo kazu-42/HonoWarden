@@ -1,5 +1,6 @@
 import {
   allocateSendFileObject,
+  createSendDownloadTicketMaterial,
   fileSendUploadDeadlineAt,
   parseFileSendOwnerRequest,
 } from './domain/send-file'
@@ -12,7 +13,9 @@ import {
 } from './domain/text-send'
 import {
   completeSendFileUpload,
+  consumeFileSendAccess,
   createPendingFileSend,
+  createSendDownloadTicket,
   type SendFileRow,
 } from './repositories/send-file-repository'
 
@@ -220,4 +223,60 @@ export async function completeOwnerFileSendUpload(
     objectEtag: input.objectEtag,
     now: input.now,
   })
+}
+
+const downloadTicketLifetimeMilliseconds = 60_000
+const downloadTicketMaxRequests = 3
+
+type IssueOwnerFileDownloadTicketInput = {
+  capabilityVerifier: string
+  accessGeneration: number
+  sendId: string
+  fileId: string
+  objectGeneration: number
+  remainingBytes: number
+  lookupKeyId: string
+  lookupSecret: string
+  now: string
+  randomBytes?: (bytes: Uint8Array) => Uint8Array
+}
+
+export async function issueOwnerFileDownloadTicket(
+  database: D1Database,
+  input: IssueOwnerFileDownloadTicketInput,
+): Promise<
+  | { status: 'issued'; ticketId: string; url: string }
+  | { status: 'unavailable' }
+> {
+  const consumed = await consumeFileSendAccess(database, {
+    capabilityVerifier: input.capabilityVerifier,
+    accessGeneration: input.accessGeneration,
+    now: input.now,
+  })
+  if (consumed.status !== 'consumed') return { status: 'unavailable' }
+
+  const material = await createSendDownloadTicketMaterial({
+    keyId: input.lookupKeyId,
+    lookupSecret: input.lookupSecret,
+    ...(input.randomBytes ? { randomBytes: input.randomBytes } : {}),
+  })
+  const expiresAt = new Date(
+    Date.parse(input.now) + downloadTicketLifetimeMilliseconds,
+  ).toISOString()
+  await createSendDownloadTicket(database, {
+    ticketVerifier: material.ticketVerifier,
+    sendId: input.sendId,
+    fileId: input.fileId,
+    accessGeneration: input.accessGeneration,
+    objectGeneration: input.objectGeneration,
+    expiresAt,
+    maxRequests: downloadTicketMaxRequests,
+    remainingBytes: input.remainingBytes,
+    consumedRequests: 0,
+  })
+  return {
+    status: 'issued',
+    ticketId: material.ticketId,
+    url: `/api/sends/access/file-content/${material.ticketId}`,
+  }
 }
