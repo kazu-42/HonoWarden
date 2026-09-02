@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import {
   cleanupAbandonedSendFile,
   completeSendFileUpload,
+  consumeFileSendAccess,
   consumeSendDownloadTicket,
   createPendingSendFile,
   createSendDownloadTicket,
+  previewFileSendAccess,
   revokeSendFile,
 } from '../../src/repositories/send-file-repository'
 
@@ -267,5 +269,41 @@ describe('file Send repository', () => {
       'user-1',
       1,
     ])
+  })
+
+  it('previews file Send metadata without incrementing access_count', async () => {
+    const preview = { id: 'send-1', accessCount: 2, type: 1 }
+    const database = new RecordingDatabase(preview)
+    const result = await previewFileSendAccess(database as never, {
+      capabilityVerifier: 'ab'.repeat(32),
+      accessGeneration: 2,
+      now: '2026-09-02T06:40:30.000Z',
+    })
+
+    expect(result).toEqual({ status: 'ok', send: preview })
+    expect(database.calls[0]?.query).toContain('SELECT')
+    expect(database.calls[0]?.query).not.toContain(
+      'access_count = access_count + 1',
+    )
+    expect(database.calls[0]?.query).toContain('type = 1')
+  })
+
+  it('consumes file Send access only when issuing a download, not on preview', async () => {
+    const consumed = { id: 'send-1', accessCount: 3, type: 1 }
+    const database = new RecordingDatabase(consumed)
+    const result = await consumeFileSendAccess(database as never, {
+      capabilityVerifier: 'ab'.repeat(32),
+      accessGeneration: 2,
+      now: '2026-09-02T06:40:30.000Z',
+    })
+
+    expect(result).toEqual({ status: 'consumed', send: consumed })
+    expect(database.calls[0]?.query).toContain(
+      'access_count = access_count + 1',
+    )
+    expect(database.calls[0]?.query).toContain('type = 1')
+    expect(database.calls[0]?.query).toContain(
+      'access_count < max_access_count',
+    )
   })
 })

@@ -518,3 +518,80 @@ export async function revokeSendFile(
 
   return file ? { status: 'revoked', file } : { status: 'unchanged' }
 }
+
+type FileSendAccessInput = {
+  capabilityVerifier: string
+  accessGeneration: number
+  now: string
+}
+
+export async function previewFileSendAccess(
+  database: SendFileDatabase,
+  input: FileSendAccessInput,
+): Promise<{ status: 'ok'; send: FileSendRow } | { status: 'unavailable' }> {
+  const send = await database
+    .prepare(
+      `
+        SELECT ${fileSendProjection}
+        FROM sends
+        WHERE capability_verifier = ?
+          AND access_generation = ?
+          AND type = 1
+          AND lifecycle_state = 'active'
+          AND disabled = 0
+          AND deleted_at IS NULL
+          AND quarantined_at IS NULL
+          AND deletion_at > ?
+          AND (expiration_at IS NULL OR expiration_at > ?)
+      `,
+    )
+    .bind(
+      input.capabilityVerifier,
+      input.accessGeneration,
+      input.now,
+      input.now,
+    )
+    .first<FileSendRow>()
+
+  return send ? { status: 'ok', send } : { status: 'unavailable' }
+}
+
+export async function consumeFileSendAccess(
+  database: SendFileDatabase,
+  input: FileSendAccessInput,
+): Promise<
+  { status: 'consumed'; send: FileSendRow } | { status: 'unavailable' }
+> {
+  const send = await database
+    .prepare(
+      `
+        UPDATE sends
+        SET
+          access_count = access_count + 1,
+          last_accessed_at = ?,
+          updated_at = ?
+        WHERE capability_verifier = ?
+          AND access_generation = ?
+          AND type = 1
+          AND lifecycle_state = 'active'
+          AND disabled = 0
+          AND deleted_at IS NULL
+          AND quarantined_at IS NULL
+          AND deletion_at > ?
+          AND (expiration_at IS NULL OR expiration_at > ?)
+          AND (max_access_count IS NULL OR access_count < max_access_count)
+        RETURNING ${fileSendProjection}
+      `,
+    )
+    .bind(
+      input.now,
+      input.now,
+      input.capabilityVerifier,
+      input.accessGeneration,
+      input.now,
+      input.now,
+    )
+    .first<FileSendRow>()
+
+  return send ? { status: 'consumed', send } : { status: 'unavailable' }
+}
