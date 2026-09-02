@@ -31,7 +31,8 @@ Out of scope for the initial product:
   ADR 0010 organization foundation and collection CRUD slices
 - Send and public file-sharing runtime activation; ADR 0011 is an accepted
   future design contract, not implemented capability
-- Emergency Access
+- Emergency Access runtime activation; ADR 0013 is an accepted future design
+  contract, not implemented capability
 - browser-side cryptography review of third-party clients
 - Cloudflare account hardening outside repository-controlled configuration
 - production login-with-device activation; source and synthetic staging flows
@@ -142,10 +143,13 @@ Explicitly bounded sharing and organization surfaces:
   implementation remains prohibited until its text, file, public-control,
   abuse, cleanup, activation, rollback, and live-evidence gates are verified.
 - `/api/emergency-access` and `/api/emergency-access/*` return typed
-  unsupported-feature errors. Emergency Access must not be implemented until ADR
-  0004's identity, delay, cancellation, notification, cryptographic handoff,
-  abuse, audit, rollback, and incident-response controls are designed and
-  verified.
+  unsupported-feature errors. ADR 0004 required a replacement design before
+  delegated recovery could be reconsidered. ADR 0013 supplies that design and
+  the dedicated `emergency-access-threat-model.md` /
+  `emergency-access-wire-contract.md`, but runtime implementation remains
+  prohibited until its identity, wait/approval, cryptographic, abuse, audit,
+  activation, rollback, and live-evidence gates are verified. Routes remain
+  explicit `501`.
 
 ## STRIDE Summary
 
@@ -216,10 +220,12 @@ Explicitly bounded sharing and organization surfaces:
     implementation and evidence.
 
 11. Delegated recovery privilege escalation.
-    Current mitigation: Emergency Access routes remain unsupported. ADR 0004
-    requires grantee identity, invitation, delay, cancellation, timeout,
-    notification, cryptographic handoff, audit, abuse, rollback, and incident
-    response design before implementation.
+    Current mitigation: Emergency Access routes remain unsupported `501`
+    responses. ADR 0004 required the replacement design now accepted as
+    ADR 0013; the dedicated Emergency Access threat model defines identity
+    proof, confirmation, wait/approval, key generation, notification
+    non-authority, audit, abuse, activation, and rollback gates that still
+    require implementation and evidence.
 
 12. Login-with-device confused-deputy or replay attack.
     Current mitigation: ADR 0008's request, approval, notification, and one-time

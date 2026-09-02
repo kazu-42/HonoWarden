@@ -111,8 +111,12 @@ Send routes and `send_access` still return `501`, and config remains
 HonoWarden does not expose Emergency Access in the alpha release. Delegated
 recovery would add grantee identity proofing, delayed access, cancellation,
 notification delivery, cryptographic handoff, abuse controls, and transition
-auditing requirements. [ADR 0004](adr/0004-emergency-access-scope.md) defines
-the minimum design gates before any support claim.
+auditing requirements. [ADR 0004](adr/0004-emergency-access-scope.md) defined
+those minimum design gates. [ADR 0013](adr/0013-emergency-access-product-line.md)
+now supplies the accepted future product line, dedicated threat model, and
+wire/state contract. That design decision is not source capability or runtime
+support: all Emergency Access routes still return `501` until the later slices
+pass environment-specific gates.
 
 ## Explicit Unsupported Responses
 

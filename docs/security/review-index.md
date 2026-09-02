@@ -7,6 +7,8 @@ Use these documents together when reviewing alpha readiness:
 - [Threat Model](threat-model.md)
 - [Send And Public-Sharing Threat Model](send-public-sharing-threat-model.md)
 - [Send Wire Contract](../protocol/send-wire-contract.md)
+- [Emergency Access Threat Model](emergency-access-threat-model.md)
+- [Emergency Access Wire Contract](../protocol/emergency-access-wire-contract.md)
 - [Data Flow](data-flow.md)
 - [Authentication State Machine](auth-state-machine.md)
 - [Secrets Inventory](secrets-inventory.md)
@@ -58,6 +60,9 @@ Packet limitations:
 - Do not treat ADR 0011 or its document tests as Send source capability, runtime
   activation, live compatibility evidence, or permission to remove the current
   `501` guards.
+- Do not treat ADR 0013 or its document tests as Emergency Access source
+  capability, runtime activation, live compatibility evidence, or permission to
+  remove the current `501` guards.
 - Do not enable audit logs in production until log retention and access are
   explicitly approved.
 - Do not use real secrets or real personal vault data during alpha dogfood.

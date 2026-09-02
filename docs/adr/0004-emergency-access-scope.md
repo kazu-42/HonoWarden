@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0013 for the future Emergency Access product line. The
+alpha/runtime exclusion remains active until ADR 0013's activation gates pass.
 
 ## Context
 
@@ -47,3 +48,12 @@ packet or ADR that defines:
   above is implemented and verified.
 - The compatibility matrix must not claim Emergency Access support in the alpha
   release.
+
+## Supersession
+
+ADR 0013 supplies the replacement product decision, dedicated threat model,
+wire/state contract, sliced implementation order, and activation/rollback gates
+required above. This satisfies the design-first prerequisite; it does not
+itself implement or activate Emergency Access. ADR 0009's `501` guards remain
+the current runtime contract until the later slices produce environment-specific
+evidence.
