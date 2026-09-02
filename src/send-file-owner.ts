@@ -10,7 +10,11 @@ import {
   createTextSendPasswordVerifier,
   resolveTextSendEnvelopeSecret,
 } from './domain/text-send'
-import { createPendingFileSend } from './repositories/send-file-repository'
+import {
+  completeSendFileUpload,
+  createPendingFileSend,
+  type SendFileRow,
+} from './repositories/send-file-repository'
 
 export type FileSendOwnerResponse = {
   Id: string
@@ -181,4 +185,39 @@ export async function createOwnerFileSend(
       Object: 'send',
     },
   }
+}
+
+type CompleteOwnerFileSendUploadInput = {
+  id: string
+  sendId: string
+  ownerUserId: string
+  objectGeneration: number
+  objectKey: string
+  observedSize: number
+  expectedSize: number
+  objectEtag: string
+  now: string
+}
+
+export async function completeOwnerFileSendUpload(
+  database: D1Database,
+  input: CompleteOwnerFileSendUploadInput,
+): Promise<
+  | { status: 'activated'; file: SendFileRow }
+  | { status: 'size_mismatch' }
+  | { status: 'unchanged' }
+> {
+  if (input.observedSize !== input.expectedSize) {
+    return { status: 'size_mismatch' }
+  }
+  return completeSendFileUpload(database, {
+    id: input.id,
+    sendId: input.sendId,
+    ownerUserId: input.ownerUserId,
+    objectGeneration: input.objectGeneration,
+    objectKey: input.objectKey,
+    observedSize: input.observedSize,
+    objectEtag: input.objectEtag,
+    now: input.now,
+  })
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { createOwnerFileSend } from '../src/send-file-owner'
+import {
+  completeOwnerFileSendUpload,
+  createOwnerFileSend,
+} from '../src/send-file-owner'
 
 type RecordedStatement = { query: string; bindings: unknown[] }
 
@@ -133,5 +136,94 @@ describe('file Send owner application service', () => {
 
     expect(result).toEqual({ status: 'invalid_request' })
     expect(database.batchCalls).toEqual([])
+  })
+})
+
+class MutationDatabase {
+  readonly calls: RecordedStatement[] = []
+
+  constructor(
+    private readonly firstRow: unknown | null,
+    private readonly changes = 1,
+  ) {}
+
+  prepare(query: string): D1PreparedStatement {
+    const record = { query, bindings: [] as unknown[] }
+    const statement = {
+      bind: (...bindings: unknown[]) => {
+        record.bindings = bindings
+        return statement as unknown as D1PreparedStatement
+      },
+      first: async () => {
+        this.calls.push(record)
+        return this.firstRow
+      },
+    }
+    return statement as unknown as D1PreparedStatement
+  }
+}
+
+describe('file Send upload completion', () => {
+  it('activates only the matching pending generation after size verification', async () => {
+    const active = {
+      id: 'file-1',
+      sendId: 'send-1',
+      ownerUserId: 'user-1',
+      objectGeneration: 1,
+      objectKey: 'sends/send-1/files/file-1/g1/aa',
+      encryptedFileName: 'opaque-file-name',
+      expectedSize: 4096,
+      observedSize: 4096,
+      objectEtag: 'etag-1',
+      lifecycleState: 'active',
+      uploadDeadlineAt: '2026-09-02T07:00:00.000Z',
+      validatedAt: now,
+      cleanupLeaseUntil: null,
+      cleanupAttempts: 0,
+      lastFailureClass: null,
+      deletedAt: null,
+    }
+    const database = new MutationDatabase(active)
+    const result = await completeOwnerFileSendUpload(
+      database as unknown as D1Database,
+      {
+        id: 'file-1',
+        sendId: 'send-1',
+        ownerUserId: 'user-1',
+        objectGeneration: 1,
+        objectKey: 'sends/send-1/files/file-1/g1/aa',
+        observedSize: 4096,
+        expectedSize: 4096,
+        objectEtag: 'etag-1',
+        now,
+      },
+    )
+
+    expect(result).toEqual({ status: 'activated', file: active })
+    expect(database.calls[0]?.query).toContain("lifecycle_state = 'active'")
+    expect(database.calls[0]?.query).toContain(
+      "lifecycle_state = 'pending_upload'",
+    )
+  })
+
+  it('does not activate when the observed size does not match expected size', async () => {
+    const database = new MutationDatabase(null, 0)
+    const result = await completeOwnerFileSendUpload(
+      database as unknown as D1Database,
+      {
+        id: 'file-1',
+        sendId: 'send-1',
+        ownerUserId: 'user-1',
+        objectGeneration: 1,
+        objectKey: 'sends/send-1/files/file-1/g1/aa',
+        observedSize: 1024,
+        expectedSize: 4096,
+        objectEtag: 'etag-1',
+        now,
+      },
+    )
+
+    expect(result).toEqual({ status: 'size_mismatch' })
+    expect(database.calls).toEqual([])
   })
 })
