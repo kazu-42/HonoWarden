@@ -6,6 +6,7 @@ export type SendFileRow = {
   ownerUserId: string
   objectGeneration: number
   objectKey: string
+  encryptedFileName: string
   expectedSize: number
   observedSize: number | null
   objectEtag: string | null
@@ -76,6 +77,7 @@ const sendFileProjection = `
   owner_user_id AS ownerUserId,
   object_generation AS objectGeneration,
   object_key AS objectKey,
+  encrypted_file_name AS encryptedFileName,
   expected_size AS expectedSize,
   observed_size AS observedSize,
   object_etag AS objectEtag,
@@ -113,11 +115,12 @@ export async function createPendingSendFile(
           owner_user_id,
           object_generation,
           object_key,
+          encrypted_file_name,
           expected_size,
           lifecycle_state,
           upload_deadline_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING ${sendFileProjection}
       `,
     )
@@ -127,6 +130,7 @@ export async function createPendingSendFile(
       input.ownerUserId,
       input.objectGeneration,
       input.objectKey,
+      input.encryptedFileName,
       input.expectedSize,
       input.lifecycleState,
       input.uploadDeadlineAt,

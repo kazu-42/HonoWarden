@@ -93,8 +93,8 @@ pnpm backup:export -- \
   `sends` table and both `idx_sends_*` indexes before any separately approved
   rollout.
 - `0019_send_files.sql` is an additive reader-first migration for encrypted
-  file Send metadata, generation-bound private object keys, and download-ticket
-  verifiers. Apply it before deploying any Worker that imports the file Send
+  file Send metadata, encrypted file names, generation-bound private object
+  keys, and download-ticket verifiers. Apply it before deploying any Worker that imports the file Send
   repository. Keep `send-enabled: false` and the explicit `/api/sends*` `501`
   guards. Do not install Send keyrings, expose R2, or activate public download
   during this source-only slice. Verify `/health/db` plus the `send_files` and

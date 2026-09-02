@@ -6,6 +6,7 @@ CREATE TABLE send_files (
   owner_user_id TEXT NOT NULL,
   object_generation INTEGER NOT NULL CHECK (object_generation >= 1),
   object_key TEXT NOT NULL UNIQUE,
+  encrypted_file_name TEXT NOT NULL,
   expected_size INTEGER NOT NULL CHECK (expected_size >= 1),
   observed_size INTEGER CHECK (
     observed_size IS NULL OR observed_size >= 1

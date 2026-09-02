@@ -16,6 +16,7 @@ describe('file Send migration', () => {
     expect(sql).toContain('owner_user_id TEXT NOT NULL')
     expect(sql).toContain('object_generation INTEGER NOT NULL')
     expect(sql).toContain('object_key TEXT NOT NULL UNIQUE')
+    expect(sql).toContain('encrypted_file_name TEXT NOT NULL')
     expect(sql).toContain('expected_size INTEGER NOT NULL')
     expect(sql).toContain('observed_size INTEGER')
     expect(sql).toContain(
