@@ -31,6 +31,7 @@ changes and update this document in the same change.
 | `migrations/0016_user_key_rotation_wrapper_history.sql` | `5c99ca3973711d0031ed2b48bed77f3191ec2773af9ae570b1e48f5dfae209ac` |
 | `migrations/0017_account_lifecycle.sql`                 | `5ed91a78fea52d661b07bdebbc4d74654b4bab0a84010829874202bd6bf219dc` |
 | `migrations/0018_text_sends.sql`                        | `c4cc6047f2e2bebcc9d15ff034be340785a06e6c0d1fe39560a53cf0d32bf2de` |
+| `migrations/0019_send_files.sql`                        | `e79232d46f89557f3c1d676695bf52275f3eba580da83e923f7f5deb577affe2` |
 
 ## Required Tables At Freeze
 
