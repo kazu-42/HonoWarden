@@ -113,6 +113,14 @@ describe('aggregate official-client credential lifecycle', () => {
       'node scripts/honowarden-credential-restore-lifecycle.mjs',
     )
     expect(packageJson.engines.node).toBe('>=22.13.0')
+    expect(scriptSource).toContain("const databaseName = 'honowarden-local'")
+    expect(scriptSource).toContain(
+      "const r2BucketName = 'honowarden-local-vault-objects'",
+    )
+    expect(scriptSource).not.toContain("const databaseName = 'honowarden'")
+    expect(scriptSource).not.toContain(
+      "const r2BucketName = 'honowarden-vault-objects'",
+    )
     expect(scriptSource).toContain('generateOfficialCredentialFixture')
     expect(scriptSource).toContain('runOfficialCli')
     expect(scriptSource).toContain('readGenerationSnapshot')
@@ -132,6 +140,14 @@ describe('aggregate official-client credential lifecycle', () => {
       'assertCredentialLifecycleCompletionAttestation',
     )
     expect(restoreSource).toContain('--expected-generation-manifest-sha256')
+    expect(restoreSource).toContain("const databaseName = 'honowarden-local'")
+    expect(restoreSource).toContain(
+      "const bucketName = 'honowarden-local-vault-objects'",
+    )
+    expect(restoreSource).not.toContain("const databaseName = 'honowarden'")
+    expect(restoreSource).not.toContain(
+      "const bucketName = 'honowarden-vault-objects'",
+    )
   })
 
   it('plans a verified fresh-target restore without secret output', async () => {

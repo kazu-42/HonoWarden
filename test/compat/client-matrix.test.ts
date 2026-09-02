@@ -1,14 +1,43 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import {
+  inspectClientMatrix,
+  isCanonicalUtcInstant,
+  isRegularRepositoryEvidenceFile,
+  isSafeClientEvidencePath,
+} from '../../scripts/honowarden-client-matrix-policy.mjs'
+
 type ClientMatrix = {
   schemaVersion: number
+  releaseTarget?: string
+  snapshotKind?: string
+  sourceTag?: string
+  sourceCommit?: string
+  sourceMatrixPath?: string
+  sourceMatrixSha256?: string
+  evidenceManifest?: Array<{
+    sourcePath: string
+    snapshotPath: string
+    bytes: number
+    sha256: string
+  }>
   checkedAt: string
   sourceKind: string
-  metadataRefresh: {
+  metadataRefresh?: {
     cadenceDays: number
     requiredBeforeRelease: boolean
     staleAfterDays: number
@@ -52,6 +81,27 @@ type FixtureFlow = {
 
 const matrixPath = fileURLToPath(
   new URL('../../compat/client-matrix.json', import.meta.url).toString(),
+)
+const publishedAlphaMatrixPath = fileURLToPath(
+  new URL(
+    '../../compat/releases/v0.1.0-alpha-client-matrix.json',
+    import.meta.url,
+  ).toString(),
+)
+const publishedAlphaCliEvidencePath = fileURLToPath(
+  new URL(
+    '../../docs/release/snapshots/v0.1.0-alpha/live-client-evidence.md',
+    import.meta.url,
+  ).toString(),
+)
+const credentialEvidencePath = fileURLToPath(
+  new URL('../../compat/credential-evidence.json', import.meta.url).toString(),
+)
+const credentialCloseoutPacketPath = fileURLToPath(
+  new URL(
+    '../../compat/credential-closeout-packet.json',
+    import.meta.url,
+  ).toString(),
 )
 const fixtureFlowsPath = fileURLToPath(
   new URL('../../compat/fixture-flows.json', import.meta.url).toString(),
@@ -105,6 +155,29 @@ const requiredFlows = [
 ] as const
 
 describe('client compatibility matrix', () => {
+  it.each([
+    ['missing entries', {}],
+    ['non-array entries', { entries: {} }],
+    ['malformed entry', { entries: [{}] }],
+    [
+      'non-array known issues',
+      {
+        entries: [
+          {
+            surface: 'cli',
+            version: '2026.7.0',
+            verificationLevel: 'fixture_only',
+            knownIssues: 'none',
+          },
+        ],
+      },
+    ],
+  ])('rejects a structurally invalid matrix: %s', (_name, candidate) => {
+    expect(() => inspectClientMatrix(candidate)).toThrow(
+      'Client matrix structure is invalid',
+    )
+  })
+
   const matrix = readMatrix()
   const fixtureFlows = readFixtureFlows()
 
@@ -183,6 +256,421 @@ describe('client compatibility matrix', () => {
       for (const issue of entry.knownIssues) {
         expect(issue.trim().length).toBeGreaterThan(0)
       }
+    }
+  })
+
+  it('pins the 2026-08-16 official latest releases conservatively', () => {
+    expect(matrix.checkedAt).toMatch(/^2026-08-16T/)
+    expect(
+      Object.fromEntries(
+        matrix.entries.map((entry) => [
+          entry.surface,
+          {
+            version: entry.version,
+            build: entry.build,
+            releaseTag: entry.releaseTag,
+            releasePublishedAt: entry.releasePublishedAt,
+            verificationLevel: entry.verificationLevel,
+          },
+        ]),
+      ),
+    ).toEqual({
+      browser_extension: {
+        version: '2026.7.0',
+        build: undefined,
+        releaseTag: 'browser-v2026.7.0',
+        releasePublishedAt: '2026-07-23T16:49:59Z',
+        verificationLevel: 'fixture_only',
+      },
+      desktop: {
+        version: '2026.7.0',
+        build: undefined,
+        releaseTag: 'desktop-v2026.7.0',
+        releasePublishedAt: '2026-07-23T15:20:46Z',
+        verificationLevel: 'fixture_only',
+      },
+      mobile_android: {
+        version: '2026.7.1',
+        build: '21803',
+        releaseTag: 'v2026.7.1-bwpm',
+        releasePublishedAt: '2026-08-07T22:20:51Z',
+        verificationLevel: 'fixture_only',
+      },
+      mobile_ios: {
+        version: '2026.7.1',
+        build: '3432',
+        releaseTag: 'v2026.7.1-bwpm',
+        releasePublishedAt: '2026-08-07T22:12:38Z',
+        verificationLevel: 'fixture_only',
+      },
+      cli: {
+        version: '2026.7.0',
+        build: undefined,
+        releaseTag: 'cli-v2026.7.0',
+        releasePublishedAt: '2026-07-23T21:16:13Z',
+        verificationLevel: 'fixture_only',
+      },
+    })
+
+    for (const entry of matrix.entries) {
+      expect(entry.liveEvidence).toBeUndefined()
+    }
+  })
+
+  it('keeps tag-time and post-tag client evidence claims distinct', () => {
+    const issuesBySurface = Object.fromEntries(
+      matrix.entries.map((entry) => [
+        entry.surface,
+        entry.knownIssues.join('\n'),
+      ]),
+    )
+
+    for (const surface of ['browser_extension', 'desktop', 'mobile_android']) {
+      expect(issuesBySurface[surface]).toContain('post-tag')
+      expect(issuesBySurface[surface]).toContain(
+        'not part of the sealed published-alpha snapshot',
+      )
+      expect(issuesBySurface[surface]).not.toContain(
+        'remains in the published alpha snapshot',
+      )
+    }
+
+    expect(issuesBySurface.cli).toContain(
+      'sealed published-alpha snapshot contains CLI 2026.6.0 login, sync, and item lifecycle evidence only',
+    )
+    expect(issuesBySurface.cli).toContain(
+      'refresh and TOTP evidence is post-tag',
+    )
+  })
+
+  it('preserves the exact tag-time alpha client evidence as an immutable snapshot', () => {
+    const snapshot = readMatrix(publishedAlphaMatrixPath)
+    const snapshotSha256 = createHash('sha256')
+      .update(readFileSync(publishedAlphaMatrixPath))
+      .digest('hex')
+
+    expect(snapshot).toMatchObject({
+      schemaVersion: 1,
+      releaseTarget: 'v0.1.0-alpha',
+      snapshotKind: 'tag-time-client-evidence',
+      sourceTag: 'v0.1.0-alpha',
+      sourceCommit: 'e7a3c5ea9e51030143736bb0e7a36cb7a8babfce',
+      sourceMatrixPath: 'compat/client-matrix.json',
+      sourceMatrixSha256:
+        '8076ec9d4fd9179b9f0616f6f6b5489acacae291058ba95854e4591be56c3491',
+      checkedAt: '2026-07-06T11:35:37Z',
+      evidenceManifest: [
+        {
+          sourcePath: 'docs/release/live-client-evidence.md',
+          snapshotPath:
+            'docs/release/snapshots/v0.1.0-alpha/live-client-evidence.md',
+          bytes: 5231,
+          sha256:
+            '3b2bc4c0b76ec7789f4833f7eed35b9cb764c90d4e72a0726d01e847e16af1ca',
+        },
+      ],
+    })
+    expect(snapshotSha256).toBe(
+      '82ee5193499716331a7dfc46216f99f74569cb5bf89ec28548a4042daa7d9550',
+    )
+    expect(
+      createHash('sha256')
+        .update(readFileSync(publishedAlphaCliEvidencePath))
+        .digest('hex'),
+    ).toBe('3b2bc4c0b76ec7789f4833f7eed35b9cb764c90d4e72a0726d01e847e16af1ca')
+    expect(readFileSync(publishedAlphaCliEvidencePath)).toHaveLength(5231)
+    expect(
+      Object.fromEntries(
+        snapshot.entries.map((entry) => [
+          entry.surface,
+          {
+            version: entry.version,
+            build: entry.build,
+            releaseTag: entry.releaseTag,
+            verificationLevel: entry.verificationLevel,
+            evidenceVersion: entry.liveEvidence?.clientVersion,
+          },
+        ]),
+      ),
+    ).toEqual({
+      browser_extension: {
+        version: '2026.6.1',
+        build: undefined,
+        releaseTag: 'browser-v2026.6.1',
+        verificationLevel: 'fixture_only',
+        evidenceVersion: undefined,
+      },
+      desktop: {
+        version: '2026.6.1',
+        build: undefined,
+        releaseTag: 'desktop-v2026.6.1',
+        verificationLevel: 'fixture_only',
+        evidenceVersion: undefined,
+      },
+      mobile_android: {
+        version: '2026.6.0',
+        build: '21686',
+        releaseTag: 'v2026.6.0-bwpm',
+        verificationLevel: 'fixture_only',
+        evidenceVersion: undefined,
+      },
+      mobile_ios: {
+        version: '2026.6.0',
+        build: '3325',
+        releaseTag: 'v2026.6.0-bwpm',
+        verificationLevel: 'fixture_only',
+        evidenceVersion: undefined,
+      },
+      cli: {
+        version: '2026.6.0',
+        build: undefined,
+        releaseTag: 'cli-v2026.6.0',
+        verificationLevel: 'live_smoke',
+        evidenceVersion: '2026.6.0',
+      },
+    })
+  })
+
+  it('rejects version-mismatched evidence and evidence-free promotions', () => {
+    const snapshot = readMatrix(publishedAlphaMatrixPath)
+    const mismatchedEvidence = structuredClone(snapshot)
+    const mismatchedCli = mismatchedEvidence.entries.find(
+      (entry) => entry.surface === 'cli',
+    )
+    if (!mismatchedCli) {
+      throw new Error('CLI snapshot row is required')
+    }
+    mismatchedCli.version = '2026.7.0'
+
+    expect(
+      inspectClientMatrix(mismatchedEvidence, {
+        evidenceIsRegularFile: () => true,
+      }).promotedRowsWithoutEvidence,
+    ).toContain('cli')
+
+    const evidenceFreePromotion = structuredClone(matrix)
+    const currentCli = evidenceFreePromotion.entries.find(
+      (entry) => entry.surface === 'cli',
+    )
+    if (!currentCli) {
+      throw new Error('CLI current row is required')
+    }
+    currentCli.verificationLevel = 'live_smoke'
+
+    expect(
+      inspectClientMatrix(evidenceFreePromotion, {
+        evidenceIsRegularFile: () => true,
+      }).promotedRowsWithoutEvidence,
+    ).toContain('cli')
+
+    const staleEvidenceOnFixtureRow = structuredClone(matrix)
+    const staleCurrentCli = staleEvidenceOnFixtureRow.entries.find(
+      (entry) => entry.surface === 'cli',
+    )
+    const historicalCli = snapshot.entries.find(
+      (entry) => entry.surface === 'cli',
+    )
+    if (!staleCurrentCli || !historicalCli?.liveEvidence) {
+      throw new Error('Current and historical CLI rows are required')
+    }
+    staleCurrentCli.liveEvidence = structuredClone(historicalCli.liveEvidence)
+
+    expect(
+      inspectClientMatrix(staleEvidenceOnFixtureRow, {
+        evidenceIsRegularFile: () => true,
+      }).fixtureOnlyRowsWithLiveEvidence,
+    ).toContain('cli')
+  })
+
+  it('rejects unsafe evidence paths and non-canonical UTC timestamps', () => {
+    const snapshot = readMatrix(publishedAlphaMatrixPath)
+    const mutateCliEvidence = (
+      mutation: (entry: ClientMatrixEntry) => void,
+    ): ClientMatrix => {
+      const candidate = structuredClone(snapshot)
+      const cliEntry = candidate.entries.find(
+        (entry) => entry.surface === 'cli',
+      )
+      if (!cliEntry?.liveEvidence) {
+        throw new Error('Promoted CLI snapshot row is required')
+      }
+      mutation(cliEntry)
+      return candidate
+    }
+
+    for (const unsafePath of [
+      '',
+      ' ',
+      '/docs/release/live-client-evidence.md',
+      '../docs/release/live-client-evidence.md',
+      'docs/release/../release/live-client-evidence.md',
+      'docs/release//live-client-evidence.md',
+      'docs/release',
+      'docs/release/live-client-evidence.json',
+      'docs\\release\\live-client-evidence.md',
+    ]) {
+      const candidate = mutateCliEvidence((entry) => {
+        if (!entry.liveEvidence) {
+          throw new Error('CLI evidence is required')
+        }
+        entry.liveEvidence.path = unsafePath
+        entry.liveEvidence.additionalPaths = []
+      })
+
+      expect(
+        inspectClientMatrix(candidate, {
+          evidenceIsRegularFile: () => true,
+        }).promotedRowsWithoutEvidence,
+        unsafePath,
+      ).toContain('cli')
+    }
+
+    const unsafeAdditionalPath = mutateCliEvidence((entry) => {
+      if (!entry.liveEvidence) {
+        throw new Error('CLI evidence is required')
+      }
+      entry.liveEvidence.additionalPaths = ['../outside.md']
+    })
+    expect(
+      inspectClientMatrix(unsafeAdditionalPath, {
+        evidenceIsRegularFile: () => true,
+      }).promotedRowsWithoutEvidence,
+    ).toContain('cli')
+
+    for (const invalidTimestamp of [
+      '2026-99-99T99:99:99Z',
+      '2026-02-29T00:00:00Z',
+      '2026-04-31T00:00:00Z',
+      '2026-01-01T24:00:00Z',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00+00:00',
+    ]) {
+      const candidate = mutateCliEvidence((entry) => {
+        if (!entry.liveEvidence) {
+          throw new Error('CLI evidence is required')
+        }
+        entry.liveEvidence.recordedAt = invalidTimestamp
+      })
+
+      expect(
+        inspectClientMatrix(candidate, {
+          evidenceIsRegularFile: () => true,
+        }).promotedRowsWithoutEvidence,
+        invalidTimestamp,
+      ).toContain('cli')
+    }
+
+    const preReleaseEvidence = mutateCliEvidence((entry) => {
+      if (!entry.liveEvidence) {
+        throw new Error('CLI evidence is required')
+      }
+      entry.liveEvidence.recordedAt = '2026-06-25T18:32:51Z'
+    })
+    expect(
+      inspectClientMatrix(preReleaseEvidence, {
+        evidenceIsRegularFile: () => true,
+      }).promotedRowsWithoutEvidence,
+    ).toContain('cli')
+
+    const validPostReleaseLeapDay = mutateCliEvidence((entry) => {
+      if (!entry.liveEvidence) {
+        throw new Error('CLI evidence is required')
+      }
+      entry.liveEvidence.recordedAt = '2028-02-29T23:59:59Z'
+    })
+    expect(
+      inspectClientMatrix(validPostReleaseLeapDay, {
+        evidenceIsRegularFile: () => true,
+      }).promotedRowsWithoutEvidence,
+    ).not.toContain('cli')
+
+    expect(isCanonicalUtcInstant('2024-02-29T23:59:59Z')).toBe(true)
+    expect(isSafeClientEvidencePath('docs/release/evidence/summary.md')).toBe(
+      true,
+    )
+  })
+
+  it('requires evidence paths to resolve to regular non-symlink files', () => {
+    const repositoryRoot = mkdtempSync(
+      join(tmpdir(), 'honowarden-client-evidence-policy-'),
+    )
+
+    try {
+      const releaseRoot = join(repositoryRoot, 'docs/release')
+      mkdirSync(releaseRoot, { recursive: true })
+      writeFileSync(join(releaseRoot, 'valid.md'), '# Valid evidence\n')
+      mkdirSync(join(releaseRoot, 'directory.md'))
+      symlinkSync('valid.md', join(releaseRoot, 'symlink.md'))
+      mkdirSync(join(releaseRoot, 'real-directory'))
+      writeFileSync(
+        join(releaseRoot, 'real-directory/nested.md'),
+        '# Nested evidence\n',
+      )
+      symlinkSync('real-directory', join(releaseRoot, 'linked-directory'))
+
+      expect(
+        isRegularRepositoryEvidenceFile(
+          repositoryRoot,
+          'docs/release/valid.md',
+        ),
+      ).toBe(true)
+      for (const nonRegularPath of [
+        'docs/release/missing.md',
+        'docs/release/directory.md',
+        'docs/release/symlink.md',
+        'docs/release/linked-directory/nested.md',
+      ]) {
+        expect(
+          isRegularRepositoryEvidenceFile(repositoryRoot, nonRegularPath),
+          nonRegularPath,
+        ).toBe(false)
+      }
+
+      const snapshot = readMatrix(publishedAlphaMatrixPath)
+      const cliEntry = snapshot.entries.find((entry) => entry.surface === 'cli')
+      if (!cliEntry?.liveEvidence) {
+        throw new Error('Promoted CLI snapshot row is required')
+      }
+      cliEntry.liveEvidence.additionalPaths = []
+
+      for (const evidencePath of [
+        'docs/release/directory.md',
+        'docs/release/symlink.md',
+        'docs/release/missing.md',
+        'docs/release/linked-directory/nested.md',
+      ]) {
+        cliEntry.liveEvidence.path = evidencePath
+        expect(
+          inspectClientMatrix(snapshot, {
+            evidenceIsRegularFile: (candidatePath) =>
+              isRegularRepositoryEvidenceFile(repositoryRoot, candidatePath),
+          }).promotedRowsWithoutEvidence,
+          evidencePath,
+        ).toContain('cli')
+      }
+
+      cliEntry.liveEvidence.path = 'docs/release/valid.md'
+      expect(
+        inspectClientMatrix(snapshot, {
+          evidenceIsRegularFile: (candidatePath) =>
+            isRegularRepositoryEvidenceFile(repositoryRoot, candidatePath),
+        }).promotedRowsWithoutEvidence,
+      ).not.toContain('cli')
+    } finally {
+      rmSync(repositoryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps historical credential evidence pinned to its recorded clients', () => {
+    const credentialEvidence = readFileSync(credentialEvidencePath, 'utf8')
+    const closeoutPacket = readFileSync(credentialCloseoutPacketPath, 'utf8')
+
+    for (const historicalRef of [
+      'cli-v2026.6.0@e6293ff2bc85123e9baaa998cf1543030ec5d9f0',
+      'browser-v2026.6.1@723c075bf8b9f45c901e56195be8e94e43ed75a2',
+    ]) {
+      expect(credentialEvidence).toContain(historicalRef)
+      expect(closeoutPacket).toContain(historicalRef)
     }
   })
 
@@ -374,114 +862,50 @@ describe('client compatibility matrix', () => {
     )
 
     expect(androidEntry).toMatchObject({
-      version: '2026.6.1',
-      build: '21713',
-      releaseTag: 'v2026.6.1-bwpm',
-      releasePublishedAt: '2026-07-09T16:57:30Z',
-      verificationLevel: 'live_smoke',
+      version: '2026.7.1',
+      build: '21803',
+      releaseTag: 'v2026.7.1-bwpm',
+      releasePublishedAt: '2026-08-07T22:20:51Z',
+      verificationLevel: 'fixture_only',
     })
     expect(androidEntry?.knownIssues.join('\n')).toContain(
-      'HonoWarden now normalizes outward API timestamps to UTC ISO-8601',
+      'No official Android 2026.7.1 build 21803 live smoke is recorded',
     )
   })
 
-  it('records live smoke rows while keeping unproven surfaces conservative', () => {
-    const browserEntry = matrix.entries.find(
-      (entry) => entry.surface === 'browser_extension',
-    )
-    expect(browserEntry?.verificationLevel).toBe('live_smoke')
-    expect(browserEntry?.liveEvidence?.path).toBe(
-      'docs/release/browser-extension-live-client-evidence.md',
-    )
-    expect(browserEntry?.liveEvidence?.additionalPaths).toContain(
-      'docs/release/login-with-device-live-client-evidence.md',
-    )
-    expect(browserEntry?.liveEvidence?.flows).toEqual(
-      expect.arrayContaining([
-        'config',
-        'prelogin',
-        'password_grant',
-        'empty_sync',
-        'account_profile',
-        'login_with_device',
-        'auth_request_grant',
-      ]),
-    )
-
-    const desktopEntry = matrix.entries.find(
-      (entry) => entry.surface === 'desktop',
-    )
-    expect(desktopEntry?.verificationLevel).toBe('live_smoke')
-    expect(desktopEntry?.liveEvidence?.path).toBe(
-      'docs/release/login-with-device-live-client-evidence.md',
-    )
-    expect(desktopEntry?.liveEvidence?.additionalPaths).toContain(
-      'docs/release/desktop-notification-transport-evidence.md',
-    )
-    expect(desktopEntry?.liveEvidence?.flows).toEqual(
-      expect.arrayContaining([
-        'password_grant',
-        'empty_sync',
-        'auth_request_notification',
-        'auth_request_approval',
-      ]),
-    )
-
-    const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
-    expect(cliEntry?.verificationLevel).toBe('live_smoke')
-    expect(cliEntry?.liveEvidence?.path).toBe(
-      'docs/release/live-client-evidence.md',
-    )
-    expect(cliEntry?.liveEvidence?.additionalPaths).toContain(
-      'docs/release/totp-recent-auth-live-evidence.md',
-    )
-    expect(cliEntry?.liveEvidence?.flows).toEqual(
-      expect.arrayContaining(['refresh_grant', 'session_revoke', 'totp_login']),
-    )
-
-    const androidEntry = matrix.entries.find(
-      (entry) => entry.surface === 'mobile_android',
-    )
-    expect(androidEntry?.verificationLevel).toBe('live_smoke')
-    expect(androidEntry?.liveEvidence?.path).toBe(
-      'docs/release/android-mobile-live-client-evidence.md',
-    )
-    expect(androidEntry?.liveEvidence?.flows).toEqual(
-      expect.arrayContaining([
-        'config',
-        'known_device_preflight',
-        'prelogin',
-        'password_grant',
-        'empty_sync',
-      ]),
-    )
-
-    const nonCliEntries = matrix.entries.filter(
-      (entry) =>
-        !['browser_extension', 'desktop', 'cli', 'mobile_android'].includes(
-          entry.surface,
-        ),
-    )
-    for (const entry of nonCliEntries) {
+  it('keeps every current row fixture-only until exact-version live evidence exists', () => {
+    for (const entry of matrix.entries) {
       expect(entry.verificationLevel).toBe('fixture_only')
+      expect(entry.liveEvidence).toBeUndefined()
     }
 
     const compatibilityMatrixDoc = readFileSync(
       compatibilityMatrixDocPath,
       'utf8',
     )
+    for (const entry of matrix.entries) {
+      const tableLine = compatibilityMatrixDoc
+        .split('\n')
+        .find((line) => line.startsWith(`| ${entry.surface} `))
+      const cells = tableLine
+        ?.split('|')
+        .slice(1, -1)
+        .map((cell) => cell.trim())
+
+      expect(cells?.slice(0, 6)).toEqual([
+        entry.surface,
+        entry.version,
+        entry.build ?? '',
+        entry.releaseTag,
+        entry.releasePublishedAt,
+        entry.verificationLevel,
+      ])
+    }
+    expect(compatibilityMatrixDoc).toContain('v0.1.0-alpha-client-matrix.json')
     expect(compatibilityMatrixDoc).toContain(
-      'browser-extension-live-client-evidence.md',
+      'Sealed `v0.1.0-alpha` Tag-Time Evidence',
     )
-    expect(compatibilityMatrixDoc).toContain(
-      'totp-recent-auth-live-evidence.md',
-    )
-    expect(compatibilityMatrixDoc).toContain(
-      'android-mobile-live-client-evidence.md',
-    )
-    expect(compatibilityMatrixDoc).toContain(
-      'login-with-device-live-client-evidence.md',
-    )
+    expect(compatibilityMatrixDoc).toContain('Post-Tag Historical Evidence')
   })
 
   it('documents repeatable live regression promotion requirements', () => {
@@ -498,8 +922,8 @@ describe('client compatibility matrix', () => {
   })
 })
 
-function readMatrix(): ClientMatrix {
-  return JSON.parse(readFileSync(matrixPath, 'utf8')) as ClientMatrix
+function readMatrix(path = matrixPath): ClientMatrix {
+  return JSON.parse(readFileSync(path, 'utf8')) as ClientMatrix
 }
 
 function readFixtureFlows(): FixtureFlowManifest {

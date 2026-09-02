@@ -10,6 +10,9 @@ import process from 'node:process'
 const cloudflareApiBase = 'https://api.cloudflare.com/client/v4'
 const defaultSecretFile = '~/.config/honowarden/cloudflare-scoped.env'
 const oneDayMs = 24 * 60 * 60 * 1000
+const deployTokenClassId = 'deploy'
+const deployTokenMutationStop =
+  'STOP: automated deploy-token creation and replacement are disabled; existing deploy tokens remain verify-only.'
 
 const tokenSpecs = [
   {
@@ -141,6 +144,9 @@ const tokenSpecs = [
     ],
   },
 ]
+const nonDeployTokenSpecs = tokenSpecs.filter(
+  (spec) => spec.id !== deployTokenClassId,
+)
 
 async function main(argv = process.argv.slice(2), env = process.env) {
   const normalizedArgv = argv[0] === '--' ? argv.slice(1) : argv
@@ -255,7 +261,8 @@ function buildStaticPlan(env, options) {
     safetyBoundaries: [
       'Token values are never printed.',
       'apply without --execute performs live readback only and does not create tokens.',
-      'apply --execute writes one-time token values only to the configured home-directory env file.',
+      'apply --execute writes one-time values for non-deploy token classes only to the configured home-directory env file.',
+      deployTokenMutationStop,
       'Account-level 2FA enforcement is intentionally not mutated by this script.',
     ],
   }
@@ -269,7 +276,10 @@ async function applyTokenPlan(env, options) {
   const groupByName = new Map(
     permissionGroups.map((group) => [group.name, group]),
   )
-  const missingPermissionGroups = missingGroups(groupByName)
+  const missingPermissionGroups = missingGroups(
+    groupByName,
+    nonDeployTokenSpecs,
+  )
   if (missingPermissionGroups.length > 0) {
     throw new Error(
       `Missing Cloudflare permission groups: ${missingPermissionGroups.join(', ')}`,
@@ -281,9 +291,29 @@ async function applyTokenPlan(env, options) {
     existingTokens.map((token) => [token.name, token]),
   )
   const createdSecrets = new Map()
-  const results = []
+  const deploySpec = tokenSpecs.find((spec) => spec.id === deployTokenClassId)
+  if (!deploySpec) {
+    throw new Error('Deploy token specification missing')
+  }
+  const existingDeployToken = existingByName.get(deploySpec.name)
+  const results = [
+    {
+      id: deploySpec.id,
+      name: deploySpec.name,
+      envVar: deploySpec.envVar,
+      action: 'stopped',
+      status: 'not_ready',
+      detail: deployTokenMutationStop,
+      existingTokenDetected: Boolean(existingDeployToken),
+      ...(existingDeployToken
+        ? { tokenTag: hashTag(existingDeployToken.id) }
+        : {}),
+      expiresOn: existingDeployToken?.expires_on ?? null,
+      verification: [],
+    },
+  ]
 
-  for (const spec of tokenSpecs) {
+  for (const spec of nonDeployTokenSpecs) {
     const existing = existingByName.get(spec.name)
     const tokenPayload = buildTokenPayload(spec, groupByName, config, options)
 
@@ -350,8 +380,10 @@ async function applyTokenPlan(env, options) {
     generatedAt: new Date().toISOString(),
     executed: options.execute,
     authMode: auth.mode,
-    status: results.every((result) =>
-      result.verification.every((entry) => entry.status === 'pass'),
+    status: results.every(
+      (result) =>
+        result.action !== 'stopped' &&
+        result.verification.every((entry) => entry.status === 'pass'),
     )
       ? 'ready'
       : 'not_ready',
@@ -365,7 +397,10 @@ async function applyTokenPlan(env, options) {
     ],
   }
 
-  if (options.strict && report.status !== 'ready') {
+  if (
+    results.some((result) => result.action === 'stopped') ||
+    (options.strict && report.status !== 'ready')
+  ) {
     process.exitCode = 1
   }
 
@@ -422,6 +457,10 @@ async function verifyScopedTokens(env, options) {
 }
 
 function buildTokenPayload(spec, groupByName, config, options) {
+  if (spec.id === deployTokenClassId) {
+    throw new Error(deployTokenMutationStop)
+  }
+
   const policies = []
 
   if (spec.accountPermissions.length > 0) {
@@ -468,10 +507,10 @@ function permissionGroup(groupByName, name) {
   }
 }
 
-function missingGroups(groupByName) {
+function missingGroups(groupByName, specs) {
   return [
     ...new Set(
-      tokenSpecs.flatMap((spec) => [
+      specs.flatMap((spec) => [
         ...spec.accountPermissions,
         ...spec.zonePermissions,
       ]),
@@ -770,6 +809,8 @@ function publicTokenSpec(spec) {
     accountPermissions: spec.accountPermissions,
     zonePermissions: spec.zonePermissions,
     verifyChecks: spec.verify.map((probe) => probe.id),
+    mutationPolicy:
+      spec.id === deployTokenClassId ? 'stopped' : 'execute_required',
   }
 }
 

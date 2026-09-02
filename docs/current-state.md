@@ -1,10 +1,51 @@
 # Current State
 
-Last updated: 2026-08-09
+Last updated: 2026-09-01
+
+## 2026-09-01 Integration Candidate Snapshot
+
+This section is the present-tense source boundary. The dated Week 1–26 and
+official-client sections below are historical delivery records and do not
+override it.
+
+- The integration candidate is based on source commit
+  `52ef7293615702b399cf5b3bcac7e607f191e51f`; it remains an uncommitted local
+  worktree and has not been pushed, published, or deployed.
+- Official-client harness shutdown now waits for the child process to become
+  observable before asserting termination. This is test-harness reliability
+  only and changes no runtime route or protocol behavior.
+- HON-184 adds migration `0018` plus an encrypted Text Send domain, repository,
+  and unmounted owner application service. Owner/public `/api/sends*` routes and
+  `send_access` remain explicit `501`, config remains `send-enabled: false`, and
+  no Send keyring or remote migration exists. A mounted route still requires a
+  bounded duplicate-aware raw JSON decoder; the current decoded-object parser
+  can reject case collisions but cannot observe exact duplicate raw members
+  after `JSON.parse`.
+- Runtime health/config responses have fail-closed build provenance for
+  staging/production and local-safe development behavior. `pnpm dev` is pinned
+  to the top-level local-default identity, loopback-only local Wrangler, local
+  D1/R2 bindings, no tunnel or remote provisioning, and a sanitized
+  Cloudflare/Wrangler credential environment. Named deploy and staging-dry-run
+  entrypoints are static STOP; no Worker/version/traffic write, automated
+  recovery, credential bootstrap, or remote secret transition is admitted by
+  this candidate.
+- These repository entrypoints are a fail-closed procedural boundary, not an
+  OS-level execution sandbox. A caller with direct access to the installed
+  Wrangler binary could still select the tracked staging or production config;
+  direct raw Wrangler use is not an approved bypass and has not been exercised
+  by this candidate.
+- Current upstream tracking is Browser/Desktop/CLI `2026.7.0` and Android/iOS
+  `2026.7.1`; all five current rows are `fixture_only`. The immutable
+  `v0.1.0-alpha` tag-time snapshot is separate: only CLI `2026.6.0` is
+  `live_smoke`, backed by a sealed evidence archive. Later 2026.6.x runs are
+  post-tag historical evidence and promote no current row.
+- HonoWarden remains API-only, pre-alpha, without an independent security
+  audit, and must not be used for real secrets.
 
 ## Week 1 Status
 
-HonoWarden is a deployable Cloudflare Workers API shell.
+Historical Week 1 checkpoint: HonoWarden was introduced as a Cloudflare Workers
+API shell.
 
 Implemented:
 
@@ -2548,7 +2589,7 @@ Not implemented:
 - long-term external archive copy automation beyond the encrypted GitHub
   artifact and documented operator retention target
 
-## Official Desktop And Login-With-Device Live Evidence
+## Historical Official Desktop And Login-With-Device Live Evidence
 
 Implemented and verified with synthetic staging data on 2026-07-12:
 
@@ -2568,8 +2609,9 @@ Implemented and verified with synthetic staging data on 2026-07-12:
 - exact fingerprint equality verification without recording the phrase
 - redacted empty-vault screenshots and status-class evidence in
   `docs/release/login-with-device-live-client-evidence.md`
-- promotion of the Desktop `2026.6.1` compatibility row from `fixture_only` to
-  narrow `live_smoke`
+- promotion of the then-current Desktop `2026.6.1` compatibility row from
+  `fixture_only` to narrow `live_smoke`; this historical promotion does not
+  apply to the current Desktop `2026.7.0` row
 
 Not implemented or not yet verified:
 
@@ -2650,3 +2692,51 @@ Not implemented or not yet verified:
   D1/R2 purge evidence
 - account lifecycle admin UI, scheduled purge orchestration, or production
   account/data mutation
+
+## Encrypted Text Send Foundation
+
+Implemented in source for HON-184:
+
+- additive forward-only migration `0018_text_sends.sql` with owner-scoped text
+  state, encrypted capability envelopes, purpose-separated indexed verifiers,
+  access generations, quarantine timestamp consistency, lifecycle timestamps,
+  retained tombstones, and owner and retention indexes
+- case-insensitive owner request validation with duplicate-field rejection,
+  opaque encrypted-field bounds, password/none auth consistency, access-count
+  bounds, and the required 31-day deletion window
+- independent versioned capability-envelope and lookup-verifier roots; the raw
+  capability and client-derived password input are never persisted or included
+  in audit context
+- owner create/read/list/update/remove-auth/delete repository operations with
+  owner predicates, generation invalidation, and an explicit update-state
+  allowlist that prevents owner release of quarantined rows
+- monotonic millisecond revision advancement with D1 compare-and-set guards,
+  including exactly-one-winner concurrent owner updates and idempotent retained
+  tombstones that refuse incomplete legacy deletion state
+- pre-mutation capability recovery and key-root separation for security-state
+  updates, so missing/wrong/corrupt envelope keys and envelope/lookup root reuse
+  fail before D1 changes
+- exact canonical capability-envelope lengths/encoding plus AEAD binding to key
+  ID, owner ID, and Send ID
+- one-statement conditional `UPDATE ... RETURNING` for concurrent text access
+  count consumption across generation, lifecycle, disable, quarantine, date,
+  and maximum-count gates
+- an unmounted owner application service and compatibility projection that
+  returns the raw capability only after generation or authenticated envelope
+  recovery and never exposes stored verifiers
+- fresh local Wrangler D1 application and readback through migration `0018`,
+  including the `sends` table and both `idx_sends_*` indexes
+- automated fresh Miniflare D1 application of every ordered migration, plus a
+  real-D1 public failure matrix for verifier, generation, lifecycle, exact time
+  boundaries, and mutation-free unavailable results
+
+Not implemented or not yet verified:
+
+- mounted `/api/sends*` owner/public routes or `send_access` token issuance;
+  every route remains explicit `501` and `send-enabled` remains false
+- a bounded duplicate-aware raw JSON route decoder; the unmounted application
+  parser sees only decoded objects and therefore cannot detect exact duplicate
+  raw members collapsed by ordinary `JSON.parse`
+- file Send/R2 state, public-token and anonymous access surfaces, cleanup and
+  quota operations, keyring secret installation, staging/production migration,
+  deployment, or official-client live evidence

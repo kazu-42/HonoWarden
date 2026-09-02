@@ -25,12 +25,15 @@ export type UpstreamServerConfig = {
   object: 'config'
 }
 
-export function buildServerConfig(origin: string): UpstreamServerConfig {
+export function buildServerConfig(
+  origin: string,
+  gitHash: string,
+): UpstreamServerConfig {
   const normalizedOrigin = origin.replace(/\/+$/, '')
 
   return {
     version: serviceVersion,
-    gitHash: 'honowarden',
+    gitHash,
     server: null,
     environment: {
       cloudRegion: 'self-hosted',

@@ -5,6 +5,10 @@ import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
+import {
+  resolveBuildProvenance,
+  type BuildProvenance,
+} from './build-provenance'
 import { deliverAccountLifecycleToken } from './account-lifecycle-mailer'
 import {
   accountLifecycleTokenExpiresAt,
@@ -118,6 +122,7 @@ import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
 import { readBoundedJsonBody } from './infra/bounded-json'
 import { resolveRuntimeEnvironment } from './infra/environment'
+import type { RuntimeEnvironment } from './infra/environment'
 import {
   authRequestNotificationTypes,
   isDurableNotificationEnabled,
@@ -665,13 +670,83 @@ async function emitVaultMutationAuditEvent(
   })
 }
 
-function buildHealthResponse(requestIdValue: string, environment?: string) {
-  return {
+function buildHealthResponse(
+  requestIdValue: string,
+  environment: RuntimeEnvironment,
+  build: BuildProvenance | null,
+) {
+  const response = {
     status: 'ok',
     service: 'honowarden',
     version: serviceVersion,
-    environment: resolveRuntimeEnvironment(environment),
+    environment,
+    build,
     requestId: requestIdValue,
+  }
+
+  return build
+    ? response
+    : { ...response, provenanceStatus: 'unavailable' as const }
+}
+
+function resolveRouteBuildProvenance(c: AppContext) {
+  const environment = resolveRuntimeEnvironment(c.env?.HONOWARDEN_ENV)
+  if (environment === null) {
+    console.error(
+      JSON.stringify({
+        kind: 'build_provenance_unavailable',
+        environment: 'invalid',
+        reason: 'runtime_environment_invalid',
+        requestId: c.get('requestId'),
+      }),
+    )
+
+    return {
+      ok: false as const,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'runtime_environment_invalid',
+          'Runtime environment is invalid.',
+        ),
+        503,
+      ),
+    }
+  }
+
+  const provenance = resolveBuildProvenance(
+    c.env?.CF_VERSION_METADATA,
+    environment,
+  )
+
+  if (!provenance.ok && provenance.fatal) {
+    console.error(
+      JSON.stringify({
+        kind: 'build_provenance_unavailable',
+        environment,
+        reason: provenance.reason,
+        requestId: c.get('requestId'),
+      }),
+    )
+
+    return {
+      ok: false as const,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'build_provenance_unavailable',
+          'Build provenance is unavailable.',
+        ),
+        503,
+      ),
+    }
+  }
+
+  return {
+    ok: true as const,
+    environment,
+    build: provenance.ok ? provenance.build : null,
+    gitHash: provenance.ok ? provenance.build.gitSha : 'development',
   }
 }
 
@@ -690,11 +765,33 @@ app.get('/', (c) => {
 })
 
 app.get('/health', (c) => {
-  return c.json(buildHealthResponse(c.get('requestId'), c.env?.HONOWARDEN_ENV))
+  const provenance = resolveRouteBuildProvenance(c)
+  if (!provenance.ok) {
+    return provenance.response
+  }
+
+  return c.json(
+    buildHealthResponse(
+      c.get('requestId'),
+      provenance.environment,
+      provenance.build,
+    ),
+  )
 })
 
 app.get('/healthz', (c) => {
-  return c.json(buildHealthResponse(c.get('requestId'), c.env?.HONOWARDEN_ENV))
+  const provenance = resolveRouteBuildProvenance(c)
+  if (!provenance.ok) {
+    return provenance.response
+  }
+
+  return c.json(
+    buildHealthResponse(
+      c.get('requestId'),
+      provenance.environment,
+      provenance.build,
+    ),
+  )
 })
 
 app.get('/health/db', async (c) => {
@@ -726,15 +823,23 @@ app.get('/health/db', async (c) => {
 app.get('/api/config', (c) => {
   const origin = resolvePublicOrigin(c.req.raw)
   c.header('Cache-Control', 'no-store')
+  const provenance = resolveRouteBuildProvenance(c)
+  if (!provenance.ok) {
+    return provenance.response
+  }
 
-  return c.json(buildServerConfig(origin))
+  return c.json(buildServerConfig(origin, provenance.gitHash))
 })
 
 app.get('/config', (c) => {
   const origin = resolvePublicOrigin(c.req.raw)
   c.header('Cache-Control', 'no-store')
+  const provenance = resolveRouteBuildProvenance(c)
+  if (!provenance.ok) {
+    return provenance.response
+  }
 
-  return c.json(buildServerConfig(origin))
+  return c.json(buildServerConfig(origin, provenance.gitHash))
 })
 
 app.get('/notifications/hub', async (c) => {
@@ -7551,6 +7656,7 @@ function apiError(
     | 'attachment_too_large'
     | 'auth_request_conflict'
     | 'auth_request_not_found'
+    | 'build_provenance_unavailable'
     | 'current_device_revoke_forbidden'
     | 'database_unavailable'
     | 'device_not_found'
@@ -7564,6 +7670,7 @@ function apiError(
     | 'rate_limited'
     | 'reauth_required'
     | 'revision_conflict'
+    | 'runtime_environment_invalid'
     | 'session_revocation_incomplete'
     | 'server_misconfigured'
     | 'storage_unavailable'

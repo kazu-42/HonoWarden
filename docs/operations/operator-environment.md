@@ -28,13 +28,13 @@ Use this environment for local automation only:
 
 - validating the Linear seed
 - verifying Linear API access before applying the seed
-- applying Linear issues/projects/views once the workspace is accessible
-- creating or updating the separate website repository
-- deploying Workers after explicit approval
-- configuring Cloudflare DNS and email routing after explicit approval
+- preparing local plans and packets for later reviewed external operations
+- collecting read-only Cloudflare and Linear evidence
+- testing HonoWarden locally with synthetic data
 
-Do not use this file as a production secret source. Worker runtime secrets must
-be set through Wrangler secrets for each environment.
+Do not use this file as a production secret source or as execution authority.
+HonoWarden API Worker secret/config writes and deployment are current STOP; this
+document intentionally provides no command to perform them.
 
 ## direnv Setup
 
@@ -92,43 +92,61 @@ chmod 600 ~/.config/honowarden/cloudflare.env
 ```
 
 Do not source this break-glass file from the repository's `.envrc.local` or any
-routine shell. Load it only inside the isolated, explicitly approved remediation
-or rotation window, then exit that shell.
+routine shell. Keeping the file does not authorize its use. A future use requires
+an isolated shell and a separately reviewed remediation or rotation protocol;
+explicit approval alone is insufficient.
 
-The two legitimate global-key carve-outs are
-`scripts/honowarden-cloudflare-token-remediation.mjs`, whose job is to mint the
-scoped tokens, and `scripts/honowarden-secret-rotation-drill.mjs`, whose job is
-to inventory the break-glass rotation plan. The email preflight inspects only
+`scripts/honowarden-cloudflare-token-remediation.mjs` contains historical token
+remediation machinery, including deploy-token bootstrap. Its mutating modes are
+current **STOP** and must not be run from this document. The local plan mode and
+the read-only verification mode remain available. The
+`scripts/honowarden-secret-rotation-drill.mjs` dry-run inventories a break-glass
+rotation plan without rotating a credential. The email preflight inspects only
 whether a global-key variable is present so it can reject that auth path with a
 structural reason; it never accepts the key. Do not commit the home env file,
 `.envrc.local`, or any rendered Cloudflare key value.
 
-Scoped HonoWarden Cloudflare account tokens are generated and verified with:
+Existing scoped HonoWarden Cloudflare account tokens may be planned locally and
+verified read-only with:
 
 ```sh
 pnpm cloudflare:tokens -- plan
-pnpm cloudflare:tokens -- apply --auth global
-pnpm cloudflare:tokens -- apply --auth global --execute
 pnpm cloudflare:tokens -- verify
 ```
 
-`apply` without `--execute` performs live permission/readback planning only.
-`apply --execute` creates missing scoped account tokens and writes their
-one-time values to `~/.config/honowarden/cloudflare-scoped.env` with mode
-`0600`. The script prints token hash tags and verification status only; it does
-not print token values. Source that file from ignored `.envrc.local` once the
-tokens are created:
+Do not run either `cloudflare:tokens apply` mode. Because the managed set
+includes `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`, any missing-token creation or
+replacement is deploy-token bootstrap and remains STOP. Historical values, if
+already present, are stored in
+`~/.config/honowarden/cloudflare-scoped.env` with mode `0600` and may be sourced
+from ignored `.envrc.local` for read-only verification:
 
 ```sh
 source_env_if_exists ~/.config/honowarden/cloudflare-scoped.env
 export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_HONOWARDEN_READONLY_TOKEN:-${CLOUDFLARE_API_TOKEN:-}}"
 ```
 
-Use command-local overrides for write operations so the default environment
-stays read-only:
+Use command-local overrides for separately authorized non-deploy operations so
+the default environment stays read-only.
+
+HonoWarden Worker deployment is **REAL WORKER/VERSION/TRAFFIC WRITE STOP**.
+The package deploy and staging dry-run entrypoints are static blockers. They do
+not accept credentials or execute Git, Wrangler, child processes, or network
+transport. A deploy token being available does not grant current execution
+authority; direct Wrangler use is not a bypass. See the
+[deployment authority runbook](deploy-provenance-runbook.md).
+
+Future HonoWarden API Worker secret/config/deploy execution requires a
+separately reviewed protocol that identifies the exact Cloudflare account,
+environment, Worker/resource and configuration target; binds the exact scoped
+credential in an auth-isolated shell; captures secret-safe pre-readback; defines
+the ordered mutation; verifies post-readback and source/runtime provenance;
+classifies zero-write, partial-success, and complete-success outcomes; and
+provides tested recovery for every partial state. Staging and production are
+separate decisions. Approval or credential availability cannot substitute for
+this protocol.
 
 ```sh
-env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_GLOBAL_API_KEY -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_EMAIL CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN" pnpm deploy
 env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_GLOBAL_API_KEY -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_EMAIL CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN" pnpm wrangler d1 execute honowarden --remote --command "SELECT 1;"
 env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_GLOBAL_API_KEY -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_EMAIL CLOUDFLARE_API_TOKEN="$CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN" pnpm email:preflight -- --strict
 ```
@@ -140,7 +158,7 @@ the workflow; do not substitute the global key:
 
 | Routine workflow                               | Required scoped token                       |
 | ---------------------------------------------- | ------------------------------------------- |
-| Worker deploy and Worker route attachment      | `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        |
+| Future Worker deploy protocol; currently STOP  | `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        |
 | DNS records and Worker route changes           | `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    |
 | Email Routing rules and destination operations | `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` |
 | D1 migrations/readback and R2 backup/restore   | `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         |
@@ -176,35 +194,35 @@ used by `.github/workflows/remote-backup.yml`.
 
 ## Required Local Secrets
 
-| Variable                                    | Required for                              | Notes                                                                                                                             |
-| ------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `LINEAR_API_KEY`                            | Linear API apply                          | Must belong to an account with access to `https://linear.app/honowarden/`.                                                        |
-| `GITHUB_TOKEN`                              | Website repository automation             | Optional if `gh auth status` already has the required repo permissions.                                                           |
-| `CLOUDFLARE_API_TOKEN`                      | Command-local scoped-token transport      | Set to the workflow-specific scoped token; never bind it to a broad credential for routine work.                                  |
-| `CLOUDFLARE_API_KEY`                        | Cloudflare break-glass tooling            | Global key accepted only for scoped-token remediation and explicit rotation planning; never a routine fallback.                   |
-| `CLOUDFLARE_GLOBAL_API_KEY`                 | Cloudflare break-glass tooling            | Alias for the same break-glass key; keep local-only.                                                                              |
-| `CLOUDFLARE_EMAIL`                          | Cloudflare break-glass tooling            | Account email paired with the global key only in the two approved break-glass tooling paths.                                      |
-| `CLOUDFLARE_API_EMAIL`                      | Cloudflare break-glass tooling            | Alias for the break-glass account email.                                                                                          |
-| `CLOUDFLARE_ACCOUNT_ID`                     | Worker deploys and account resources      | Non-secret but operationally sensitive.                                                                                           |
-| `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM`         | DNS and email routing on `honowarden.com` | Non-secret but operationally sensitive.                                                                                           |
-| `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        | Worker deploy and route attach            | Scoped account token for HonoWarden deploys.                                                                                      |
-| `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    | DNS and Worker route changes              | Scoped account token for `honowarden.com` DNS/routes.                                                                             |
-| `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` | Email Routing changes                     | Scoped account token for Email Routing rules and destination addresses.                                                           |
-| `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         | D1/R2 operations                          | Scoped account token for migrations, readback, backup, and restore.                                                               |
-| `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | Read-only evidence                        | Scoped account token for account/zone/resource evidence collection.                                                               |
-| `R2_ACCESS_KEY_ID`                          | Remote R2 listing                         | S3-compatible access key ID for `pnpm backup:export -- --r2-list`; stored local-only and as a GitHub Actions secret.              |
-| `R2_SECRET_ACCESS_KEY`                      | Remote R2 listing                         | S3-compatible secret access key for `pnpm backup:export -- --r2-list`; store only in ignored env files or GitHub Actions secrets. |
-| `HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE`      | Scheduled backup encryption               | Passphrase for encrypting scheduled backup artifacts before upload.                                                               |
-| `HONOWARDEN_SECURITY_FORWARD_TO`            | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
-| `HONOWARDEN_SUPPORT_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
-| `HONOWARDEN_GENERAL_FORWARD_TO`             | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
-| `HONOWARDEN_ADMIN_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
-| `HONOWARDEN_POSTMASTER_FORWARD_TO`          | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
-| `HONOWARDEN_ABUSE_FORWARD_TO`               | Email routing                             | Destination must be verified in Cloudflare before forwarding.                                                                     |
-| `HONOWARDEN_INQUIRY_FORWARD_TO`             | Inquiry inbox forwarding                  | Optional verified destination for the metadata-only Email Worker; keep local-only or Wrangler-secret managed.                     |
+| Variable                                    | Required for                                | Notes                                                                                                                             |
+| ------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `LINEAR_API_KEY`                            | Linear API apply                            | Must belong to an account with access to `https://linear.app/honowarden/`.                                                        |
+| `GITHUB_TOKEN`                              | Website repository automation               | Optional if `gh auth status` already has the required repo permissions.                                                           |
+| `CLOUDFLARE_API_TOKEN`                      | Command-local scoped-token transport        | Set to the workflow-specific scoped token; never bind it to a broad credential for routine work.                                  |
+| `CLOUDFLARE_API_KEY`                        | Cloudflare break-glass tooling              | Global key accepted only for scoped-token remediation and explicit rotation planning; never a routine fallback.                   |
+| `CLOUDFLARE_GLOBAL_API_KEY`                 | Cloudflare break-glass tooling              | Alias for the same break-glass key; keep local-only.                                                                              |
+| `CLOUDFLARE_EMAIL`                          | Cloudflare break-glass tooling              | Account email paired with the global key only in the two approved break-glass tooling paths.                                      |
+| `CLOUDFLARE_API_EMAIL`                      | Cloudflare break-glass tooling              | Alias for the break-glass account email.                                                                                          |
+| `CLOUDFLARE_ACCOUNT_ID`                     | Account readback and future deploy protocol | Non-secret but operationally sensitive.                                                                                           |
+| `CLOUDFLARE_ZONE_ID_HONOWARDEN_COM`         | DNS and email routing on `honowarden.com`   | Non-secret but operationally sensitive.                                                                                           |
+| `CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN`        | Future Worker deploy protocol               | Reserved local credential; current repository entrypoints must not receive it.                                                    |
+| `CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN`    | DNS and Worker route changes                | Scoped account token for `honowarden.com` DNS/routes.                                                                             |
+| `CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN` | Email Routing changes                       | Scoped account token for Email Routing rules and destination addresses.                                                           |
+| `CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN`         | D1/R2 operations                            | Scoped account token for migrations, readback, backup, and restore.                                                               |
+| `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | Read-only evidence                          | Scoped account token for account/zone/resource evidence collection.                                                               |
+| `R2_ACCESS_KEY_ID`                          | Remote R2 listing                           | S3-compatible access key ID for `pnpm backup:export -- --r2-list`; stored local-only and as a GitHub Actions secret.              |
+| `R2_SECRET_ACCESS_KEY`                      | Remote R2 listing                           | S3-compatible secret access key for `pnpm backup:export -- --r2-list`; store only in ignored env files or GitHub Actions secrets. |
+| `HONOWARDEN_BACKUP_ARCHIVE_PASSPHRASE`      | Scheduled backup encryption                 | Passphrase for encrypting scheduled backup artifacts before upload.                                                               |
+| `HONOWARDEN_SECURITY_FORWARD_TO`            | Email routing                               | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_SUPPORT_FORWARD_TO`             | Email routing                               | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_GENERAL_FORWARD_TO`             | Email routing                               | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_ADMIN_FORWARD_TO`               | Email routing                               | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_POSTMASTER_FORWARD_TO`          | Email routing                               | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_ABUSE_FORWARD_TO`               | Email routing                               | Destination must be verified in Cloudflare before forwarding.                                                                     |
+| `HONOWARDEN_INQUIRY_FORWARD_TO`             | Inquiry inbox forwarding                    | Optional verified destination for the metadata-only Email Worker; keep local-only or Wrangler-secret managed.                     |
 
-Local-only Worker smoke variables are also listed in `.env.example`, but
-staging and production must receive them through Wrangler secret commands:
+Local-only Worker smoke variables are also listed in `.env.example`. The list
+is an inventory, not a staging or production secret-write procedure:
 
 - `HONOWARDEN_BOOTSTRAP_TOKEN`
 - `HONOWARDEN_TOKEN_SECRET`
@@ -249,7 +267,8 @@ any stored KDF generation. The allowlist remains the primary prelogin boundary.
 ## Credential Operation Evidence Map
 
 The account credential operations remain local evidence until a later
-environment-specific staging or production activation is approved and recorded.
+environment-specific staging or production activation is executed under the
+separately reviewed HonoWarden secret/config/deploy protocol and recorded.
 Do not copy secrets, raw wrapped material, client profiles, tokens, hashes, or
 operator credential values into evidence notes.
 
@@ -280,13 +299,13 @@ only so Hono derives that HEAD result; an enabled GET or HEAD returns 405 with
 `Allow: POST`. `POST /api/accounts/verify-password` remains an authenticated,
 read-only proof route and is not activated by this writer flag.
 
-The tracked top-level, staging, and production values remain false. Deploy and
-verify complete password-generation readers, migration `0016` wrapper-history
-support, and a reader-capable rollback version before a later separately
-approved activation. Source merge and local synthetic lifecycle evidence do
-not activate the writer. Disabling the flag is the immediate route rollback;
-it does not restore a superseded password generation or revive revoked
-sessions.
+The tracked top-level, staging, and production values remain false. A future
+admitted protocol must first deploy and verify complete password-generation
+readers, migration `0016` wrapper-history support, and a reader-capable recovery
+version before activating the writer. Source merge, local synthetic lifecycle
+evidence, and operator approval do not activate it. Disabling the flag is the
+immediate route rollback; it does not restore a superseded password generation
+or revive revoked sessions.
 
 ## KDF Mutation Rollout
 
@@ -297,18 +316,20 @@ returns `501 unsupported_feature` before authentication or database mutation.
 PBKDF2 and Argon2id readers remain active regardless of this flag so disabling
 new writes never locks an account that already committed an Argon2id generation.
 
-The first deployment of KDF-capable code must keep the flag false in every
-environment. Verify its prelogin, token, profile, sync, backup, and
-authentication readers before creating a second Worker version that enables the
-flag. Record that first version as the reader-capable rollback target. After any
-Argon2id generation has committed, rollback means disabling the writer or
-deploying that reader-capable version; never deploy a pre-reader release that
-projects every stored generation as PBKDF2.
+In a future admitted protocol, the first deployment of KDF-capable code must
+keep the flag false in every environment. Verify its prelogin, token, profile,
+sync, backup, and authentication readers before a separate decision creates a
+second Worker version that enables the flag. Record that first version as the
+reader-capable recovery target. After any Argon2id generation has committed,
+recovery means disabling the writer or deploying that reader-capable version;
+never deploy a pre-reader release that projects every stored generation as
+PBKDF2.
 
 The tracked top-level, staging, and production values remain false. The local
 synthetic lifecycle passes an explicit Wrangler `--var` override and is not
-deployment activation evidence. Production activation requires separate
-operator approval and official-client credential closeout evidence.
+deployment activation evidence. Production activation requires the separately
+reviewed HonoWarden secret/config/deploy protocol plus official-client
+credential closeout evidence; operator approval alone is insufficient.
 
 ## Account Key Initialization Rollout
 
@@ -343,11 +364,13 @@ before returning generic 503; backup failure audit stores the same bounded
 reason rather than `database_unavailable`, and key values are never included.
 
 The top-level, staging, and production `wrangler.jsonc` values remain false.
-Source merge does not activate the routes. Activation requires separate
-official-client lifecycle evidence and operator approval; disabling the flag is
-the immediate route rollback. Already initialized keypairs remain available
-through the established token, profile, sync, and backup projections; the
-dedicated account-key routes stay unavailable until the flag is re-enabled.
+Source merge does not activate the routes. Activation requires official-client
+lifecycle evidence and the separately reviewed HonoWarden
+secret/config/deploy protocol; operator approval alone is insufficient.
+Disabling the flag is the immediate route rollback. Already initialized
+keypairs remain available through the established token, profile, sync, and
+backup projections; the dedicated account-key routes stay unavailable until the
+flag is re-enabled.
 
 ## User-Key Rotation Rollout
 
@@ -387,10 +410,11 @@ failure emits `account_notification_session_invalidation_failed`; investigate
 that signal, but do not restore the old generation.
 
 Top-level development, staging, and production values remain false. Source
-merge, fixture replay, and local D1 evidence are not activation approval. Keep
-the first deployed reader-capable version recorded before a later separately
-approved enablement. See the user-key rotation section in the rollback guide;
-all recovery after a committed generation is forward-only.
+merge, fixture replay, local D1 evidence, and operator approval are not
+activation authority. A future admitted protocol must record the first deployed
+reader-capable version before a separate enablement decision. See the user-key
+rotation section in the rollback guide; all recovery after a committed
+generation is forward-only.
 
 ## WebAuthn Runtime Policy
 
@@ -447,17 +471,24 @@ results into issue comments or verification logs. See
 
 ## External Write Gates
 
-These actions require explicit operator approval in the active thread before the
-agent performs them:
+These non-HonoWarden-Worker actions require explicit operator approval in the
+active thread before the agent performs them:
 
 - creating or mutating Linear issues, projects, views, documents, or Pulse
   updates
 - creating the `HonoWarden-website` repository
-- deploying Workers
 - executing account lifecycle D1 mutations with `pnpm account:lifecycle -- --execute`
 - changing Cloudflare DNS, routes, email routing, destinations, or MX records
-- setting or rotating Wrangler secrets
 - sending email or configuring auto-replies
+
+HonoWarden API Worker deploy, secret/config writes, deploy-token bootstrap, and
+automated traffic recovery remain **REAL WORKER/VERSION/TRAFFIC WRITE STOP**
+even when an operator grants explicit approval. They become eligible only after
+the separately reviewed protocol above exists and its exact target, scoped
+credential, pre/post readback, partial-success classification, and recovery
+admission checks pass. The `HonoWarden-inquiry-inbox` Worker is an independently
+versioned repository and is not covered by this HonoWarden API Worker boundary;
+its own repository and authority govern its writes.
 
 Read-only checks that are safe to run without approval:
 

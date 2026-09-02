@@ -2,6 +2,7 @@ export type Bindings = {
   DB: D1Database
   INQUIRY_DB: D1Database
   VAULT_OBJECTS: R2Bucket
+  CF_VERSION_METADATA?: WorkerVersionMetadata
   ACCOUNT_LIFECYCLE_MAILER?: Fetcher
   NOTIFICATION_HUB?: DurableObjectNamespace
   HONOWARDEN_ALLOWED_EMAILS?: string

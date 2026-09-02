@@ -6,6 +6,8 @@ import { isAbsolute, join, normalize, relative } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import process from 'node:process'
 
+import { isCanonicalUtcInstant } from './honowarden-client-matrix-policy.mjs'
+
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 const matrixPath = 'compat/client-matrix.json'
 const allowedEnvironments = new Set(['local', 'staging', 'production'])
@@ -76,6 +78,15 @@ function buildLiveRegressionPacket(options) {
   const clientBuild = options.clientBuild ?? matrixEntry?.build ?? null
   const sourceCommit = options.sourceCommit ?? gitRevParseShortHead()
   const runId = options.runId ?? defaultRunId(options.generatedAt)
+  const expectedClientBuild = matrixEntry?.build ?? null
+  const generatedAtValid = isCanonicalUtcInstant(options.generatedAt)
+  const generatedAtAfterClientRelease = Boolean(
+    generatedAtValid &&
+    matrixEntry &&
+    isCanonicalUtcInstant(matrixEntry.releasePublishedAt) &&
+    Date.parse(options.generatedAt) >=
+      Date.parse(matrixEntry.releasePublishedAt),
+  )
   const evidenceDir =
     options.evidenceDir ?? `${evidenceRoot}/${options.surface}/${runId}`
   const observedFlows = [...new Set(options.flows)].sort()
@@ -101,6 +112,42 @@ function buildLiveRegressionPacket(options) {
       ],
       nextAction:
         'Pass --client-version or choose a tracked matrix surface with a recorded version.',
+    }),
+    requirement({
+      id: 'client_identity_matches_matrix',
+      passed: Boolean(
+        matrixEntry &&
+        clientVersion === matrixEntry.version &&
+        clientBuild === expectedClientBuild,
+      ),
+      blocker: 'client_identity_mismatch',
+      evidence: [
+        `matrixVersion: ${matrixEntry?.version ?? 'missing'}`,
+        `matrixBuild: ${expectedClientBuild ?? 'none'}`,
+        `clientVersion: ${clientVersion ?? 'missing'}`,
+        `clientBuild: ${clientBuild ?? 'none'}`,
+      ],
+      nextAction:
+        'Use the exact version and build recorded for the selected current matrix row.',
+    }),
+    requirement({
+      id: 'generated_at_after_client_release',
+      passed: generatedAtAfterClientRelease,
+      blocker: 'generated_at_invalid_or_before_client_release',
+      evidence: [
+        `generatedAt: ${options.generatedAt}`,
+        `releasePublishedAt: ${matrixEntry?.releasePublishedAt ?? 'missing'}`,
+      ],
+      nextAction:
+        'Use a canonical UTC packet timestamp at or after the selected client release publication.',
+    }),
+    requirement({
+      id: 'run_id_matches_generated_at',
+      passed: generatedAtValid && runId === defaultRunId(options.generatedAt),
+      blocker: 'run_id_generated_at_mismatch',
+      evidence: [`runId: ${runId}`, `generatedAt: ${options.generatedAt}`],
+      nextAction:
+        'Use the deterministic YYYYMMDDTHHMMSSZ run identifier derived from --generated-at.',
     }),
     requirement({
       id: 'environment_recorded',
@@ -278,7 +325,7 @@ function parseOptions(argv) {
     evidenceDir: null,
     flows: [],
     syntheticDataOnly: true,
-    generatedAt: new Date().toISOString(),
+    generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/u, 'Z'),
   }
 
   for (let index = 0; index < argv.length; index += 1) {

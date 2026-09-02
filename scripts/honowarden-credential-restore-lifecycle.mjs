@@ -47,8 +47,8 @@ const defaultHarnessRoot = 'test/.tmp/hon-207-official-client'
 const runOwnershipMarker = '.honowarden-credential-restore-owned'
 const runOwnershipMarkerBody =
   '{"owner":"honowarden-credential-restore-lifecycle"}\n'
-const databaseName = 'honowarden'
-const bucketName = 'honowarden-vault-objects'
+const databaseName = 'honowarden-local'
+const bucketName = 'honowarden-local-vault-objects'
 const r2ObjectKey = 'attachments/hon220-immutable-ciphertext'
 const allowedEnvironmentKeys = Object.freeze([
   'HOME',

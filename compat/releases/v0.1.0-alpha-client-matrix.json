@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "releaseTarget": "v0.1.0-alpha",
+  "snapshotKind": "tag-time-client-evidence",
+  "sourceTag": "v0.1.0-alpha",
+  "sourceCommit": "e7a3c5ea9e51030143736bb0e7a36cb7a8babfce",
+  "sourceMatrixPath": "compat/client-matrix.json",
+  "sourceMatrixSha256": "8076ec9d4fd9179b9f0616f6f6b5489acacae291058ba95854e4591be56c3491",
+  "evidenceManifest": [
+    {
+      "sourcePath": "docs/release/live-client-evidence.md",
+      "snapshotPath": "docs/release/snapshots/v0.1.0-alpha/live-client-evidence.md",
+      "bytes": 5231,
+      "sha256": "3b2bc4c0b76ec7789f4833f7eed35b9cb764c90d4e72a0726d01e847e16af1ca"
+    }
+  ],
+  "checkedAt": "2026-07-06T11:35:37Z",
+  "sourceKind": "official-upstream-release-metadata",
+  "entries": [
+    {
+      "surface": "browser_extension",
+      "version": "2026.6.1",
+      "releaseTag": "browser-v2026.6.1",
+      "releasePublishedAt": "2026-06-30T17:07:46Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "sync_with_items",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke",
+        "totp_login"
+      ],
+      "knownIssues": [
+        "No live client login or sync run is recorded for this exact version.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "desktop",
+      "version": "2026.6.1",
+      "releaseTag": "desktop-v2026.6.1",
+      "releasePublishedAt": "2026-06-30T16:09:04Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "sync_with_items",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke",
+        "totp_login"
+      ],
+      "knownIssues": [
+        "No live client login or sync run is recorded for this exact version.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "mobile_android",
+      "version": "2026.6.0",
+      "build": "21686",
+      "releaseTag": "v2026.6.0-bwpm",
+      "releasePublishedAt": "2026-06-25T21:37:09Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "sync_with_items",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke",
+        "totp_login"
+      ],
+      "knownIssues": [
+        "No live mobile login or sync run is recorded for this exact version.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "mobile_ios",
+      "version": "2026.6.0",
+      "build": "3325",
+      "releaseTag": "v2026.6.0-bwpm",
+      "releasePublishedAt": "2026-06-26T15:03:00Z",
+      "verificationLevel": "fixture_only",
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "sync_with_items",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke",
+        "totp_login"
+      ],
+      "knownIssues": [
+        "No live mobile login or sync run is recorded for this exact version.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    },
+    {
+      "surface": "cli",
+      "version": "2026.6.0",
+      "releaseTag": "cli-v2026.6.0",
+      "releasePublishedAt": "2026-06-25T18:32:52Z",
+      "verificationLevel": "live_smoke",
+      "liveEvidence": {
+        "path": "docs/release/live-client-evidence.md",
+        "status": "passed",
+        "recordedAt": "2026-07-07T03:34:25Z",
+        "clientVersion": "2026.6.0",
+        "flows": [
+          "config",
+          "prelogin",
+          "password_grant",
+          "empty_sync",
+          "revision_date",
+          "cipher_create",
+          "sync_with_items",
+          "cipher_update",
+          "cipher_soft_delete",
+          "trash_sync",
+          "cipher_permanent_delete"
+        ]
+      },
+      "coveredFlows": [
+        "prelogin",
+        "password_grant",
+        "refresh_grant",
+        "empty_sync",
+        "sync_with_items",
+        "folder_crud",
+        "cipher_create",
+        "cipher_lifecycle",
+        "revision_conflict",
+        "device_revoke",
+        "totp_login"
+      ],
+      "knownIssues": [
+        "Live CLI smoke covers config, password login, sync, one synthetic login item create/update/trash/permanent-delete flow, and account revision lookup only.",
+        "The live smoke used a local compression-stripping HTTPS proxy because wrangler dev returned gzip chunked responses that the tracked CLI HTTP stack rejected.",
+        "TOTP login has local HTTP coverage only; no live client evidence is recorded yet.",
+        "Device list and device metadata update APIs are not implemented yet.",
+        "Feature surfaces outside the initial personal-vault scope are expected to fail explicitly or remain unsupported."
+      ]
+    }
+  ]
+}

@@ -1,38 +1,50 @@
 # Retention Cron Evidence
 
-Status: passed.
+> **HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.** This document
+> records the 2026-07 retention-cron deployment and its then-live observations.
+> It does not establish current deployment, cron, schema, health, or rollback
+> state, and it does not authorize a Worker upload, activation, rollback, trigger
+> change, or traffic change. Current Worker recovery remains STOP unless a future
+> remote-write protocol satisfies the admission boundary in
+> [Build provenance and deployment authority](../operations/deploy-provenance-runbook.md#admission-requirements-for-a-future-remote-write-protocol)
+> and receives separate, one-shot authority.
 
-Current Readback: 2026-07-09T16:03:22Z.
+Historical status: passed.
 
-This file records the live Cloudflare closeout for the transient auth retention
-cleanup Cron Trigger. It intentionally records only deployment IDs, Worker
-version IDs, schema versions, synthetic cleanup row counts, and redacted health
-smoke results.
+Historical readback: 2026-07-09T16:03:22Z.
 
-Do not record account emails, API keys, token values, private mailbox
-destinations, real user data, vault contents, or Cloudflare secret values here.
+This file recorded the then-live Cloudflare closeout for the transient auth
+retention cleanup Cron Trigger. It intentionally recorded only deployment IDs,
+Worker version IDs, schema versions, synthetic cleanup row counts, and redacted
+health-smoke results.
+
+Account emails, API keys, token values, private mailbox destinations, real user
+data, vault contents, and Cloudflare secret values were not recorded here.
 
 ## Scope
 
-The live cleanup path covers only transient authentication tables:
+The observed cleanup path covered only transient authentication tables:
 
 - `auth_attempts`
 - `auth_failure_buckets`
 - `totp_challenges`
 
-It does not delete users, devices, folders, ciphers, audit log lines, backup
-manifests, R2 objects, or inquiry inbox data.
+It did not delete users, devices, folders, ciphers, audit log lines, backup
+manifests, R2 objects, or inquiry inbox data during the recorded exercise.
 
-Policy note added 2026-07-13: refresh-token history retention is separately
-gated by `HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED`. It only targets rows that
-have been expired for at least 30 days in bounded batches. This note does not
-rewrite the historical 2026-07-09 deployment, smoke, or cron run records below.
+A later policy note, added 2026-07-13, stated that refresh-token history
+retention was separately gated by
+`HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED` and targeted only rows expired for
+at least 30 days in bounded batches. That note did not rewrite the historical
+2026-07-09 deployment, smoke, or cron-run records below and is not a claim about
+the current configuration.
 
 ## Deployment Readback
 
 Source commit deployed: `b1270b557c604a868091ec3b4252c9b7566c958b`.
 
-Schedule configured by `wrangler.jsonc` and deployment readback:
+Schedule observed from the then-reviewed `wrangler.jsonc` and deployment
+readback:
 
 ```text
 0 * * * *
@@ -76,9 +88,10 @@ Production smoke after deploy:
 
 ## Cron Execution Evidence
 
-Synthetic cleanup rows were inserted at `2026-07-09T15:26:22Z` to prove the
-scheduled handler executes in live environments. These rows use only
-`hon-51-cron-smoke` identifiers and do not reference real users or vault data.
+Synthetic cleanup rows were inserted at `2026-07-09T15:26:22Z` to prove that
+the scheduled handler executed in the observed environments. These rows used
+only `hon-51-cron-smoke` identifiers and did not reference real users or vault
+data.
 
 Before the next hourly cron:
 
@@ -101,29 +114,26 @@ After the hourly cron:
 | staging     | `0`                  | `0`                         |
 | production  | `0`                  | `0`                         |
 
-The scheduled handler executed successfully in both live environments and
+The scheduled handler executed successfully in both observed environments and
 deleted the synthetic cleanup rows.
 
-## Failure And Rollback
+## Historical Failure Signals And Recovery Note
 
-Failure signal:
+The 2026-07 packet identified these failure signals:
 
-- `/health/db` stops reporting `ok`
-- synthetic cleanup rows remain after the next scheduled window
-- Cloudflare Cron Events or Worker logs show scheduled invocation failures
+- `/health/db` stopped reporting `ok`
+- synthetic cleanup rows remained after the next scheduled window
+- Cloudflare Cron Events or Worker logs showed scheduled invocation failures
 
-Immediate recovery:
+The old packet proposed keeping additive migrations `0004` and `0005`, changing
+the cron trigger through a hotfix when necessary, and considering Worker
+versions `bf0333dc-9efa-4001-aa31-20b3e10731c9` (staging) and
+`72577dd9-c859-4673-b653-fbdd796f8f7d` (production) as recovery handles. No
+rollback or trigger-disable operation was recorded here.
 
-1. Keep D1 migrations `0004` and `0005`; they are additive columns.
-2. If the scheduled handler causes failures, disable the trigger with a hotfix
-   deploy that removes the target environment's `triggers.crons` entry.
-3. If the runtime itself must roll back, rollback to the previous Worker
-   version and then separately verify the trigger state:
-
-```sh
-pnpm wrangler rollback bf0333dc-9efa-4001-aa31-20b3e10731c9 --env staging --name honowarden-staging --yes
-pnpm wrangler rollback 72577dd9-c859-4673-b653-fbdd796f8f7d --env production --name honowarden --yes
-```
-
-4. Re-run `/health`, `/healthz`, `/health/db`, `/api/config`, and synthetic
-   prelogin smoke after any rollback or disable deploy.
+The copy-pastable rollback commands and prospective "immediate recovery"
+procedure were deliberately removed. Those version IDs are historical
+identifiers, not verified current targets. A current incident must stop further
+writes, preserve fresh deployment/settings/trigger readback, and enter through
+the future remote-write protocol admission boundary in the deployment-authority
+runbook; historical approval must not be reused.

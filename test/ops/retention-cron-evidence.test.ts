@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest'
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 
-describe('retention cron live evidence', () => {
-  it('records the live deployment, schedule, smoke, and cron readback evidence', () => {
+describe('retention cron historical evidence', () => {
+  it('preserves the historical deployment, schedule, smoke, and cron readback without granting current authority', () => {
     const evidence = readRepoFile('docs/release/retention-cron-evidence.md')
     const runbook = readRepoFile('docs/operations/retention-cleanup.md')
     const authStateMachine = readRepoFile('docs/security/auth-state-machine.md')
@@ -16,7 +16,14 @@ describe('retention cron live evidence', () => {
 
     expect(index).toContain('retention-cron-evidence.md')
 
-    expect(evidence).toContain('Status: passed')
+    expect(evidence).toContain(
+      'HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY',
+    )
+    expect(evidence).toContain('Historical status: passed')
+    expect(evidence).toMatch(
+      /The copy-pastable rollback commands and prospective "immediate recovery"\s+procedure were deliberately removed\./u,
+    )
+    expect(evidence).not.toMatch(/wrangler rollback[^\n]*--yes/u)
     expect(evidence).toContain('0 * * * *')
     expect(evidence).toContain('b1270b557c604a868091ec3b4252c9b7566c958b')
     expect(evidence).toContain('35702116-2232-4236-9d81-dcc648ed2374')

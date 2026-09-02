@@ -8,10 +8,13 @@ type WranglerBinding = {
   database_id?: string
   database_name?: string
   bucket_name?: string
+  remote?: boolean
 }
 
 type WranglerEnvironment = {
   name: string
+  preview_urls: boolean
+  workers_dev: boolean
   triggers: {
     crons: string[]
   }
@@ -23,10 +26,15 @@ type WranglerEnvironment = {
   vars: Record<string, string>
   d1_databases: WranglerBinding[]
   r2_buckets: WranglerBinding[]
+  version_metadata: {
+    binding: string
+  }
 }
 
 type WranglerConfig = {
   name: string
+  preview_urls: boolean
+  workers_dev: boolean
   triggers: {
     crons: string[]
   }
@@ -38,6 +46,9 @@ type WranglerConfig = {
   vars: Record<string, string>
   d1_databases: WranglerBinding[]
   r2_buckets: WranglerBinding[]
+  version_metadata: {
+    binding: string
+  }
   env: {
     staging: WranglerEnvironment
     production: WranglerEnvironment
@@ -45,9 +56,30 @@ type WranglerConfig = {
 }
 
 const config = parse(readFileSync('wrangler.jsonc', 'utf8')) as WranglerConfig
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+  scripts?: Record<string, string>
+}
 const expectedHourlyCron = ['0 * * * *']
 
-describe('wrangler deployment environments', () => {
+describe('wrangler configuration scopes', () => {
+  it('declares the non-inheritable Worker version metadata binding in all scopes', () => {
+    expect(config.version_metadata).toEqual({
+      binding: 'CF_VERSION_METADATA',
+    })
+    expect(config.env.staging.version_metadata).toEqual({
+      binding: 'CF_VERSION_METADATA',
+    })
+    expect(config.env.production.version_metadata).toEqual({
+      binding: 'CF_VERSION_METADATA',
+    })
+  })
+
+  it('disables public version preview URLs in all deployment scopes', () => {
+    expect(config.preview_urls).toBe(false)
+    expect(config.env.staging.preview_urls).toBe(false)
+    expect(config.env.production.preview_urls).toBe(false)
+  })
+
   it('keeps runtime environment labels explicit', () => {
     expect(config.vars.HONOWARDEN_ENV).toBe('development')
     expect(config.env.staging.vars.HONOWARDEN_ENV).toBe('staging')
@@ -57,6 +89,38 @@ describe('wrangler deployment environments', () => {
   it('keeps staging and production deploy targets separated by name', () => {
     expect(config.env.staging.name).not.toBe(config.env.production.name)
     expect(config.env.staging.name).not.toBe(config.name)
+    expect(config.env.production.name).not.toBe(config.name)
+  })
+
+  it('keeps the default Wrangler identity on local resources', () => {
+    expect(config.name).toBe('honowarden-local')
+    expect(config.workers_dev).toBe(false)
+    expect(config.env.staging.workers_dev).toBe(false)
+    expect(config.env.production.workers_dev).toBe(false)
+    const localD1 = findBinding(config.d1_databases, 'DB')
+    const localInquiryD1 = findBinding(config.d1_databases, 'INQUIRY_DB')
+
+    expect(localD1).toMatchObject({
+      database_name: 'honowarden-local',
+      database_id: '00000000-0000-0000-0000-000000000001',
+    })
+    expect(localInquiryD1).toMatchObject({
+      database_name: 'honowarden-inquiry-local',
+      database_id: '00000000-0000-0000-0000-000000000002',
+    })
+    expect(config.r2_buckets).toEqual([
+      {
+        binding: 'VAULT_OBJECTS',
+        bucket_name: 'honowarden-local-vault-objects',
+      },
+    ])
+    expect(localD1?.remote).not.toBe(true)
+    expect(localInquiryD1?.remote).not.toBe(true)
+    expect(config.r2_buckets[0]?.remote).not.toBe(true)
+    expect(packageJson.scripts?.['db:migrate:local']).toBe(
+      'wrangler d1 migrations apply DB --local',
+    )
+    expect(packageJson.scripts?.dev).toBe('node scripts/honowarden-dev.mjs')
   })
 
   it('keeps staging and production storage names separated', () => {
@@ -100,7 +164,7 @@ describe('wrangler deployment environments', () => {
     expect(stagingR2.bucket_name).not.toBe(productionR2.bucket_name)
   })
 
-  it('uses real separated D1 database ids for deployable environments', () => {
+  it('keeps tracked staging and production D1 ids real and separated', () => {
     const stagingD1 = findBinding(config.env.staging.d1_databases, 'DB')
     const productionD1 = findBinding(config.env.production.d1_databases, 'DB')
     const stagingInquiryD1 = findBinding(
@@ -134,7 +198,7 @@ describe('wrangler deployment environments', () => {
     expect(productionInquiryD1.database_id).not.toBe(productionD1.database_id)
   })
 
-  it('keeps deployable environment bootstrap defaults fail-closed', () => {
+  it('keeps tracked staging and production bootstrap defaults fail-closed', () => {
     expect(config.env.staging.vars.HONOWARDEN_BOOTSTRAP_ENABLED).toBe('false')
     expect(config.env.production.vars.HONOWARDEN_BOOTSTRAP_ENABLED).toBe(
       'false',
@@ -153,7 +217,7 @@ describe('wrangler deployment environments', () => {
     expect(config.env.production.triggers.crons).toEqual(expectedHourlyCron)
   })
 
-  it('keeps audit logging opt-in across deployable environments', () => {
+  it('keeps audit logging opt-in across tracked scopes', () => {
     expect(config.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
     expect(config.env.production.vars.HONOWARDEN_AUDIT_LOGS).toBe('false')
@@ -235,7 +299,7 @@ describe('wrangler deployment environments', () => {
     )
   })
 
-  it('keeps Workers Logpush and observability enabled for deployable environments', () => {
+  it('keeps Workers Logpush and observability enabled for tracked scopes', () => {
     expect(config.logpush).toBe(true)
     expect(config.env.staging.logpush).toBe(true)
     expect(config.env.production.logpush).toBe(true)

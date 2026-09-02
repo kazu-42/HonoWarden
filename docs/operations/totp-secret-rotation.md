@@ -1,9 +1,10 @@
 # TOTP Secret Rotation
 
-Last reviewed: 2026-07-09.
+Last reviewed: 2026-09-01.
 
-Status: tooling-supported. No live production `HONOWARDEN_TOTP_SECRET`
-rotation drill has been executed yet.
+Status: dry-run and local planning supported. Remote mutation is statically
+disabled. No live production `HONOWARDEN_TOTP_SECRET` rotation drill has been
+executed.
 
 This runbook covers the dry-run-first operator CLI for rotating the wrapping
 secret used by `user_totp.encrypted_secret` and
@@ -21,14 +22,20 @@ secret used by `user_totp.encrypted_secret` and
   TOTP envelopes, wrapping secret values, bearer tokens, or user vault data.
 - The CLI does not set Wrangler secrets, deploy Workers, or change live runtime
   variables by itself.
+- Any `--mode remote --execute` invocation fails before reading secret
+  environment variables, loading input, constructing SQL, starting Wrangler or
+  another child process, or making a network request.
 
 ## Strategies
 
 ### Rewrap
 
-`rewrap` decrypts each stored TOTP envelope in memory with the old wrapping
-secret, immediately re-encrypts it with the new wrapping secret, and updates
-`user_totp` rows only during `--execute`.
+`rewrap` planning decrypts each stored TOTP envelope in memory with the old
+wrapping secret and immediately re-encrypts it with the new wrapping secret.
+Local execution remains available for isolated development verification. Remote
+execution is disabled because changing D1 envelopes without an atomic runtime
+secret activation and recovery protocol can make every migrated TOTP credential
+unreadable by the live Worker.
 
 It preserves:
 
@@ -44,10 +51,11 @@ strategy.
 
 ### Force Re-Enrollment
 
-`force-reenrollment` deletes affected `user_totp` rows so users must set up
-TOTP again. It does not require the old or new wrapping secret, but it is a
-destructive authentication-policy change and needs explicit incident lead or
-operator approval.
+`force-reenrollment` planning counts the `user_totp` rows that would need to be
+deleted so users can set up TOTP again. It does not require the old or new
+wrapping secret. Remote deletion is disabled because it is a destructive
+authentication-policy change that cannot be recovered without a verified backup
+and a coordinated user re-enrollment plan.
 
 Use this only when:
 
@@ -82,73 +90,64 @@ prints a JSON packet. Review:
 - `summary.plannedUpdates`
 - `mutationPreview.sqlRedacted`
 
-If `status` is `not_ready`, do not execute the rewrap.
+If `status` is `not_ready`, do not use the plan for local execution. Remote
+execution remains blocked regardless of status.
 
-## Execute Rewrap
+## Remote Execution Boundary
 
-After reviewing the dry-run packet and recording operator approval:
+Remote execution is intentionally unavailable for both strategies. The CLI
+returns this fixed error for every `--mode remote --execute` invocation:
 
-```sh
-pnpm totp:rotate-secret -- \
-  --database honowarden \
-  --mode remote \
-  --env production \
-  --reason planned-rotation-20260709 \
-  --old-secret-env HONOWARDEN_TOTP_OLD_SECRET \
-  --new-secret-env HONOWARDEN_TOTP_NEW_SECRET \
-  --execute \
-  --confirm honowarden:rewrap
+```text
+Remote TOTP rotation execution is disabled until secret activation and recovery are implemented.
 ```
 
-Then set the Worker runtime `HONOWARDEN_TOTP_SECRET` to the new value using the
-approved Wrangler secret process and deploy or roll the Worker according to the
-current release procedure. This CLI intentionally does not perform that secret
-write.
+The static boundary is evaluated immediately after argument parsing. It does not
+inspect `HONOWARDEN_TOTP_OLD_SECRET`, `HONOWARDEN_TOTP_NEW_SECRET`, or ambient
+Cloudflare credentials, and it does not read D1, build mutation SQL, invoke
+Wrangler, or contact Cloudflare.
 
-## Execute Force Re-Enrollment
+Do not bypass this boundary with direct Wrangler or D1 commands. Before remote
+execution can be implemented, one reviewed protocol must cover all of these
+invariants:
 
-Dry-run first:
+- a dual-key or otherwise atomic runtime transition so both pre-rotation and
+  post-rotation envelopes remain decryptable throughout activation
+- explicit ordering for config activation, database migration, application
+  rollout, verification, and retirement of the old key
+- a pre-mutation backup plus a restore/readback procedure whose safety is
+  established before admission for both D1 rows and runtime configuration
+- resumable, idempotent row migration with exact progress and partial-failure
+  accounting
+- synthetic staging proof followed by an explicit production authority gate
+- post-activation login/TOTP smoke, observability, and stop/rollback criteria
+- for force re-enrollment, exact affected-user scope, an explicitly authorized
+  communication plan, access recovery, and restoration evidence
 
-```sh
-pnpm totp:rotate-secret -- \
-  --database honowarden \
-  --mode remote \
-  --env production \
-  --strategy force-reenrollment \
-  --reason old-secret-lost
-```
+## Recovery And Partial-Failure Design
 
-Execute only after explicit approval:
-
-```sh
-pnpm totp:rotate-secret -- \
-  --database honowarden \
-  --mode remote \
-  --env production \
-  --strategy force-reenrollment \
-  --reason old-secret-lost \
-  --execute \
-  --confirm honowarden:force-reenrollment
-```
-
-## Rollback And Partial Failure
+The current CLI performs no remote mutation, so a blocked invocation needs no
+rollback. Keep the following recovery requirements as design constraints for a
+future implementation; they are not authorization to execute the procedure
+manually.
 
 For rewrap:
 
-- Before changing the Worker runtime secret, rollback is to rerun rewrap in the
-  opposite direction using the old and new inputs swapped.
-- After changing the Worker runtime secret, rollback requires restoring the old
-  runtime secret and rerunning the opposite rewrap, or restoring a pre-rotation
-  D1 backup into a fresh target.
-- If execution fails partway through, stop. Use the pre-execution dry-run
-  packet, D1 backup, and post-failure readback to decide whether to rerun
-  rewrap, reverse already-updated rows, or force re-enrollment.
+- Keep the old runtime key available until exact readback shows that the new
+  runtime can decrypt every migrated active and pending envelope.
+- A partial row migration must be resumable without double mutation and must not
+  require guessing which runtime key owns an envelope.
+- Recovery must restore runtime configuration and D1 data to a mutually
+  compatible point; restoring only one side can prolong the authentication
+  outage.
 
 For force re-enrollment:
 
-- rollback requires restoring `user_totp` rows from backup; do not invent TOTP
+- recovery requires restoring `user_totp` rows from a backup whose integrity
+  and restorability were established before any deletion; do not invent TOTP
   secrets or write placeholder envelopes
-- user communication is required because users will need to set up TOTP again
+- user communication and an access-recovery path are required before users are
+  made to set up TOTP again
 
 ## Evidence To Record
 
@@ -158,9 +157,10 @@ Record:
 - strategy and reason
 - dry-run packet summary
 - `status` and `blockingReason`
-- execution approval and command shape
-- post-operation login/TOTP smoke with synthetic data
-- rollback decision
+- the static STOP result for any attempted remote execution
+- the review/authority decision for a future end-to-end transition protocol
+- planned post-operation login/TOTP smoke with synthetic data
+- planned stop and rollback criteria
 
 Do not record:
 

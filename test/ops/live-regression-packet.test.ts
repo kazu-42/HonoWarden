@@ -84,9 +84,9 @@ describe('live regression packet', () => {
       '--source-commit',
       '1234567890ab',
       '--run-id',
-      '20260709T220000Z',
+      '20260724T220000Z',
       '--generated-at',
-      '2026-07-09T22:00:00Z',
+      '2026-07-24T22:00:00Z',
       ...completeFlows.flatMap((flow) => ['--flow', flow]),
     ])
     const report = JSON.parse(result.stdout) as LiveRegressionPacket
@@ -97,32 +97,115 @@ describe('live regression packet', () => {
     expect(report.targetVerificationLevel).toBe('live_regression')
     expect(report.matrix).toMatchObject({
       surface: 'cli',
-      currentVerificationLevel: 'live_smoke',
-      currentVersion: '2026.6.0',
+      currentVerificationLevel: 'fixture_only',
+      currentVersion: '2026.7.0',
     })
     expect(report.client).toMatchObject({
       surface: 'cli',
-      version: '2026.6.0',
+      version: '2026.7.0',
       build: null,
     })
     expect(report.environment).toMatchObject({
       kind: 'local',
       serverUrl: 'https://localhost:8791',
       sourceCommit: '1234567890ab',
-      runId: '20260709T220000Z',
-      evidenceDir: 'docs/release/live-regression-evidence/cli/20260709T220000Z',
+      runId: '20260724T220000Z',
+      evidenceDir: 'docs/release/live-regression-evidence/cli/20260724T220000Z',
     })
     expect(
       report.flowCoverage.groups.every((group) => group.status === 'pass'),
     ).toBe(true)
     expect(statusById(report, 'synthetic_data_only')).toBe('pass')
     expect(report.evidenceTemplate.summaryPath).toBe(
-      'docs/release/live-regression-evidence/cli/20260709T220000Z/summary.md',
+      'docs/release/live-regression-evidence/cli/20260724T220000Z/summary.md',
     )
     expect(report.evidenceTemplate.prohibitedContent).toContain('passwords')
     expect(report.limitations).toContain(
       'This packet generator does not run a live client binary.',
     )
+  })
+
+  it.each([
+    [
+      'version override mismatch',
+      [
+        '--surface',
+        'cli',
+        '--client-version',
+        '2026.6.0',
+        '--run-id',
+        '20260724T220000Z',
+        '--generated-at',
+        '2026-07-24T22:00:00Z',
+      ],
+      'client_identity_matches_matrix',
+    ],
+    [
+      'build override mismatch',
+      [
+        '--surface',
+        'mobile_android',
+        '--client-build',
+        '21713',
+        '--run-id',
+        '20260808T220000Z',
+        '--generated-at',
+        '2026-08-08T22:00:00Z',
+      ],
+      'client_identity_matches_matrix',
+    ],
+    [
+      'pre-release generation',
+      [
+        '--surface',
+        'cli',
+        '--run-id',
+        '20260709T220000Z',
+        '--generated-at',
+        '2026-07-09T22:00:00Z',
+      ],
+      'generated_at_after_client_release',
+    ],
+    [
+      'impossible generation time',
+      [
+        '--surface',
+        'cli',
+        '--run-id',
+        '20260732T220000Z',
+        '--generated-at',
+        '2026-07-32T22:00:00Z',
+      ],
+      'generated_at_after_client_release',
+    ],
+    [
+      'run identifier mismatch',
+      [
+        '--surface',
+        'cli',
+        '--run-id',
+        '20260724T220001Z',
+        '--generated-at',
+        '2026-07-24T22:00:00Z',
+      ],
+      'run_id_matches_generated_at',
+    ],
+  ])('rejects %s', async (_name, identityArgs, failedRequirement) => {
+    const result = await execFileAsync('node', [
+      packetScript,
+      '--environment',
+      'local',
+      '--server-url',
+      'https://localhost:8791',
+      '--source-commit',
+      '1234567890ab',
+      ...identityArgs,
+      ...completeFlows.flatMap((flow) => ['--flow', flow]),
+    ])
+    const report = JSON.parse(result.stdout) as LiveRegressionPacket
+
+    expect(report.status).toBe('not_ready')
+    expect(statusById(report, failedRequirement)).toBe('fail')
   })
 
   it('fails strict mode when required regression flows are missing', async () => {

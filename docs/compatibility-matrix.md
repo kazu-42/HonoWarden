@@ -1,8 +1,23 @@
 # Client Compatibility Matrix
 
-Last release metadata check: 2026-07-10T02:50:34Z.
+Last release metadata check: 2026-08-16T03:35:28Z.
 
-This matrix records the exact client versions currently tracked by HonoWarden. It is intentionally conservative: rows stay at `fixture_only` until a live client run is captured with request and response evidence. The structured source of truth is [`compat/client-matrix.json`](../compat/client-matrix.json).
+This matrix records the exact client versions currently tracked by HonoWarden.
+It is intentionally conservative: rows stay at `fixture_only` until the same
+exact client version and mobile build complete a live run with redacted request
+and response evidence. The current structured source of truth is
+[`compat/client-matrix.json`](../compat/client-matrix.json).
+
+The already-published `v0.1.0-alpha` release gate is intentionally decoupled
+from current upstream tracking. Its historical compatibility matrix is rebuilt
+from tag commit `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce` and frozen in the immutable
+[`v0.1.0-alpha-client-matrix.json`](../compat/releases/v0.1.0-alpha-client-matrix.json)
+snapshot. The tag-time CLI evidence bytes are separately sealed under
+[`docs/release/snapshots/v0.1.0-alpha/`](release/snapshots/v0.1.0-alpha/), with their
+source path, byte count, and SHA-256 recorded in the snapshot. Refreshing the
+current matrix or current evidence documents therefore cannot rewrite what was
+present at the tag. The snapshot does not claim that its older clients are the
+current supported versions.
 
 Fixture coverage is tracked separately in [`compat/fixture-flows.json`](../compat/fixture-flows.json). CI verifies that every `coveredFlows` value in the matrix maps to at least one fixture file. CI also route-replays every JSON fixture under `compat/fixtures` against the Hono app and compares that replay set with the fixture-flow manifest, so fixture assertions exercise real route behavior instead of only static JSON shape.
 
@@ -111,19 +126,21 @@ client evidence and do not change any verification level in the matrix.
 - Refresh rule: select the latest non-draft, non-prerelease release matching
   the row selector in `compat/client-matrix.json`.
 - Promotion rule: updating version/build metadata never promotes
-  `verificationLevel`; live request/response evidence is still required.
+  `verificationLevel`. When an exact version or build changes, remove the old
+  row-level `liveEvidence` and set the current row to `fixture_only` until new
+  redacted request/response evidence exists.
 - Drift rule: when a tracked version advances, re-evaluate the relevant live
   evidence issue before release planning and keep known issues explicit.
 
 ## Current Matrix
 
-| Surface           | Version  | Build | Release Tag       | Release Published    | Verification | Known Issues                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ----------------- | -------- | ----- | ----------------- | -------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| browser_extension | 2026.6.1 |       | browser-v2026.6.1 | 2026-06-30T17:07:46Z | live_smoke   | Live browser-extension smoke covers self-hosted environment selection, password login, initial sync, account profile reads, empty-vault render, and staging login-with-device consumption against synthetic accounts only; the original run used Brave's Chromium extension host, while the login-with-device run used isolated Chrome for Testing with unsafe extension debugging enabled only for the pinned unpacked test extension; TOTP login has official CLI plus HTTP auth lifecycle evidence only, with no browser-extension TOTP evidence recorded yet; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                                                      |
-| desktop           | 2026.6.1 |       | desktop-v2026.6.1 | 2026-06-30T16:09:04Z | live_smoke   | On 2026-07-13, official Desktop 2026.6.1 exposed a server routing defect: permanent delete via `DELETE /api/ciphers/:id` returned an opaque 404 for a trashed cipher; this change corrects that route and adds the upstream `POST /api/ciphers/:id/delete` alias. A post-fix official-client lifecycle rerun is not recorded yet. Live Desktop smoke covers self-hosted staging selection, password login, initial sync, pending request notification, login-with-device approval, and empty-vault rendering with a synthetic account; the run used the official `ACCESS_TOKEN_LOCATION=DISK` switch and an isolated Electron profile without patching the app or modifying a normal official-client Keychain entry; item lifecycle, TOTP, and full live regression remain unverified; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only. |
-| mobile_android    | 2026.6.1 | 21713 | v2026.6.1-bwpm    | 2026-07-09T16:57:30Z | live_smoke   | Live Android smoke covers official F-Droid APK self-hosted environment selection, password login, first empty-vault sync persistence, billing subscription read, and config refresh against a local synthetic account only; the smoke exposed official Retrofit rejection of SQLite `CURRENT_TIMESTAMP` values, so HonoWarden now normalizes outward API timestamps to UTC ISO-8601 before the passing clean run; TOTP login has official CLI plus HTTP auth lifecycle evidence only, with no Android TOTP evidence recorded yet; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                                                                                      |
-| mobile_ios        | 2026.6.1 | 3376  | v2026.6.1-bwpm    | 2026-07-09T22:32:52Z | fixture_only | No live mobile login or sync run is recorded for this exact version; release metadata advanced from 2026.6.0 build 3325 to 2026.6.1 build 3376 on 2026-07-09, and iOS still lacks a physical-device or simulator live smoke in this repository; follow-up live evidence is tracked by HON-65; TOTP login has official CLI plus HTTP auth lifecycle evidence only, with no iOS TOTP evidence recorded yet; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                                                                                                                                                                                                              |
-| cli               | 2026.6.0 |       | cli-v2026.6.0     | 2026-06-25T18:32:52Z | live_smoke   | Live CLI smoke covers config, password login, sync, one synthetic login item create/update/trash/permanent-delete flow, account revision lookup, official CLI one-step TOTP login, refresh grant, and HTTP auth lifecycle recent-auth guards; TOTP setup, change, disable, and revoke-all-other-sessions evidence uses direct HTTP routes with CLI-issued or recent password-authenticated tokens because the tracked CLI does not expose those account-management flows in this scope; device lookup, metadata update, encrypted key update, bulk trust update, and preflight APIs are implemented (`GET /api/devices`, `GET /api/devices/identifier/:identifier`, `PUT /api/devices/:id`, `PUT /api/devices/:id/keys`, `POST /api/devices/update-trust`, `GET /api/devices/knowndevice`); device key and bulk trust updates have fixture coverage only.                                                                                                                                                                                                                                                                                                |
+| Surface           | Version  | Build | Release Tag       | Release Published    | Verification | Current evidence boundary                                                                                                                        |
+| ----------------- | -------- | ----- | ----------------- | -------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| browser_extension | 2026.7.0 |       | browser-v2026.7.0 | 2026-07-23T16:49:59Z | fixture_only | No exact-version official binary live smoke. Browser 2026.6.1 evidence is historical and does not promote this row.                              |
+| desktop           | 2026.7.0 |       | desktop-v2026.7.0 | 2026-07-23T15:20:46Z | fixture_only | No exact-version official binary live smoke. Desktop 2026.6.1 evidence is historical and does not promote this row.                              |
+| mobile_android    | 2026.7.1 | 21803 | v2026.7.1-bwpm    | 2026-08-07T22:20:51Z | fixture_only | No exact-version/build official binary live smoke. Android 2026.6.1 build 21713 evidence is historical and does not promote this row.            |
+| mobile_ios        | 2026.7.1 | 3432  | v2026.7.1-bwpm    | 2026-08-07T22:12:38Z | fixture_only | No physical-device or simulator live smoke is recorded for this exact version/build.                                                             |
+| cli               | 2026.7.0 |       | cli-v2026.7.0     | 2026-07-23T21:16:13Z | fixture_only | No exact-version official binary live smoke. CLI 2026.6.0 login, sync, lifecycle, refresh, and TOTP evidence is historical and does not promote. |
 
 There is intentionally no Web Vault row. HonoWarden's alpha compatibility
 target is API-only protocol support for tracked clients, not a hosted or
@@ -153,12 +170,14 @@ selection beyond the confirmed owner, cipher assignment, audit, and live
 official-client evidence remain outside the current claim.
 
 There is intentionally no Send or public file-sharing row. Cipher-scoped
-attachments are authenticated owner-scoped vault operations; public sharing
-now has an accepted design contract under ADR 0011, but no stateful source,
-runtime activation, or live compatibility evidence. The current `501` boundary
-and `send-enabled: false` remain authoritative. A Send row can be added only for
-the exact flow and client version proven after the ADR 0011 implementation,
-abuse, cleanup, activation, rollback, and live-evidence gates pass.
+attachments are authenticated owner-scoped vault operations. A stateful Text
+Send foundation under ADR 0011 now exists: migration `0018`, an owner-scoped
+repository, and an unmounted owner application service. The runtime route and
+`send_access` token lane remain inactive, tracked configuration remains
+`send-enabled: false`, and there is no live compatibility evidence. The current
+explicit `501` boundary is authoritative. A Send row can be added only for the
+exact flow and client version proven after abuse, cleanup, activation,
+rollback, and live-evidence gates pass.
 
 There is intentionally no Emergency Access row. Delegated recovery requires
 [ADR 0004](adr/0004-emergency-access-scope.md)'s grantee identity, delay,
@@ -166,10 +185,10 @@ cancellation, notification, cryptographic handoff, abuse-control, audit,
 rollback, and incident-response design before compatibility can be claimed.
 
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
-HON-124 records an issue-local official Desktop `2026.6.1` staging allocation,
-upload, download, and delete lifecycle with cleanup. That evidence does not
-promote the Desktop matrix row or prove browser, mobile, production, or broad
-regression behavior.
+HON-124 records historical issue-local official Desktop `2026.6.1` staging
+allocation, upload, download, and delete lifecycle evidence with cleanup. It is
+not Desktop `2026.7.0` evidence and does not promote the Desktop matrix row or
+prove browser, mobile, production, or broad regression behavior.
 
 ## Verification Levels
 
@@ -200,8 +219,9 @@ regression behavior.
    the row selector.
 3. Update `version`, `build` when present, `releaseTag`,
    `releasePublishedAt`, and root `checkedAt`.
-4. Keep `verificationLevel` unchanged unless new live request/response evidence
-   is captured and linked.
+4. If the exact version or mobile build advanced, set `verificationLevel` to
+   `fixture_only` and remove mismatched row-level `liveEvidence`. Promote only
+   after new exact-version request/response evidence is captured and linked.
 5. Add a known issue when a version advances without corresponding live
    evidence.
 6. For regression promotion, run `pnpm live:regression:packet -- --strict`
@@ -243,11 +263,25 @@ opaque continuation tokens.
 - `session_revoke`
 - `totp_login`
 
-## Live Evidence
+## Sealed Alpha Evidence And Post-Tag History
+
+### Sealed `v0.1.0-alpha` Tag-Time Evidence
+
+The sealed tag-time evidence consists only of the CLI `2026.6.0`
+`live_smoke`, backed by the immutable
+[`live-client-evidence.md`](release/snapshots/v0.1.0-alpha/live-client-evidence.md)
+archive. Browser extension and Desktop `2026.6.1`, Android `2026.6.0` build
+`21686`, and iOS `2026.6.0` build `3325` remain `fixture_only` in the
+published-alpha snapshot.
+
+### Post-Tag Historical Evidence
+
+The documents below were added after the alpha tag. They preserve
+version-bound historical observations, but are not part of the sealed tag-time
+manifest and do not promote any current 2026.7 row.
 
 - Desktop `2026.6.1` password-login, approval, and empty-vault evidence: [`docs/release/login-with-device-live-client-evidence.md`](release/login-with-device-live-client-evidence.md)
 - Desktop `2026.6.1` historical transport checkpoint: [`docs/release/desktop-notification-transport-evidence.md`](release/desktop-notification-transport-evidence.md)
 - Browser extension `2026.6.1`: [`docs/release/browser-extension-live-client-evidence.md`](release/browser-extension-live-client-evidence.md) and [`docs/release/login-with-device-live-client-evidence.md`](release/login-with-device-live-client-evidence.md)
 - Android `2026.6.1` build `21713`: [`docs/release/android-mobile-live-client-evidence.md`](release/android-mobile-live-client-evidence.md)
-- CLI `2026.6.0`: [`docs/release/live-client-evidence.md`](release/live-client-evidence.md)
 - CLI TOTP and recent-auth lifecycle `2026.6.0`: [`docs/release/totp-recent-auth-live-evidence.md`](release/totp-recent-auth-live-evidence.md)

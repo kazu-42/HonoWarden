@@ -171,7 +171,7 @@ const rolloutFlagDocs = [
 ] as const
 
 const freshnessDocs = {
-  'docs/current-state.md': '2026-08-09',
+  'docs/current-state.md': '2026-09-01',
   'docs/release/index.md': '2026-08-09',
   'docs/release/rollback-guide.md': '2026-08-09',
   'docs/security/data-flow.md': '2026-07-23',

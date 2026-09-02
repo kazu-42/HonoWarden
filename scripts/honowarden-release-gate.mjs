@@ -9,7 +9,33 @@ import process from 'node:process'
 
 import { parse } from 'jsonc-parser'
 
+import {
+  hasClientMatrixLiveEvidence,
+  inspectClientMatrix,
+  isRegularRepositoryEvidenceFile,
+  matrixLiveEvidencePaths as clientMatrixLiveEvidencePaths,
+} from './honowarden-client-matrix-policy.mjs'
+
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
+const publishedAlphaClientMatrixPath =
+  'compat/releases/v0.1.0-alpha-client-matrix.json'
+const publishedAlphaClientMatrixSha256 =
+  '82ee5193499716331a7dfc46216f99f74569cb5bf89ec28548a4042daa7d9550'
+const publishedAlphaSourceCommit = 'e7a3c5ea9e51030143736bb0e7a36cb7a8babfce'
+const publishedAlphaSourceMatrixSha256 =
+  '8076ec9d4fd9179b9f0616f6f6b5489acacae291058ba95854e4591be56c3491'
+const publishedAlphaEvidenceManifest = [
+  {
+    sourcePath: 'docs/release/live-client-evidence.md',
+    snapshotPath: 'docs/release/snapshots/v0.1.0-alpha/live-client-evidence.md',
+    bytes: 5231,
+    sha256: '3b2bc4c0b76ec7789f4833f7eed35b9cb764c90d4e72a0726d01e847e16af1ca',
+  },
+]
+const publishedAlphaArchiveCheckIds = new Set([
+  'compatibility_matrix_conservative',
+  'live_client_evidence',
+])
 
 const requiredReleaseDocs = [
   'index.md',
@@ -88,12 +114,25 @@ function buildReleaseGateReport() {
     checkLinearSeed(),
   ]
   const summary = summarize(checks)
+  const publishedAlphaArchive = summarizeEvidenceLayer(
+    checks.filter((check) => publishedAlphaArchiveCheckIds.has(check.id)),
+  )
+  const currentTree = summarizeEvidenceLayer(
+    checks.filter((check) => !publishedAlphaArchiveCheckIds.has(check.id)),
+  )
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     target: 'v0.1.0-alpha',
+    scope: 'repository_release_evidence',
+    evidenceStatus: summary.block > 0 ? 'inconsistent' : 'consistent',
+    executionStatus: 'not_admitted',
     overall: summary.block > 0 ? 'not_ready' : 'ready',
+    layers: {
+      currentTree,
+      publishedAlphaArchive,
+    },
     summary,
     checks,
   }
@@ -306,87 +345,120 @@ function hasCiEvidence(checks) {
 }
 
 function checkCompatibilityMatrix() {
-  const matrix = readJson('compat/client-matrix.json')
-  const allowedVerificationLevels = new Set([
-    'fixture_only',
-    'live_smoke',
-    'live_regression',
-  ])
-  const invalidVerificationRows = matrix.entries.filter(
-    (entry) => !allowedVerificationLevels.has(entry.verificationLevel),
-  )
-  const promotedRows = matrix.entries.filter(
-    (entry) => entry.verificationLevel !== 'fixture_only',
-  )
-  const promotedRowsWithoutEvidence = promotedRows.filter((entry) => {
-    if (!hasMatrixLiveEvidence(entry)) {
-      return true
-    }
-
-    return (
-      entry.verificationLevel === 'live_regression' &&
-      !hasMatrixLiveRegressionEvidence(entry)
-    )
+  const matrix = readJson(publishedAlphaClientMatrixPath)
+  const snapshotSha256 = createHash('sha256')
+    .update(readFileSync(repoPath(publishedAlphaClientMatrixPath)))
+    .digest('hex')
+  const evidenceManifest = inspectPublishedAlphaEvidenceManifest(matrix)
+  const inspection = inspectClientMatrix(matrix, {
+    evidenceIsRegularFile: (evidencePath) =>
+      evidenceManifest.valid &&
+      Object.hasOwn(evidenceManifest.resolvedPaths, evidencePath),
   })
-  const rowsWithoutKnownIssues = matrix.entries.filter(
-    (entry) =>
-      !Array.isArray(entry.knownIssues) || entry.knownIssues.length < 1,
-  )
+  const reconstructedSourceMatrixSha256 = createHash('sha256')
+    .update(
+      `${JSON.stringify(
+        {
+          schemaVersion: matrix.schemaVersion,
+          checkedAt: matrix.checkedAt,
+          sourceKind: matrix.sourceKind,
+          entries: matrix.entries,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    .digest('hex')
+  const snapshotMetadataValid =
+    matrix.releaseTarget === 'v0.1.0-alpha' &&
+    matrix.snapshotKind === 'tag-time-client-evidence' &&
+    matrix.sourceTag === 'v0.1.0-alpha' &&
+    matrix.sourceCommit === publishedAlphaSourceCommit &&
+    matrix.sourceMatrixPath === 'compat/client-matrix.json' &&
+    matrix.sourceMatrixSha256 === publishedAlphaSourceMatrixSha256 &&
+    reconstructedSourceMatrixSha256 === publishedAlphaSourceMatrixSha256
+  const snapshotIntegrityValid =
+    snapshotSha256 === publishedAlphaClientMatrixSha256
 
   if (
-    invalidVerificationRows.length > 0 ||
-    promotedRowsWithoutEvidence.length > 0 ||
-    rowsWithoutKnownIssues.length > 0
+    !snapshotMetadataValid ||
+    !snapshotIntegrityValid ||
+    !evidenceManifest.valid ||
+    inspection.invalidVerificationRows.length > 0 ||
+    inspection.fixtureOnlyRowsWithLiveEvidence.length > 0 ||
+    inspection.promotedRowsWithoutEvidence.length > 0 ||
+    inspection.rowsWithoutKnownIssues.length > 0
   ) {
     return {
       id: 'compatibility_matrix_conservative',
       status: 'block',
-      title: 'Compatibility matrix promotions are backed by live evidence',
-      evidence: ['compat/client-matrix.json'],
+      title:
+        'Published alpha compatibility snapshot promotions are backed by live evidence',
+      evidence: [publishedAlphaClientMatrixPath],
       details: {
-        invalidVerificationRows: invalidVerificationRows.map(
-          (entry) => entry.surface,
-        ),
-        promotedRowsWithoutEvidence: promotedRowsWithoutEvidence.map(
-          (entry) => entry.surface,
-        ),
-        rowsWithoutKnownIssues: rowsWithoutKnownIssues.map(
-          (entry) => entry.surface,
-        ),
+        snapshotMetadataValid,
+        snapshotIntegrityValid,
+        expectedSha256: publishedAlphaClientMatrixSha256,
+        actualSha256: snapshotSha256,
+        reconstructedSourceMatrixSha256,
+        expectedSourceMatrixSha256: publishedAlphaSourceMatrixSha256,
+        evidenceManifestValid: evidenceManifest.valid,
+        evidenceManifestFiles: evidenceManifest.files,
+        invalidVerificationRows: inspection.invalidVerificationRows,
+        fixtureOnlyRowsWithLiveEvidence:
+          inspection.fixtureOnlyRowsWithLiveEvidence,
+        promotedRowsWithoutEvidence: inspection.promotedRowsWithoutEvidence,
+        rowsWithoutKnownIssues: inspection.rowsWithoutKnownIssues,
       },
       nextAction:
-        'Keep rows at fixture_only or attach complete liveEvidence before smoke/regression promotion.',
+        'Restore the immutable tag-time alpha matrix and archived evidence bytes before accepting a historical promotion.',
     }
   }
 
   return {
     id: 'compatibility_matrix_conservative',
     status: 'pass',
-    title: 'Compatibility matrix promotions are backed by live evidence',
-    evidence: ['compat/client-matrix.json'],
+    title:
+      'Tag-time alpha compatibility promotions are backed by sealed live evidence',
+    evidence: [
+      publishedAlphaClientMatrixPath,
+      ...publishedAlphaEvidenceManifest.map((entry) => entry.snapshotPath),
+    ],
     details: {
       entries: matrix.entries.length,
-      promotedRows: promotedRows.map((entry) => entry.surface),
+      releaseTarget: matrix.releaseTarget,
+      snapshotSha256,
+      sourceCommit: matrix.sourceCommit,
+      sourceMatrixSha256: reconstructedSourceMatrixSha256,
+      promotedRows: inspection.promotedRows,
     },
   }
 }
 
 function checkLiveClientEvidence() {
-  const matrix = readJson('compat/client-matrix.json')
+  const matrix = readJson(publishedAlphaClientMatrixPath)
+  const evidenceManifest = inspectPublishedAlphaEvidenceManifest(matrix)
   const promotedRows = matrix.entries.filter(
     (entry) => entry.verificationLevel !== 'fixture_only',
   )
   const promotedRowsWithoutEvidence = promotedRows.filter(
-    (entry) => !hasMatrixLiveEvidence(entry),
+    (entry) => !hasMatrixLiveEvidence(entry, matrix),
   )
-  const evidencePaths = Array.from(
+  const sourceEvidencePaths = Array.from(
     new Set(promotedRows.flatMap((entry) => matrixLiveEvidencePaths(entry))),
   )
+  const evidencePaths = sourceEvidencePaths.map(
+    (evidencePath) =>
+      evidenceManifest.resolvedPaths[evidencePath] ?? evidencePath,
+  )
   const cliEntry = matrix.entries.find((entry) => entry.surface === 'cli')
-  const cliEvidencePath =
+  const cliEvidenceSourcePath =
     typeof cliEntry?.liveEvidence?.path === 'string'
       ? cliEntry.liveEvidence.path
       : 'docs/release/live-client-evidence.md'
+  const cliEvidencePath =
+    evidenceManifest.resolvedPaths[cliEvidenceSourcePath] ??
+    cliEvidenceSourcePath
   const cliEvidencePaths = matrixLiveEvidencePaths(cliEntry)
   const cliTotpEvidencePath = 'docs/release/totp-recent-auth-live-evidence.md'
   const browserEntry = matrix.entries.find(
@@ -401,13 +473,13 @@ function checkLiveClientEvidence() {
     promotedRowsWithoutEvidence.length > 0 ||
     !cliEntry ||
     cliEntry.verificationLevel !== 'live_smoke' ||
-    !hasMatrixLiveEvidence(cliEntry)
+    !hasMatrixLiveEvidence(cliEntry, matrix)
   ) {
     return {
       id: 'live_client_evidence',
       status: 'block',
-      title: 'Synthetic live-client evidence is recorded before alpha tagging',
-      evidence: ['compat/client-matrix.json', ...evidencePaths],
+      title: 'Tag-time synthetic CLI evidence is sealed for v0.1.0-alpha',
+      evidence: [publishedAlphaClientMatrixPath, ...evidencePaths],
       details: {
         promotedRowsWithoutEvidence: promotedRowsWithoutEvidence.map(
           (entry) => entry.surface,
@@ -416,7 +488,7 @@ function checkLiveClientEvidence() {
         liveEvidence: cliEntry?.liveEvidence ?? null,
       },
       nextAction:
-        'Run the required synthetic live-client smoke, then link redacted evidence before tagging.',
+        'Restore the sealed tag-time CLI evidence archive and its manifest entry.',
     }
   }
 
@@ -506,8 +578,8 @@ function checkLiveClientEvidence() {
     return {
       id: 'live_client_evidence',
       status: 'block',
-      title: 'Synthetic live-client evidence is recorded before alpha tagging',
-      evidence: ['compat/client-matrix.json', ...evidencePaths],
+      title: 'Tag-time synthetic CLI evidence is sealed for v0.1.0-alpha',
+      evidence: [publishedAlphaClientMatrixPath, ...evidencePaths],
       details: {
         missingCliEvidence,
         missingCliTotpEvidence,
@@ -521,85 +593,68 @@ function checkLiveClientEvidence() {
   return {
     id: 'live_client_evidence',
     status: 'pass',
-    title: 'Synthetic live-client evidence is recorded before alpha tagging',
-    evidence: ['compat/client-matrix.json', ...evidencePaths],
+    title: 'Tag-time synthetic CLI evidence is sealed for v0.1.0-alpha',
+    evidence: [publishedAlphaClientMatrixPath, ...evidencePaths],
   }
 }
 
 function matrixLiveEvidencePaths(entry) {
-  const evidence = entry?.liveEvidence
-  if (!evidence || typeof evidence.path !== 'string') {
-    return []
-  }
+  return clientMatrixLiveEvidencePaths(entry)
+}
 
-  const additionalPaths = Array.isArray(evidence.additionalPaths)
-    ? evidence.additionalPaths.filter(
-        (entryPath) => typeof entryPath === 'string',
+function hasMatrixLiveEvidence(entry, matrix) {
+  const evidenceManifest = inspectPublishedAlphaEvidenceManifest(matrix)
+  return hasClientMatrixLiveEvidence(entry, {
+    evidenceIsRegularFile: (evidencePath) =>
+      evidenceManifest.valid &&
+      Object.hasOwn(evidenceManifest.resolvedPaths, evidencePath),
+  })
+}
+
+function inspectPublishedAlphaEvidenceManifest(matrix) {
+  const metadataValid =
+    JSON.stringify(matrix.evidenceManifest) ===
+    JSON.stringify(publishedAlphaEvidenceManifest)
+  const files = publishedAlphaEvidenceManifest.map((entry) => {
+    let regularFile
+    let actualBytes = null
+    let actualSha256 = null
+    try {
+      regularFile = isRegularRepositoryEvidenceFile(
+        repoRoot,
+        entry.snapshotPath,
       )
-    : []
-
-  return [evidence.path, ...additionalPaths]
-}
-
-function hasMatrixLiveEvidence(entry) {
-  const evidence = entry.liveEvidence
-  const additionalPaths =
-    evidence?.additionalPaths === undefined
-      ? []
-      : Array.isArray(evidence.additionalPaths)
-        ? evidence.additionalPaths
-        : null
-
-  if (!additionalPaths) {
-    return false
+      if (regularFile) {
+        const contents = readFileSync(repoPath(entry.snapshotPath))
+        actualBytes = contents.byteLength
+        actualSha256 = createHash('sha256').update(contents).digest('hex')
+      }
+    } catch {
+      regularFile = false
+    }
+    return {
+      ...entry,
+      regularFile,
+      actualBytes,
+      actualSha256,
+      valid:
+        regularFile &&
+        actualBytes === entry.bytes &&
+        actualSha256 === entry.sha256,
+    }
+  })
+  const valid = metadataValid && files.every((entry) => entry.valid)
+  return {
+    valid,
+    metadataValid,
+    files,
+    resolvedPaths: Object.fromEntries(
+      publishedAlphaEvidenceManifest.map((entry) => [
+        entry.sourcePath,
+        entry.snapshotPath,
+      ]),
+    ),
   }
-
-  return (
-    evidence &&
-    evidence.status === 'passed' &&
-    evidence.clientVersion === entry.version &&
-    typeof evidence.path === 'string' &&
-    existsSync(repoPath(evidence.path)) &&
-    additionalPaths.every(
-      (entryPath) =>
-        typeof entryPath === 'string' && existsSync(repoPath(entryPath)),
-    ) &&
-    typeof evidence.recordedAt === 'string' &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(evidence.recordedAt) &&
-    Array.isArray(evidence.flows) &&
-    evidence.flows.length > 0
-  )
-}
-
-function hasMatrixLiveRegressionEvidence(entry) {
-  const evidence = entry.liveEvidence
-  const requiredFlows = [
-    'config',
-    'prelogin',
-    'password_grant',
-    'initial_sync',
-    'post_mutation_sync',
-    'cipher_create',
-    'cipher_update',
-    'cipher_soft_delete',
-    'cipher_permanent_delete',
-    'refresh_grant',
-    'session_revoke',
-  ]
-
-  return (
-    typeof evidence?.path === 'string' &&
-    evidence.path.startsWith('docs/release/live-regression-evidence/') &&
-    requiredFlows.every((flow) => evidence.flows.includes(flow)) &&
-    evidence.flows.some((flow) =>
-      [
-        'totp_login',
-        'device_revoke',
-        'revoke_all_other_sessions',
-        'disabled_user_denied',
-      ].includes(flow),
-    )
-  )
 }
 
 function checkBackupRestoreDrillEvidence() {
@@ -659,26 +714,30 @@ function checkStagingDeployEvidence() {
     return {
       id: 'staging_deploy_evidence',
       status: 'block',
-      title: 'Staging fresh deploy smoke evidence exists',
+      title: 'Published alpha staging dry-run evidence is sealed',
       evidence: ['docs/release/fresh-deploy-guide.md'],
       details: { expectedEvidencePath: evidencePath },
       nextAction:
-        'Deploy to staging or run the documented staging dry-run and record smoke results.',
+        'Restore the historical repository-local staging dry-run evidence artifact.',
     }
   }
 
   const evidenceDoc = readText(evidencePath)
   const requiredEvidence = [
-    'Status: passed',
-    'Mode: staging deploy dry-run',
+    'HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY',
+    'Historical target: `v0.1.0-alpha`',
+    'Historical status: passed',
+    'Historical mode: staging deploy dry-run',
     'Source commit:',
     'Wrangler version:',
-    'Dry-run command:',
+    'Historical evidence command',
+    'Historical Wrangler dry-run command',
     'Worker name: `honowarden-staging`',
     'D1 binding: `DB -> honowarden-staging`',
     'R2 binding: `VAULT_OBJECTS -> honowarden-staging-vault-objects`',
     'Bundle SHA-256:',
-    'Local smoke checks:',
+    'Recorded local smoke checks:',
+    '`staging:dry-run` entrypoint is a static blocker',
     'Remote deploy: not performed',
     'Database ID placeholder: false',
   ]
@@ -690,19 +749,27 @@ function checkStagingDeployEvidence() {
     return {
       id: 'staging_deploy_evidence',
       status: 'block',
-      title: 'Staging fresh deploy smoke evidence exists',
+      title: 'Published alpha staging dry-run evidence is sealed',
       evidence: [evidencePath],
-      details: { missingEvidence },
+      details: {
+        evidenceKind: 'historical_repository_local_dry_run',
+        currentExecutionAuthority: false,
+        missingEvidence,
+      },
       nextAction:
-        'Complete staging dry-run evidence with command, bindings, bundle hash, smoke checks, and explicit limitations.',
+        'Restore the sealed historical dry-run record with its identity, bindings, bundle hash, smoke checks, and non-authority boundary.',
     }
   }
 
   return {
     id: 'staging_deploy_evidence',
     status: 'pass',
-    title: 'Staging fresh deploy smoke evidence exists',
+    title: 'Published alpha staging dry-run evidence is sealed',
     evidence: [evidencePath],
+    details: {
+      evidenceKind: 'historical_repository_local_dry_run',
+      currentExecutionAuthority: false,
+    },
   }
 }
 
@@ -809,6 +876,15 @@ function summarize(checks) {
     },
     { pass: 0, manual: 0, block: 0 },
   )
+}
+
+function summarizeEvidenceLayer(checks) {
+  const summary = summarize(checks)
+  return {
+    status: summary.block > 0 ? 'inconsistent' : 'consistent',
+    summary,
+    checkIds: checks.map((check) => check.id),
+  }
 }
 
 function readJson(path) {

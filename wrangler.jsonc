@@ -1,8 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "honowarden",
+  "name": "honowarden-local",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-06",
+  "preview_urls": false,
+  "workers_dev": false,
   "triggers": {
     "crons": ["0 * * * *"],
   },
@@ -10,6 +12,9 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
+  },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA",
   },
   "vars": {
     "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
@@ -34,19 +39,19 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "honowarden",
-      "database_id": "21ef7fa8-f26d-4024-82cb-c7b88ee02433",
+      "database_name": "honowarden-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
     },
     {
       "binding": "INQUIRY_DB",
-      "database_name": "honowarden-inquiry",
-      "database_id": "00aa46fa-057c-4409-b344-6fa3b61c00dc",
+      "database_name": "honowarden-inquiry-local",
+      "database_id": "00000000-0000-0000-0000-000000000002",
     },
   ],
   "r2_buckets": [
     {
       "binding": "VAULT_OBJECTS",
-      "bucket_name": "honowarden-vault-objects",
+      "bucket_name": "honowarden-local-vault-objects",
     },
   ],
   "durable_objects": {
@@ -58,6 +63,8 @@
   "env": {
     "staging": {
       "name": "honowarden-staging",
+      "preview_urls": false,
+      "workers_dev": false,
       "triggers": {
         "crons": ["0 * * * *"],
       },
@@ -65,6 +72,9 @@
       "observability": {
         "enabled": true,
         "head_sampling_rate": 1,
+      },
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA",
       },
       "vars": {
         "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
@@ -112,6 +122,8 @@
     },
     "production": {
       "name": "honowarden",
+      "preview_urls": false,
+      "workers_dev": false,
       "triggers": {
         "crons": ["0 * * * *"],
       },
@@ -119,6 +131,9 @@
       "observability": {
         "enabled": true,
         "head_sampling_rate": 1,
+      },
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA",
       },
       "vars": {
         "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",

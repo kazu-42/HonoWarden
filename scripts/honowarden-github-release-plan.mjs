@@ -109,7 +109,7 @@ function checkReleaseNotes(notesFile) {
     '## Compatibility',
     '## Operations',
     '## Known Risks',
-    '## Release Gate',
+    '## Historical Release Gate',
   ]
   const missing = requiredFragments.filter(
     (fragment) => !notes.includes(fragment),

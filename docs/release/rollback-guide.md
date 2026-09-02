@@ -11,8 +11,8 @@ changes can be safely reversed in place.
 
 | Failure                                     | Preferred Action                                                         |
 | ------------------------------------------- | ------------------------------------------------------------------------ |
-| Worker deploy failed before serving traffic | redeploy previous known-good commit                                      |
-| Worker serving errors with unchanged schema | redeploy previous known-good commit                                      |
+| Worker deploy failed before serving traffic | preserve evidence; request a reviewed recovery protocol                  |
+| Worker serving errors with unchanged schema | isolate writes; request a reviewed known-good source recovery            |
 | migration applied and new code is bad       | keep data target isolated, deploy compatible fix or restore fresh target |
 | backup restore failed                       | discard restore target and rerun from the same backup                    |
 | secrets exposed                             | rotate affected secrets and invalidate sessions where applicable         |
@@ -47,23 +47,30 @@ sessions, or encrypted payload generations.
 
 ## Worker Code Rollback
 
-1. Identify the previous known-good commit and CI run.
-2. Check out that commit.
-3. Confirm local gates still pass.
-4. Deploy the previous Worker:
+Status: **REAL WORKER/VERSION/TRAFFIC WRITE STOP**. This repository has no
+executable Worker rollback, deploy dry-run, version activation, or automated
+traffic recovery path. Direct Wrangler use is not an approved fallback.
+
+Prepare a recovery candidate locally without remote authority:
 
 ```sh
-git checkout <previous-good-commit>
+git worktree add --detach <dedicated-rollback-path> <previous-good-full-commit>
+cd <dedicated-rollback-path>
 pnpm install --frozen-lockfile
 pnpm check
 pnpm lint
 pnpm test
 pnpm compat:test
 pnpm format
-pnpm wrangler deploy --env production
 ```
 
-5. Verify `/health`, `/health/db`, and synthetic login/sync.
+A future reviewed recovery protocol must verify `/health`, `/healthz`,
+`/health/db`, `/api/config`, and authorized synthetic login/sync on the same
+observed deployment. Both health aliases must report the intended `environment`,
+a distinct `workerVersionId`, a valid `createdAt`, and the rollback commit in
+`build.gitSha`; `/api/config.gitHash` must equal the same SHA. It must capture
+traffic and every non-versioned setting, classify partial success, and prove
+recovery independently without overwriting unexpected remote state.
 
 ## Password Change Rollback
 
@@ -205,6 +212,25 @@ outage rollback is limited to disabling new public requests and retrying token
 delivery with a new token; provider responses and raw tokens must never be
 copied into incident evidence.
 
+## Encrypted Text Send Foundation Rollback
+
+Migration `0018` is forward-only. Keep the `sends` table and its indexes during
+Worker rollback. HON-184 does not mount Send routes, enable `send-enabled`,
+write runtime secrets, or create remote rows, so the normal rollback is to a
+Worker that ignores the additive table while the existing `501` guards remain
+in force.
+
+After a later Send activation, never roll back to code that cannot read the
+stored capability-envelope and verifier key versions. First disable Send at
+the kill gate, drain owner and public requests, preserve D1 tombstones and
+access generations, and use a separately reviewed protocol for a
+reader-capable Worker. Do not copy a raw
+capability or client password input into D1 or incident evidence, do not replace
+an envelope with a verifier, and do not decrement an access generation to
+restore a prior link. If an envelope or lookup root is exposed, follow ADR 0011
+containment and roll forward with independent keyring rotation and surviving-
+Send capability regeneration.
+
 ## Data Rollback
 
 There are no down migrations for alpha. Use fresh-target restore:
@@ -213,7 +239,8 @@ There are no down migrations for alpha. Use fresh-target restore:
 2. Create fresh D1 and R2 targets.
 3. Restore the last known-good backup with `--confirm-fresh-target`.
 4. Point Worker configuration to the restored targets.
-5. Deploy Worker code compatible with the restored schema.
+5. Use a separately reviewed protocol for Worker code compatible with the
+   restored schema.
 6. Verify health and synthetic sync.
 
 Do not restore over the original source database during alpha.

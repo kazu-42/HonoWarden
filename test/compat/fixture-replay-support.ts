@@ -125,6 +125,11 @@ type FixtureReplayResult = {
 }
 
 const syntheticAccessToken = 'synthetic-access-token'
+const syntheticVersionMetadata: WorkerVersionMetadata = {
+  id: 'synthetic-worker-version-id',
+  tag: '0123456789abcdef0123456789abcdef01234567',
+  timestamp: '2026-08-16T00:00:00.000Z',
+}
 const defaultAuthUser: CompatAuthUserRecord = {
   id: '00000000-0000-4000-8000-000000000001',
   email: 'Person@Example.Test',
@@ -220,6 +225,7 @@ export async function runCompatFixture(
 
   const response = await app.request(request.path, requestInit, {
     DB: database,
+    CF_VERSION_METADATA: syntheticVersionMetadata,
     HONOWARDEN_TOKEN_SECRET: tokenSecret,
     HONOWARDEN_TOTP_SECRET: options.totpSecret ?? tokenSecret,
     HONOWARDEN_ALLOWED_EMAILS: options.allowedEmails ?? 'person@example.test',
