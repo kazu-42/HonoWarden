@@ -136,6 +136,17 @@ function buildQueries(limit) {
       ].join('\n'),
     },
     {
+      id: 'webauthn_challenge_cleanup_candidates',
+      sql: [
+        'SELECT',
+        '  COUNT(*) AS candidate_rows,',
+        '  MIN(retention_delete_after) AS oldest_candidate_at,',
+        '  MAX(retention_delete_after) AS newest_candidate_at',
+        'FROM webauthn_challenges',
+        "WHERE retention_delete_after <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now');",
+      ].join('\n'),
+    },
+    {
       id: 'refresh_token_cleanup_candidates',
       sql: [
         'SELECT',

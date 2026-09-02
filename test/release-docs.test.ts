@@ -112,6 +112,28 @@ describe('release feature-freeze docs', () => {
     expect(index).toContain('account-lifecycle-local-evidence.md')
   })
 
+  it('locks the WebAuthn persistence migration as source-only and default-off', () => {
+    const upgradeGuide = readReleaseDoc('upgrade-guide.md')
+    const rollbackGuide = readReleaseDoc('rollback-guide.md')
+    const releaseNotes = readReleaseDoc('v0.1.0-alpha-release-notes.md')
+
+    for (const requirement of [
+      '0015_webauthn.sql',
+      'HONOWARDEN_WEBAUTHN_ENABLED=false',
+      'webauthn_credentials',
+      'webauthn_challenges',
+      '/health/db',
+    ]) {
+      expect(upgradeGuide).toContain(requirement)
+    }
+    expect(rollbackGuide).toContain('Migration `0015` is forward-only')
+    expect(rollbackGuide).toContain('never un-consumes a challenge')
+    expect(releaseNotes).toContain(
+      'WebAuthn credential and challenge persistence',
+    )
+    expect(releaseNotes).toContain('source-only')
+  })
+
   it('keeps the text Send foundation reader-first and activation-gated', () => {
     const upgradeGuide = readReleaseDoc('upgrade-guide.md')
     const rollbackGuide = readReleaseDoc('rollback-guide.md')

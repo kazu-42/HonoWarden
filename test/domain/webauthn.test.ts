@@ -15,7 +15,10 @@ describe('WebAuthn runtime policy', () => {
   it('keeps credential and challenge limits explicit', () => {
     expect(webAuthnPolicy).toEqual({
       assertionChallengeTtlSeconds: 7 * 60,
+      challengeRetentionSeconds: 24 * 60 * 60,
+      cleanupRowsPerSlice: 100,
       keySetChallengeTtlSeconds: 17 * 60,
+      maxCredentialNameLength: 64,
       maxCredentialsPerUser: 5,
       maxOrigins: 16,
       registrationChallengeTtlSeconds: 7 * 60,

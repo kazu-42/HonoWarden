@@ -11,11 +11,12 @@ The cleanup path covers:
 - `auth_attempts`
 - `auth_failure_buckets`
 - `totp_challenges`
+- `webauthn_challenges`
 - `refresh_tokens`
 - `audit_events`
 
-It does not delete users, devices, folders, ciphers, backup manifests, or R2
-objects.
+It does not delete users, devices, folders, ciphers, WebAuthn credentials,
+backup manifests, or R2 objects.
 
 ## Credential Closeout Boundary
 
@@ -71,6 +72,9 @@ Retention rules:
 - auth failure buckets older than the maximum login-defense window are eligible
   only when they are not locked, or the lock has already expired.
 - TOTP login challenges are eligible when they are expired or already consumed.
+- WebAuthn challenges are eligible when `retention_delete_after` is at or
+  before the cleanup clock. Cleanup never restores consumed or expired
+  challenges and never deletes `webauthn_credentials`.
 - refresh-token rows that have been expired for at least 30 days are eligible
   when `HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED=true`.
 - audit events older than 365 days are always eligible for deletion by the
@@ -130,6 +134,7 @@ The report includes cleanup candidate queries for:
 - `auth_attempt_cleanup_candidates`
 - `auth_failure_cleanup_candidates`
 - `totp_challenge_cleanup_candidates`
+- `webauthn_challenge_cleanup_candidates`
 - `refresh_token_cleanup_candidates`
 - `audit_event_cleanup_candidates`
 - `request_quota_cleanup_candidates`

@@ -61,4 +61,23 @@ describe('getDatabaseHealth', () => {
       missingTables: ['user_key_rotation_wrapper_history'],
     })
   })
+
+  it('fails readiness when WebAuthn persistence tables are missing', async () => {
+    const health = await getDatabaseHealth(
+      new FakeD1Database(
+        '0015',
+        requiredTables.filter(
+          (name) =>
+            name !== 'webauthn_credentials' && name !== 'webauthn_challenges',
+        ),
+      ),
+    )
+
+    expect(health).toEqual({
+      ok: false,
+      code: 'required_tables_missing',
+      message: 'Database schema is missing required tables.',
+      missingTables: ['webauthn_credentials', 'webauthn_challenges'],
+    })
+  })
 })

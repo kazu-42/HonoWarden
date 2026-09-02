@@ -94,7 +94,7 @@ describe('HON-208 WebAuthn contract boundary', () => {
     }
   })
 
-  it('does not add a verifier dependency or WebAuthn persistence early', () => {
+  it('pins the maintained verifier without mounting WebAuthn routes', () => {
     const packageJson = JSON.parse(readRepoFile('package.json')) as {
       dependencies?: Record<string, string>
     }
@@ -102,11 +102,13 @@ describe('HON-208 WebAuthn contract boundary', () => {
       .filter((entry) => entry.endsWith('.sql'))
       .map((entry) => readRepoFile(`migrations/${entry}`))
       .join('\n')
+    const appSource = readRepoFile('src/app.ts')
 
-    expect(packageJson.dependencies).not.toHaveProperty(
-      '@simplewebauthn/server',
-    )
-    expect(migrationText).not.toMatch(/webauthn|passkey/i)
+    expect(packageJson.dependencies?.['@simplewebauthn/server']).toBe('13.3.3')
+    expect(migrationText).toContain('CREATE TABLE webauthn_credentials')
+    expect(migrationText).toContain('CREATE TABLE webauthn_challenges')
+    expect(migrationText).toContain("VALUES ('0015')")
+    expect(appSource).not.toMatch(/\/api\/webauthn|grant_type=webauthn/i)
   })
 
   it('declares all policy inputs as optional Worker bindings', () => {

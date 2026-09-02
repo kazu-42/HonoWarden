@@ -19,6 +19,8 @@ export const requiredSchemaTables = [
   'collection_ciphers',
   'account_kdf_population',
   'user_key_rotation_wrapper_history',
+  'webauthn_credentials',
+  'webauthn_challenges',
 ] as const
 
 export type DatabaseHealth =

@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-08-12.
+Last updated: 2026-09-02.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -28,6 +28,7 @@ changes and update this document in the same change.
 | `migrations/0013_auth_request_supersede.sql`            | `ad47a1465ca857903c97d837a943ace3ca2505ff20197e6533259c2154f6ac86` |
 | `migrations/0014_organizations.sql`                     | `95cc696e345d309a32e548f44e7ab7ebd91e8b2ba335f59c2048e36b9f27f9cb` |
 | `migrations/0014a_kdf_population.sql`                   | `96ec8647d11519c99ff14b88b89a0213472f5ad5c3af618adea958b9f920657f` |
+| `migrations/0015_webauthn.sql`                          | `e342fece7a091ffb60a3b2f55fbae0ef8fc2c6197216e891030bde6f655a6915` |
 | `migrations/0016_user_key_rotation_wrapper_history.sql` | `5c99ca3973711d0031ed2b48bed77f3191ec2773af9ae570b1e48f5dfae209ac` |
 | `migrations/0017_account_lifecycle.sql`                 | `5ed91a78fea52d661b07bdebbc4d74654b4bab0a84010829874202bd6bf219dc` |
 | `migrations/0018_text_sends.sql`                        | `c4cc6047f2e2bebcc9d15ff034be340785a06e6c0d1fe39560a53cf0d32bf2de` |
@@ -62,6 +63,8 @@ changes and update this document in the same change.
 - `account_lifecycle_tokens`
 - `account_deletions`
 - `sends`
+- `webauthn_credentials`
+- `webauthn_challenges`
 
 ## Policy
 

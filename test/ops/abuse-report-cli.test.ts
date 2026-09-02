@@ -81,6 +81,7 @@ describe('abuse report CLI', () => {
       'auth_attempt_cleanup_candidates',
       'auth_failure_cleanup_candidates',
       'totp_challenge_cleanup_candidates',
+      'webauthn_challenge_cleanup_candidates',
       'refresh_token_cleanup_candidates',
       'audit_event_cleanup_candidates',
       'request_quota_cleanup_candidates',

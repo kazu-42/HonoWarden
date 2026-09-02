@@ -118,6 +118,12 @@ scan time. It does not prove that dependencies are vulnerability-free, nor does
 it cover Cloudflare platform vulnerabilities, browser client vulnerabilities, or
 security issues in project code.
 
+## HON-209 WebAuthn Verifier Pin
+
+HON-209 adds production dependency `@simplewebauthn/server` 13.3.3. This pin
+does not enable WebAuthn routes or advertised passkey capability. Re-run
+`pnpm audit --audit-level low` before the next release candidate.
+
 ## Follow-Up Rules
 
 - If a future scan reports a vulnerable production dependency, block release
