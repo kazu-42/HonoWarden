@@ -216,7 +216,7 @@ function buildRequirements({ releaseAudit, emailPreflight, evidence }) {
       blocker: 'staging_dry_run_evidence_missing',
       evidence: [evidence.stagingDryRunEvidencePath],
       nextAction:
-        'Run and record the staging deploy dry-run before live Worker deployment.',
+        'Restore the sealed historical repository-local staging dry-run evidence; current staging:dry-run remains a static STOP.',
     }),
     requirement({
       id: 'worker_live_smoke_recorded',
@@ -296,7 +296,7 @@ function resolveEvidence(options) {
       cloudflareResourceEvidencePath,
     ),
     stagingDryRunEvidencePath,
-    stagingDryRunRecorded: documentRecordsStatusPassed(
+    stagingDryRunRecorded: documentRecordsHistoricalStagingDryRun(
       stagingDryRunEvidencePath,
     ),
     workerLiveSmokeEvidencePath,
@@ -324,6 +324,20 @@ function documentRecordsStatusPassed(path) {
 
   const content = readFileSync(fullPath, 'utf8')
   return /^Status:\s*passed\.?\s*$/im.test(content)
+}
+
+function documentRecordsHistoricalStagingDryRun(path) {
+  const fullPath = evidenceFullPath(path)
+  if (!existsSync(fullPath)) {
+    return false
+  }
+
+  const content = readFileSync(fullPath, 'utf8')
+  return (
+    content.includes('HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY') &&
+    content.includes('Historical status: passed') &&
+    content.includes('`staging:dry-run` entrypoint is a static blocker')
+  )
 }
 
 function configuredEmailRoutes(report) {

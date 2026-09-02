@@ -15,7 +15,7 @@ import {
 } from './honowarden-signal-cleanup.mjs'
 
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
-const databaseName = 'honowarden'
+const databaseName = 'honowarden-local'
 const email = 'hon204-lifecycle@example.test'
 const pendingEmail = 'hon204-pending@example.test'
 const userId = 'hon204-lifecycle-user'

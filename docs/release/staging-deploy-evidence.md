@@ -1,28 +1,42 @@
 # Staging Deploy Dry Run Evidence
 
-Target: `v0.1.0-alpha`.
+> **HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.** This document
+> records a repository-local 2026-07 Wrangler dry run. It does not establish
+> current bundle, binding, source, staging, deployment, health, or rollback
+> state, and it does not authorize a Worker upload, activation, rollback,
+> resource mutation, route change, or traffic change. The current
+> `staging:dry-run` entrypoint is a static blocker; current Worker execution
+> remains STOP unless a future remote-write protocol satisfies the admission
+> boundary in
+> [Build provenance and deployment authority](../operations/deploy-provenance-runbook.md#admission-requirements-for-a-future-remote-write-protocol)
+> and receives separate, one-shot authority.
 
-Date: 2026-07-06.
+Historical target: `v0.1.0-alpha`.
 
-Status: passed.
+Historical date: 2026-07-06.
 
-Mode: staging deploy dry-run.
+Historical status: passed.
 
-This evidence records a local Wrangler staging deploy dry-run. It proves the
-staging Worker can be bundled with the expected staging bindings from
-`wrangler.jsonc`, and that the generated Worker bundle was written and hashed.
-It does not prove a live Cloudflare deployment, custom route readiness, or HTTP
-health behavior on a deployed Worker. D1/R2 resource creation is recorded
-separately in [Cloudflare Resource Evidence](cloudflare-resource-evidence.md).
+Historical mode: staging deploy dry-run.
+
+This evidence records a local Wrangler staging deployment dry run performed in
+2026-07. It proved that the then-reviewed source could be bundled with the then-
+configured staging bindings and that the generated Worker bundle was written
+and hashed. It does not prove a current bundle, live Cloudflare deployment,
+custom-route readiness, or HTTP health behavior. D1/R2 resource creation was
+recorded separately in
+[Cloudflare Resource Evidence](cloudflare-resource-evidence.md).
 
 ## Run Identity
 
 - Source commit: `2905151b874d8d78cc564cd65862bffb28c8958b`
 - Working tree: clean
 - Wrangler version: `4.107.0`
-- Evidence command:
+- Historical evidence command (immutable record; the current entrypoint is a
+  static blocker):
   `pnpm staging:dry-run --out test/.tmp/staging-dry-run-evidence-20260706T145200Z/bundle --json test/.tmp/staging-dry-run-evidence-20260706T145200Z/report.json --require-clean`
-- Dry-run command:
+- Historical Wrangler dry-run command (local bundle only; not current
+  authority):
   `pnpm wrangler deploy --env staging --dry-run --outdir test/.tmp/staging-dry-run-evidence-20260706T145200Z/bundle`
 
 ## Staging Bindings
@@ -45,9 +59,9 @@ separately in [Cloudflare Resource Evidence](cloudflare-resource-evidence.md).
 - Bundle SHA-256:
   `8412ccc0028b96b655d7bcff3a4021aeb626422acc2a7b85ad8b2025867b442a`
 
-## Local Smoke Checks
+## Historical Local Smoke Checks
 
-Local smoke checks:
+Recorded local smoke checks:
 
 - `wrangler deploy --env staging --dry-run` exited successfully.
 - Wrangler output included `--dry-run: exiting now.`
@@ -63,6 +77,7 @@ Local smoke checks:
 - Cloudflare resource mutation in this dry-run command: not performed.
 - HTTP health smoke against a deployed Worker: not performed.
 
-This evidence resolves only the repository-local staging dry-run gate. It does
-not replace Cloudflare resource evidence, live client evidence, or deployed
-staging HTTP smoke evidence.
+This evidence resolved only the repository-local staging dry-run gate at its
+recorded source commit. It does not satisfy a current gate and does not replace
+Cloudflare resource evidence, live client evidence, or deployed staging HTTP
+smoke evidence.

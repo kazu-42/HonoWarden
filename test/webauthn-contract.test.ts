@@ -58,7 +58,7 @@ describe('HON-208 WebAuthn contract boundary', () => {
   })
 
   it('does not advertise WebAuthn before later implementation children', () => {
-    const config = buildServerConfig('https://vault.example.com')
+    const config = buildServerConfig('https://vault.example.com', 'development')
 
     expect(
       Object.keys(config.featureStates).some((key) =>

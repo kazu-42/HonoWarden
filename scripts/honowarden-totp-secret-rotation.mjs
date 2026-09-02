@@ -13,11 +13,15 @@ const secretEnvelopeVersion = 'v1'
 const secretEnvelopePurpose = 'honowarden:totp-secret:v1'
 const defaultOldSecretEnv = 'HONOWARDEN_TOTP_OLD_SECRET'
 const defaultNewSecretEnv = 'HONOWARDEN_TOTP_NEW_SECRET'
+const remoteExecutionStopMessage =
+  'Remote TOTP rotation execution is disabled until secret activation and recovery are implemented.'
 
-async function main(argv = process.argv.slice(2), env = process.env) {
+async function main(argv = process.argv.slice(2), injectedEnv) {
   const normalizedArgv = argv[0] === '--' ? argv.slice(1) : argv
   const options = parseOptions(normalizedArgv)
-  const packet = await buildPacket(options, env)
+  rejectRemoteExecution(options)
+
+  const packet = await buildPacket(options, injectedEnv ?? process.env)
 
   if (options.strict && packet.status !== 'ready') {
     writeOutputPacket(packet)
@@ -423,6 +427,12 @@ function parseStrategy(value = 'rewrap') {
 function rejectRemotePersistence(mode, options) {
   if (mode === 'remote' && options.persistTo) {
     throw new Error('--persist-to can only be used with --mode local')
+  }
+}
+
+function rejectRemoteExecution(options) {
+  if (options.execute && parseMode(options.mode) === 'remote') {
+    throw new Error(remoteExecutionStopMessage)
   }
 }
 

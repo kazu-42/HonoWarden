@@ -1,7 +1,5 @@
-import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
@@ -9,94 +7,82 @@ import { describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
-const dryRunScript = join(repoRoot, 'scripts/honowarden-staging-dry-run.mjs')
+const dryRunScript = fileURLToPath(
+  new URL(
+    '../../scripts/honowarden-staging-dry-run.mjs',
+    import.meta.url,
+  ).toString(),
+)
+const stopMessage =
+  'REAL WORKER/VERSION/TRAFFIC WRITE STOP: deploy, dry-run, and automated recovery are disabled pending a separately reviewed execution boundary.'
+const packageStop =
+  "deploy_stop() { printf '%s\\n' 'REAL WORKER/VERSION/TRAFFIC WRITE STOP: deploy, dry-run, and automated recovery are disabled pending a separately reviewed execution boundary.' >&2; return 1; }; deploy_stop"
 
-type StagingDryRunReport = {
-  schemaVersion: number
-  status: 'passed' | 'failed'
-  mode: string
-  command: string
-  worker: {
-    name: string
-    environment: string
-    databaseIdPlaceholder: boolean
-  }
-  bindings: {
-    d1: {
-      binding: string
-      databaseName: string
+describe('legacy staging dry-run entrypoint', () => {
+  it.each([
+    { args: [] },
+    { args: ['--strict'] },
+    { args: ['--output', 'ignored'] },
+    { args: ['--unknown'] },
+  ])('statically blocks invocation $args', async ({ args }) => {
+    const result = await runBlocked(args)
+
+    expect(result).toEqual({
+      code: 1,
+      stdout: '',
+      stderr: `${stopMessage}\n`,
+    })
+  })
+
+  it('contains no executable, credential, network, or filesystem writer capability', () => {
+    const source = readFileSync(dryRunScript, 'utf8')
+
+    expect(source).toMatch(/^import process from 'node:process'\n/mu)
+
+    for (const forbidden of [
+      /node:child_process/u,
+      /node:(?:http|https|net|tls|dns|dgram)/u,
+      /node:fs/u,
+      /process\.env/u,
+      /process\.argv/u,
+      /CLOUDFLARE/u,
+      /\b(?:git|pnpm|wrangler)\b/iu,
+      /\bfetch\s*\(/u,
+    ]) {
+      expect(source).not.toMatch(forbidden)
     }
-    r2: {
-      binding: string
-      bucketName: string
-    }
-  }
-  bundle: {
-    path: string
-    bytes: number
-    sha256: string
-  }
-  checks: Array<{
-    id: string
-    status: 'pass' | 'fail'
-    detail: string
-  }>
-  limitations: string[]
-}
+  })
 
-describe('staging deploy dry run', () => {
-  it('bundles the staging worker and records conservative evidence', async () => {
-    const workDir = join('test/.tmp', `staging-dry-run-${randomUUID()}`)
-    const reportPath = join(workDir, 'report.json')
-    const result = await execFileAsync('node', [
-      dryRunScript,
-      '--out',
-      join(workDir, 'bundle'),
-      '--json',
-      reportPath,
-    ])
-    const stdoutReport = JSON.parse(result.stdout) as StagingDryRunReport
-    const fileReport = JSON.parse(
-      readFileSync(join(repoRoot, reportPath), 'utf8'),
-    ) as StagingDryRunReport
+  it('keeps the public package alias on the same shell-builtin STOP', () => {
+    const packageJson = JSON.parse(
+      readFileSync(`${repoRoot}/package.json`, 'utf8'),
+    ) as { scripts?: Record<string, string> }
 
-    expect(stdoutReport).toEqual(fileReport)
-    expect(fileReport.schemaVersion).toBe(1)
-    expect(fileReport.status).toBe('passed')
-    expect(fileReport.mode).toBe('staging deploy dry-run')
-    expect(fileReport.command).toContain('wrangler deploy --env staging')
-    expect(fileReport.command).toContain('--dry-run')
-    expect(fileReport.worker).toEqual({
-      name: 'honowarden-staging',
-      environment: 'staging',
-      databaseIdPlaceholder: false,
-    })
-    expect(fileReport.bindings.d1).toEqual({
-      binding: 'DB',
-      databaseName: 'honowarden-staging',
-    })
-    expect(fileReport.bindings.r2).toEqual({
-      binding: 'VAULT_OBJECTS',
-      bucketName: 'honowarden-staging-vault-objects',
-    })
-    expect(fileReport.checks).toContainEqual({
-      id: 'staging_refresh_token_retention_enabled',
-      status: 'pass',
-      detail: 'true',
-    })
-    expect(fileReport.checks).toContainEqual({
-      id: 'production_refresh_token_retention_fail_closed',
-      status: 'pass',
-      detail: 'false',
-    })
-    expect(fileReport.bundle.bytes).toBeGreaterThan(0)
-    expect(fileReport.bundle.sha256).toMatch(/^[a-f0-9]{64}$/)
-    expect(existsSync(join(repoRoot, fileReport.bundle.path))).toBe(true)
-    expect(fileReport.limitations).toContain(
-      'Remote Cloudflare deploy was not performed.',
-    )
-    expect(fileReport.limitations).toContain(
-      'Staging database_id is configured; resource creation evidence is recorded separately.',
-    )
-  }, 15_000)
+    expect(packageJson.scripts?.['staging:dry-run']).toBe(packageStop)
+    expect(packageJson.scripts?.['prestaging:dry-run']).toBeUndefined()
+    expect(packageJson.scripts?.['poststaging:dry-run']).toBeUndefined()
+  })
 })
+
+async function runBlocked(
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  try {
+    await execFileAsync(process.execPath, [dryRunScript, ...args], {
+      cwd: repoRoot,
+      env: { PATH: '/nonexistent' },
+    })
+  } catch (error) {
+    const failure = error as Error & {
+      code?: number
+      stdout?: string
+      stderr?: string
+    }
+    return {
+      code: failure.code ?? -1,
+      stdout: failure.stdout ?? '',
+      stderr: failure.stderr ?? '',
+    }
+  }
+  throw new Error('Staging dry-run entrypoint unexpectedly succeeded.')
+}

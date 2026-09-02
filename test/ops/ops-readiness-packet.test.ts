@@ -136,6 +136,10 @@ describe('ops readiness packet', () => {
     expect(statusById(report, 'release_published_verified')).toBe('fail')
     expect(statusById(report, 'cloudflare_resources_recorded')).toBe('pass')
     expect(statusById(report, 'staging_dry_run_recorded')).toBe('pass')
+    expect(requirementById(report, 'staging_dry_run_recorded')).toMatchObject({
+      blocker: null,
+      nextAction: null,
+    })
     expect(statusById(report, 'worker_live_smoke_recorded')).toBe('fail')
     expect(statusById(report, 'website_live_evidence_recorded')).toBe('fail')
     expect(statusById(report, 'email_routing_live_evidence_recorded')).toBe(

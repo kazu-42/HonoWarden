@@ -1,96 +1,87 @@
 # Operations Rollback Evidence
 
-Target: `v0.1.0-alpha`.
+> **HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.** This document
+> records observations and decisions made for the 2026-07 `v0.1.0-alpha`
+> release. It does not authorize or define a current Worker deploy, rollback,
+> traffic change, website rollback, DNS change, or Email Routing change. Do not
+> copy commands from this record into an active operation. Current Worker
+> recovery remains STOP unless a future remote-write protocol satisfies the
+> admission boundary in [Build provenance and deployment authority](../operations/deploy-provenance-runbook.md#admission-requirements-for-a-future-remote-write-protocol)
+> and receives separate, one-shot authority.
 
-Status: passed.
+Historical target: `v0.1.0-alpha`.
 
-Mode: post-alpha rollback handle and recovery evidence.
+Historical status: passed.
 
-This file records rollback readiness after Worker deploy, website route changes,
-or Email Routing changes. It is marked `passed` because the API Worker
+Historical mode: post-alpha rollback-handle and recovery evidence.
+
+This file recorded rollback readiness after Worker deployment, website route
+changes, and Email Routing changes. It was marked `passed` because the API Worker
 previous-version candidates were explicitly rejected as unsafe rollback targets,
-an incident-specific release-target redeploy strategy was recorded, and a
-non-mutating rollback rehearsal recorded live health checks and a continue
-decision.
+an incident-specific release-target redeploy proposal was recorded, and a
+non-mutating rollback rehearsal recorded then-live health checks and a
+`continue` decision.
 
-Rollback readiness is separate from release publication, CI success, and local
-dry-run output.
+That historical readiness result was separate from release publication, CI
+success, and local dry-run output. It does not establish present readiness.
 
 ## API Worker Previous-Version Handles
 
-Standing operator approval was provided on 2026-07-08. API Worker deploys were
-completed after the alpha GitHub Release was published and verified.
+Standing operator approval was provided on 2026-07-08. API Worker deployments
+were completed after the alpha GitHub Release was published and verified.
 
 ### Staging API Worker
 
-- Current version: `bf0333dc-9efa-4001-aa31-20b3e10731c9`
-- Current deployment: `ae336be4-169b-4a8a-a8c7-8d4b8ab7fa32`
-- Current deployment readback: `2026-07-09T14:10Z`, version receiving `100%`
-  traffic
+- Observed version: `bf0333dc-9efa-4001-aa31-20b3e10731c9`
+- Observed deployment: `ae336be4-169b-4a8a-a8c7-8d4b8ab7fa32`
+- Deployment readback at `2026-07-09T14:10Z`: version received `100%` traffic
 - Candidate previous version: `f2357f14-8430-4b9f-913d-2dbad72322dd`
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target
-- Approved recovery command: redeploy the reviewed release target commit with
-  `pnpm exec wrangler deploy --env staging`
+- Historical recovery proposal: redeploy the reviewed release-target commit.
+  This proposal did not confer current authority and was not an executable
+  procedure.
 
 ### Production API Worker
 
-- Current version: `72577dd9-c859-4673-b653-fbdd796f8f7d`
-- Current deployment: `24f81b98-b761-4faa-aa78-cd773bb5d0c1`
-- Current deployment readback: `2026-07-09T14:10Z`, version receiving `100%`
-  traffic
+- Observed version: `72577dd9-c859-4673-b653-fbdd796f8f7d`
+- Observed deployment: `24f81b98-b761-4faa-aa78-cd773bb5d0c1`
+- Deployment readback at `2026-07-09T14:10Z`: version received `100%` traffic
 - Candidate previous version: `2c0b365b-3cf9-4766-ba8d-e5bd969c969d`
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target
-- Approved recovery command: redeploy the reviewed release target commit with
-  `pnpm exec wrangler deploy --env production`
+- Historical recovery proposal: redeploy the reviewed release-target commit.
+  This proposal did not confer current authority and was not an executable
+  procedure.
 
-The candidate previous versions are known deployable Worker versions, but they
-are the pre-correction deployments from `main`
-`392637b3e277ba35057ba461cd82fac69013f603`, not the alpha release target. Do
-not treat them as approved rollback targets without an incident-specific
-decision. The approved incident-specific recovery strategy for the alpha lane is
-to redeploy release target commit
-`e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`, not to roll back to the
-pre-correction Worker versions.
+The candidate previous versions were known deployable Worker versions, but they
+were the pre-correction deployments from `main`
+`392637b3e277ba35057ba461cd82fac69013f603`, not the alpha release target. They
+were not treated as approved rollback targets. The historical incident-specific
+proposal selected release-target commit
+`e7a3c5ea9e51030143736bb0e7a36cb7a8babfce` instead of the pre-correction
+Worker versions; it was not executed and confers no present authority.
 
-## API Worker Recovery Strategy
+## Historical API Worker Recovery Decision
 
-Use this strategy when the current alpha Worker deployment is unhealthy but D1
-schema state remains compatible with `v0.1.0-alpha`.
+The 2026-07 decision rejected previous versions
+`f2357f14-8430-4b9f-913d-2dbad72322dd` and
+`2c0b365b-3cf9-4766-ba8d-e5bd969c969d` as safe rollback targets because they
+were pre-correction `main` deployments. The team documented a release-target
+redeploy proposal, but no traffic-changing rollback or redeploy was performed.
 
-1. Hold promotion and stop optional write traffic where possible.
-2. Check out the reviewed release target commit.
-3. Re-run the deploy dry-run for the affected environment.
-4. Redeploy the release target to the affected environment.
-5. Re-run `/health`, `/healthz`, `/health/db`, `/api/config`, and synthetic
-   prelogin denial checks.
-6. Record the resulting deployment ID, Worker version ID, health responses, and
-   continue/rollback/hold decision.
-
-Commands:
-
-```sh
-git switch --detach e7a3c5ea9e51030143736bb0e7a36cb7a8babfce
-pnpm exec wrangler deploy --env staging --dry-run --outdir test/.tmp/rollback-rehearsal/staging
-pnpm exec wrangler deploy --env staging
-
-git switch --detach e7a3c5ea9e51030143736bb0e7a36cb7a8babfce
-pnpm exec wrangler deploy --env production --dry-run --outdir test/.tmp/rollback-rehearsal/production
-pnpm exec wrangler deploy --env production
-```
-
-Do not run `pnpm exec wrangler rollback f2357f14-8430-4b9f-913d-2dbad72322dd`
-or `pnpm exec wrangler rollback 2c0b365b-3cf9-4766-ba8d-e5bd969c969d` for the
-alpha lane without a new incident decision. Those versions are the
-pre-correction `main` deployments and are not approved safe rollback targets.
+The old proposal was deliberately removed from this evidence record as an
+executable command sequence. Any current incident must preserve remote state,
+capture fresh readback, and enter through the future remote-write protocol admission boundary
+in the current deployment-authority runbook. Historical approval must not be
+reused.
 
 ## API Worker Rollback Rehearsal: 2026-07-09
 
 Rehearsal type: non-mutating release-target dry-run, Cloudflare deployment
-readback, live health checks, and decision record. No traffic-changing rollback
-or redeploy was executed because the current live deployment was healthy and the
-candidate previous Worker versions are not approved rollback targets.
+readback, then-live health checks, and decision record. No traffic-changing
+rollback or redeploy was executed because the observed deployment was healthy
+and the candidate previous Worker versions were not approved rollback targets.
 
 Dry-run source:
 
@@ -99,7 +90,8 @@ Dry-run source:
 - Wrangler version: `4.107.0`
 - Output directory: `test/.tmp/rollback-rehearsal`
 
-Dry-run results:
+Historical dry-run results (the command strings below are a non-executable
+historical log of what ran in 2026-07, not instructions or current authority):
 
 | Environment | Command                                                                                                 | Result | Bundle output                                |
 | ----------- | ------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------- |
@@ -113,7 +105,7 @@ Cloudflare deployment readback:
 | staging     | `ae336be4-169b-4a8a-a8c7-8d4b8ab7fa32` | `bf0333dc-9efa-4001-aa31-20b3e10731c9` | `100%`  | `2026-07-08T01:42:32.992153Z` |
 | production  | `24f81b98-b761-4faa-aa78-cd773bb5d0c1` | `72577dd9-c859-4673-b653-fbdd796f8f7d` | `100%`  | `2026-07-08T01:42:43.738247Z` |
 
-Live health checks:
+Historical live-health observations:
 
 | Environment | Check              | Result                                                                   |
 | ----------- | ------------------ | ------------------------------------------------------------------------ |
@@ -128,9 +120,9 @@ Live health checks:
 | production  | `/api/config`      | HTTP `200`, `version=0.1.0-alpha`, vault points to production Worker URL |
 | production  | synthetic prelogin | HTTP `403`, `error.code=prelogin_not_allowed`                            |
 
-Decision: `continue`. Hold actual rollback or redeploy until an incident exists.
-If an incident occurs, use the release-target redeploy strategy above unless a
-newer verified safe target is selected and recorded.
+Historical decision: `continue`. No actual rollback or redeploy was performed.
+That decision expired with the rehearsal and must not be reused for a current
+incident.
 
 ## Website Previous-Version Handle
 
@@ -140,16 +132,16 @@ merged. Security contact metadata was then published after PR #2 passed CI and
 Email Routing inbound smoke was verified.
 
 - Website merge commit: `97095812384b47e5a1798108d77d8224f75509f2`
-- Current deployment: `1c3fc838-3e84-448a-ba36-a8181f3e6eed`
-- Current version: `b408a4e2-4279-4a57-8172-698b1c77c6ab`
-- Current deployment readback: `2026-07-09T14:22Z`, version receiving `100%`
-  traffic
+- Observed deployment: `1c3fc838-3e84-448a-ba36-a8181f3e6eed`
+- Observed version: `b408a4e2-4279-4a57-8172-698b1c77c6ab`
+- Deployment readback at `2026-07-09T14:22Z`: version received `100%` traffic
 - Previous deployment: `0f398ae5-6d01-42a8-bbe4-35378661ce81`
 - Previous version: `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91`
 - Previous status: known-good public website deployment before security
   metadata publication
-- Rollback command:
-  `pnpm exec wrangler rollback eef4ab71-d6e8-401f-93c3-27e7bd2bcd91 --name honowarden-website --yes`
+- Historical rollback candidate: version
+  `eef4ab71-d6e8-401f-93c3-27e7bd2bcd91`; the contemplated command has been
+  removed so this record cannot be mistaken for current website authority
 - Rollback execution: not performed because post-deploy website smoke passed
 
 Website health recheck during rollback rehearsal:
@@ -175,9 +167,9 @@ readback from 2026-07-08 showed no MX records and no apex TXT records for
 
 - `honowarden.com` nameservers: `anna.ns.cloudflare.com`,
   `damon.ns.cloudflare.com`
-- Current Email Routing state: `enabled: true`, API status `ready`
-- Current destination count: `1`, verified destination tag `e732fc786e52`
-- Destination address value is intentionally not recorded
+- Observed Email Routing state: `enabled: true`, API status `ready`
+- Observed destination count: `1`, verified destination tag `e732fc786e52`
+- Destination address value was intentionally not recorded
 - Inbound smoke status: `passed`
 - Rollback execution: not performed because route/DNS readback and inbound
   smoke passed
@@ -202,15 +194,14 @@ DNS rollback handles:
 | MX   | `d1df42e54f0d39facf12ff0e4a6f0668` | `route1.mx.cloudflare.net`                     | `63`     |
 | TXT  | `905639146eeaf7449af796d7bef2a8ab` | `"v=spf1 include:_spf.mx.cloudflare.net ~all"` | n/a      |
 
-If inbound delivery fails and the decision is to revert to the pre-change email
-posture, disable the Email Routing rules first, then disable Email Routing for
-the zone. If the disable operation does not remove the MX/SPF records, delete
-the DNS records by the IDs above. Keep `security@honowarden.com` unadvertised
-until a successful inbound test is recorded.
+The identifiers above were retained only as historical rollback handles. The
+2026-07 notes contemplated disabling the forwarding rules and Email Routing,
+then removing residual MX/SPF records. That proposal was not executed and does
+not authorize a current Email Routing or DNS mutation.
 
-## Evidence To Record
+## Historical Evidence Fields
 
-For each approved operation, record:
+The 2026-07 evidence packet recorded or expected the following fields:
 
 - approval text and timestamp
 - operation owner
@@ -219,67 +210,36 @@ For each approved operation, record:
 - commit SHA or configuration version after the operation
 - previous Worker deployment id or route target
 - previous website deployment id or route target
-- previous DNS record state, if DNS changed
-- previous Email Routing rule state, if email changed
-- exact rollback command or Cloudflare dashboard path
+- previous DNS record state when DNS changed
+- previous Email Routing rule state when email changed
+- the contemplated rollback path
 - health checks after rollback rehearsal or actual rollback
 - decision to continue, rollback, or hold
 
-Do not record secret values, private forwarding destinations, or real vault
-data.
-
-## Rollback Commands To Fill In
-
-API Worker:
-
-```sh
-git switch --detach e7a3c5ea9e51030143736bb0e7a36cb7a8babfce
-pnpm exec wrangler deploy --env staging --dry-run --outdir test/.tmp/rollback-rehearsal/staging
-pnpm exec wrangler deploy --env staging
-
-git switch --detach e7a3c5ea9e51030143736bb0e7a36cb7a8babfce
-pnpm exec wrangler deploy --env production --dry-run --outdir test/.tmp/rollback-rehearsal/production
-pnpm exec wrangler deploy --env production
-```
-
-Website:
-
-```sh
-pnpm exec wrangler rollback eef4ab71-d6e8-401f-93c3-27e7bd2bcd91 --name honowarden-website --yes
-```
-
-Email Routing:
-
-```sh
-# Disable or delete the six forwarding rules by rule id, then disable Email
-# Routing. If DNS remains after disabling Email Routing, delete the MX/SPF
-# records by DNS record id.
-#
-# Example API paths:
-# DELETE /zones/$CLOUDFLARE_ZONE_ID_HONOWARDEN_COM/email/routing/rules/<rule-id>
-# POST /zones/$CLOUDFLARE_ZONE_ID_HONOWARDEN_COM/email/routing/disable
-# DELETE /zones/$CLOUDFLARE_ZONE_ID_HONOWARDEN_COM/dns_records/<record-id>
-```
+Secret values, private forwarding destinations, and real vault data were not
+recorded. No command template from the old packet is retained as an executable
+recovery instruction.
 
 ## Not Performed
 
 - Actual API Worker traffic-changing rollback or redeploy was not performed
   because live health checks passed.
-- Website route rollback has not been performed by this evidence file because
-  post-deploy smoke passed.
-- Email Routing rollback has not been performed by this evidence file.
-- DNS rollback has not been performed by this evidence file.
+- Website route rollback was not performed because post-deploy smoke passed.
+- Email Routing rollback was not performed.
+- DNS rollback was not performed.
 
 ## Completion Criteria
 
-This evidence is marked `passed` because:
+This historical evidence was marked `passed` because:
 
 1. The relevant operations had standing operator approval.
 2. Unsafe previous API Worker versions were rejected and an incident-specific
    release-target redeploy strategy was selected.
-3. Concrete Worker redeploy, website rollback, and Email Routing rollback
-   commands or handles are recorded.
+3. Worker, website, and Email Routing recovery handles were recorded for the
+   2026-07 review; the obsolete command templates are no longer present.
 4. Rehearsal health, route, and email-readback checks were recorded with a
    `continue` decision.
 5. No secrets, private forwarding destinations, message bodies, or real vault
-   data are included.
+   data were included.
+
+The historical `passed` result does not satisfy current recovery admission.

@@ -82,12 +82,30 @@ pnpm backup:export -- \
   enable the feature before the named `AccountLifecycleOperator` entrypoint and
   retryable purge reader are deployed: a pre-reader Worker cannot safely
   recover or finish an account already placed into lifecycle state.
+- `0018_text_sends.sql` is an additive reader-first migration for encrypted
+  text Send state. Apply it before deploying any Worker that imports the Send
+  repository or owner application service. Keep `send-enabled: false`, retain
+  the explicit `/api/sends*` and `send_access` `501` guards, and do not install
+  capability-envelope or lookup-verifier secrets during this source-only
+  slice. Route activation requires the later full Send gate, including both
+  independent versioned roots, quota and cleanup readiness, compatibility
+  tests, and a reader-capable rollback Worker. Verify `/health/db` plus the
+  `sends` table and both `idx_sends_*` indexes before any separately approved
+  rollout.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.
 - Update `docs/release/migration-freeze.md` in the same change when migrations
   are added.
 
 ## Upgrade Steps
+
+Status: **REAL WORKER/VERSION/TRAFFIC WRITE STOP**. Prepare the upgrade from a
+dedicated exact reviewed commit, but do not provide credentials to the static
+deploy or staging dry-run blockers. This repository has no remote migration,
+upload, activation, or recovery execution protocol. Direct Wrangler use is not
+an approved fallback. Migration, binding, route, cron, traffic, and every other
+non-versioned setting require separately reviewed authority, pre/post readback,
+partial-success classification, and recovery.
 
 ```sh
 git fetch origin
@@ -100,27 +118,26 @@ pnpm compat:test
 pnpm format
 ```
 
-Apply migrations:
-
-```sh
-pnpm wrangler d1 migrations apply honowarden --env production
-```
-
-Deploy:
-
-```sh
-pnpm wrangler deploy --env production
-```
+Remote migrations and deployment remain STOP until that execution protocol is
+reviewed and authorized for the exact environment.
 
 ## Post-Upgrade Verification
 
 - `GET /health`
+- `GET /healthz`
 - `GET /health/db`
+- `GET /api/config`
 - synthetic account login
 - `GET /api/sync`
 - refresh-token rotation
 - TOTP challenge if TOTP is enabled for the synthetic account
 - backup command dry-run still plans successfully
+
+Verify both health aliases report the intended `environment`, a distinct
+`workerVersionId`, a valid `createdAt`, and the exact upgrade commit in
+`build.gitSha`. `/api/config.gitHash` must equal that SHA. Any mismatch is a
+**STOP** and the resulting Worker version must not be used as a promotion or
+rollback target.
 
 ## Failure Handling
 

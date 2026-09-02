@@ -209,17 +209,26 @@ payloads, or private mailbox contents.
 
 ## Operator Notes
 
-Enable audit logging only in an environment whose log retention and access
-controls are understood:
+HonoWarden API Worker secret/config writes are currently **STOP**. Do not set or
+rotate `HONOWARDEN_AUDIT_LOGS` from this document. Explicit approval or access
+to a Cloudflare credential is not sufficient execution authority.
 
-```sh
-pnpm wrangler secret put HONOWARDEN_AUDIT_LOGS --env staging
-```
+Future enablement requires a separately reviewed secret/config/deploy protocol
+that names the exact Cloudflare account, environment, Worker, configuration key,
+and desired value; binds only the exact scoped credential in an auth-isolated
+shell; captures secret-safe Worker/version/config and D1 migration pre-readback;
+defines the mutation; and requires post-readback of the deployed value,
+provenance, D1 availability, audit persistence, and log access controls. The
+protocol must classify zero-write failure, partial success (for example, config
+changed but migration or runtime verification failed), and complete success,
+with an exact recovery path for each partial state.
 
-Use `true` to enable and `false` to disable. Treat audit rows and logs as
-sensitive operational metadata even though event builders omit known secret
-fields. Apply `migrations/0007_audit_events.sql` before enabling audit logging
-in an environment that should persist rows.
+Use `true` to enable and `false` to disable only inside such an admitted future
+protocol. Treat audit rows and logs as sensitive operational metadata even
+though event builders omit known secret fields. Migration
+`migrations/0007_audit_events.sql` must be present and verified before an
+environment is enabled. Local tests and read-only inspection do not activate
+logging and remain safe to run.
 
 Operator backup and restore audit evidence is still runbook-based in the alpha
 scope. Each backup/restore drill should record the manifest path, commands,

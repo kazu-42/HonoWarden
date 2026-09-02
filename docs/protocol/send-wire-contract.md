@@ -30,7 +30,10 @@ changed.
 - API routes are shown with HonoWarden's `/api` prefix. Identity uses
   `/identity/connect/token`.
 - JSON request names are accepted case-insensitively according to the existing
-  protocol parser. Responses use the official-client property shape.
+  protocol parser. The current unmounted application parser rejects decoded
+  case collisions; a future mounted route MUST use a bounded duplicate-aware
+  raw JSON decoder because ordinary `request.json()` cannot preserve exact
+  duplicate members. Responses use the official-client property shape.
 - Dates are UTC RFC 3339 strings. Deletion is required, must be in the future,
   and must be no more than 31 days ahead at each accepted create/update.
   Expiration is optional and cannot exceed deletion.
@@ -113,8 +116,8 @@ Validation rules:
 - `Password` is required only for password auth and is the client-derived hash,
   never plaintext. It is absent for none auth.
 - `Emails` and email auth fail atomically as unsupported in the initial slices.
-- `Disabled`, dates, type, and auth type are required even if a client omits
-  optional encrypted fields.
+- `Disabled`, `DeletionDate`, type, and auth type are required even if a client
+  omits optional encrypted fields. `ExpirationDate` remains optional.
 - Unknown fields are ignored only where current protocol parsing already does
   so; security-relevant enum values and structurally inconsistent type payloads
   are rejected with `400`.
@@ -247,7 +250,10 @@ same remove-all-auth operation as `remove-auth`. It removes the password
 verifier and any deferred email-auth state, changes auth type to none in one
 transaction, increments `access_generation`, and invalidates every prior Send
 token. It returns the owner response. Repeating it is idempotent for an existing
-owner row. `200` or `404`.
+owner row. If an intervening owner mutation makes the captured next revision
+non-advancing and the conditional write misses, the result is `409`, not a
+false `404`. A later candidate revision may instead linearize as a subsequent
+valid mutation. `200`, `404`, or `409`.
 
 ### `PUT /api/sends/:id/remove-auth`
 
@@ -262,8 +268,11 @@ transaction, generation invalidation, idempotency, response, and error contract.
 Requires owner scope. It first writes a tombstone, increments generation, and
 revokes public access. R2 deletion and physical D1 cleanup are retried
 asynchronously and idempotently. A retry against the retained owner tombstone is
-`204`; unknown/cross-owner is generic `404`. No storage failure may roll the row
-back to active.
+`204`; unknown/cross-owner is generic `404`. If a concurrent owner mutation
+makes the captured next revision non-advancing and the conditional write
+misses, the result is `409`; a later candidate revision may instead linearize
+after it as a valid subsequent delete. The caller may reread and retry after a
+conflict. No storage failure may roll the row back to active.
 
 ## Send Access Token Contract
 

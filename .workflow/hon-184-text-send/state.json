@@ -1,0 +1,51 @@
+{
+  "title": "HON-184 encrypted text Send lifecycle",
+  "slug": "hon-184-text-send",
+  "created_at": "2026-08-08T20:21:00Z",
+  "updated_at": "2026-08-16T06:27:43Z",
+  "status": "local_verified_commit_ready",
+  "approval": {
+    "required": "Commit, GitHub publication, Linear closeout, runtime or external mutation",
+    "granted": "Local implementation and verification only",
+    "notes": "Send routes, token issuance, feature activation, deployment, remote migration, secret installation, commit, push, PR, and Linear mutation remain outside this checkpoint."
+  },
+  "packets": [
+    { "id": "S2-A", "status": "completed", "owner": "W1" },
+    { "id": "S2-B", "status": "completed", "owner": "W1" },
+    { "id": "S2-C", "status": "completed", "owner": "W1" },
+    {
+      "id": "S2-D",
+      "status": "review_approved_publication_pending",
+      "owner": "coordinator",
+      "notes": "W11 independent re-review approved the exact remediated candidate with no P0-P2 findings. Commit, publication, exact-head CI, and Linear closeout remain."
+    }
+  ],
+  "review": {
+    "source": "W7 independent review and W11 independent re-review",
+    "prior_verdict": "request_changes",
+    "remediation": "verified",
+    "rereview": "approved",
+    "resolved_findings": [
+      "owner update could release a legacy-inconsistent quarantined row",
+      "real D1 public failure matrix and automated full migration-chain coverage were missing"
+    ]
+  },
+  "verification": {
+    "status": "passed_remediation",
+    "checks": [
+      "focused tests: 8 files / 333 tests",
+      "real local D1: owner isolation, revision CAS, quarantine containment, cross-owner and missing remove-auth, idempotent auth removal and tombstone, 8-way maximum-access contention",
+      "real local D1 public failure matrix: wrong verifier, stale generation, disabled, expiration boundary, deletion boundary, quarantined, and deleted remain unavailable without mutation",
+      "automated fresh Miniflare D1 migration chain: all 19 ordered migrations through 0018, including triggers",
+      "fresh Wrangler D1 migration chain: 19 migrations through 0018 with sends table and two indexes",
+      "full tests: 119 files / 2234 tests",
+      "compatibility tests: 6 files / 919 tests",
+      "typecheck",
+      "lint",
+      "format",
+      "brand scan",
+      "release gate: 11 pass / 0 manual / 0 block",
+      "W11 independent re-review: 8 files / 343 tests, APPROVE with 0 P0-P2 findings"
+    ]
+  }
+}

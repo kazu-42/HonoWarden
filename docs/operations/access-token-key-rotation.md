@@ -2,8 +2,10 @@
 
 Last reviewed: 2026-07-09.
 
-Status: code-supported. No live production access-token key rotation drill has
-been executed yet.
+Status: code-supported, live secret/config write **STOP**.
+
+No live production access-token key rotation drill has been executed yet. This
+runbook does not authorize a staging or production secret mutation.
 
 This runbook covers staged rotation of HonoWarden access-token signing keys. It
 does not rotate `HONOWARDEN_TOKEN_SECRET`, refresh tokens, TOTP wrapping
@@ -37,40 +39,50 @@ secrets, Cloudflare credentials, or operator credentials.
   legacy behavior: sign and verify access tokens with `HONOWARDEN_TOKEN_SECRET`
   and no JWT `kid`.
 
-## Normal Staged Rotation
+## Current STOP And Future Rotation Admission
 
-1. Confirm the deployed commit includes access-token keyring support.
-2. Generate a new high-entropy active signing secret outside the repository.
-3. Set staging secrets:
+Do not set, rotate, delete, or copy HonoWarden API Worker secrets from this
+runbook. Explicit operator approval or the presence of a credential is not, by
+itself, execution authority. The repository currently provides no admitted
+writer for this rotation.
 
-```sh
-pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID --env staging
-pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET --env staging
-pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS --env staging
-```
+A future rotation requires a separately reviewed secret/config/deploy protocol
+that records all of the following before any mutation:
 
-Use an empty JSON array (`[]`) for `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS` on
-the first staged keyring rollout. Keep `HONOWARDEN_TOKEN_SECRET` unchanged.
+1. the exact Cloudflare account, environment, Worker, and three-key keyring
+   target;
+2. the exact scoped credential source and a clean-shell proof that ambient
+   global-key or Wrangler OAuth authentication cannot take precedence;
+3. secret-safe pre-readback of the current key-set shape, active `kid`, Worker
+   version, and reviewed source provenance;
+4. the ordered mutation plan, including the intended empty previous-key array
+   (`[]`) for a first rollout and the invariant that
+   `HONOWARDEN_TOKEN_SECRET` remains unchanged;
+5. secret-safe post-readback and staging health, synthetic prelogin, password
+   grant, refresh grant, and authenticated sync smoke;
+6. explicit classification of zero-write failure, partial-success/config-drift,
+   and complete success; and
+7. recovery for every partial state, with the last known-good keyring and
+   reader-capable Worker target identified in advance.
 
-4. Verify staging:
+The protocol must stop before production promotion unless staging readback and
+all smoke checks match the reviewed target. Promotion is a separate reviewed
+mutation, not an automatic continuation of staging success.
+
+Local verification remains safe and available:
 
 ```sh
 pnpm exec vitest run test/domain/tokens.test.ts test/app.test.ts
 pnpm check
 ```
 
-Then run live staging health, synthetic prelogin, password grant, refresh grant,
-and authenticated sync smoke with redacted evidence only.
-
-5. Promote the same reviewed keyring plan to production only after staging
-   passes.
-6. On the next rotation, move the old active key into
-   `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS`, set a new active `kid` and secret,
-   and verify that new tokens carry the new `kid` while old tokens from the
-   previous key still verify.
-7. Retire previous keys only after at least the maximum access-token TTL plus an
-   operator-approved safety window. HonoWarden access tokens currently expire in
-   one hour.
+These tests prove source behavior only; they do not read or mutate a deployed
+Worker. In an admitted future rotation, move the old active key into
+`HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS`, set a new active `kid` and secret, and
+verify that new tokens carry the new `kid` while old tokens from the previous
+key still verify. Retire previous keys only after at least the maximum
+access-token TTL plus a separately reviewed safety window. HonoWarden access
+tokens currently expire in one hour.
 
 ## Rollback
 
@@ -80,7 +92,7 @@ will invalidate still-live tokens that were already signed with an active
 `kid`, although refresh-token grants can issue new access tokens if
 `HONOWARDEN_TOKEN_SECRET` and refresh sessions are still valid.
 
-Rollback options:
+Recovery options for a future admitted protocol:
 
 - restore the previous active and previous-key JSON values
 - move the last working active key into `HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS`
@@ -89,7 +101,7 @@ Rollback options:
   blast radius and reauth plan
 - rotate `HONOWARDEN_TOKEN_SECRET` only for refresh-token or legacy no-kid
   fallback exposure; this is a forced re-login event and belongs to a separate
-  operator-owned live secret rotation window
+  reviewed live secret-rotation protocol
 
 ## Evidence To Record
 

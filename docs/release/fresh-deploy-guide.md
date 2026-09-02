@@ -1,24 +1,20 @@
-# Fresh Deploy Guide
+# Fresh deployment preparation
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-07-06.
+Last updated: 2026-09-01.
 
-This guide describes a fresh HonoWarden deploy to Cloudflare Workers, D1, and
-R2. It is written for staging-first alpha validation. Production deployment
-requires explicit operator approval.
+Status: **REAL WORKER/VERSION/TRAFFIC WRITE STOP**.
 
-## Prerequisites
+This guide prepares and reviews a fresh HonoWarden release locally. It does not
+authorize or provide commands for Cloudflare identity selection, resource
+creation, secret provisioning, remote migration, first Worker bootstrap,
+version upload, traffic activation, or recovery.
 
-- Node.js 22.13 or newer
-- pnpm 11 or newer
-- Wrangler authenticated to the intended Cloudflare account
-- fresh D1 database for the target environment
-- fresh R2 bucket for the target environment
-- runtime secrets ready to set through Wrangler secret commands
-- no real vault secrets in the test account
+## Local preparation
 
-## Preflight
+Use Node.js 22.13 or newer and pnpm 11 or newer. Keep real vault data and
+credentials out of the checkout.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -28,135 +24,86 @@ pnpm lint
 pnpm test
 pnpm compat:test
 pnpm format
+pnpm brand:scan
+pnpm release:gate -- --strict
 ```
 
-Confirm Wrangler identity and version:
+The default Wrangler scope is permanently local-only:
+
+- Worker name: `honowarden-local`;
+- D1 names: `honowarden-local` and `honowarden-inquiry-local`;
+- R2 name: `honowarden-local-vault-objects`;
+- D1 IDs are non-production sentinels;
+- `workers_dev` and preview URLs are disabled.
+
+Do not replace the sentinel IDs with remote IDs. Real resource identities live
+only under the explicit staging and production environment scopes.
+
+Local database setup uses the `DB` binding:
 
 ```sh
-pnpm wrangler whoami
-pnpm wrangler --version
+pnpm db:migrate:local
 ```
 
-## Create Resources
+## Fresh remote deployment boundary
 
-For staging:
+Fresh remote deployment remains STOP even when scoped credentials exist or an
+operator approves the product intent. The repository's `deploy` and
+`staging:dry-run` entrypoints are static blockers and must not receive
+credentials. Direct Wrangler invocation is not an approved fallback.
 
-```sh
-pnpm wrangler d1 create honowarden-staging
-pnpm wrangler r2 bucket create honowarden-staging-vault-objects
-```
+A future reviewed execution packet must bind all of these before any write:
 
-For production:
+1. exact Cloudflare account and explicit staging or production environment;
+2. the scoped credential and its verified permissions;
+3. D1, R2, Worker, route, and custom-domain target identities;
+4. the complete migration-freeze ledger, including `0018_text_sends.sql`;
+5. secret names and a stdin-only provisioning mechanism;
+6. pre-write readback and per-operation authority;
+7. partial-success classification and recovery for resource, secret, migration,
+   upload, traffic, and non-versioned setting mutations;
+8. an exact reviewed source SHA and trusted build boundary;
+9. separate staging and production decisions.
 
-```sh
-pnpm wrangler d1 create honowarden
-pnpm wrangler r2 bucket create honowarden-vault-objects
-```
+No resource, secret, or migration write may be performed merely to get closer
+to the first Worker deployment. A STOP before Worker upload does not recover
+earlier partial remote mutations.
 
-Replace placeholder `database_id` values in `wrangler.jsonc` only after the
-resource names and account are confirmed.
+## Acceptance after a separately authorized deployment
 
-## Set Secrets
+The following is a readback checklist, not deployment authority:
 
-Set secrets per environment. Do not put these values in `wrangler.jsonc`.
+- exact deployment and traffic identity;
+- `GET /health`;
+- `GET /healthz`;
+- `GET /health/db`;
+- `GET /api/config`;
+- `POST /identity/accounts/prelogin` with an allowlisted synthetic email;
+- authorized synthetic login and sync through a pinned official client.
 
-```sh
-pnpm wrangler secret put HONOWARDEN_BOOTSTRAP_TOKEN --env staging
-pnpm wrangler secret put HONOWARDEN_TOKEN_SECRET --env staging
-pnpm wrangler secret put HONOWARDEN_TOTP_SECRET --env staging
-pnpm wrangler secret put HONOWARDEN_AUTH_REQUEST_SECRET --env staging
-```
+`/health` and `/healthz` must report the intended environment, a distinct
+`workerVersionId`, a canonical `createdAt`, and `build.gitSha` equal to
+the exact reviewed commit. `/api/config.gitHash` must equal the same SHA.
+Missing or mismatched provenance is STOP.
 
-Access-token key-id signing is optional on first deploy. If enabling staged
-access-token key rotation, set all three keyring variables together and keep
-`HONOWARDEN_TOKEN_SECRET` unchanged for refresh-token hashing and legacy no-kid
-fallback:
+Database health must prove the intended target and complete migration state.
+Text Send remains source-only: `/api/sends*` and `send_access` stay explicit
+`501`, `send-enabled` stays false, and no capability keyring is provisioned
+by this guide.
 
-```sh
-pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID --env staging
-pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_ACTIVE_SECRET --env staging
-pnpm wrangler secret put HONOWARDEN_ACCESS_TOKEN_PREVIOUS_KEYS --env staging
-```
+## Evidence to preserve
 
-Set production secrets only after staging validation passes:
+- reviewed full commit SHA and exact-head test results;
+- CI run URL for that same SHA;
+- toolchain versions;
+- account and environment identity with secrets removed;
+- D1/R2/Worker/route identities;
+- migration versions and required table/index readback;
+- traffic and non-versioned settings before and after each authorized write;
+- health/config/DB responses with sensitive values removed;
+- synthetic smoke results;
+- recovery target, authority, and independent readback;
+- explicit classification of any partial success.
 
-```sh
-pnpm wrangler secret put HONOWARDEN_BOOTSTRAP_TOKEN --env production
-pnpm wrangler secret put HONOWARDEN_TOKEN_SECRET --env production
-pnpm wrangler secret put HONOWARDEN_TOTP_SECRET --env production
-pnpm wrangler secret put HONOWARDEN_AUTH_REQUEST_SECRET --env production
-```
-
-For production staged access-token key rotation, repeat the same three keyring
-secret commands only after the staging runbook in
-`docs/operations/access-token-key-rotation.md` passes.
-
-`HONOWARDEN_AUDIT_LOGS` remains `false` until log retention and access controls
-are approved.
-
-Keep `HONOWARDEN_AUTH_REQUESTS_ENABLED=false` until migration `0012`, the
-dedicated secret, and staging create/approve/deny/poll/replay checks are all
-verified. Production stays disabled until the staging evidence is recorded.
-
-## Apply Migrations
-
-Apply migrations to the target database:
-
-```sh
-pnpm wrangler d1 migrations apply honowarden-staging --env staging
-```
-
-For production:
-
-```sh
-pnpm wrangler d1 migrations apply honowarden --env production
-```
-
-After migration, verify:
-
-```sh
-pnpm wrangler d1 execute honowarden-staging --env staging --command "SELECT version FROM schema_migrations ORDER BY version;"
-```
-
-The result must include `0001`, `0002`, `0003`, `0004`, `0005`, `0006`,
-`0007`, `0008`, and `0010`.
-
-## Deploy Worker
-
-Deploy staging first:
-
-```sh
-pnpm wrangler deploy --env staging
-```
-
-Production deployment:
-
-```sh
-pnpm wrangler deploy --env production
-```
-
-## Smoke Checks
-
-Run these against the deployed URL:
-
-- `GET /health`
-- `GET /healthz`
-- `GET /health/db`
-- `GET /api/config`
-- `POST /identity/accounts/prelogin` with an allowlisted synthetic email
-
-For alpha validation, bootstrap only a synthetic account and verify login/sync
-with synthetic vault items through official upstream clients.
-
-## Evidence To Record
-
-- commit SHA
-- CI run URL
-- Wrangler version
-- Cloudflare account identity
-- D1 database name and id
-- R2 bucket name
-- migration versions observed through `schema_migrations`
-- health route responses with secrets removed
-- compatibility matrix verification level
-- backup/restore drill reference if production is being considered
+Until a future execution protocol satisfies those requirements, the release
+can be locally prepared and reviewed but not deployed from this repository.

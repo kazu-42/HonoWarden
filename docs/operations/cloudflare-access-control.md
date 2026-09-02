@@ -2,8 +2,10 @@
 
 Last reviewed: 2026-07-14.
 
-Status: scoped tokens created; formal dry-run exists; remaining 2FA,
-legacy-token, and break-glass gaps accepted temporarily.
+Status: scoped tokens created historically; current HonoWarden API Worker
+secret/config/deploy and deploy-token bootstrap are **STOP**. Formal local
+planning/read-only verification exists; remaining 2FA, legacy-token, and
+break-glass gaps are accepted temporarily.
 
 This document records who and what can mutate HonoWarden Cloudflare resources.
 It intentionally records only account/member hash tags, role names, counts,
@@ -123,25 +125,28 @@ Temporary acceptance:
 
 Follow-up:
 
-- `HON-64`: create scoped tokens and document 2FA/no-expiry token expectations
+- `HON-64`: historical scoped-token creation and 2FA/no-expiry expectations;
+  future creation or replacement remains behind the current STOP
 - `HON-60`: formal dry-run secret rotation drill
 - `HON-57`: independent security audit and external penetration test
 - `HON-49`: external log sink and Cloudflare log retention access
 
 ## Least-Privilege Token Plan
 
-Create separate scoped tokens instead of reusing the global key.
+Use separately scoped tokens instead of reusing the global key. The inventory
+below defines least-privilege intent; it is not current token-creation or deploy
+authority.
 
 Routine Cloudflare workflows are scoped-token-only. The global key is never an
 automatic or routine fallback.
 
-| Token class        | Scope                                       | Allowed operations                                                                  | Must not allow                                             |
-| ------------------ | ------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Deploy Worker      | HonoWarden API Worker and website Worker    | Worker script deploy, route attach, version/deployment readback                     | DNS write, Email Routing write, account membership write   |
-| DNS and routes     | `honowarden.com` zone                       | DNS record read/write, route read/write for approved changes                        | D1/R2 data access, account membership write                |
-| Email Routing      | `honowarden.com` zone                       | Email Routing settings/rules read/write, DNS readback for MX/SPF                    | Worker deploy, D1/R2 data access, account membership write |
-| D1/R2 operations   | HonoWarden D1/R2 resources                  | D1 migration/readback, R2 object listing/backup/restore for approved drills         | DNS write, Email Routing write, account membership write   |
-| Read-only evidence | account, zone, Worker, D1/R2, Email Routing | membership read, deployment read, DNS read, Email Routing read, D1/R2 metadata read | any write permission                                       |
+| Token class                           | Scope                                       | Future or current read-only use                                                             | Must not allow                                             |
+| ------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Future deploy protocol (current STOP) | HonoWarden API Worker and website Worker    | Version/deployment readback now; deploy/route attach only in a separately reviewed protocol | DNS write, Email Routing write, account membership write   |
+| DNS and routes                        | `honowarden.com` zone                       | DNS record/route readback; writes require their own reviewed change                         | D1/R2 data access, account membership write                |
+| Email Routing                         | `honowarden.com` zone                       | Email Routing/DNS readback; writes require their own reviewed change                        | Worker deploy, D1/R2 data access, account membership write |
+| D1/R2 operations                      | HonoWarden D1/R2 resources                  | Metadata/readback; migrations, backup, and restore require their own reviewed protocol      | DNS write, Email Routing write, account membership write   |
+| Read-only evidence                    | account, zone, Worker, D1/R2, Email Routing | Membership, deployment, DNS, Email Routing, and D1/R2 metadata read                         | any write permission                                       |
 
 Each scoped token must:
 
@@ -154,14 +159,26 @@ Each scoped token must:
 
 ## Scoped Token Remediation Workflow
 
-Repo-owned remediation tooling:
+The repository retains local planning and read-only verification:
 
 ```sh
 pnpm cloudflare:tokens -- plan
-pnpm cloudflare:tokens -- apply --auth global
-pnpm cloudflare:tokens -- apply --auth global --execute
 pnpm cloudflare:tokens -- verify
 ```
+
+Do not run either `cloudflare:tokens apply` mode. The managed set includes the
+deploy token, so creating or replacing any missing set through that writer is a
+deploy-token bootstrap operation and is current **STOP**. Explicit approval,
+the presence of the global key, or a successful plan does not admit execution.
+
+Any future HonoWarden API Worker token/secret/config/deploy execution requires a
+separately reviewed protocol that identifies the exact Cloudflare account,
+environment, Worker/resource and configuration target; binds the exact scoped
+credential in an auth-isolated shell; captures secret-safe pre-readback; defines
+the ordered mutation; verifies post-readback and source/runtime provenance;
+classifies zero-write, partial-success, and complete-success outcomes; and
+provides tested recovery for every partial state. Staging and production remain
+separate decisions.
 
 The script manages five scoped account-token classes:
 
@@ -174,14 +191,14 @@ The script manages five scoped account-token classes:
 | Read-only evidence | `CLOUDFLARE_HONOWARDEN_READONLY_TOKEN`      | account token and DNS readback             |
 
 `CLOUDFLARE_API_TOKEN` may be used only as a command-local alias for the token
-in the table. The two repo-code carve-outs for the global key are
-`scripts/honowarden-cloudflare-token-remediation.mjs`, which bootstraps or
-replaces these scoped tokens, and
-`scripts/honowarden-secret-rotation-drill.mjs`, which inventories the explicit
-break-glass rotation plan. The email preflight and ops-readiness packet reject
-it. Direct Wrangler commands still inherit their shell environment, so operators
-must remove global-key variables and bind only the workflow token; Wrangler
-prefers complete global-key auth over an API token when both are present.
+in the table. `scripts/honowarden-cloudflare-token-remediation.mjs` contains the
+historical writer, but this document admits only its local plan and read-only
+verification modes. `scripts/honowarden-secret-rotation-drill.mjs` inventories
+the explicit break-glass rotation plan without performing the rotation. The
+email preflight and ops-readiness packet reject the global key. Direct Wrangler
+commands still inherit their shell environment, so read-only checks must remove
+global-key variables and bind only the workflow token; Wrangler prefers complete
+global-key auth over an API token when both are present.
 
 The account setting `OAuth app access enabled` in the redacted readback is not a
 signal about local Wrangler authentication. Wrangler may also have a broad OAuth
@@ -195,11 +212,12 @@ for the default profile first. Named profiles must also be deactivated with
 `wrangler auth deactivate` and removed with `wrangler auth delete <profile>` if
 they remain. Repository scripts must not automate any of those mutations.
 
-`apply --execute` creates missing tokens only, writes one-time token values to
-`~/.config/honowarden/cloudflare-scoped.env` with mode `0600`, and prints only
-token hash tags plus verification statuses. The generated values must be loaded
-through ignored `.envrc.local` and must not be copied into Linear, GitHub,
-docs, shell transcripts, or chat.
+Historical remediation wrote one-time token values to
+`~/.config/honowarden/cloudflare-scoped.env` with mode `0600` and recorded only
+token hash tags plus verification statuses. This is historical evidence, not an
+instruction to rerun the writer. Existing values may be loaded through ignored
+`.envrc.local` for admitted read-only checks and must not be copied into Linear,
+GitHub, docs, shell transcripts, or chat.
 
 Account-level 2FA enforcement is intentionally not automated by this script.
 The review observed accepted members whose two-factor flag read as false, so
@@ -213,6 +231,10 @@ lock out an account owner. The expectation is:
 4. the resulting setting readback is recorded here without member emails.
 
 ## Post-Remediation Readback
+
+This section is immutable historical evidence from the 2026-07-09 remediation.
+Its command record does not authorize repetition or establish current
+deploy-token bootstrap authority.
 
 Generated at: `2026-07-09T17:30:38Z`.
 
@@ -263,37 +285,45 @@ Account/member hardening readback:
 
 Post-remediation decision:
 
-- The five HonoWarden scoped account tokens replace the global key for normal
-  deploy, DNS/routes, Email Routing, D1/R2, and read-only evidence work.
+- The five HonoWarden scoped account tokens reduced reliance on the global key
+  for the then-reviewed workflows. The deploy token is now reserved for a future
+  separately reviewed protocol; it does not grant current HonoWarden API Worker
+  deploy authority.
+- DNS/routes, Email Routing, and D1/R2 credentials remain scoped, but their
+  mutating use still requires the applicable reviewed operation boundary.
 - The two older no-expiry account tokens and seven visible no-expiry user
   tokens are explicitly re-accepted only for the current operator-owned
   transition window. They must be reviewed and retired or renewed on the next
   access-control review.
-- The global key remains stored outside the repository as a break-glass
-  credential and is not loaded into routine shells.
+- The global key remains stored outside the repository as a non-routine
+  break-glass credential and is not loaded into routine shells. This storage
+  does not authorize deploy-token bootstrap or Worker/config writes.
 - Account-level 2FA enforcement is documented as an operator action instead of
   being automated from this repository.
 
 ## Break-Glass Process
 
-The break-glass path is the local-only global key stored outside the repository
-under the operator home configuration. Load it only inside an isolated,
-explicitly approved remediation or rotation window, then exit that shell.
+The break-glass credential is a local-only global key stored outside the
+repository under the operator home configuration. Its presence is not an
+executable path. HonoWarden API Worker secret/config/deploy and deploy-token
+bootstrap remain STOP until the separately reviewed protocol above exists.
 
 Rules:
 
-1. Use the global key only to remediate scoped tokens or perform an explicitly
-   approved break-glass rotation drill. The email preflight and ops-readiness
-   packet reject it; direct Wrangler commands require the clean-shell invariant.
+1. Do not use the global key from this document. A future break-glass remediation
+   or rotation must be admitted by a separately reviewed protocol; explicit
+   approval alone is insufficient. The email preflight and ops-readiness packet
+   reject the key, and direct Wrangler use is not a bypass.
 2. Before use, record the reason, target resource, planned command, rollback
    command, and expected readback in Linear.
 3. Do not print or paste the global key, account email, private forwarding
    destination, or resulting bearer material.
 4. Prefer read-only commands first.
-5. After use, record the Cloudflare deployment/configuration readback and the
-   decision to continue, rollback, or hold.
-6. Do not rotate the break-glass credential during a dry-run. Rotate it only in
-   a separate operator-approved live change window.
+5. After any future admitted use, record pre/post Cloudflare
+   deployment/configuration readback, classify zero-write versus partial versus
+   complete success, and execute the preselected recovery or hold decision.
+6. Do not rotate the break-glass credential during a dry-run. A live rotation
+   requires its own separately reviewed protocol, not approval alone.
 
 ## Stale Credential Decision
 
@@ -310,7 +340,8 @@ Reason for acceptance: removing or rotating these credentials could break
 unrelated account automation and requires operator-owned sequencing. The scoped
 HonoWarden token rollout reduces normal-operation reliance on broad credentials;
 legacy token retirement, role reduction, and break-glass rotation must be
-handled through an operator-owned live change window.
+handled through a separately reviewed protocol with exact target, readback,
+partial-success classification, and recovery.
 
 ## Review Cadence And Owner
 

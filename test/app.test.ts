@@ -128,7 +128,9 @@ describe('HonoWarden app', () => {
       service: 'honowarden',
       version: '0.1.0-alpha',
       environment: 'development',
+      build: null,
       requestId: 'health-request',
+      provenanceStatus: 'unavailable',
     })
   })
 
@@ -142,6 +144,11 @@ describe('HonoWarden app', () => {
       },
       {
         HONOWARDEN_ENV: 'staging',
+        CF_VERSION_METADATA: {
+          id: 'staging-worker-version-id',
+          tag: '52ef7293615702b399cf5b3bcac7e607f191e51f',
+          timestamp: '2026-08-16T00:00:00.000Z',
+        },
       },
     )
 

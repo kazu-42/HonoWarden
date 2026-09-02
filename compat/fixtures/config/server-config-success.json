@@ -9,7 +9,7 @@
     "status": 200,
     "body": {
       "version": "0.1.0-alpha",
-      "gitHash": "honowarden",
+      "gitHash": "0123456789abcdef0123456789abcdef01234567",
       "server": null,
       "environment": {
         "cloudRegion": "self-hosted",
@@ -52,7 +52,7 @@
     {
       "path": "$.gitHash",
       "type": "string",
-      "value": "honowarden"
+      "value": "0123456789abcdef0123456789abcdef01234567"
     },
     {
       "path": "$.environment.cloudRegion",

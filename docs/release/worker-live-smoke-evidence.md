@@ -1,20 +1,29 @@
 # Worker Live Smoke Evidence
 
-Target: `v0.1.0-alpha`.
+> **HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.** This document
+> records the 2026-07 `v0.1.0-alpha` Worker deployments and then-live HTTP
+> observations. It does not establish current deployment, health, schema,
+> configuration, traffic, or rollback state, and it does not authorize a D1
+> migration, Worker upload, activation, rollback, route change, or traffic
+> change. Current Worker execution remains STOP unless a future remote-write
+> protocol satisfies the admission boundary in
+> [Build provenance and deployment authority](../operations/deploy-provenance-runbook.md#admission-requirements-for-a-future-remote-write-protocol)
+> and receives separate, one-shot authority.
 
-Status: passed.
+Historical target: `v0.1.0-alpha`.
 
-Mode: post-alpha Worker deploy and live HTTP smoke evidence.
+Historical status: passed.
 
-This file records the API Worker deploy and live HTTP smoke evidence for the
-published alpha release. It covers both staging and production Workers.
+Historical mode: post-alpha Worker deployment and live HTTP smoke evidence.
 
-Do not mark this evidence as passed from local tests, staging dry-run output,
-GitHub Actions status, or Cloudflare resource creation alone. Those checks are
-useful prerequisites, but they do not prove that a live Worker is serving the
-expected version.
+This file records what was observed for the published alpha release in staging
+and production. The historical `passed` result cannot be carried forward: a
+current status claim requires fresh, secret-safe deployment and HTTP readback
+under separately admitted read-only authority. Local tests, staging dry-run
+output, GitHub Actions status, or Cloudflare resource creation alone never prove
+that a live Worker currently serves the expected version.
 
-## Execution Scope
+## Historical Execution Scope
 
 - Standing operator approval: 2026-07-08, "approval いちいち確認しないで進めていいよ"
 - Repository: `kazu-42/HonoWarden`
@@ -53,8 +62,9 @@ remained disabled, and audit logging remained disabled.
   `f2357f14-8430-4b9f-913d-2dbad72322dd`
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target for this alpha evidence
-- Approved recovery strategy: redeploy release target commit
-  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`; see
+- Historical recovery proposal: redeploy release target commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`. The proposal is not an
+  executable current procedure; see
   [Operations Rollback Evidence](ops-rollback-evidence.md)
 
 ### Production
@@ -68,25 +78,28 @@ remained disabled, and audit logging remained disabled.
   `2c0b365b-3cf9-4766-ba8d-e5bd969c969d`
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target for this alpha evidence
-- Approved recovery strategy: redeploy release target commit
-  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`; see
+- Historical recovery proposal: redeploy release target commit
+  `e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`. The proposal is not an
+  executable current procedure; see
   [Operations Rollback Evidence](ops-rollback-evidence.md)
 
-## Commands Run
+## Historical Mutation Record
 
-```sh
-pnpm exec wrangler d1 migrations apply DB --env production --remote
-git switch --detach e7a3c5ea9e51030143736bb0e7a36cb7a8babfce
-pnpm exec wrangler deploy --env staging
-pnpm exec wrangler deploy --env production
-git switch main
-```
+The 2026-07 operation applied the first three production D1 migrations and
+deployed the release-target source to staging and production. The first
+production deployment was corrected by redeploying from release-target commit
+`e7a3c5ea9e51030143736bb0e7a36cb7a8babfce`. The recorded migrations were
+`0001_initial_schema.sql`, `0002_login_defenses.sql`, and
+`0003_totp_login.sql`.
 
-The first production deploy was corrected by redeploying from the release target
-commit. The production D1 migration apply completed `0001_initial_schema.sql`,
-`0002_login_defenses.sql`, and `0003_totp_login.sql`.
+The obsolete mutation command sequence has been removed deliberately. This
+record preserves the outcome and source identity without leaving an executable
+deployment or migration recipe that could be mistaken for current authority.
 
-## Live Smoke
+## Historical Live Smoke
+
+The commands below are the read-only HTTP probes recorded in 2026-07. Their
+results are historical observations, not current endpoint-health evidence.
 
 ### Staging
 
@@ -132,24 +145,22 @@ Redacted results:
   `vault=https://honowarden.ghive42.workers.dev`
 - synthetic prelogin: HTTP `403`, `error.code=prelogin_not_allowed`
 
-## Limitations
+## Historical Limitations
 
-- The Workers are available on `workers.dev` URLs. Custom domain routing is
+- The Workers were observed on `workers.dev` URLs. Custom domain routing was
   tracked separately in website/API route evidence.
-- Public account registration remains disabled.
-- No production secrets were written.
+- Public account registration was disabled in the observed configuration.
+- No production secrets were written during the recorded operation.
 - Candidate previous-version handles are recorded, but they are not approved
-  rollback targets because the previous versions are pre-correction `main`
-  deployments. The approved alpha recovery strategy is to redeploy the reviewed
-  release target commit as recorded in
+  current rollback targets because the previous versions were pre-correction
+  `main` deployments. The historical proposal to redeploy the reviewed release
+  target commit is recorded, without an executable command, in
   [Operations Rollback Evidence](ops-rollback-evidence.md).
 
-## Rollback
+## Historical Rollback Disposition
 
-If deploy or smoke validation fails:
-
-1. Stop promotion.
-2. Redeploy the reviewed release target commit, or remove the route, depending
-   on the approved rollback plan.
-3. Re-run `/health`, `/healthz`, and `/health/db` against the restored target.
-4. Record the rollback timestamp and resulting health response.
+No traffic-changing rollback was performed because the recorded smoke checks
+passed. The previous-version candidates were rejected as unsafe recovery
+targets. Any current incident must preserve remote state, capture fresh
+readback, and enter through the future remote-write admission boundary; the
+2026-07 approval and recovery proposal must not be reused.

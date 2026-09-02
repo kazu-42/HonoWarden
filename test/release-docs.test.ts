@@ -36,6 +36,9 @@ const migrationsRoot = fileURLToPath(
 const packageJsonPath = fileURLToPath(
   new URL('../package.json', import.meta.url).toString(),
 )
+const compatibilityMatrixDocPath = fileURLToPath(
+  new URL('../docs/compatibility-matrix.md', import.meta.url).toString(),
+)
 
 describe('release feature-freeze docs', () => {
   it('keeps the required release documents present', () => {
@@ -109,6 +112,26 @@ describe('release feature-freeze docs', () => {
     expect(index).toContain('account-lifecycle-local-evidence.md')
   })
 
+  it('keeps the text Send foundation reader-first and activation-gated', () => {
+    const upgradeGuide = readReleaseDoc('upgrade-guide.md')
+    const rollbackGuide = readReleaseDoc('rollback-guide.md')
+    const releaseNotes = readReleaseDoc('v0.1.0-alpha-release-notes.md')
+
+    for (const requirement of [
+      '0018_text_sends.sql',
+      'send-enabled: false',
+      'explicit `/api/sends*` and `send_access` `501` guards',
+      '/health/db',
+    ]) {
+      expect(upgradeGuide).toContain(requirement)
+    }
+    expect(rollbackGuide).toContain('Migration `0018` is forward-only')
+    expect(rollbackGuide).toContain('reader-capable Worker')
+    expect(rollbackGuide).toContain('access generation')
+    expect(releaseNotes).toContain('source-only and')
+    expect(releaseNotes).toContain('unmounted')
+  })
+
   it('keeps release notes explicit about alpha exclusions and gates', () => {
     const releaseNotes = readReleaseDoc('v0.1.0-alpha-release-notes.md')
 
@@ -127,6 +150,35 @@ describe('release feature-freeze docs', () => {
     expect(releaseNotes).toContain('synthetic two-user dogfood')
     expect(releaseNotes).toContain('D1 audit-event persistence')
     expect(releaseNotes).toContain('vault mutation audit event coverage')
+  })
+
+  it('separates sealed tag-time client evidence from post-tag and current claims', () => {
+    const releaseNotes = readReleaseDoc('v0.1.0-alpha-release-notes.md')
+    const preflight = readReleaseDoc('release-gate-preflight.md')
+    const compatibilityMatrix = readFileSync(compatibilityMatrixDocPath, 'utf8')
+
+    expect(releaseNotes).toMatch(
+      /At tag time, only CLI\s+`2026\.6\.0` was `live_smoke`/,
+    )
+    expect(releaseNotes).toMatch(
+      /all\s+five current 2026\.7 rows remain `fixture_only`/,
+    )
+    expect(compatibilityMatrix).toContain(
+      'sealed tag-time evidence consists only of the CLI `2026.6.0`',
+    )
+    expect(compatibilityMatrix).toContain('Post-Tag Historical Evidence')
+    expect(preflight).toContain('already-published `v0.1.0-alpha`')
+    expect(preflight).toContain('e7a3c5ea9e51030143736bb0e7a36cb7a8babfce')
+    expect(preflight).toContain(
+      '8076ec9d4fd9179b9f0616f6f6b5489acacae291058ba95854e4591be56c3491',
+    )
+    expect(preflight).toContain(
+      'docs/release/snapshots/v0.1.0-alpha/live-client-evidence.md',
+    )
+    expect(preflight).toContain('does not authorize retagging')
+    expect(preflight).not.toContain(
+      'expected to report `ready` on the clean release commit immediately before',
+    )
   })
 
   it('aligns the package version with the alpha target', () => {
@@ -190,6 +242,7 @@ describe('release feature-freeze docs', () => {
   it('keeps post-alpha operations evidence statuses honest', () => {
     const index = readReleaseDoc('index.md')
     const workerEvidence = readReleaseDoc('worker-live-smoke-evidence.md')
+    const stagingEvidence = readReleaseDoc('staging-deploy-evidence.md')
     const websiteEvidence = readReleaseDoc('website-live-evidence.md')
     const emailEvidence = readReleaseDoc('email-routing-evidence.md')
     const logRetentionEvidence = readReleaseDoc('log-retention-evidence.md')
@@ -201,12 +254,30 @@ describe('release feature-freeze docs', () => {
     expect(index).toContain('email-routing-evidence.md')
     expect(index).toContain('ops-rollback-evidence.md')
 
-    expect(workerEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
+    expect(workerEvidence).toContain(
+      'HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.',
+    )
+    expect(workerEvidence).toMatch(/^Historical status:\s*passed\.?\s*$/m)
     expect(workerEvidence).toContain('e7a3c5ea9e51030143736bb0e7a36cb7a8babfce')
     expect(workerEvidence).toContain('Candidate previous version ID')
-    expect(workerEvidence).toContain('Approved recovery strategy')
+    expect(workerEvidence).toContain('Historical recovery proposal')
     expect(workerEvidence).toContain('ops-rollback-evidence.md')
     expect(workerEvidence).toContain('synthetic prelogin: HTTP `403`')
+    expect(workerEvidence).toContain(
+      'obsolete mutation command sequence has been removed',
+    )
+    expect(workerEvidence).not.toMatch(
+      /pnpm exec wrangler deploy --env (?:staging|production)(?![^\n]*--dry-run)/u,
+    )
+
+    expect(stagingEvidence).toContain(
+      'HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.',
+    )
+    expect(stagingEvidence).toMatch(/^Historical status:\s*passed\.?\s*$/m)
+    expect(stagingEvidence).toContain(
+      '`staging:dry-run` entrypoint is a static blocker',
+    )
+    expect(stagingEvidence).toContain('wrangler deploy --env staging --dry-run')
 
     expect(websiteEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
     expect(websiteEvidence).toContain(
@@ -270,8 +341,11 @@ describe('release feature-freeze docs', () => {
     expect(logRetentionEvidence).toContain('/REDACTED/production')
     expect(logRetentionEvidence).not.toContain('secret-access-key=')
 
-    expect(rollbackEvidence).toMatch(/^Status:\s*passed\.?\s*$/m)
-    expect(rollbackEvidence).toContain('Approved recovery command')
+    expect(rollbackEvidence).toContain(
+      'HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.',
+    )
+    expect(rollbackEvidence).toMatch(/^Historical status:\s*passed\.?\s*$/m)
+    expect(rollbackEvidence).toContain('Historical recovery proposal')
     expect(rollbackEvidence).toContain(
       'e7a3c5ea9e51030143736bb0e7a36cb7a8babfce',
     )
@@ -281,12 +355,12 @@ describe('release feature-freeze docs', () => {
     expect(rollbackEvidence).toContain(
       'pnpm exec wrangler deploy --env production --dry-run',
     )
-    expect(rollbackEvidence).toContain(
-      'Do not run `pnpm exec wrangler rollback',
+    expect(rollbackEvidence).toMatch(
+      /old proposal was deliberately removed from this evidence record as an\s+executable command sequence/u,
     )
     expect(rollbackEvidence).toContain('pre-correction `main` deployments')
     expect(rollbackEvidence).toContain('API Worker Rollback Rehearsal')
-    expect(rollbackEvidence).toContain('Decision: `continue`')
+    expect(rollbackEvidence).toContain('Historical decision: `continue`')
     expect(rollbackEvidence).toContain('schemaVersion=0003')
     expect(rollbackEvidence).toContain('error.code=prelogin_not_allowed')
     expect(rollbackEvidence).toContain('b408a4e2-4279-4a57-8172-698b1c77c6ab')

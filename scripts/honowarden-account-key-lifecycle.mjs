@@ -15,7 +15,7 @@ import {
 } from './honowarden-signal-cleanup.mjs'
 
 const repoRoot = fileURLToPath(new globalThis.URL('..', import.meta.url))
-const databaseName = 'honowarden'
+const databaseName = 'honowarden-local'
 const tokenSecret = 'synthetic-hon205-token-secret-with-32-bytes'
 const initialRevision = '2026-07-19T00:00:00.000Z'
 const initialSecurityStamp = 'hon205-initial-security-stamp'

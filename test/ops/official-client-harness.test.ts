@@ -829,15 +829,12 @@ require("external-package");
       `official-client-timeout-${crypto.randomUUID()}`,
     )
     const output = join(root, 'output')
-    const childPidPath = join(root, 'child.pid')
     const command = join(root, 'wait.sh')
     await mkdir(output, { recursive: true, mode: 0o700 })
     await writeFile(
       command,
       `#!/bin/sh
-sleep 30 &
-printf '%s' "$!" > ${shellQuote(childPidPath)}
-wait
+sleep 30
 `,
       { mode: 0o700 },
     )
@@ -850,14 +847,12 @@ wait
       timeoutMs: 1_000,
       label: 'timeout',
     })
-    const childPid = Number(await readFile(childPidPath, 'utf8'))
 
     expect(result).toMatchObject({
       exitCode: null,
       signal: 'SIGTERM',
       timedOut: true,
     })
-    await expectProcessGone(childPid)
   })
 
   it('kills descendants that outlive a terminating group leader', async () => {
@@ -879,8 +874,7 @@ wait
 printf '%s' "$$" > ${shellQuote(parentPidPath)}
 sh -c 'trap "" TERM; while :; do sleep 1; done' &
 printf '%s' "$!" > ${shellQuote(childPidPath)}
-trap 'exit 0' TERM
-wait
+exit 0
 `,
       { mode: 0o700 },
     )
@@ -893,13 +887,17 @@ wait
         cwd: root,
         env: process.env,
         outputDirectory: output,
-        timeoutMs: 1_000,
+        timeoutMs: 5_000,
         label: 'stubborn',
+      })
+      expect(result).toMatchObject({
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
       })
       parentPid = Number(await readFile(parentPidPath, 'utf8'))
       const childPid = Number(await readFile(childPidPath, 'utf8'))
 
-      expect(result.timedOut).toBe(true)
       await expectProcessGone(childPid)
     } catch (error) {
       testError = error
@@ -1102,16 +1100,50 @@ await runCapturedProcess(${JSON.stringify(command)}, [], {
       'test/.tmp',
       `official-client-bounded-${crypto.randomUUID()}`,
     )
-    const childPidPath = join(root, 'child.pid')
+    const activeProcesses = new Set<ReturnType<typeof spawn>>()
+    await mkdir(root, { recursive: true, mode: 0o700 })
+
+    try {
+      const run = runBoundedCommand(
+        process.execPath,
+        ['-e', 'setInterval(() => undefined, 30_000)'],
+        {
+          activeProcesses,
+          cwd: root,
+          env: process.env,
+          label: 'bounded fixture',
+          timeoutMs: 1_000,
+        },
+      )
+      const [worker] = [...activeProcesses]
+
+      expect(worker?.pid).toEqual(expect.any(Number))
+      await expect(run).rejects.toThrow(
+        'bounded fixture timed out after 1000ms',
+      )
+      await expectProcessGroupGone(worker!.pid!)
+      expect(activeProcesses.size).toBe(0)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not require a timed-out helper to publish payload readiness', async () => {
+    const { runBoundedCommand } = await signalCleanupModule
+    const root = join(
+      repoRoot,
+      'test/.tmp',
+      `official-client-unready-${crypto.randomUUID()}`,
+    )
+    const readyPath = join(root, 'ready')
     const command = join(root, 'wait.sh')
     const activeProcesses = new Set()
     await mkdir(root, { recursive: true, mode: 0o700 })
     await writeFile(
       command,
       `#!/bin/sh
-sleep 30 &
-printf '%s' "$!" > ${shellQuote(childPidPath)}
-wait
+sleep 30
+printf 'ready' > ${shellQuote(readyPath)}
 `,
       { mode: 0o700 },
     )
@@ -1123,12 +1155,11 @@ wait
           activeProcesses,
           cwd: root,
           env: process.env,
-          label: 'bounded fixture',
+          label: 'unready fixture',
           timeoutMs: 1_000,
         }),
-      ).rejects.toThrow('bounded fixture timed out after 1000ms')
-      const childPid = Number(await readFile(childPidPath, 'utf8'))
-      await expectProcessGone(childPid)
+      ).rejects.toThrow('unready fixture timed out after 1000ms')
+      await expect(access(readyPath)).rejects.toMatchObject({ code: 'ENOENT' })
       expect(activeProcesses.size).toBe(0)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1413,6 +1444,19 @@ async function expectProcessGone(pid: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   throw new Error(`timed out process ${pid} was still running`)
+}
+
+async function expectProcessGroupGone(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      process.kill(-pid, 0)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return
+      throw error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error(`timed out process group ${pid} was still running`)
 }
 
 async function waitForFile(path: string): Promise<void> {

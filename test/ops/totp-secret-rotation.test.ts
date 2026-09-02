@@ -42,6 +42,60 @@ type RotationPacket = {
 }
 
 describe('TOTP secret rotation operator CLI', () => {
+  it('statically blocks remote rewrap execution before reading secret env vars', async () => {
+    const result = await runBlockedRemoteExecution([
+      '--database',
+      'honowarden-production',
+      '--mode',
+      'remote',
+      '--env',
+      'production',
+      '--reason',
+      'planned-rotation',
+      '--execute',
+      '--confirm',
+      'honowarden-production:rewrap',
+    ])
+
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr.trim()).toBe(remoteExecutionStopMessage)
+    expect(await fileExists(result.wranglerLogPath)).toBe(false)
+  })
+
+  it('statically blocks remote force re-enrollment before Wrangler or deletion SQL', async () => {
+    const result = await runBlockedRemoteExecution(
+      [
+        '--database',
+        'honowarden-production',
+        '--mode',
+        'remote',
+        '--env',
+        'production',
+        '--strategy',
+        'force-reenrollment',
+        '--reason',
+        'old-secret-lost',
+        '--execute',
+        '--confirm',
+        'honowarden-production:force-reenrollment',
+      ],
+      [
+        {
+          userId: 'user-1',
+          encryptedSecret: 'unreadable-but-not-needed',
+          pendingEncryptedSecret: null,
+          enabled: 1,
+        },
+      ],
+    )
+
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr.trim()).toBe(remoteExecutionStopMessage)
+    expect(await fileExists(result.wranglerLogPath)).toBe(false)
+  })
+
   it('dry-runs rewrap without printing plaintext or encrypted TOTP secrets', async () => {
     const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
     const pendingSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXY'
@@ -422,6 +476,46 @@ describe('TOTP secret rotation operator CLI', () => {
   })
 })
 
+const remoteExecutionStopMessage =
+  'Remote TOTP rotation execution is disabled until secret activation and recovery are implemented.'
+
+async function runBlockedRemoteExecution(
+  args: string[],
+  rows: unknown[] = [],
+): Promise<{
+  code: number
+  stdout: string
+  stderr: string
+  wranglerLogPath: string
+}> {
+  const fakeBin = await createFakeWranglerBin(rows)
+
+  try {
+    await execFileAsync(process.execPath, [rotationScript, ...args], {
+      env: {
+        PATH: `${fakeBin.path}${delimiter}${process.env.PATH ?? ''}`,
+        HONOWARDEN_TEST_WRANGLER_LOG: fakeBin.logPath,
+      },
+    })
+  } catch (error) {
+    const result = error as {
+      code: number
+      stdout: string
+      stderr: string
+    }
+    return { ...result, wranglerLogPath: fakeBin.logPath }
+  }
+
+  throw new Error('Expected remote TOTP rotation execution to be blocked')
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  return readFile(path).then(
+    () => true,
+    () => false,
+  )
+}
+
 async function writeRowsFile(rows: unknown[]): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'honowarden-totp-rotation-'))
   const path = join(dir, 'rows.json')
@@ -450,6 +544,7 @@ const { appendFileSync } = require('node:fs')
 const args = process.argv.slice(2)
 const commandIndex = args.indexOf('--command')
 const sql = commandIndex === -1 ? '' : args[commandIndex + 1]
+appendFileSync(process.env.HONOWARDEN_TEST_WRANGLER_LOG, 'invoked\\n')
 if (sql.includes('SELECT')) {
   process.stdout.write(JSON.stringify([{ results: ${JSON.stringify(rows)} }]))
   process.exit(0)

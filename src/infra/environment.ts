@@ -10,10 +10,14 @@ const runtimeEnvironmentSet = new Set<string>(runtimeEnvironments)
 
 export function resolveRuntimeEnvironment(
   value: string | undefined,
-): RuntimeEnvironment {
-  if (value && runtimeEnvironmentSet.has(value)) {
+): RuntimeEnvironment | null {
+  if (value === undefined || value === '') {
+    return 'development'
+  }
+
+  if (runtimeEnvironmentSet.has(value)) {
     return value as RuntimeEnvironment
   }
 
-  return 'development'
+  return null
 }

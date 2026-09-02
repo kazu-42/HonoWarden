@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
-const databaseName = 'honowarden'
+const databaseName = 'honowarden-local'
 
 type D1Execution = {
   results?: Array<Record<string, unknown>>
