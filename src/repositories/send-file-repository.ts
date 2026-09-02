@@ -69,7 +69,85 @@ export type RevokeSendFileInput = {
   now: string
 }
 
+export type FileSendRow = {
+  id: string
+  ownerUserId: string
+  type: 1
+  authType: 1 | 2
+  lifecycleState:
+    | 'pending_upload'
+    | 'active'
+    | 'deleted'
+    | 'disabled'
+    | 'expired'
+    | 'quarantined'
+  capabilityEnvelope: string
+  capabilityEnvelopeKeyId: string
+  capabilityVerifier: string
+  capabilityVerifierKeyId: string
+  accessGeneration: number
+  encryptedName: string
+  encryptedNotes: string | null
+  encryptedKey: string
+  encryptedText: null
+  textHidden: 0
+  passwordVerifier: string | null
+  passwordKeyId: string | null
+  maxAccessCount: number | null
+  accessCount: number
+  disabled: number
+  hideEmail: number
+  expirationAt: string | null
+  deletionAt: string
+  revisionDate: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+  quarantinedAt: string | null
+  lastAccessedAt: string | null
+}
+
+export type CreatePendingFileSendInput = {
+  send: FileSendRow
+  file: SendFileRow
+  auditEventId: string
+  requestId: string
+}
+
 type SendFileDatabase = Pick<D1Database, 'prepare'>
+type SendFileBatchDatabase = Pick<D1Database, 'batch' | 'prepare'>
+
+const fileSendProjection = `
+  id,
+  owner_user_id AS ownerUserId,
+  type,
+  auth_type AS authType,
+  lifecycle_state AS lifecycleState,
+  capability_envelope AS capabilityEnvelope,
+  capability_envelope_key_id AS capabilityEnvelopeKeyId,
+  capability_verifier AS capabilityVerifier,
+  capability_verifier_key_id AS capabilityVerifierKeyId,
+  access_generation AS accessGeneration,
+  encrypted_name AS encryptedName,
+  encrypted_notes AS encryptedNotes,
+  encrypted_key AS encryptedKey,
+  encrypted_text AS encryptedText,
+  text_hidden AS textHidden,
+  password_verifier AS passwordVerifier,
+  password_key_id AS passwordKeyId,
+  max_access_count AS maxAccessCount,
+  access_count AS accessCount,
+  disabled,
+  hide_email AS hideEmail,
+  expiration_at AS expirationAt,
+  deletion_at AS deletionAt,
+  revision_date AS revisionDate,
+  created_at AS createdAt,
+  updated_at AS updatedAt,
+  deleted_at AS deletedAt,
+  quarantined_at AS quarantinedAt,
+  last_accessed_at AS lastAccessedAt
+`
 
 const sendFileProjection = `
   id,
@@ -101,6 +179,125 @@ const sendDownloadTicketProjection = `
   remaining_bytes AS remainingBytes,
   consumed_requests AS consumedRequests
 `
+
+export async function createPendingFileSend(
+  database: SendFileBatchDatabase,
+  input: CreatePendingFileSendInput,
+): Promise<{ status: 'created'; send: FileSendRow; file: SendFileRow }> {
+  const results = await database.batch([
+    database
+      .prepare(
+        `
+          INSERT INTO sends (
+            id, owner_user_id, type, auth_type, lifecycle_state,
+            capability_envelope, capability_envelope_key_id,
+            capability_verifier, capability_verifier_key_id,
+            access_generation, encrypted_name, encrypted_notes, encrypted_key,
+            encrypted_text, text_hidden, password_verifier, password_key_id,
+            max_access_count, access_count, disabled, hide_email,
+            expiration_at, deletion_at, revision_date, created_at, updated_at,
+            deleted_at, quarantined_at, last_accessed_at
+          )
+          VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?
+          )
+          RETURNING ${fileSendProjection}
+        `,
+      )
+      .bind(
+        input.send.id,
+        input.send.ownerUserId,
+        input.send.type,
+        input.send.authType,
+        input.send.lifecycleState,
+        input.send.capabilityEnvelope,
+        input.send.capabilityEnvelopeKeyId,
+        input.send.capabilityVerifier,
+        input.send.capabilityVerifierKeyId,
+        input.send.accessGeneration,
+        input.send.encryptedName,
+        input.send.encryptedNotes,
+        input.send.encryptedKey,
+        input.send.encryptedText,
+        input.send.textHidden,
+        input.send.passwordVerifier,
+        input.send.passwordKeyId,
+        input.send.maxAccessCount,
+        input.send.accessCount,
+        input.send.disabled,
+        input.send.hideEmail,
+        input.send.expirationAt,
+        input.send.deletionAt,
+        input.send.revisionDate,
+        input.send.createdAt,
+        input.send.updatedAt,
+        input.send.deletedAt,
+        input.send.quarantinedAt,
+        input.send.lastAccessedAt,
+      ),
+    database
+      .prepare(
+        `
+          INSERT INTO send_files (
+            id,
+            send_id,
+            owner_user_id,
+            object_generation,
+            object_key,
+            encrypted_file_name,
+            expected_size,
+            lifecycle_state,
+            upload_deadline_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING ${sendFileProjection}
+        `,
+      )
+      .bind(
+        input.file.id,
+        input.file.sendId,
+        input.file.ownerUserId,
+        input.file.objectGeneration,
+        input.file.objectKey,
+        input.file.encryptedFileName,
+        input.file.expectedSize,
+        input.file.lifecycleState,
+        input.file.uploadDeadlineAt,
+      ),
+    database
+      .prepare(
+        `
+          INSERT INTO audit_events (
+            id, schema_version, name, outcome, request_id, occurred_at,
+            actor_user_id, actor_device_identifier, target_type, target_id,
+            context_json
+          )
+          VALUES (?, 1, 'send.file.create', 'success', ?, ?, ?, NULL, 'send', ?, ?)
+        `,
+      )
+      .bind(
+        input.auditEventId,
+        input.requestId,
+        input.send.createdAt,
+        input.send.ownerUserId,
+        input.send.id,
+        JSON.stringify({ type: 'file' }),
+      ),
+  ])
+
+  const send = results[0]?.results[0] as FileSendRow | undefined
+  const file = results[1]?.results[0] as SendFileRow | undefined
+  if (
+    results.length !== 3 ||
+    results.some((result) => !result.success || result.meta.changes !== 1) ||
+    !send ||
+    !file
+  ) {
+    throw new Error('File Send pending create batch did not fully apply.')
+  }
+  return { status: 'created', send, file }
+}
 
 export async function createPendingSendFile(
   database: SendFileDatabase,

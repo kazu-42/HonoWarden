@@ -23,6 +23,7 @@ const maximumDeletionWindowMilliseconds = 31 * 24 * 60 * 60 * 1000
 const objectEntropyBytes = 16
 const downloadTicketEntropyBytes = 32
 const downloadTicketVerifierDomain = 'honowarden:send-file:download-ticket:v1'
+const uploadDeadlineMilliseconds = 20 * 60 * 1000
 const limits = {
   clientPasswordHash: 4096,
   encryptedFileName: 16_384,
@@ -157,6 +158,13 @@ export function allocateSendFileObject(input: {
     objectGeneration: input.objectGeneration,
     objectKey: `sends/${input.sendId}/files/${input.fileId}/g${input.objectGeneration}/${token}`,
   }
+}
+
+export function fileSendUploadDeadlineAt(now: string): string | null {
+  const timestamp = parseIsoInstant(now)
+  return timestamp === null
+    ? null
+    : new Date(timestamp + uploadDeadlineMilliseconds).toISOString()
 }
 
 export async function createSendDownloadTicketMaterial(input: {
