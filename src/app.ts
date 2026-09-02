@@ -1212,6 +1212,23 @@ app.get('/api/account/billing/vnext/subscription', async (c) => {
 
   return c.json(buildBillingSubscriptionResponse())
 })
+app.all('/api/account/billing', unsupportedHostedCommerceFeature)
+app.all('/api/account/billing/*', unsupportedHostedCommerceFeature)
+app.all('/api/accounts/subscription', unsupportedHostedCommerceFeature)
+app.all('/api/accounts/billing', unsupportedHostedCommerceFeature)
+app.all('/api/accounts/billing/*', unsupportedHostedCommerceFeature)
+app.all('/api/accounts/license', unsupportedHostedCommerceFeature)
+app.all('/api/accounts/cancel', unsupportedHostedCommerceFeature)
+app.all('/api/licenses', unsupportedHostedCommerceFeature)
+app.all('/api/licenses/*', unsupportedHostedCommerceFeature)
+app.all('/api/plans', unsupportedHostedCommerceFeature)
+app.all('/api/plans/*', unsupportedHostedCommerceFeature)
+app.all('/api/providers', unsupportedHostedCommerceFeature)
+app.all('/api/providers/*', unsupportedHostedCommerceFeature)
+app.all('/api/organization/sponsorship', unsupportedHostedCommerceFeature)
+app.all('/api/organization/sponsorship/*', unsupportedHostedCommerceFeature)
+app.all('/api/billing', unsupportedHostedCommerceFeature)
+app.all('/api/billing/*', unsupportedHostedCommerceFeature)
 
 app.post('/api/accounts/register', (c) => {
   return c.json(
@@ -1351,6 +1368,12 @@ app.delete(
   '/api/organizations/:id/collections',
   deleteOrganizationCollectionsRoute,
 )
+app.all('/api/organizations/:id/billing', unsupportedHostedCommerceFeature)
+app.all('/api/organizations/:id/billing/*', unsupportedHostedCommerceFeature)
+app.all('/api/organizations/:id/subscription', unsupportedHostedCommerceFeature)
+app.all('/api/organizations/:id/license', unsupportedHostedCommerceFeature)
+app.all('/api/organizations/licenses', unsupportedHostedCommerceFeature)
+app.all('/api/organizations/licenses/*', unsupportedHostedCommerceFeature)
 
 app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
@@ -7770,6 +7793,10 @@ function unsupportedPremiumFeature(c: AppContext) {
     'This feature is unavailable on this server.',
     true,
   )
+}
+
+function unsupportedHostedCommerceFeature(c: AppContext) {
+  return unsupportedPremiumFeature(c)
 }
 
 function unsupportedFeatureResponse(

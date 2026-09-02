@@ -43,6 +43,14 @@ inputs, not minor documentation notes.
   Non-owner membership selection, organization cipher assignment, collection
   audit events, and broad official-client compatibility remain unimplemented or
   unverified.
+- Hosted billing, commercial licensing, provider/reseller portals,
+  sponsorships, and multi-tenant hosted operation are rejected under
+  [ADR 0013](../adr/0013-hosted-billing-licensing-tenancy.md). The Android
+  startup read `GET /api/account/billing/vnext/subscription` returns a
+  zero-cost canceled cart; that placeholder does not imply a paid subscription,
+  entitlement, or hosted support contract. Remaining billing, license, plan,
+  provider, sponsorship, and invoice routes return state-free `501`
+  `unsupported_feature` responses.
 - Premium-gated surfaces outside TOTP and cipher-scoped attachments are
   intentionally unavailable under ADR 0009. Emergency Access requires ADR
   0004's original design gates; ADR 0013 now accepts and specifies the future

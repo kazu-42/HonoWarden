@@ -22,6 +22,9 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - Send
 - Emergency Access
 - SSO
+- hosted billing, paid subscriptions, and seat commerce
+- commercial licensing and provider/reseller portals
+- organization sponsorships
 - multi-tenant hosted operation
 - enterprise policy management
 
@@ -119,6 +122,22 @@ wire/state contract. That design decision is not source capability or runtime
 support: all Emergency Access routes still return `501` until the later slices
 pass environment-specific gates.
 
+## Hosted Billing, Licensing, Provider, And Tenancy Boundary
+
+[ADR 0013](adr/0013-hosted-billing-licensing-tenancy.md) separates official-client
+startup reads from commercial cloud workflows. The only implemented billing-shaped
+route is authenticated `GET /api/account/billing/vnext/subscription`, which
+returns a zero-cost canceled cart and cannot imply an active paid subscription,
+entitlement, or hosted support contract. Config remains `cloudRegion:
+self-hosted`. Profile and sync keep empty `providers` /
+`providerOrganizations` and `premiumFromOrganization: false`.
+
+Hosted billing mutations, licenses, plans, provider/reseller portals,
+sponsorships, invoices, tax preview, and multi-tenant hosted operation are
+rejected. Those families return the same client-readable `501` contract as
+other unavailable premium surfaces. A future hosted product would need a new
+ADR and security/compliance-gated children before implementation.
+
 ## Explicit Unsupported Responses
 
 The alpha API returns typed `501` JSON errors for feature families that are
@@ -132,6 +151,29 @@ structural error code:
 - `/api/emergency-access/*`
 - `GET /api/hibp/breach`
 - `POST /identity/connect/token` when `grant_type=send_access`
+- `/api/account/billing/vnext/*` except authenticated
+  `GET /api/account/billing/vnext/subscription`
+- `/api/accounts/subscription`
+- `/api/accounts/billing`
+- `/api/accounts/billing/*`
+- `/api/accounts/license`
+- `/api/accounts/cancel`
+- `/api/licenses`
+- `/api/licenses/*`
+- `/api/plans`
+- `/api/plans/*`
+- `/api/providers`
+- `/api/providers/*`
+- `/api/organization/sponsorship`
+- `/api/organization/sponsorship/*`
+- `/api/organizations/:id/billing`
+- `/api/organizations/:id/billing/*`
+- `/api/organizations/:id/subscription`
+- `/api/organizations/:id/license`
+- `/api/organizations/licenses`
+- `/api/organizations/licenses/*`
+- `/api/billing`
+- `/api/billing/*`
 
 Response shape:
 
