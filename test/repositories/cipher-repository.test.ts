@@ -6,7 +6,10 @@ import {
   bulkRestoreCiphers,
   bulkSoftDeleteCiphers,
   createCipher,
+  findAccessibleCipherById,
   findCipherById,
+  listAccessibleCiphersByUser,
+  listAccessibleCiphersByUserPage,
   permanentlyDeleteCipher,
   restoreCipher,
   softDeleteCipher,
@@ -26,6 +29,186 @@ const fakeMeta = {
 } satisfies D1Meta & Record<string, unknown>
 
 describe('cipher repository', () => {
+  it('projects personal and accessible organization ciphers without duplicate collection ids', async () => {
+    const database = new RecordingCipherD1Database([
+      {
+        id: 'personal-cipher-id',
+        userId: 'user-id',
+        folderId: 'folder-id',
+        type: 1,
+        favorite: 1,
+        encryptedJson: '{"name":"2.personal"}',
+        revisionDate: '2026-07-06T00:04:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+        organizationId: null,
+        cipherKey: null,
+        collectionIdsJson: '[]',
+      },
+      {
+        id: 'organization-cipher-id',
+        userId: 'creator-user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: '{"name":"2.organization"}',
+        revisionDate: '2026-07-06T00:05:00.000Z',
+        createdAt: '2026-07-06T00:05:00.000Z',
+        organizationId: 'organization-id',
+        cipherKey: '2.opaque-cipher-key',
+        collectionIdsJson:
+          '["collection-two","collection-one","collection-one"]',
+      },
+    ])
+
+    await expect(
+      listAccessibleCiphersByUser(database, 'user-id'),
+    ).resolves.toEqual([
+      {
+        id: 'personal-cipher-id',
+        userId: 'user-id',
+        folderId: 'folder-id',
+        type: 1,
+        favorite: true,
+        encryptedJson: '{"name":"2.personal"}',
+        revisionDate: '2026-07-06T00:04:00.000Z',
+        createdAt: '2026-07-06T00:04:00.000Z',
+        organizationId: null,
+        cipherKey: null,
+        collectionIds: [],
+      },
+      {
+        id: 'organization-cipher-id',
+        userId: 'creator-user-id',
+        folderId: null,
+        type: 1,
+        favorite: false,
+        encryptedJson: '{"name":"2.organization"}',
+        revisionDate: '2026-07-06T00:05:00.000Z',
+        createdAt: '2026-07-06T00:05:00.000Z',
+        organizationId: 'organization-id',
+        cipherKey: '2.opaque-cipher-key',
+        collectionIds: ['collection-one', 'collection-two'],
+      },
+    ])
+    expect(database.boundValueSets).toEqual([['user-id', 'user-id']])
+    expect(database.queries.join('\n')).toContain(
+      'WITH accessible_organization_collections AS',
+    )
+    expect(database.queries.join('\n')).toContain('membership.status = 2')
+    expect(database.queries.join('\n')).toContain('collection_user.manage = 1')
+    expect(database.queries.join('\n')).toContain('json_group_array')
+  })
+
+  it('pages and finds ciphers through the same relationship-derived read scope', async () => {
+    const row = {
+      id: 'organization-cipher-id',
+      userId: 'creator-user-id',
+      folderId: null,
+      type: 1,
+      favorite: 0,
+      encryptedJson: '{"name":"2.organization"}',
+      revisionDate: '2026-07-06T00:06:00.000Z',
+      createdAt: '2026-07-06T00:05:00.000Z',
+      organizationId: 'organization-id',
+      cipherKey: '2.opaque-cipher-key',
+      collectionIdsJson: '["collection-id"]',
+    }
+    const pageDatabase = new RecordingCipherD1Database([
+      row,
+      { ...row, id: 'organization-cipher-extra' },
+    ])
+
+    await expect(
+      listAccessibleCiphersByUserPage(pageDatabase, {
+        userId: 'user-id',
+        limit: 1,
+        cursor: {
+          revisionDate: '2026-07-06T00:05:00.000Z',
+          id: 'cipher-current',
+        },
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 'organization-cipher-id',
+          userId: 'creator-user-id',
+          folderId: null,
+          type: 1,
+          favorite: false,
+          encryptedJson: '{"name":"2.organization"}',
+          revisionDate: '2026-07-06T00:06:00.000Z',
+          createdAt: '2026-07-06T00:05:00.000Z',
+          organizationId: 'organization-id',
+          cipherKey: '2.opaque-cipher-key',
+          collectionIds: ['collection-id'],
+        },
+      ],
+      hasMore: true,
+    })
+    expect(pageDatabase.boundValueSets).toEqual([
+      [
+        'user-id',
+        'user-id',
+        '2026-07-06T00:05:00.000Z',
+        '2026-07-06T00:05:00.000Z',
+        'cipher-current',
+        2,
+      ],
+    ])
+    expect(pageDatabase.queries.join('\n')).toContain(
+      '(cipher.revision_date > ? OR (cipher.revision_date = ? AND cipher.id > ?))',
+    )
+    expect(pageDatabase.queries.join('\n')).toContain('LIMIT ?')
+
+    const findDatabase = new RecordingCipherD1Database([row])
+    await expect(
+      findAccessibleCipherById(findDatabase, {
+        id: 'organization-cipher-id',
+        userId: 'user-id',
+      }),
+    ).resolves.toEqual({
+      id: 'organization-cipher-id',
+      userId: 'creator-user-id',
+      folderId: null,
+      type: 1,
+      favorite: false,
+      encryptedJson: '{"name":"2.organization"}',
+      revisionDate: '2026-07-06T00:06:00.000Z',
+      createdAt: '2026-07-06T00:05:00.000Z',
+      organizationId: 'organization-id',
+      cipherKey: '2.opaque-cipher-key',
+      collectionIds: ['collection-id'],
+    })
+    expect(findDatabase.boundValueSets).toEqual([
+      ['user-id', 'organization-cipher-id', 'user-id'],
+    ])
+    expect(findDatabase.queries.join('\n')).toContain('cipher.id = ?')
+  })
+
+  it('rejects organization ciphers that are missing their opaque key', async () => {
+    const database = new RecordingCipherD1Database([
+      {
+        id: 'organization-cipher-id',
+        userId: 'creator-user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: '{"name":"2.organization"}',
+        revisionDate: '2026-07-06T00:06:00.000Z',
+        createdAt: '2026-07-06T00:05:00.000Z',
+        organizationId: 'organization-id',
+        cipherKey: null,
+        collectionIdsJson: '["collection-id"]',
+      },
+    ])
+
+    await expect(
+      listAccessibleCiphersByUser(database, 'user-id'),
+    ).rejects.toThrow(
+      'Accessible organization cipher is missing its opaque key.',
+    )
+  })
+
   it('lists user ciphers for sync, including trashed rows', async () => {
     const database = new RecordingCipherD1Database([
       {

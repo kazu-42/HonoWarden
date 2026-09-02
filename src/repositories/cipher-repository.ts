@@ -60,6 +60,17 @@ export type CipherListPage = {
   hasMore: boolean
 }
 
+export type AccessibleCipherRecord = CipherRecord & {
+  organizationId: string | null
+  cipherKey: string | null
+  collectionIds: string[]
+}
+
+export type AccessibleCipherListPage = {
+  items: AccessibleCipherRecord[]
+  hasMore: boolean
+}
+
 export type CipherAccess = {
   found: boolean
   canRead: boolean
@@ -139,6 +150,77 @@ type CipherAccessRow = {
   organizationId: string | null
 }
 
+type AccessibleCipherRow = CipherRow & {
+  organizationId: string | null
+  cipherKey: string | null
+  collectionIdsJson: string
+}
+
+const accessibleOrganizationCollectionsCte = `
+  WITH accessible_organization_collections AS (
+    SELECT DISTINCT
+      collection.id as collectionId,
+      collection.organization_id as organizationId
+    FROM organization_users membership
+    INNER JOIN collection_users collection_user
+      ON collection_user.organization_user_id = membership.id
+      AND collection_user.manage = 1
+    INNER JOIN collections collection
+      ON collection.id = collection_user.collection_id
+      AND collection.organization_id = membership.organization_id
+    WHERE membership.user_id = ?
+      AND membership.status = 2
+  )
+`
+
+const accessibleCipherSelect = `
+  SELECT
+    cipher.id,
+    cipher.user_id as userId,
+    cipher.folder_id as folderId,
+    cipher.type,
+    cipher.favorite,
+    cipher.encrypted_json as encryptedJson,
+    cipher.revision_date as revisionDate,
+    cipher.created_at as createdAt,
+    cipher.deleted_at as deletedAt,
+    cipher.organization_id as organizationId,
+    cipher.cipher_key as cipherKey,
+    CASE
+      WHEN cipher.organization_id IS NULL THEN '[]'
+      ELSE COALESCE((
+        SELECT json_group_array(collectionId)
+        FROM (
+          SELECT DISTINCT mapping.collection_id as collectionId
+          FROM collection_ciphers mapping
+          INNER JOIN accessible_organization_collections accessible_collection
+            ON accessible_collection.collectionId = mapping.collection_id
+            AND accessible_collection.organizationId = cipher.organization_id
+          WHERE mapping.cipher_id = cipher.id
+          ORDER BY mapping.collection_id ASC
+        )
+      ), '[]')
+    END as collectionIdsJson
+  FROM ciphers cipher
+`
+
+const accessibleCipherPredicate = `
+  (
+    (cipher.organization_id IS NULL AND cipher.user_id = ?)
+    OR (
+      cipher.organization_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM collection_ciphers accessible_mapping
+        INNER JOIN accessible_organization_collections accessible_collection
+          ON accessible_collection.collectionId = accessible_mapping.collection_id
+          AND accessible_collection.organizationId = cipher.organization_id
+        WHERE accessible_mapping.cipher_id = cipher.id
+      )
+    )
+  )
+`
+
 export async function listCiphersByUser(
   database: CipherDatabase,
   userId: string,
@@ -166,6 +248,25 @@ export async function listCiphersByUser(
     .all<CipherRow>()
 
   return result.results.map(cipherFromRow)
+}
+
+export async function listAccessibleCiphersByUser(
+  database: CipherDatabase,
+  userId: string,
+): Promise<AccessibleCipherRecord[]> {
+  const result = await database
+    .prepare(
+      `
+        ${accessibleOrganizationCollectionsCte}
+        ${accessibleCipherSelect}
+        WHERE ${accessibleCipherPredicate}
+        ORDER BY cipher.revision_date ASC, cipher.id ASC
+      `,
+    )
+    .bind(userId, userId)
+    .all<AccessibleCipherRow>()
+
+  return result.results.map(accessibleCipherFromRow)
 }
 
 export async function listCiphersByUserPage(
@@ -216,6 +317,45 @@ export async function listCiphersByUserPage(
   }
 }
 
+export async function listAccessibleCiphersByUserPage(
+  database: CipherDatabase,
+  input: CipherListPageInput,
+): Promise<AccessibleCipherListPage> {
+  const cursorPredicate = input.cursor
+    ? 'AND (cipher.revision_date > ? OR (cipher.revision_date = ? AND cipher.id > ?))'
+    : ''
+  const result = await database
+    .prepare(
+      `
+        ${accessibleOrganizationCollectionsCte}
+        ${accessibleCipherSelect}
+        WHERE ${accessibleCipherPredicate}
+          ${cursorPredicate}
+        ORDER BY cipher.revision_date ASC, cipher.id ASC
+        LIMIT ?
+      `,
+    )
+    .bind(
+      input.userId,
+      input.userId,
+      ...(input.cursor
+        ? [
+            input.cursor.revisionDate,
+            input.cursor.revisionDate,
+            input.cursor.id,
+          ]
+        : []),
+      input.limit + 1,
+    )
+    .all<AccessibleCipherRow>()
+  const rows = result.results.map(accessibleCipherFromRow)
+
+  return {
+    items: rows.slice(0, input.limit),
+    hasMore: rows.length > input.limit,
+  }
+}
+
 export async function findCipherById(
   database: CipherDatabase,
   input: Pick<CipherRecord, 'id' | 'userId'>,
@@ -242,6 +382,26 @@ export async function findCipherById(
     .first<CipherRow>()
 
   return row ? cipherFromRow(row) : null
+}
+
+export async function findAccessibleCipherById(
+  database: CipherDatabase,
+  input: Pick<CipherRecord, 'id' | 'userId'>,
+): Promise<AccessibleCipherRecord | null> {
+  const row = await database
+    .prepare(
+      `
+        ${accessibleOrganizationCollectionsCte}
+        ${accessibleCipherSelect}
+        WHERE cipher.id = ?
+          AND ${accessibleCipherPredicate}
+        LIMIT 1
+      `,
+    )
+    .bind(input.userId, input.id, input.userId)
+    .first<AccessibleCipherRow>()
+
+  return row ? accessibleCipherFromRow(row) : null
 }
 
 export async function resolveCipherAccess(
@@ -702,6 +862,51 @@ function cipherFromRow(row: CipherRow): CipherRecord {
   }
 
   return cipher
+}
+
+function accessibleCipherFromRow(
+  row: AccessibleCipherRow,
+): AccessibleCipherRecord {
+  const cipher = cipherFromRow(row)
+  const organizationId = row.organizationId ?? null
+
+  if (organizationId === null) {
+    return {
+      ...cipher,
+      organizationId: null,
+      cipherKey: null,
+      collectionIds: [],
+    }
+  }
+
+  if (!row.cipherKey) {
+    throw new Error('Accessible organization cipher is missing its opaque key.')
+  }
+
+  const parsedCollectionIds: unknown = JSON.parse(row.collectionIdsJson)
+  if (
+    !Array.isArray(parsedCollectionIds) ||
+    parsedCollectionIds.some(
+      (collectionId) =>
+        typeof collectionId !== 'string' || collectionId.length === 0,
+    )
+  ) {
+    throw new Error('Accessible organization cipher has invalid collections.')
+  }
+
+  const collectionIds = [...new Set(parsedCollectionIds)].sort()
+  if (collectionIds.length === 0) {
+    throw new Error(
+      'Accessible organization cipher has no readable collection.',
+    )
+  }
+
+  return {
+    ...cipher,
+    organizationId,
+    cipherKey: row.cipherKey,
+    collectionIds,
+  }
 }
 
 async function findActiveCipherRevision(

@@ -222,6 +222,14 @@ export class FakeD1Database {
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (query.includes('WITH accessible_organization_collections AS')) {
+          return findAccessibleCipherRow(
+            options,
+            boundValues,
+            query,
+          ) as T | null
+        }
+
         if (
           query.includes('FROM organization_users membership') &&
           query.includes('membership.id as organizationUserId') &&
@@ -440,6 +448,18 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (query.includes('WITH accessible_organization_collections AS')) {
+          return {
+            success: true,
+            results: listAccessibleCipherRows(
+              options,
+              boundValues,
+              query,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (
           query.includes('WITH target AS') &&
           query.includes('FROM account_kdf_population')
@@ -3489,6 +3509,7 @@ function findLatestRevisionDate(
   const revisions: string[] = []
   const users =
     options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  const collectionAccess = findConfirmedCollectionAccess(options, userId)
 
   for (const user of users) {
     if (user.id === userId && typeof user.revisionDate === 'string') {
@@ -3496,8 +3517,30 @@ function findLatestRevisionDate(
     }
   }
 
-  for (const row of [...(options.folders ?? []), ...(options.ciphers ?? [])]) {
+  for (const row of options.folders ?? []) {
     if (row.userId === userId && typeof row.revisionDate === 'string') {
+      revisions.push(row.revisionDate)
+    }
+  }
+
+  for (const row of options.ciphers ?? []) {
+    const organizationId =
+      typeof row.organizationId === 'string' ? row.organizationId : null
+    const isPersonal = organizationId === null && row.userId === userId
+    const isAccessibleOrganizationCipher =
+      organizationId !== null &&
+      (options.collectionCiphers ?? []).some((mapping) => {
+        if (mapping.cipherId !== row.id) {
+          return false
+        }
+        const access = collectionAccess.get(String(mapping.collectionId))
+        return access?.organizationId === organizationId && access.manage
+      })
+
+    if (
+      (isPersonal || isAccessibleOrganizationCipher) &&
+      typeof row.revisionDate === 'string'
+    ) {
       revisions.push(row.revisionDate)
     }
   }
@@ -3515,6 +3558,137 @@ function findLatestRevisionDate(
   }
 
   return revisions.sort().at(-1) ?? null
+}
+
+function findConfirmedCollectionAccess(
+  options: FakeD1DatabaseOptions,
+  userId: string,
+): Map<string, { organizationId: string; manage: boolean }> {
+  const collectionAccess = new Map<
+    string,
+    { organizationId: string; manage: boolean }
+  >()
+
+  for (const membership of options.organizationUsers ?? []) {
+    if (membership.userId !== userId || Number(membership.status) !== 2) {
+      continue
+    }
+
+    for (const collectionUser of options.collectionUsers ?? []) {
+      if (collectionUser.organizationUserId !== membership.id) {
+        continue
+      }
+      const collection = options.collections?.find(
+        (row) =>
+          row.id === collectionUser.collectionId &&
+          row.organizationId === membership.organizationId,
+      )
+      if (!collection) {
+        continue
+      }
+
+      const collectionId = String(collection.id)
+      const existing = collectionAccess.get(collectionId)
+      collectionAccess.set(collectionId, {
+        organizationId: String(collection.organizationId),
+        manage:
+          existing?.manage === true || Number(collectionUser.manage) === 1,
+      })
+    }
+  }
+
+  return collectionAccess
+}
+
+function findAccessibleCipherRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown> | null {
+  return listAccessibleCipherRows(options, boundValues, query)[0] ?? null
+}
+
+function listAccessibleCipherRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown>[] {
+  const userId = String(boundValues[0] ?? '')
+  const accessibleCollections = findConfirmedCollectionAccess(options, userId)
+
+  let rows: Record<string, unknown>[] = []
+  for (const row of options.ciphers ?? []) {
+    const organizationId =
+      typeof row.organizationId === 'string' ? row.organizationId : null
+    if (organizationId === null) {
+      if (row.userId === userId) {
+        rows.push({
+          ...row,
+          organizationId: null,
+          cipherKey: null,
+          collectionIdsJson: '[]',
+        })
+      }
+      continue
+    }
+
+    const collectionIds = [
+      ...new Set(
+        (options.collectionCiphers ?? [])
+          .filter(
+            (mapping) =>
+              mapping.cipherId === row.id &&
+              accessibleCollections.get(String(mapping.collectionId))
+                ?.organizationId === organizationId &&
+              accessibleCollections.get(String(mapping.collectionId))
+                ?.manage === true,
+          )
+          .map((mapping) => String(mapping.collectionId)),
+      ),
+    ].sort()
+
+    if (collectionIds.length > 0) {
+      rows.push({
+        ...row,
+        organizationId,
+        cipherKey: row.cipherKey ?? null,
+        collectionIdsJson: JSON.stringify(collectionIds),
+      })
+    }
+  }
+
+  if (query.includes('WHERE cipher.id = ?')) {
+    const cipherId = String(boundValues[1] ?? '')
+    rows = rows.filter((row) => row.id === cipherId)
+  }
+
+  rows.sort(compareRevisionThenId)
+
+  if (
+    query.includes(
+      '(cipher.revision_date > ? OR (cipher.revision_date = ? AND cipher.id > ?))',
+    )
+  ) {
+    const cursorRevisionDate = String(boundValues[2] ?? '')
+    const cursorId = String(boundValues[4] ?? '')
+    rows = rows.filter((row) => {
+      const revisionDate = String(row.revisionDate ?? '')
+      const id = String(row.id ?? '')
+      return (
+        revisionDate > cursorRevisionDate ||
+        (revisionDate === cursorRevisionDate && id > cursorId)
+      )
+    })
+  }
+
+  if (query.includes('LIMIT ?')) {
+    const limit = Number(boundValues.at(-1))
+    if (Number.isSafeInteger(limit) && limit >= 0) {
+      rows = rows.slice(0, limit)
+    }
+  }
+
+  return rows
 }
 
 function filterRowsByUserId(
