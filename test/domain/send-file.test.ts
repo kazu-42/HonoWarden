@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   allocateSendFileObject,
+  createSendDownloadTicketMaterial,
   parseFileSendOwnerRequest,
 } from '../../src/domain/send-file'
 
@@ -99,5 +100,32 @@ describe('file Send domain', () => {
     expect(first.objectKey).toContain('g1')
     expect(replacement.objectKey).not.toBe(first.objectKey)
     expect(replacement.objectKey).toContain('g2')
+  })
+
+  it('derives a keyed download-ticket verifier without embedding Send or object identifiers', async () => {
+    const first = await createSendDownloadTicketMaterial({
+      keyId: 'ticket-key-1',
+      lookupSecret: 'lookup-secret-1'.padEnd(32, 'x'),
+      randomBytes: (bytes) => {
+        bytes.fill(9)
+        return bytes
+      },
+    })
+    const second = await createSendDownloadTicketMaterial({
+      keyId: 'ticket-key-1',
+      lookupSecret: 'lookup-secret-2'.padEnd(32, 'x'),
+      randomBytes: (bytes) => {
+        bytes.fill(9)
+        return bytes
+      },
+    })
+
+    expect(first.ticketId).toMatch(/^[A-Za-z0-9_-]{43}$/u)
+    expect(first.ticketVerifier).toMatch(/^[0-9a-f]{64}$/u)
+    expect(first.ticketId).not.toContain('send-1')
+    expect(first.ticketVerifier).not.toContain('send-1')
+    expect(first.ticketVerifier).not.toBe(first.ticketId)
+    expect(second.ticketId).toBe(first.ticketId)
+    expect(second.ticketVerifier).not.toBe(first.ticketVerifier)
   })
 })

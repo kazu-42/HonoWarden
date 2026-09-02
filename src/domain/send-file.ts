@@ -21,6 +21,8 @@ type FileSendParseResult =
 const encoder = new TextEncoder()
 const maximumDeletionWindowMilliseconds = 31 * 24 * 60 * 60 * 1000
 const objectEntropyBytes = 16
+const downloadTicketEntropyBytes = 32
+const downloadTicketVerifierDomain = 'honowarden:send-file:download-ticket:v1'
 const limits = {
   clientPasswordHash: 4096,
   encryptedFileName: 16_384,
@@ -29,6 +31,7 @@ const limits = {
   encryptedNotes: 32_768,
   expectedSize: 100 * 1024 * 1024,
   identifier: 128,
+  keyId: 128,
 } as const
 
 export function parseFileSendOwnerRequest(
@@ -154,6 +157,57 @@ export function allocateSendFileObject(input: {
     objectGeneration: input.objectGeneration,
     objectKey: `sends/${input.sendId}/files/${input.fileId}/g${input.objectGeneration}/${token}`,
   }
+}
+
+export async function createSendDownloadTicketMaterial(input: {
+  keyId: string
+  lookupSecret: string
+  randomBytes?: (bytes: Uint8Array) => Uint8Array
+}): Promise<{ ticketId: string; ticketVerifier: string }> {
+  if (!boundedString(input.keyId, limits.keyId) || input.keyId.includes('\0')) {
+    throw new Error('File Send download-ticket key identifier is invalid.')
+  }
+  if (encoder.encode(input.lookupSecret).byteLength < 32) {
+    throw new Error(
+      'File Send download-ticket lookup secret must be at least 32 bytes.',
+    )
+  }
+
+  const entropy = new Uint8Array(downloadTicketEntropyBytes)
+  const fill = input.randomBytes ?? ((bytes) => crypto.getRandomValues(bytes))
+  const filled = fill(entropy)
+  if (filled !== entropy || filled.byteLength !== entropy.byteLength) {
+    throw new Error('File Send download-ticket entropy source is invalid.')
+  }
+
+  const ticketId = toBase64Url(entropy)
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(input.lookupSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const digest = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(
+      `${downloadTicketVerifierDomain}\0${input.keyId}\0${ticketId}`,
+    ),
+  )
+  return {
+    ticketId,
+    ticketVerifier: [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join(''),
+  }
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/u, '')
 }
 
 function invalidRequest(): FileSendParseResult {
