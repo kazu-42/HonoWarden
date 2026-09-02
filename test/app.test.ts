@@ -13,6 +13,10 @@ import {
   notificationSecurityStampHeader,
 } from '../src/notification-hub'
 import { encryptTotpSecret } from '../src/domain/totp-secret'
+import {
+  buildPersonalApiKeyClientId,
+  buildPersonalApiKeyVerifier,
+} from '../src/domain/personal-api-key'
 import { signAccessToken, verifyAccessToken } from '../src/domain/tokens'
 import { hotp } from '../src/domain/totp'
 import * as retentionCleanup from '../src/maintenance/retention-cleanup'
@@ -3010,6 +3014,731 @@ describe('HonoWarden app', () => {
         code: 'account_exists',
       },
     })
+  })
+
+  it('creates a personal API key once and exposes only lifecycle metadata afterward', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-17T00:00:00.000Z'))
+    const user = apiKeyAuthUserRecord()
+    const rows: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      personalApiKeys: rows,
+    })
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const env = {
+      DB: database as unknown as D1Database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+      HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+      HONOWARDEN_AUDIT_LOGS: 'true',
+    }
+
+    const response = await app.request(
+      '/api/accounts/api-key',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
+      object: 'apiKey',
+      clientId: buildPersonalApiKeyClientId(user.id),
+      apiKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      revisionDate: '2026-07-17T00:00:00.000Z',
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      userId: user.id,
+      secretVerifier: expect.stringMatching(/^hmac-sha256:v1:/),
+      createdAt: '2026-07-17T00:00:00.000Z',
+      rotatedAt: null,
+      lastUsedAt: null,
+      revisionDate: '2026-07-17T00:00:00.000Z',
+    })
+    expect(JSON.stringify(rows)).not.toContain(String(body.apiKey))
+    expect(database.auditEventInserts).toHaveLength(1)
+    expect(database.auditEventInserts[0]).toMatchObject({
+      name: 'auth.api_key_create',
+      outcome: 'success',
+      actorUserId: user.id,
+      targetType: 'account',
+      targetId: user.id,
+    })
+    expect(JSON.stringify(database.auditEventInserts)).not.toContain(
+      String(body.apiKey),
+    )
+    expect(JSON.stringify(auditLog.mock.calls)).not.toContain(
+      String(body.apiKey),
+    )
+
+    const metadata = await app.request(
+      '/api/accounts/api-key',
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      env,
+    )
+    expect(metadata.status).toBe(200)
+    expect(metadata.headers.get('Cache-Control')).toBe('no-store')
+    await expect(metadata.json()).resolves.toEqual({
+      object: 'apiKeyMetadata',
+      hasApiKey: true,
+      clientId: buildPersonalApiKeyClientId(user.id),
+      createdAt: '2026-07-17T00:00:00.000Z',
+      rotatedAt: null,
+      lastUsedAt: null,
+      revisionDate: '2026-07-17T00:00:00.000Z',
+    })
+  })
+
+  it('rolls back personal API-key creation when the success audit cannot persist', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = apiKeyAuthUserRecord()
+    const rows: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      auditEventInsertThrows: true,
+      authUser: user,
+      personalApiKeys: rows,
+    })
+    const accessToken = await recentPasswordAccessTokenFor(user)
+
+    const response = await app.request(
+      '/api/accounts/api-key',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+        HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+        HONOWARDEN_AUDIT_LOGS: 'true',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    expect(rows).toEqual([])
+    expect(database.auditEventInserts).toEqual([])
+    expect(auditLog).not.toHaveBeenCalled()
+  })
+
+  it('does not redisplay or overwrite an existing personal API key', async () => {
+    const user = apiKeyAuthUserRecord()
+    const existing = {
+      userId: user.id,
+      secretVerifier: 'hmac-sha256:v1:existing-verifier',
+      createdAt: '2026-07-17T00:00:00.000Z',
+      rotatedAt: null,
+      lastUsedAt: null,
+      revisionDate: '2026-07-17T00:00:00.000Z',
+    }
+    const accessToken = await recentPasswordAccessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/api-key',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      personalApiKeyTestEnv(user, [existing]),
+    )
+
+    expect(response.status).toBe(409)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
+      error: { code: 'api_key_exists' },
+    })
+    expect(body).not.toHaveProperty('apiKey')
+    expect(existing.secretVerifier).toBe('hmac-sha256:v1:existing-verifier')
+  })
+
+  it('rotates a personal API key without persisting the new raw secret', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-17T01:00:00.000Z'))
+    const user = apiKeyAuthUserRecord()
+    const oldRawSecret = 'old-synthetic-personal-api-key-secret'
+    const oldVerifier = await buildPersonalApiKeyVerifier(
+      '0123456789abcdef0123456789abcdef',
+      user.id,
+      oldRawSecret,
+    )
+    const rows = [
+      {
+        userId: user.id,
+        secretVerifier: oldVerifier,
+        createdAt: '2026-07-17T00:00:00.000Z',
+        rotatedAt: null,
+        lastUsedAt: null,
+        revisionDate: '2026-07-17T00:00:00.000Z',
+      },
+    ]
+    const accessToken = await recentPasswordAccessTokenFor(user)
+
+    const response = await app.request(
+      '/api/accounts/rotate-api-key',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      personalApiKeyTestEnv(user, rows),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
+      object: 'apiKey',
+      clientId: buildPersonalApiKeyClientId(user.id),
+      apiKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      revisionDate: '2026-07-17T01:00:00.000Z',
+    })
+    expect(body.apiKey).not.toBe(oldRawSecret)
+    expect(rows[0]).toMatchObject({
+      secretVerifier: expect.stringMatching(/^hmac-sha256:v1:/),
+      rotatedAt: '2026-07-17T01:00:00.000Z',
+      revisionDate: '2026-07-17T01:00:00.000Z',
+    })
+    expect(rows[0]?.secretVerifier).not.toBe(oldVerifier)
+    expect(JSON.stringify(rows)).not.toContain(String(body.apiKey))
+  })
+
+  it('rolls back personal API-key rotation when the success audit cannot persist', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = apiKeyAuthUserRecord()
+    const existing = {
+      userId: user.id,
+      secretVerifier: 'hmac-sha256:v1:existing-verifier',
+      createdAt: '2026-07-17T00:00:00.000Z',
+      rotatedAt: null,
+      lastUsedAt: '2026-07-17T00:30:00.000Z',
+      revisionDate: '2026-07-17T00:00:00.000Z',
+    }
+    const rows = [existing]
+    const original = { ...existing }
+    const database = new FakeD1Database(null, [], {
+      auditEventInsertThrows: true,
+      authUser: user,
+      personalApiKeys: rows,
+    })
+    const accessToken = await recentPasswordAccessTokenFor(user)
+
+    const response = await app.request(
+      '/api/accounts/rotate-api-key',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+        HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+        HONOWARDEN_AUDIT_LOGS: 'true',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    expect(rows).toEqual([original])
+    expect(database.auditEventInserts).toEqual([])
+    expect(auditLog).not.toHaveBeenCalled()
+  })
+
+  it('requires recent password authentication for personal API-key management', async () => {
+    const user = apiKeyAuthUserRecord()
+    const refreshToken = await refreshAccessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/api-key',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${refreshToken}` },
+      },
+      personalApiKeyTestEnv(user, []),
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'reauth_required' },
+    })
+  })
+
+  it('exchanges an official personal client-credentials grant for a normal vault session', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-17T02:00:00.000Z'))
+    const user = apiKeyAuthUserRecord()
+    const rawSecret = 'synthetic-personal-api-key-secret'
+    const verifier = await buildPersonalApiKeyVerifier(
+      '0123456789abcdef0123456789abcdef',
+      user.id,
+      rawSecret,
+    )
+    const rows = [
+      {
+        userId: user.id,
+        secretVerifier: verifier,
+        createdAt: '2026-07-17T00:00:00.000Z',
+        rotatedAt: null,
+        lastUsedAt: null,
+        revisionDate: '2026-07-17T00:00:00.000Z',
+      },
+    ]
+
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          scope: 'api',
+          client_id: buildPersonalApiKeyClientId(user.id),
+          client_secret: rawSecret,
+          deviceType: '8',
+          deviceIdentifier: 'fixture-cli-device',
+          deviceName: 'Fixture CLI',
+        }),
+      },
+      personalApiKeyTestEnv(user, rows),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      access_token: string
+      refresh_token: string
+    }
+    expect(body).toMatchObject({
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+      token_type: 'Bearer',
+      expires_in: 3600,
+      Key: '2.synthetic-user-key',
+    })
+    await expect(
+      verifyAccessToken('test-token-secret', body.access_token),
+    ).resolves.toMatchObject({
+      ok: true,
+      claims: {
+        sub: user.id,
+        device: 'fixture-cli-device',
+        authMethod: 'api_key',
+        securityStamp: user.securityStamp,
+      },
+    })
+    expect(rows[0]?.lastUsedAt).toBe('2026-07-17T02:00:00.000Z')
+    expect(JSON.stringify(rows)).not.toContain(rawSecret)
+  })
+
+  it('uses the same invalid-client response for wrong and unknown personal credentials', async () => {
+    const user = apiKeyAuthUserRecord()
+    const validRawSecret = 'synthetic-personal-api-key-secret'
+    const verifier = await buildPersonalApiKeyVerifier(
+      '0123456789abcdef0123456789abcdef',
+      user.id,
+      validRawSecret,
+    )
+    const request = async (clientId: string, clientSecret: string) => {
+      const response = await app.request(
+        '/identity/connect/token',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'client_credentials',
+            scope: 'api',
+            client_id: clientId,
+            client_secret: clientSecret,
+            deviceType: '8',
+            deviceIdentifier: 'fixture-cli-device',
+          }),
+        },
+        personalApiKeyTestEnv(user, [
+          {
+            userId: user.id,
+            secretVerifier: verifier,
+            createdAt: '2026-07-17T00:00:00.000Z',
+            rotatedAt: null,
+            lastUsedAt: null,
+            revisionDate: '2026-07-17T00:00:00.000Z',
+          },
+        ]),
+      )
+      return { status: response.status, body: await response.json() }
+    }
+
+    const wrongSecret = await request(
+      buildPersonalApiKeyClientId(user.id),
+      'wrong-personal-api-key-secret',
+    )
+    const unknownUser = await request(
+      'user.22222222-2222-4222-8222-222222222222',
+      validRawSecret,
+    )
+
+    expect(wrongSecret.status).toBe(400)
+    expect(unknownUser).toEqual(wrongSecret)
+    expect(wrongSecret.body).toEqual({
+      error: 'invalid_client',
+      ErrorModel: {
+        Message: 'Invalid client credentials.',
+        Object: 'error',
+      },
+    })
+  })
+
+  it('keeps organization API credentials unsupported without enumerating personal keys', async () => {
+    const user = apiKeyAuthUserRecord()
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          scope: 'api',
+          client_id: 'organization.33333333-3333-4333-8333-333333333333',
+          client_secret: 'synthetic-organization-api-key-secret',
+          deviceType: '8',
+          deviceIdentifier: 'fixture-cli-device',
+        }),
+      },
+      personalApiKeyTestEnv(user, []),
+    )
+
+    expect(response.status).toBe(501)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'unsupported_feature',
+        message:
+          'Organization API credentials are not supported on this server.',
+      },
+    })
+  })
+
+  it('keeps personal client credentials default-off and fails partial enabled config loudly', async () => {
+    const user = apiKeyAuthUserRecord()
+    const form = new URLSearchParams({
+      grant_type: 'client_credentials',
+      scope: 'api',
+      client_id: buildPersonalApiKeyClientId(user.id),
+      client_secret: 'synthetic-personal-api-key-secret',
+      deviceType: '8',
+      deviceIdentifier: 'fixture-cli-device',
+    })
+    const disabled = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+    expect(disabled.status).toBe(400)
+    await expect(disabled.json()).resolves.toMatchObject({
+      error: 'invalid_client',
+    })
+
+    const misconfigured = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+      },
+    )
+    expect(misconfigured.status).toBe(503)
+    await expect(misconfigured.json()).resolves.toMatchObject({
+      error: { code: 'server_misconfigured' },
+    })
+
+    const shortSecret = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form,
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+        HONOWARDEN_API_KEY_SECRET: 'too-short',
+      },
+    )
+    expect(shortSecret.status).toBe(503)
+    await expect(shortSecret.json()).resolves.toMatchObject({
+      error: { code: 'server_misconfigured' },
+    })
+  })
+
+  it('rejects the old personal secret immediately after rotation and accepts the replacement', async () => {
+    const user = apiKeyAuthUserRecord()
+    const oldRawSecret = 'old-synthetic-personal-api-key-secret'
+    const rows = [
+      {
+        userId: user.id,
+        secretVerifier: await buildPersonalApiKeyVerifier(
+          '0123456789abcdef0123456789abcdef',
+          user.id,
+          oldRawSecret,
+        ),
+        createdAt: '2026-07-17T00:00:00.000Z',
+        rotatedAt: null,
+        lastUsedAt: null,
+        revisionDate: '2026-07-17T00:00:00.000Z',
+      },
+    ]
+    const env = personalApiKeyTestEnv(user, rows)
+    const managementToken = await recentPasswordAccessTokenFor(user)
+    const rotation = await app.request(
+      '/api/accounts/rotate-api-key',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${managementToken}` },
+      },
+      env,
+    )
+    expect(rotation.status).toBe(200)
+    const replacementSecret = String(
+      ((await rotation.json()) as Record<string, unknown>).apiKey,
+    )
+    const login = (clientSecret: string) =>
+      app.request(
+        '/identity/connect/token',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'client_credentials',
+            scope: 'api',
+            client_id: buildPersonalApiKeyClientId(user.id),
+            client_secret: clientSecret,
+            deviceType: '8',
+            deviceIdentifier: 'fixture-cli-device',
+          }),
+        },
+        env,
+      )
+
+    const oldLogin = await login(oldRawSecret)
+    expect(oldLogin.status).toBe(400)
+    await expect(oldLogin.json()).resolves.toMatchObject({
+      error: 'invalid_client',
+    })
+    const replacementLogin = await login(replacementSecret)
+    expect(replacementLogin.status).toBe(200)
+    await expect(replacementLogin.json()).resolves.toMatchObject({
+      access_token: expect.any(String),
+      refresh_token: expect.any(String),
+    })
+  })
+
+  it('rate limits personal API-key grants with the password-login IP policy', async () => {
+    const user = apiKeyAuthUserRecord()
+    const rawSecret = 'synthetic-personal-api-key-secret'
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'CF-Connecting-IP': '203.0.113.10',
+        },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          scope: 'api',
+          client_id: buildPersonalApiKeyClientId(user.id),
+          client_secret: rawSecret,
+          deviceType: '8',
+          deviceIdentifier: 'fixture-cli-device',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          lockedIpFailureBucket: true,
+          personalApiKeys: [
+            {
+              userId: user.id,
+              secretVerifier: await buildPersonalApiKeyVerifier(
+                '0123456789abcdef0123456789abcdef',
+                user.id,
+                rawSecret,
+              ),
+              createdAt: '2026-07-17T00:00:00.000Z',
+              revisionDate: '2026-07-17T00:00:00.000Z',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+        HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+      },
+    )
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('Retry-After')).toBe(
+      String(loginDefensePolicy.ipRetryAfterSeconds),
+    )
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_client',
+      ErrorModel: {
+        Message: 'Invalid client credentials.',
+        Object: 'error',
+      },
+    })
+  })
+
+  it('uses one account rate-limit bucket for client ID case variants', async () => {
+    const user = {
+      ...apiKeyAuthUserRecord(),
+      id: 'abcdefab-cdef-4abc-8def-abcdefabcdef',
+    }
+    const rawSecret = 'synthetic-personal-api-key-secret'
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      personalApiKeys: [
+        {
+          userId: user.id,
+          secretVerifier: await buildPersonalApiKeyVerifier(
+            '0123456789abcdef0123456789abcdef',
+            user.id,
+            rawSecret,
+          ),
+          createdAt: '2026-07-17T00:00:00.000Z',
+          revisionDate: '2026-07-17T00:00:00.000Z',
+        },
+      ],
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+      HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+    }
+    const clientIdVariants = [
+      'USER.ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF',
+      'user.Abcdefab-cdef-4abc-8def-abcdefabcdef',
+      'user.aBcdefab-cdef-4abc-8def-abcdefabcdef',
+      'user.abCdefab-cdef-4abc-8def-abcdefabcdef',
+      'user.abcDefab-cdef-4abc-8def-abcdefabcdef',
+    ]
+    const request = (clientId: string, clientSecret: string) =>
+      app.request(
+        '/identity/connect/token',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'client_credentials',
+            scope: 'api',
+            client_id: clientId,
+            client_secret: clientSecret,
+            deviceType: '8',
+            deviceIdentifier: 'fixture-cli-device',
+          }),
+        },
+        env,
+      )
+
+    for (const clientId of clientIdVariants) {
+      const response = await request(clientId, 'wrong-personal-api-key-secret')
+      expect(response.status).toBe(400)
+    }
+
+    const lockedResponse = await request(
+      buildPersonalApiKeyClientId(user.id),
+      rawSecret,
+    )
+    expect(lockedResponse.status).toBe(400)
+    await expect(lockedResponse.json()).resolves.toMatchObject({
+      error: 'invalid_client',
+    })
+  })
+
+  it('audits failed personal API-key grants without credentials or password-lockout mutation', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = apiKeyAuthUserRecord()
+    const rawSecret = 'synthetic-personal-api-key-secret'
+    const wrongSecret = 'wrong-personal-api-key-secret'
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      personalApiKeys: [
+        {
+          userId: user.id,
+          secretVerifier: await buildPersonalApiKeyVerifier(
+            '0123456789abcdef0123456789abcdef',
+            user.id,
+            rawSecret,
+          ),
+          createdAt: '2026-07-17T00:00:00.000Z',
+          revisionDate: '2026-07-17T00:00:00.000Z',
+        },
+      ],
+    })
+    const response = await app.request(
+      '/identity/connect/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Request-Id': 'api-key-failure-audit-request',
+        },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          scope: 'api',
+          client_id: buildPersonalApiKeyClientId(user.id),
+          client_secret: wrongSecret,
+          deviceType: '8',
+          deviceIdentifier: 'fixture-cli-device',
+        }),
+      },
+      {
+        DB: database,
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+        HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+        HONOWARDEN_AUDIT_LOGS: 'true',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    expect(database.auditEventInserts).toHaveLength(1)
+    expect(database.auditEventInserts[0]).toMatchObject({
+      name: 'auth.api_key_grant',
+      outcome: 'failure',
+      requestId: 'api-key-failure-audit-request',
+      actorUserId: null,
+      actorDeviceIdentifier: 'fixture-cli-device',
+      contextJson: JSON.stringify({ reason: 'invalid_client' }),
+    })
+    const evidence = JSON.stringify({
+      audit: database.auditEventInserts,
+      console: auditLog.mock.calls,
+    })
+    expect(evidence).not.toContain(rawSecret)
+    expect(evidence).not.toContain(wrongSecret)
+    expect(evidence).not.toContain('0123456789abcdef0123456789abcdef')
+    expect(user.loginFailedCount).toBe(0)
   })
 
   it('exchanges a valid password grant for tokens', async () => {
@@ -14974,6 +15703,28 @@ describe('HonoWarden app', () => {
     })
   })
 })
+
+function apiKeyAuthUserRecord() {
+  return {
+    ...authUserRecord(),
+    id: '11111111-1111-4111-8111-111111111111',
+  }
+}
+
+function personalApiKeyTestEnv(
+  user: ReturnType<typeof apiKeyAuthUserRecord>,
+  personalApiKeys: Record<string, unknown>[],
+) {
+  return {
+    DB: new FakeD1Database(null, [], {
+      authUser: user,
+      personalApiKeys,
+    }) as unknown as D1Database,
+    HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
+    HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+  }
+}
 
 function authUserRecord() {
   return {

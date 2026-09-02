@@ -21,6 +21,7 @@ export const requiredSchemaTables = [
   'user_key_rotation_wrapper_history',
   'webauthn_credentials',
   'webauthn_challenges',
+  'personal_api_keys',
 ] as const
 
 export type DatabaseHealth =

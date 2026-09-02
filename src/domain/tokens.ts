@@ -32,6 +32,18 @@ export type AuthRequestGrantRequest = {
   device: TokenDeviceInfo
 }
 
+export type ClientCredentialsGrantRequest = {
+  clientId: string
+  clientSecret: string
+  scope: string | null
+  device: TokenDeviceInfo | null
+}
+
+export type ClientCredentialsGrantParseResult =
+  | { ok: true; grant: ClientCredentialsGrantRequest }
+  | { ok: false; reason: 'not_client_credentials' }
+  | FailedTokenRequest
+
 export type AuthRequestGrantParseResult =
   | { ok: true; grant: AuthRequestGrantRequest }
   | { ok: false; reason: 'not_auth_request' }
@@ -51,14 +63,19 @@ export type FailedTokenRequest = {
 }
 
 export type TokenError = {
-  error: 'invalid_grant' | 'invalid_request' | 'unsupported_grant_type'
+  error:
+    | 'invalid_client'
+    | 'invalid_grant'
+    | 'invalid_request'
+    | 'unsupported_grant_type'
   errorModel: {
     Message: string
     Object: 'error'
   }
 }
 
-export type AccessTokenAuthMethod = 'auth_request' | 'password' | 'refresh'
+export type AccessTokenAuthMethod =
+  'api_key' | 'auth_request' | 'password' | 'refresh'
 
 export type AccessTokenClaims = {
   sub: string
@@ -160,6 +177,33 @@ export function parsePasswordGrantForm(
         'TwoFactorCode',
         'code',
       ]),
+    },
+  }
+}
+
+export function parseClientCredentialsGrantForm(
+  form: URLSearchParams,
+): ClientCredentialsGrantParseResult {
+  if (form.get('grant_type') !== 'client_credentials') {
+    return { ok: false, reason: 'not_client_credentials' }
+  }
+
+  const clientId = form.get('client_id')?.trim()
+  const clientSecret = form.get('client_secret')?.trim()
+  if (!clientId || !clientSecret) {
+    return tokenRequestError(
+      'invalid_request',
+      'Client credentials are required.',
+    )
+  }
+
+  return {
+    ok: true,
+    grant: {
+      clientId,
+      clientSecret,
+      scope: form.get('scope')?.trim() || null,
+      device: parseDeviceInfo(form),
     },
   }
 }
@@ -275,6 +319,16 @@ export function invalidGrantError(): TokenError {
     error: 'invalid_grant',
     errorModel: {
       Message: 'Invalid username or password.',
+      Object: 'error',
+    },
+  }
+}
+
+export function invalidClientError(): TokenError {
+  return {
+    error: 'invalid_client',
+    errorModel: {
+      Message: 'Invalid client credentials.',
       Object: 'error',
     },
   }
@@ -431,6 +485,7 @@ function isAccessTokenClaims(value: unknown): value is AccessTokenClaims {
     typeof claims.iat === 'number' &&
     typeof claims.exp === 'number' &&
     (claims.authMethod === undefined ||
+      claims.authMethod === 'api_key' ||
       claims.authMethod === 'auth_request' ||
       claims.authMethod === 'password' ||
       claims.authMethod === 'refresh')

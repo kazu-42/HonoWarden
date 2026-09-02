@@ -23,6 +23,16 @@ const disabledWriters = [
     path: '/api/accounts/key-management/rotate-user-account-keys',
     message: 'User-key rotation is not activated on this server.',
   },
+  {
+    name: 'personal API-key create',
+    path: '/api/accounts/api-key',
+    message: 'Personal API keys are not activated on this server.',
+  },
+  {
+    name: 'personal API-key rotation',
+    path: '/api/accounts/rotate-api-key',
+    message: 'Personal API keys are not activated on this server.',
+  },
 ] as const
 
 const enabledPostOnlyWriters = [

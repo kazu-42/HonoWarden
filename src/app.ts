@@ -100,9 +100,11 @@ import {
 import {
   generateRefreshToken,
   hashRefreshToken,
+  invalidClientError,
   invalidGrantError,
   parsePasswordGrantForm,
   parseAuthRequestGrantForm,
+  parseClientCredentialsGrantForm,
   parseRefreshTokenGrantForm,
   signAccessToken,
   tokenErrorResponse,
@@ -115,8 +117,19 @@ import type {
   AccessTokenSigningKey,
   AccessTokenSigner,
   AccessTokenVerifier,
+  ClientCredentialsGrantRequest,
 } from './domain/tokens'
 import type { AuthRequestGrantRequest } from './domain/tokens'
+import {
+  buildPersonalApiKeyClientId,
+  buildPersonalApiKeyVerifier,
+  generatePersonalApiKeySecret,
+  isPersonalApiKeyFeatureEnabled,
+  parseApiKeyClientId,
+  parsePersonalApiKeyClientId,
+  personalApiKeyPolicy,
+  verifyPersonalApiKeySecret,
+} from './domain/personal-api-key'
 import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
 import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
@@ -142,6 +155,13 @@ import {
   reserveCipherAttachmentUpload,
 } from './repositories/attachment-repository'
 import { persistAuditEvent } from './repositories/audit-event-repository'
+import {
+  createPersonalApiKey,
+  findPersonalApiKeyMetadata,
+  findPersonalApiKeyVerifier,
+  markPersonalApiKeyUsed,
+  rotatePersonalApiKey,
+} from './repositories/personal-api-key-repository'
 import {
   changeAccountEmail,
   beginRecoverableAccountDeletion,
@@ -339,6 +359,11 @@ type AccessTokenRuntimeConfig =
       ok: false
     }
 
+type PersonalApiKeyRuntimeConfig =
+  | { status: 'disabled' }
+  | { status: 'misconfigured' }
+  | { status: 'ready'; verifierSecret: string }
+
 const serviceDescription =
   'A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.'
 
@@ -347,6 +372,7 @@ const accessTokenTtlSeconds = 3600
 const refreshTokenTtlSeconds = 60 * 60 * 24 * 30
 const totpChallengeTtlSeconds = 5 * 60
 const recentPasswordAuthTtlSeconds = 5 * 60
+const personalApiKeyDummyUserId = '00000000-0000-4000-8000-000000000000'
 const defaultListPageSize = 100
 const maxListPageSize = 500
 const maxBulkCipherIds = 1_000
@@ -585,7 +611,24 @@ function isRequestQuotaBypass(c: AppContext): boolean {
     return true
   }
 
+  if (
+    isPersonalApiKeyManagementPath(pathname) &&
+    (c.req.method === 'GET' ||
+      c.req.method === 'HEAD' ||
+      c.req.method === 'POST') &&
+    !isPersonalApiKeyFeatureEnabled(c.env?.HONOWARDEN_PERSONAL_API_KEYS_ENABLED)
+  ) {
+    return true
+  }
+
   return pathname === '/health' || pathname === '/healthz'
+}
+
+function isPersonalApiKeyManagementPath(pathname: string): boolean {
+  return (
+    pathname === '/api/accounts/api-key' ||
+    pathname === '/api/accounts/rotate-api-key'
+  )
 }
 
 async function emitAuditEvent(c: AppContext, input: AuditInput): Promise<void> {
@@ -1203,6 +1246,314 @@ app.get('/api/accounts/profile', async (c) => {
 })
 app.put('/api/accounts/profile', handleAccountProfileUpdate)
 app.post('/api/accounts/profile', handleAccountProfileUpdate)
+app.get('/api/accounts/api-key', handlePersonalApiKeyMetadata)
+app.post('/api/accounts/api-key', handlePersonalApiKeyCreate)
+app.get('/api/accounts/rotate-api-key', handlePersonalApiKeyRotateMethod)
+app.post('/api/accounts/rotate-api-key', handlePersonalApiKeyRotate)
+
+async function handlePersonalApiKeyRotateMethod(c: AppContext) {
+  c.header('Cache-Control', 'no-store')
+  const gated = personalApiKeyDisabledResponse(c)
+  if (gated) {
+    return gated
+  }
+
+  c.header('Allow', 'POST')
+  return c.body(null, 405)
+}
+
+async function handlePersonalApiKeyMetadata(c: AppContext) {
+  const authorization = await authorizePersonalApiKeyManagement(c)
+  if (!authorization.ok) {
+    return authorization.response
+  }
+
+  try {
+    const metadata = await findPersonalApiKeyMetadata(
+      c.env.DB,
+      authorization.auth.user.id,
+    )
+    c.header('Cache-Control', 'no-store')
+
+    return c.json({
+      object: 'apiKeyMetadata',
+      hasApiKey: metadata !== null,
+      clientId: buildPersonalApiKeyClientId(authorization.auth.user.id),
+      createdAt: metadata?.createdAt ?? null,
+      rotatedAt: metadata?.rotatedAt ?? null,
+      lastUsedAt: metadata?.lastUsedAt ?? null,
+      revisionDate: metadata?.revisionDate ?? null,
+    })
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Personal API-key metadata lookup failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function handlePersonalApiKeyCreate(c: AppContext) {
+  const authorization = await authorizePersonalApiKeyManagement(c)
+  if (!authorization.ok) {
+    return authorization.response
+  }
+
+  const rawSecret = generatePersonalApiKeySecret()
+  const now = new Date().toISOString()
+
+  try {
+    const verifier = await buildPersonalApiKeyVerifier(
+      authorization.config.verifierSecret,
+      authorization.auth.user.id,
+      rawSecret,
+    )
+    const successAuditEvent = buildEnabledPersonalApiKeyAuditEvent(
+      c,
+      personalApiKeyManagementAuditInput(
+        authorization.auth,
+        'auth.api_key_create',
+        'success',
+      ),
+    )
+    const result = await createPersonalApiKey(
+      c.env.DB,
+      {
+        userId: authorization.auth.user.id,
+        secretVerifier: verifier,
+        createdAt: now,
+      },
+      successAuditEvent,
+    )
+    if (result.status === 'exists') {
+      await emitPersonalApiKeyManagementAuditEvent(
+        c,
+        authorization.auth,
+        'auth.api_key_create',
+        'failure',
+        'already_exists',
+      )
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'api_key_exists',
+          'A personal API key already exists. Rotate it to receive a new secret.',
+        ),
+        409,
+      )
+    }
+
+    logPersistedAuditEvent(successAuditEvent)
+    c.header('Cache-Control', 'no-store')
+
+    return c.json(
+      buildPersonalApiKeyResponse(authorization.auth.user.id, rawSecret, now),
+    )
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Personal API-key creation failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function handlePersonalApiKeyRotate(c: AppContext) {
+  const authorization = await authorizePersonalApiKeyManagement(c)
+  if (!authorization.ok) {
+    return authorization.response
+  }
+
+  const rawSecret = generatePersonalApiKeySecret()
+  const now = new Date().toISOString()
+
+  try {
+    const verifier = await buildPersonalApiKeyVerifier(
+      authorization.config.verifierSecret,
+      authorization.auth.user.id,
+      rawSecret,
+    )
+    const successAuditEvent = buildEnabledPersonalApiKeyAuditEvent(
+      c,
+      personalApiKeyManagementAuditInput(
+        authorization.auth,
+        'auth.api_key_rotate',
+        'success',
+      ),
+    )
+    const result = await rotatePersonalApiKey(
+      c.env.DB,
+      {
+        userId: authorization.auth.user.id,
+        secretVerifier: verifier,
+        rotatedAt: now,
+      },
+      successAuditEvent,
+    )
+    if (result.status === 'not_found') {
+      await emitPersonalApiKeyManagementAuditEvent(
+        c,
+        authorization.auth,
+        'auth.api_key_rotate',
+        'failure',
+        'not_found',
+      )
+
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'api_key_not_found',
+          'A personal API key does not exist.',
+        ),
+        404,
+      )
+    }
+
+    logPersistedAuditEvent(successAuditEvent)
+    c.header('Cache-Control', 'no-store')
+
+    return c.json(
+      buildPersonalApiKeyResponse(authorization.auth.user.id, rawSecret, now),
+    )
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Personal API-key rotation failed.',
+      ),
+      503,
+    )
+  }
+}
+
+function personalApiKeyDisabledResponse(c: AppContext): Response | null {
+  if (
+    isPersonalApiKeyFeatureEnabled(c.env?.HONOWARDEN_PERSONAL_API_KEYS_ENABLED)
+  ) {
+    return null
+  }
+
+  return unsupportedFeatureResponse(
+    c,
+    'Personal API keys are not activated on this server.',
+    true,
+  )
+}
+
+async function authorizePersonalApiKeyManagement(c: AppContext): Promise<
+  | {
+      ok: true
+      auth: Extract<AuthenticatedVaultRequest, { ok: true }>
+      config: Extract<PersonalApiKeyRuntimeConfig, { status: 'ready' }>
+    }
+  | { ok: false; response: Response }
+> {
+  c.header('Cache-Control', 'no-store')
+  const disabled = personalApiKeyDisabledResponse(c)
+  if (disabled) {
+    return { ok: false, response: disabled }
+  }
+
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    return auth
+  }
+
+  const config = resolvePersonalApiKeyRuntimeConfig(c.env)
+  if (config.status === 'disabled') {
+    return { ok: false, response: personalApiKeyDisabledResponse(c)! }
+  }
+  if (config.status === 'misconfigured') {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Personal API keys are not configured.',
+        ),
+        503,
+      ),
+    }
+  }
+
+  return { ok: true, auth, config }
+}
+
+function buildPersonalApiKeyResponse(
+  userId: string,
+  rawSecret: string,
+  revisionDate: string,
+) {
+  return {
+    object: 'apiKey',
+    clientId: buildPersonalApiKeyClientId(userId),
+    apiKey: rawSecret,
+    revisionDate,
+  }
+}
+
+function buildEnabledPersonalApiKeyAuditEvent(
+  c: AppContext,
+  input: AuditInput,
+): ReturnType<typeof buildAuditEvent> | undefined {
+  if (!isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+    return undefined
+  }
+
+  return buildAuditEvent({
+    ...input,
+    requestId: c.get('requestId'),
+    occurredAt: new Date().toISOString(),
+  })
+}
+
+function logPersistedAuditEvent(
+  event: ReturnType<typeof buildAuditEvent> | undefined,
+): void {
+  if (event) {
+    console.info(serializeAuditEvent(event))
+  }
+}
+
+async function emitPersonalApiKeyManagementAuditEvent(
+  c: AppContext,
+  auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
+  name: 'auth.api_key_create' | 'auth.api_key_rotate',
+  outcome: AuditEventOutcome,
+  reason?: string,
+): Promise<void> {
+  await emitAuditEvent(
+    c,
+    personalApiKeyManagementAuditInput(auth, name, outcome, reason),
+  )
+}
+
+function personalApiKeyManagementAuditInput(
+  auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
+  name: 'auth.api_key_create' | 'auth.api_key_rotate',
+  outcome: AuditEventOutcome,
+  reason?: string,
+): AuditInput {
+  return {
+    name,
+    outcome,
+    actor: {
+      userId: auth.user.id,
+      deviceIdentifier: auth.deviceIdentifier,
+    },
+    target: { type: 'account', id: auth.user.id },
+    ...(reason ? { context: { reason } } : {}),
+  }
+}
 
 app.get('/api/account/billing/vnext/subscription', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -2044,6 +2395,21 @@ app.post('/identity/connect/token', async (c) => {
     }
   }
 
+  const clientCredentialsGrant = parseClientCredentialsGrantForm(form)
+  if (clientCredentialsGrant.ok) {
+    return handlePersonalApiKeyTokenGrant(
+      c,
+      accessTokenConfig,
+      clientCredentialsGrant.grant,
+    )
+  }
+  if (!('reason' in clientCredentialsGrant)) {
+    return c.json(
+      tokenErrorResponse(clientCredentialsGrant.error),
+      clientCredentialsGrant.status,
+    )
+  }
+
   const grantDecision = parsePasswordGrantForm(form)
   if (!grantDecision.ok) {
     return c.json(tokenErrorResponse(grantDecision.error), grantDecision.status)
@@ -2399,6 +2765,261 @@ app.post('/identity/connect/token', async (c) => {
     )
   }
 })
+
+async function handlePersonalApiKeyTokenGrant(
+  c: AppContext,
+  accessTokenConfig: Extract<AccessTokenRuntimeConfig, { ok: true }>,
+  grant: ClientCredentialsGrantRequest,
+) {
+  const parsedClientId =
+    grant.clientId.length <= personalApiKeyPolicy.maxClientIdLength
+      ? parseApiKeyClientId(grant.clientId)
+      : null
+  if (parsedClientId?.kind === 'organization') {
+    return unsupportedFeatureResponse(
+      c,
+      'Organization API credentials are not supported on this server.',
+      true,
+    )
+  }
+
+  const personalApiKeyConfig = resolvePersonalApiKeyRuntimeConfig(c.env)
+  if (personalApiKeyConfig.status === 'disabled') {
+    return c.json(tokenErrorResponse(invalidClientError()), 400)
+  }
+  if (personalApiKeyConfig.status === 'misconfigured') {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Personal API keys are not configured.',
+      ),
+      503,
+    )
+  }
+
+  const device = readDeviceInfo(c.req.raw.headers) ?? grant.device
+  if (!device) {
+    const error = tokenRequestError(
+      'invalid_request',
+      'Device information is required.',
+    )
+    return c.json(tokenErrorResponse(error.error), error.status)
+  }
+
+  const issuedAt = Math.floor(Date.now() / 1000)
+  const now = new Date(issuedAt * 1000).toISOString()
+
+  try {
+    await cleanupTransientAuthData(c.env.DB, now, {
+      auditEvents: isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS),
+    })
+
+    const ipBucketKey = await buildAuthAttemptBucketKey(
+      'ip',
+      extractClientAddress(c.req.raw.headers),
+    )
+    const parsedUserId = parsePersonalApiKeyClientId(grant.clientId)
+    const accountBucketSubject = parsedUserId
+      ? buildPersonalApiKeyClientId(parsedUserId)
+      : grant.clientId
+          .slice(0, personalApiKeyPolicy.maxClientIdLength)
+          .toLowerCase()
+    const accountBucketKey = await buildAuthAttemptBucketKey(
+      'account',
+      accountBucketSubject,
+    )
+    const ipBucket = await findAuthFailureBucket(c.env.DB, ipBucketKey)
+    const accountBucket = await findAuthFailureBucket(
+      c.env.DB,
+      accountBucketKey,
+    )
+
+    if (
+      isAccountLocked({
+        lockedUntil: ipBucket?.lockedUntil ?? null,
+        now,
+      })
+    ) {
+      c.header('Retry-After', String(loginDefensePolicy.ipRetryAfterSeconds))
+      return c.json(tokenErrorResponse(invalidClientError()), 429)
+    }
+
+    const rejectAfterFailedAttempt = (ipLockedUntil: string | null) => {
+      if (isAccountLocked({ lockedUntil: ipLockedUntil, now })) {
+        c.header('Retry-After', String(loginDefensePolicy.ipRetryAfterSeconds))
+        return c.json(tokenErrorResponse(invalidClientError()), 429)
+      }
+
+      return c.json(tokenErrorResponse(invalidClientError()), 400)
+    }
+    const recordFailedAttempt = async (recordAccountBucket: boolean) => {
+      await recordAuthAttempt(c.env.DB, {
+        id: crypto.randomUUID(),
+        bucketKey: ipBucketKey,
+        subjectKey: accountBucketKey,
+        successful: false,
+        occurredAt: now,
+      })
+      const ipFailureBucket = await recordFailedAuthBucket(c.env.DB, {
+        bucketKey: ipBucketKey,
+        failureLimit: loginDefensePolicy.ipFailureLimit,
+        failureWindowSeconds: loginDefensePolicy.ipFailureWindowSeconds,
+        lockoutSeconds: loginDefensePolicy.ipRetryAfterSeconds,
+        now,
+      })
+      if (recordAccountBucket) {
+        await recordFailedAuthBucket(c.env.DB, {
+          bucketKey: accountBucketKey,
+          failureLimit: loginDefensePolicy.accountFailureLimit,
+          failureWindowSeconds: loginDefensePolicy.accountFailureWindowSeconds,
+          lockoutSeconds: loginDefensePolicy.accountLockoutSeconds,
+          now,
+        })
+      }
+
+      return rejectAfterFailedAttempt(ipFailureBucket.lockedUntil)
+    }
+    const rejectCredential = async (
+      reason: string,
+      userId?: string,
+      recordAccountBucket = true,
+    ) => {
+      await emitAuditEvent(c, {
+        name: 'auth.api_key_grant',
+        outcome: 'failure',
+        actor: {
+          ...(userId ? { userId } : {}),
+          deviceIdentifier: device.identifier,
+        },
+        ...(userId ? { target: { type: 'account' as const, id: userId } } : {}),
+        context: { reason },
+      })
+
+      return recordFailedAttempt(recordAccountBucket)
+    }
+
+    if (
+      isAccountLocked({
+        lockedUntil: accountBucket?.lockedUntil ?? null,
+        now,
+      })
+    ) {
+      return recordFailedAttempt(false)
+    }
+
+    if (
+      grant.scope !== 'api' ||
+      grant.clientId.length > personalApiKeyPolicy.maxClientIdLength ||
+      grant.clientSecret.length >
+        personalApiKeyPolicy.maxPresentedSecretLength ||
+      device.identifier.length > personalApiKeyPolicy.maxDeviceIdentifierLength
+    ) {
+      return rejectCredential('invalid_client')
+    }
+
+    const lookupUserId = parsedUserId ?? personalApiKeyDummyUserId
+    const [verifierRecord, dummyVerifier] = await Promise.all([
+      findPersonalApiKeyVerifier(c.env.DB, lookupUserId),
+      buildPersonalApiKeyVerifier(
+        personalApiKeyConfig.verifierSecret,
+        lookupUserId,
+        'honowarden-invalid-personal-api-key',
+      ),
+    ])
+    const verified = await verifyPersonalApiKeySecret(
+      personalApiKeyConfig.verifierSecret,
+      lookupUserId,
+      grant.clientSecret,
+      verifierRecord?.secretVerifier ?? dummyVerifier,
+    )
+
+    if (!parsedUserId || !verifierRecord || !verified) {
+      return rejectCredential(
+        parsedUserId ? 'invalid_client' : 'unsupported_client_type',
+      )
+    }
+
+    const user = await findAuthUserById(c.env.DB, parsedUserId)
+    if (!user || user.disabledAt) {
+      return rejectCredential(
+        user?.disabledAt ? 'user_disabled' : 'invalid_client',
+        user?.id,
+      )
+    }
+
+    const generationCurrent = await markPersonalApiKeyUsed(c.env.DB, {
+      userId: user.id,
+      expectedVerifier: verifierRecord.secretVerifier,
+      usedAt: now,
+    })
+    if (!generationCurrent) {
+      return rejectCredential('rotated_during_grant', user.id)
+    }
+
+    const refreshToken = generateRefreshToken()
+    const refreshTokenHash = await hashRefreshToken(
+      accessTokenConfig.refreshTokenSecret,
+      refreshToken,
+    )
+    await resetAuthFailureBucket(c.env.DB, accountBucketKey)
+    const session = await createPasswordGrantSession(c.env.DB, {
+      userId: user.id,
+      expectedMasterPasswordHash: user.masterPasswordHash,
+      expectedSecurityStamp: user.securityStamp,
+      deviceIdentifier: device.identifier,
+      deviceName: device.name,
+      deviceType: device.type,
+      refreshTokenId: crypto.randomUUID(),
+      refreshTokenHash,
+      refreshTokenExpiresAt: new Date(
+        (issuedAt + refreshTokenTtlSeconds) * 1000,
+      ).toISOString(),
+      now,
+    })
+    if (session.status !== 'created') {
+      return rejectCredential('stale_generation', user.id)
+    }
+
+    const accountKeyProjection = buildAccountKeyProjection(user)
+    const accessToken = await signAccessToken(
+      accessTokenConfig.signer,
+      buildAccessTokenClaims({
+        user,
+        deviceIdentifier: device.identifier,
+        issuedAt,
+        expiresAt: issuedAt + accessTokenTtlSeconds,
+        authMethod: 'api_key',
+        premiumFeaturesEnabled: isPremiumFeaturesEnabled(
+          c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED,
+        ),
+      }),
+    )
+    await emitAuditEvent(c, {
+      name: 'auth.api_key_grant',
+      outcome: 'success',
+      actor: {
+        userId: user.id,
+        deviceIdentifier: device.identifier,
+      },
+      target: { type: 'account', id: user.id },
+    })
+
+    return c.json(
+      buildTokenResponse(user, accessToken, refreshToken, accountKeyProjection),
+    )
+  } catch (error) {
+    reportAccountKeyProjectionError(c, error)
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Token exchange failed.',
+      ),
+      503,
+    )
+  }
+}
 
 async function handleAuthRequestTokenGrant(
   c: AppContext,
@@ -6393,6 +7014,27 @@ app.notFound((c) => {
   )
 })
 
+function resolvePersonalApiKeyRuntimeConfig(
+  env: Bindings | undefined,
+): PersonalApiKeyRuntimeConfig {
+  if (
+    !isPersonalApiKeyFeatureEnabled(env?.HONOWARDEN_PERSONAL_API_KEYS_ENABLED)
+  ) {
+    return { status: 'disabled' }
+  }
+
+  const verifierSecret = normalizeSecret(env?.HONOWARDEN_API_KEY_SECRET)
+  if (
+    !verifierSecret ||
+    new TextEncoder().encode(verifierSecret).byteLength <
+      personalApiKeyPolicy.verifierSecretMinBytes
+  ) {
+    return { status: 'misconfigured' }
+  }
+
+  return { status: 'ready', verifierSecret }
+}
+
 function resolveAccessTokenRuntimeConfig(
   env: Bindings | undefined,
 ): AccessTokenRuntimeConfig {
@@ -7740,6 +8382,8 @@ function apiError(
     | 'account_key_state_invalid'
     | 'account_last_owner'
     | 'account_keys_uninitialized'
+    | 'api_key_exists'
+    | 'api_key_not_found'
     | 'attachment_not_found'
     | 'attachment_size_mismatch'
     | 'attachment_storage_limit_exceeded'
