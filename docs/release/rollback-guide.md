@@ -220,6 +220,15 @@ write runtime secrets, or create remote rows, so the normal rollback is to a
 Worker that ignores the additive table while the existing `501` guards remain
 in force.
 
+## Encrypted File Send Foundation Rollback
+
+Migration `0019` is forward-only. Keep the `send_files` and
+`send_download_tickets` tables during Worker rollback. HON-185 does not mount
+Send routes, enable `send-enabled`, expose R2, or create remote objects, so the
+normal rollback is to a Worker that ignores the additive tables while the
+existing `501` guards remain in force. Never prefix-delete R2 objects and never
+clean a generation unless the D1 tombstone still names that exact object key.
+
 After a later Send activation, never roll back to code that cannot read the
 stored capability-envelope and verifier key versions. First disable Send at
 the kill gate, drain owner and public requests, preserve D1 tombstones and

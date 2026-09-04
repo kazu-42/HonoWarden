@@ -41,6 +41,8 @@ describe('HON-183 Send design contract', () => {
     expect(replacementAdr).toContain('live compatibility evidence')
     expect(app).toContain("app.all('/api/sends', unsupportedPremiumFeature)")
     expect(app).toContain("app.all('/api/sends/*', unsupportedPremiumFeature)")
+    expect(app).not.toContain('send-file-repository')
+    expect(app).not.toContain('send-file-owner')
     expect(app).toContain("form.get('grant_type') === 'send_access'")
     expect(config).toContain("'send-enabled': false")
   })

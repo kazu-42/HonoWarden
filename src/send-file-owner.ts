@@ -1,0 +1,282 @@
+import {
+  allocateSendFileObject,
+  createSendDownloadTicketMaterial,
+  fileSendUploadDeadlineAt,
+  parseFileSendOwnerRequest,
+} from './domain/send-file'
+import {
+  assertTextSendLookupRootIndependent,
+  canonicalizeTextSendInstant,
+  createTextSendCapability,
+  createTextSendPasswordVerifier,
+  resolveTextSendEnvelopeSecret,
+} from './domain/text-send'
+import {
+  completeSendFileUpload,
+  consumeFileSendAccess,
+  createPendingFileSend,
+  createSendDownloadTicket,
+  type SendFileRow,
+} from './repositories/send-file-repository'
+
+export type FileSendOwnerResponse = {
+  Id: string
+  AccessId: string
+  Type: 1
+  AuthType: number
+  Name: string
+  Notes: string | null
+  Text: null
+  File: { Id: string; FileName: string; Size: number }
+  Key: string
+  MaxAccessCount: number | null
+  AccessCount: number
+  RevisionDate: string
+  ExpirationDate: string | null
+  DeletionDate: string
+  Password: 'configured' | null
+  Emails: null
+  Disabled: boolean
+  HideEmail: boolean
+  Object: 'send'
+}
+
+type FileSendKeyring = {
+  envelopeKeyId: string
+  envelopeSecrets: Readonly<Record<string, string>>
+  lookupKeyId: string
+  lookupSecret: string
+}
+
+type CreateOwnerFileSendInput = FileSendKeyring & {
+  ownerUserId: string
+  body: unknown
+  now: string
+  sendId: string
+  fileId: string
+  auditEventId: string
+  requestId: string
+  randomBytes?: (bytes: Uint8Array) => Uint8Array
+}
+
+export async function createOwnerFileSend(
+  database: D1Database,
+  input: CreateOwnerFileSendInput,
+): Promise<
+  | { status: 'created'; send: FileSendOwnerResponse }
+  | { status: 'invalid_request' }
+> {
+  const canonicalNow = canonicalizeTextSendInstant(input.now)
+  if (canonicalNow === null) return { status: 'invalid_request' }
+  const request = parseFileSendOwnerRequest(input.body, {
+    now: canonicalNow,
+    accessCount: 0,
+  })
+  if (!request.ok) return { status: 'invalid_request' }
+
+  const uploadDeadlineAt = fileSendUploadDeadlineAt(canonicalNow)
+  if (uploadDeadlineAt === null) return { status: 'invalid_request' }
+
+  const envelopeSecret = resolveTextSendEnvelopeSecret(
+    input.envelopeKeyId,
+    input.envelopeSecrets,
+  )
+  assertTextSendLookupRootIndependent(input.lookupSecret, input.envelopeSecrets)
+  const capability = await createTextSendCapability({
+    sendId: input.sendId,
+    ownerUserId: input.ownerUserId,
+    envelopeKeyId: input.envelopeKeyId,
+    envelopeSecret,
+    lookupKeyId: input.lookupKeyId,
+    lookupSecret: input.lookupSecret,
+    ...(input.randomBytes ? { randomBytes: input.randomBytes } : {}),
+  })
+  const passwordVerifier = request.value.clientPasswordHash
+    ? await createTextSendPasswordVerifier({
+        sendId: input.sendId,
+        keyId: input.lookupKeyId,
+        lookupSecret: input.lookupSecret,
+        clientPasswordHash: request.value.clientPasswordHash,
+      })
+    : null
+  const object = allocateSendFileObject({
+    sendId: input.sendId,
+    fileId: input.fileId,
+    objectGeneration: 1,
+    ...(input.randomBytes ? { randomBytes: input.randomBytes } : {}),
+  })
+
+  await createPendingFileSend(database, {
+    send: {
+      id: input.sendId,
+      ownerUserId: input.ownerUserId,
+      type: 1,
+      authType: request.value.authType,
+      lifecycleState: 'pending_upload',
+      capabilityEnvelope: capability.capabilityEnvelope,
+      capabilityEnvelopeKeyId: input.envelopeKeyId,
+      capabilityVerifier: capability.capabilityVerifier,
+      capabilityVerifierKeyId: input.lookupKeyId,
+      accessGeneration: 1,
+      encryptedName: request.value.encryptedName,
+      encryptedNotes: request.value.encryptedNotes,
+      encryptedKey: request.value.encryptedKey,
+      encryptedText: null,
+      textHidden: 0,
+      passwordVerifier,
+      passwordKeyId: passwordVerifier ? input.lookupKeyId : null,
+      maxAccessCount: request.value.maxAccessCount,
+      accessCount: 0,
+      disabled: request.value.disabled ? 1 : 0,
+      hideEmail: request.value.hideEmail ? 1 : 0,
+      expirationAt: request.value.expirationDate,
+      deletionAt: request.value.deletionDate,
+      revisionDate: canonicalNow,
+      createdAt: canonicalNow,
+      updatedAt: canonicalNow,
+      deletedAt: null,
+      quarantinedAt: null,
+      lastAccessedAt: null,
+    },
+    file: {
+      id: input.fileId,
+      sendId: input.sendId,
+      ownerUserId: input.ownerUserId,
+      objectGeneration: object.objectGeneration,
+      objectKey: object.objectKey,
+      encryptedFileName: request.value.encryptedFileName,
+      expectedSize: request.value.expectedSize,
+      observedSize: null,
+      objectEtag: null,
+      lifecycleState: 'pending_upload',
+      uploadDeadlineAt,
+      validatedAt: null,
+      cleanupLeaseUntil: null,
+      cleanupAttempts: 0,
+      lastFailureClass: null,
+      deletedAt: null,
+    },
+    auditEventId: input.auditEventId,
+    requestId: input.requestId,
+  })
+
+  return {
+    status: 'created',
+    send: {
+      Id: input.sendId,
+      AccessId: capability.accessId,
+      Type: 1,
+      AuthType: request.value.authType,
+      Name: request.value.encryptedName,
+      Notes: request.value.encryptedNotes,
+      Text: null,
+      File: {
+        Id: input.fileId,
+        FileName: request.value.encryptedFileName,
+        Size: request.value.expectedSize,
+      },
+      Key: request.value.encryptedKey,
+      MaxAccessCount: request.value.maxAccessCount,
+      AccessCount: 0,
+      RevisionDate: canonicalNow,
+      ExpirationDate: request.value.expirationDate,
+      DeletionDate: request.value.deletionDate,
+      Password: request.value.authType === 1 ? 'configured' : null,
+      Emails: null,
+      Disabled: request.value.disabled,
+      HideEmail: request.value.hideEmail,
+      Object: 'send',
+    },
+  }
+}
+
+type CompleteOwnerFileSendUploadInput = {
+  id: string
+  sendId: string
+  ownerUserId: string
+  objectGeneration: number
+  objectKey: string
+  observedSize: number
+  expectedSize: number
+  objectEtag: string
+  now: string
+}
+
+export async function completeOwnerFileSendUpload(
+  database: D1Database,
+  input: CompleteOwnerFileSendUploadInput,
+): Promise<
+  | { status: 'activated'; file: SendFileRow }
+  | { status: 'size_mismatch' }
+  | { status: 'unchanged' }
+> {
+  if (input.observedSize !== input.expectedSize) {
+    return { status: 'size_mismatch' }
+  }
+  return completeSendFileUpload(database, {
+    id: input.id,
+    sendId: input.sendId,
+    ownerUserId: input.ownerUserId,
+    objectGeneration: input.objectGeneration,
+    objectKey: input.objectKey,
+    observedSize: input.observedSize,
+    objectEtag: input.objectEtag,
+    now: input.now,
+  })
+}
+
+const downloadTicketLifetimeMilliseconds = 60_000
+const downloadTicketMaxRequests = 3
+
+type IssueOwnerFileDownloadTicketInput = {
+  capabilityVerifier: string
+  accessGeneration: number
+  sendId: string
+  fileId: string
+  objectGeneration: number
+  remainingBytes: number
+  lookupKeyId: string
+  lookupSecret: string
+  now: string
+  randomBytes?: (bytes: Uint8Array) => Uint8Array
+}
+
+export async function issueOwnerFileDownloadTicket(
+  database: D1Database,
+  input: IssueOwnerFileDownloadTicketInput,
+): Promise<
+  | { status: 'issued'; ticketId: string; url: string }
+  | { status: 'unavailable' }
+> {
+  const consumed = await consumeFileSendAccess(database, {
+    capabilityVerifier: input.capabilityVerifier,
+    accessGeneration: input.accessGeneration,
+    now: input.now,
+  })
+  if (consumed.status !== 'consumed') return { status: 'unavailable' }
+
+  const material = await createSendDownloadTicketMaterial({
+    keyId: input.lookupKeyId,
+    lookupSecret: input.lookupSecret,
+    ...(input.randomBytes ? { randomBytes: input.randomBytes } : {}),
+  })
+  const expiresAt = new Date(
+    Date.parse(input.now) + downloadTicketLifetimeMilliseconds,
+  ).toISOString()
+  await createSendDownloadTicket(database, {
+    ticketVerifier: material.ticketVerifier,
+    sendId: input.sendId,
+    fileId: input.fileId,
+    accessGeneration: input.accessGeneration,
+    objectGeneration: input.objectGeneration,
+    expiresAt,
+    maxRequests: downloadTicketMaxRequests,
+    remainingBytes: input.remainingBytes,
+    consumedRequests: 0,
+  })
+  return {
+    status: 'issued',
+    ticketId: material.ticketId,
+    url: `/api/sends/access/file-content/${material.ticketId}`,
+  }
+}
