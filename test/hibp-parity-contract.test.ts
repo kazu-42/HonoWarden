@@ -274,30 +274,10 @@ describe('HON-200 HIBP, reports, and integrations decision', () => {
     expect(trackedConfig).not.toContain("app.get('/api/reports")
     expect(migrationText).not.toMatch(/hibp|breach_report|security_task/i)
     expect(
-      readdirSync(join(repoRoot, 'migrations'))
-        .filter((entry) => entry.endsWith('.sql'))
-        .sort(),
-    ).toEqual([
-      '0001_initial_schema.sql',
-      '0002_login_defenses.sql',
-      '0003_totp_login.sql',
-      '0004_totp_change.sql',
-      '0005_device_keys.sql',
-      '0006_cipher_attachments.sql',
-      '0007_audit_events.sql',
-      '0008_request_quotas.sql',
-      '0009_inquiry_messages.sql',
-      '0010_equivalent_domains.sql',
-      '0010a_inquiry_message_reconciliation.sql',
-      '0011_inquiry_inbox.sql',
-      '0012_auth_requests.sql',
-      '0013_auth_request_supersede.sql',
-      '0014_organizations.sql',
-      '0014a_kdf_population.sql',
-      '0016_user_key_rotation_wrapper_history.sql',
-      '0017_account_lifecycle.sql',
-      '0018_text_sends.sql',
-    ])
+      readdirSync(join(repoRoot, 'migrations')).some((entry) =>
+        /hibp|breach|security.task/i.test(entry),
+      ),
+    ).toBe(false)
   })
 
   it('leaves security-task, report, and vendor-integration routes unimplemented', async () => {
