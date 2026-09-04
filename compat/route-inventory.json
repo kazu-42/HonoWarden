@@ -1,0 +1,2521 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-02T00:00:00Z",
+  "program": "HON-201",
+  "capabilityKey": "BOUND-3",
+  "lastReviewedAt": "2026-09-02",
+  "refresh": {
+    "cadenceDays": 14,
+    "mode": "reviewed_diff",
+    "doesNotMutateClassifications": true
+  },
+  "pins": {
+    "server": {
+      "repository": "github:46755185",
+      "tag": "v2026.6.1",
+      "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+    },
+    "web": {
+      "repository": "github:53538899",
+      "tag": "web-v2026.6.1",
+      "commit": "39f07436ca60e3f25eac47777671754f288a98f1"
+    },
+    "browser": {
+      "repository": "github:53538899",
+      "tag": "browser-v2026.6.1",
+      "commit": "723c075bf8b9f45c901e56195be8e94e43ed75a2"
+    },
+    "cli": {
+      "repository": "github:53538899",
+      "tag": "cli-v2026.6.0",
+      "commit": "e6293ff2bc85123e9baaa998cf1543030ec5d9f0"
+    }
+  },
+  "entries": [
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": true,
+      "id": "operator.health",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "rationale": "HonoWarden operator health and root surfaces are not official-client protocol routes.",
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/"
+        },
+        {
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "method": "GET",
+          "path": "/healthz"
+        },
+        {
+          "method": "GET",
+          "path": "/health/db"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": [
+        "compat/fixtures/config/server-config-success.json",
+        "docs/release/browser-extension-live-client-evidence.md"
+      ],
+      "supportClaim": true,
+      "id": "protocol.config",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/ConfigController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/config"
+        },
+        {
+          "method": "GET",
+          "path": "/config"
+        }
+      ],
+      "officialIds": ["official.config.get"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": ["docs/release/desktop-notification-transport-evidence.md"],
+      "supportClaim": true,
+      "id": "protocol.notifications",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Notifications/Controllers/SendController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/notifications/hub"
+        },
+        {
+          "method": "GET",
+          "path": "/notifications/anonymous-hub"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED"],
+      "adrs": ["0008-login-with-device-scope.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": [
+        "compat/fixtures/prelogin/pbkdf2.json",
+        "docs/release/browser-extension-live-client-evidence.md"
+      ],
+      "supportClaim": true,
+      "id": "protocol.prelogin",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/Controllers/AccountsController.cs"
+      },
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/identity/accounts/prelogin"
+        },
+        {
+          "method": "POST",
+          "path": "/identity/accounts/prelogin/password"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": [
+        "compat/fixtures/token/password-grant-success.json",
+        "docs/release/browser-extension-live-client-evidence.md"
+      ],
+      "supportClaim": true,
+      "id": "protocol.token",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/IdentityServer/RequestValidators/ResourceOwnerPasswordValidator.cs"
+      },
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/identity/connect/token"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json",
+        "docs/release/browser-extension-live-client-evidence.md"
+      ],
+      "supportClaim": true,
+      "id": "protocol.sync",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/sync"
+        }
+      ],
+      "officialIds": ["official.sync.get"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": [
+        "compat/fixtures/accounts/profile-success.json",
+        "docs/release/browser-extension-live-client-evidence.md"
+      ],
+      "supportClaim": true,
+      "id": "accounts.profile",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/accounts/profile"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/accounts/profile"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/profile"
+        },
+        {
+          "method": "GET",
+          "path": "/api/accounts/revision-date"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": ["docs/release/android-mobile-live-client-evidence.md"],
+      "supportClaim": true,
+      "id": "accounts.billing_stub",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-199",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Billing/Controllers/VNext/AccountBillingVNextController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/account/billing/vnext/subscription"
+        }
+      ],
+      "rationale": "Official clients read a self-hosted billing stub; this is not cloud commerce activation.",
+      "roadmapAnchors": []
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "accounts.register",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/Controllers/AccountsController.cs"
+      },
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/api/accounts/register"
+        },
+        {
+          "method": "POST",
+          "path": "/identity/accounts/register"
+        }
+      ],
+      "honowardenBehavior": "403 public registration disabled",
+      "roadmapAnchors": ["public registration UI"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": true,
+      "id": "accounts.bootstrap",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "rationale": "Private allowlisted bootstrap is a HonoWarden operator surface.",
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/api/accounts/bootstrap"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "compat/fixtures/accounts/keys-read-success.json",
+        "docs/release/account-key-initialization-local-evidence.md"
+      ],
+      "supportClaim": false,
+      "id": "accounts.keys",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/accounts/keys"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/keys"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_ACCOUNT_KEYS_ENABLED"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_official_client",
+      "evidence": [
+        "compat/fixtures/accounts/password-change-success.json",
+        "docs/release/account-password-change-local-evidence.md"
+      ],
+      "supportClaim": false,
+      "id": "accounts.password",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/accounts/password"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/password"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/verify-password"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/security-stamp"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_PASSWORD_CHANGE_ENABLED"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_official_client",
+      "evidence": ["docs/release/account-kdf-change-local-evidence.md"],
+      "supportClaim": false,
+      "id": "accounts.kdf",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/accounts/kdf"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/kdf"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_KDF_MUTATION_ENABLED"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_official_client",
+      "evidence": ["docs/release/user-key-rotation-local-evidence.md"],
+      "supportClaim": false,
+      "id": "accounts.user_key_rotation",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/KeyManagement/Controllers/AccountsKeyManagementController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/accounts/key-management/rotate-user-account-keys"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/key-management/rotate-user-account-keys"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_USER_KEY_ROTATION_ENABLED"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "accounts.lifecycle",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "covers": [
+        {
+          "method": "*",
+          "path": "/api/accounts"
+        },
+        {
+          "method": "*",
+          "path": "/api/accounts/delete"
+        },
+        {
+          "method": "*",
+          "path": "/api/accounts/delete-recover"
+        },
+        {
+          "method": "*",
+          "path": "/api/accounts/delete-recover-token"
+        },
+        {
+          "method": "*",
+          "path": "/api/accounts/email"
+        },
+        {
+          "method": "*",
+          "path": "/api/accounts/email-token"
+        },
+        {
+          "method": "*",
+          "path": "/api/accounts/verify-email"
+        },
+        {
+          "method": "*",
+          "path": "/api/accounts/verify-email-token"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED"],
+      "migrations": ["0017_account_lifecycle.sql"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "accounts.export",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Tools/Controllers/OrganizationExportController.cs"
+      },
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/api/accounts/export"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/devices/list-success.json"],
+      "supportClaim": true,
+      "id": "devices",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/DevicesController.cs"
+      },
+      "covers": [
+        {
+          "method": "*",
+          "path": "/api/devices"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/:id"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/:id/keys"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/:id/trust"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/:id/revoke"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/identifier/:identifier"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/identifier/:identifier/token"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/knowndevice"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/revoke-all"
+        },
+        {
+          "method": "*",
+          "path": "/api/devices/update-trust"
+        }
+      ],
+      "migrations": ["0005_device_keys.sql"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/folders/list-success.json"],
+      "supportClaim": true,
+      "id": "folders",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/FoldersController.cs"
+      },
+      "covers": [
+        {
+          "method": "*",
+          "path": "/api/folders"
+        },
+        {
+          "method": "*",
+          "path": "/api/folders/:id"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": [
+        "compat/fixtures/ciphers/get-login-success.json",
+        "docs/release/browser-extension-live-client-evidence.md"
+      ],
+      "supportClaim": true,
+      "id": "ciphers.personal",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/CiphersController.cs"
+      },
+      "covers": [
+        {
+          "method": "*",
+          "path": "/api/ciphers"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/:id"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/:id/delete"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/:id/restore"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/delete"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/move"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/restore"
+        }
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "ciphers.share",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/CiphersController.cs"
+      },
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/ciphers/create"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/ciphers/share"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/ciphers/:id/share"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/ciphers/:id/collections_v2"
+        }
+      ],
+      "honowardenBehavior": "501 unsupported_feature",
+      "roadmapAnchors": ["Collections sharing", "Organizations"],
+      "adrs": [
+        "0005-organizations-shared-vault-scope.md",
+        "0007-collection-mutation-scope.md",
+        "0010-organizations-team-vault-product-line.md"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/ciphers/get-login-success.json"],
+      "supportClaim": true,
+      "id": "attachments.cipher",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/CiphersController.cs"
+      },
+      "covers": [
+        {
+          "method": "*",
+          "path": "/api/ciphers/:id/attachment"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/:id/attachment/v2"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/:id/attachment/:attachmentId"
+        },
+        {
+          "method": "*",
+          "path": "/api/ciphers/:id/attachment/:attachmentId/renew"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/ciphers/:id/attachment/*"
+        }
+      ],
+      "migrations": ["0006_cipher_attachments.sql"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "attachments.public",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/CiphersController.cs"
+      },
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/attachments"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/attachments/*"
+        }
+      ],
+      "honowardenBehavior": "501 unsupported_feature",
+      "adrs": ["0003-send-public-sharing-scope.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/metadata/collections-list-success.json"],
+      "supportClaim": true,
+      "id": "collections.read",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/CollectionsController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/collections"
+        },
+        {
+          "method": "GET",
+          "path": "/api/collections/:id"
+        }
+      ],
+      "adrs": [
+        "0007-collection-mutation-scope.md",
+        "0010-organizations-team-vault-product-line.md"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "collections.catch_all",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/CollectionsController.cs"
+      },
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/collections"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/collections/*"
+        }
+      ],
+      "honowardenBehavior": "501 unsupported_feature for remaining collection mutation",
+      "roadmapAnchors": ["Collections sharing"],
+      "adrs": ["0007-collection-mutation-scope.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": true,
+      "id": "organizations.owner_collections",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/OrganizationsController.cs"
+      },
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/api/organizations"
+        },
+        {
+          "method": "GET",
+          "path": "/api/organizations/:id"
+        },
+        {
+          "method": "*",
+          "path": "/api/organizations/:id/collections"
+        },
+        {
+          "method": "*",
+          "path": "/api/organizations/:id/collections/details"
+        },
+        {
+          "method": "*",
+          "path": "/api/organizations/:id/collections/:collectionId"
+        },
+        {
+          "method": "*",
+          "path": "/api/organizations/:id/collections/:collectionId/details"
+        },
+        {
+          "method": "*",
+          "path": "/api/organizations/:id/collections/:collectionId/users"
+        }
+      ],
+      "adrs": ["0010-organizations-team-vault-product-line.md"],
+      "migrations": ["0014_organizations.sql"],
+      "roadmapAnchors": ["Organizations"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "organizations.catch_all",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/OrganizationsController.cs"
+      },
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/organizations"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/organizations/*"
+        }
+      ],
+      "honowardenBehavior": "501 unsupported_feature for remaining organization administration",
+      "adrs": [
+        "0005-organizations-shared-vault-scope.md",
+        "0010-organizations-team-vault-product-line.md"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app.test.ts",
+        "docs/adr/0011-send-public-sharing-product-line.md"
+      ],
+      "supportClaim": false,
+      "id": "sends.runtime_guard",
+      "kind": "route",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-185",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Tools/Controllers/SendsController.cs"
+      },
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/sends"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/sends/*"
+        }
+      ],
+      "officialIds": [
+        "official.sends.list",
+        "official.sends.get",
+        "official.sends.create",
+        "official.sends.file_v2",
+        "official.sends.access_anonymous",
+        "official.sends.access_file_anonymous",
+        "official.sends.access_auth",
+        "official.sends.access_file_auth",
+        "official.sends.renew_file",
+        "official.sends.upload_file",
+        "official.sends.update",
+        "official.sends.remove_password",
+        "official.sends.remove_auth",
+        "official.sends.delete"
+      ],
+      "honowardenBehavior": "501 unsupported_feature; send-enabled remains false",
+      "roadmapAnchors": ["Send"],
+      "adrs": [
+        "0003-send-public-sharing-scope.md",
+        "0009-premium-surface-scope.md",
+        "0011-send-public-sharing-product-line.md"
+      ],
+      "migrations": ["0018_text_sends.sql"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "sends.azure_validate",
+      "kind": "route",
+      "classification": "hosted_only",
+      "requirementKind": "cloud_commerce",
+      "ownerIssue": "HON-185",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Tools/Controllers/SendsController.cs"
+      },
+      "officialIds": ["official.sends.azure_validate"],
+      "rationale": "Official Azure Event Grid file-validation is a hosted storage callback, not a self-hosted protocol requirement.",
+      "covers": []
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "emergency_access",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/EmergencyAccessController.cs"
+      },
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/emergency-access"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/emergency-access/*"
+        }
+      ],
+      "officialIds": ["official.emergency_access.family"],
+      "honowardenBehavior": "501 unsupported_feature",
+      "roadmapAnchors": ["emergency access"],
+      "adrs": [
+        "0004-emergency-access-scope.md",
+        "0009-premium-surface-scope.md"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "hibp.breach",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-200",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Dirt/Controllers/HibpController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/hibp/breach"
+        }
+      ],
+      "officialIds": ["official.hibp.breach"],
+      "honowardenBehavior": "501 unsupported_feature",
+      "adrs": ["0009-premium-surface-scope.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/metadata/policies-list-success.json"],
+      "supportClaim": true,
+      "id": "policies.read",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/PoliciesController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/policies"
+        },
+        {
+          "method": "GET",
+          "path": "/api/policies/new"
+        }
+      ],
+      "roadmapAnchors": ["enterprise policies"],
+      "adrs": ["0006-policy-management-scope.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/metadata/domains-success.json"],
+      "supportClaim": true,
+      "id": "domains",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/SettingsController.cs"
+      },
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/domains"
+        },
+        {
+          "method": "*",
+          "path": "/api/settings/domains"
+        }
+      ],
+      "migrations": ["0010_equivalent_domains.sql"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": ["docs/release/totp-recent-auth-live-evidence.md"],
+      "supportClaim": true,
+      "id": "totp",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/TwoFactorController.cs"
+      },
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/identity/accounts/totp/setup"
+        },
+        {
+          "method": "POST",
+          "path": "/identity/accounts/totp/setup/verify"
+        },
+        {
+          "method": "POST",
+          "path": "/identity/accounts/totp/disable"
+        },
+        {
+          "method": "POST",
+          "path": "/identity/accounts/totp/change"
+        },
+        {
+          "method": "POST",
+          "path": "/identity/accounts/totp/change/verify"
+        }
+      ],
+      "migrations": ["0003_totp_login.sql", "0004_totp_change.sql"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": ["docs/release/login-with-device-live-client-evidence.md"],
+      "supportClaim": true,
+      "id": "auth_requests",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AuthRequestsController.cs"
+      },
+      "covers": [
+        {
+          "method": "*",
+          "path": "/api/auth-requests"
+        },
+        {
+          "method": "*",
+          "path": "/api/auth-requests/"
+        },
+        {
+          "method": "*",
+          "path": "/api/auth-requests/pending"
+        },
+        {
+          "method": "*",
+          "path": "/api/auth-requests/:id"
+        },
+        {
+          "method": "*",
+          "path": "/api/auth-requests/:id/response"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/auth-requests/*"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_AUTH_REQUESTS_ENABLED"],
+      "adrs": ["0008-login-with-device-scope.md"],
+      "migrations": [
+        "0012_auth_requests.sql",
+        "0013_auth_request_supersede.sql"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": ["compat/fixtures/token/password-grant-success.json"],
+      "supportClaim": true,
+      "id": "grant.password",
+      "kind": "token_grant",
+      "grant": "password",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/IdentityServer/RequestValidators/ResourceOwnerPasswordValidator.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": ["compat/fixtures/token/refresh-grant-success.json"],
+      "supportClaim": true,
+      "id": "grant.refresh_token",
+      "kind": "token_grant",
+      "grant": "refresh_token",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/IdentityServer/RequestValidators/CustomTokenRequestValidator.cs"
+      },
+      "runtimeFlags": ["HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": false,
+      "id": "grant.send_access",
+      "kind": "token_grant",
+      "grant": "send_access",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-186",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/IdentityServer/Enums/CustomGrantTypes.cs"
+      },
+      "honowardenBehavior": "501 unsupported_feature",
+      "roadmapAnchors": ["Send"],
+      "adrs": [
+        "0009-premium-surface-scope.md",
+        "0011-send-public-sharing-product-line.md"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "grant.webauthn",
+      "kind": "token_grant",
+      "grant": "webauthn",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-209",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/IdentityServer/Enums/CustomGrantTypes.cs"
+      },
+      "roadmapAnchors": ["Passkey login"],
+      "adrs": ["0012-webauthn-passkey-contract.md"],
+      "rationale": "Official custom grant is pinned; HonoWarden does not accept webauthn grants yet."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "supportClaim": false,
+      "id": "config.cipher-key-encryption",
+      "kind": "config_flag",
+      "flag": "cipher-key-encryption",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/ConfigController.cs"
+      },
+      "honowardenValue": false,
+      "rationale": "Pinned clients do not require this server capability for the alpha personal vault."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "supportClaim": false,
+      "id": "config.duo-redirect",
+      "kind": "config_flag",
+      "flag": "duo-redirect",
+      "classification": "hosted_only",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/ConfigController.cs"
+      },
+      "honowardenValue": false,
+      "rationale": "Duo is a hosted identity integration, not a self-hosted protocol requirement."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "supportClaim": false,
+      "id": "config.email-verification",
+      "kind": "config_flag",
+      "flag": "email-verification",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/ConfigController.cs"
+      },
+      "honowardenValue": false,
+      "rationale": "Account lifecycle can verify email behind a default-off flag; config remains false."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "supportClaim": false,
+      "id": "config.send-enabled",
+      "kind": "config_flag",
+      "flag": "send-enabled",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-185",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/ConfigController.cs"
+      },
+      "honowardenValue": false,
+      "roadmapAnchors": ["Send"],
+      "adrs": [
+        "0009-premium-surface-scope.md",
+        "0011-send-public-sharing-product-line.md"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "supportClaim": false,
+      "id": "config.web-push",
+      "kind": "config_flag",
+      "flag": "web-push",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/ConfigController.cs"
+      },
+      "honowardenValue": false,
+      "rationale": "Official web-push is optional; HonoWarden uses SignalR-compatible notification hubs instead."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.object",
+      "kind": "sync_field",
+      "field": "object",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.profile",
+      "kind": "sync_field",
+      "field": "profile",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.folders",
+      "kind": "sync_field",
+      "field": "folders",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.collections",
+      "kind": "sync_field",
+      "field": "collections",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.ciphers",
+      "kind": "sync_field",
+      "field": "ciphers",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.domains",
+      "kind": "sync_field",
+      "field": "domains",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.policies",
+      "kind": "sync_field",
+      "field": "policies",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.policiesNew",
+      "kind": "sync_field",
+      "field": "policiesNew",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": false,
+      "id": "sync.sends",
+      "kind": "sync_field",
+      "field": "sends",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      },
+      "rationale": "Sync includes an empty sends array; this is not Send runtime support."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "sync.userDecryption",
+      "kind": "sync_field",
+      "field": "userDecryption",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SyncController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "profile.premiumFromOrganization",
+      "kind": "profile_flag",
+      "field": "premiumFromOrganization",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "honowardenValue": false
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "profile.forcePasswordReset",
+      "kind": "profile_flag",
+      "field": "forcePasswordReset",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "honowardenValue": false
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "profile.emailVerified",
+      "kind": "profile_flag",
+      "field": "emailVerified",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": true,
+      "id": "profile.twoFactorEnabled",
+      "kind": "profile_flag",
+      "field": "twoFactorEnabled",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "live_smoke",
+      "evidence": ["docs/release/android-mobile-live-client-evidence.md"],
+      "supportClaim": true,
+      "id": "profile.premium",
+      "kind": "profile_flag",
+      "field": "premium",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "runtimeFlags": ["HONOWARDEN_PREMIUM_FEATURES_ENABLED"],
+      "rationale": "Staging may advertise premium profile state for attachment/TOTP compatibility. It does not enable Sends."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "supportClaim": false,
+      "id": "profile.usesKeyConnector",
+      "kind": "profile_flag",
+      "field": "usesKeyConnector",
+      "classification": "rejected",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "honowardenValue": false,
+      "rationale": "Key Connector is an optional hosted identity integration."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.scim",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "commercial",
+          "pathPrefix": "src/Scim/"
+        }
+      ],
+      "rationale": "SCIM is an enterprise directory integration, not personal-vault protocol."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.sso",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "commercial",
+          "pathPrefix": "src/Sso/"
+        }
+      ],
+      "rationale": "SSO is out of alpha scope."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.admin_ui",
+      "kind": "official_family",
+      "classification": "hosted_only",
+      "requirementKind": "upstream_ui",
+      "ownerIssue": "HON-199",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Admin/"
+        }
+      ],
+      "rationale": "Admin console UI is upstream hosted operations, not the API-only Worker.",
+      "roadmapAnchors": ["Web Vault"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.organizations",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/AdminConsole/"
+        }
+      ],
+      "rationale": "Organization administration beyond owner collection CRUD remains planned.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.accounts",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Auth/Controllers/Accounts"
+        }
+      ],
+      "rationale": "Account protocol family is implemented with default-off writers.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/Accounts"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.auth_requests",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Auth/Controllers/AuthRequests"
+        }
+      ],
+      "rationale": "Login-with-device auth requests are implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AuthRequests"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.emergency_access_family",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Auth/Controllers/EmergencyAccess"
+        }
+      ],
+      "rationale": "Emergency Access remains rejected.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/EmergencyAccess"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.two_factor",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Auth/Controllers/TwoFactor"
+        }
+      ],
+      "rationale": "TOTP account-login family is implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/TwoFactor"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.webauthn",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-209",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Auth/Controllers/WebAuthn"
+        }
+      ],
+      "rationale": "Passkey login remains planned.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/WebAuthn"
+      },
+      "roadmapAnchors": ["Passkey login"],
+      "adrs": ["0012-webauthn-passkey-contract.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.cloud_commerce_api",
+      "kind": "official_family",
+      "classification": "hosted_only",
+      "requirementKind": "cloud_commerce",
+      "ownerIssue": "HON-199",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Billing/"
+        }
+      ],
+      "rationale": "Cloud billing, seats, and sponsorships are hosted-only."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.config_family",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Controllers/Config"
+        }
+      ],
+      "rationale": "Config reads are implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/Config"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.devices_family",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Controllers/Devices"
+        }
+      ],
+      "rationale": "Device protocol family is implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/Devices"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.info",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Controllers/Info"
+        }
+      ],
+      "rationale": "Official info controllers are not part of the client protocol matrix."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.self_hosted_licensing",
+      "kind": "official_family",
+      "classification": "hosted_only",
+      "requirementKind": "cloud_commerce",
+      "ownerIssue": "HON-199",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Controllers/SelfHosted/"
+        }
+      ],
+      "rationale": "Organization license and sponsorship APIs are hosted licensing."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.settings",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Controllers/Settings"
+        }
+      ],
+      "rationale": "Domain settings are implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Controllers/Settings"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.reports_integrations",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-200",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Dirt/"
+        }
+      ],
+      "rationale": "HIBP, reports, and chat integrations are the P2 decision slice."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.key_management",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/KeyManagement/"
+        }
+      ],
+      "rationale": "User-key rotation is implemented behind a default-off flag.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/KeyManagement"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.notification_center",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-200",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/NotificationCenter/"
+        }
+      ],
+      "rationale": "Notification center is not in the alpha personal-vault matrix.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/NotificationCenter"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.platform",
+      "kind": "official_family",
+      "classification": "hosted_only",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-199",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Platform/"
+        }
+      ],
+      "rationale": "Installations, push vendors, and SSO cookies are hosted platform services."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.secrets_manager",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/SecretsManager/"
+        }
+      ],
+      "rationale": "Secrets Manager is a separate product line."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.import",
+      "kind": "official_family",
+      "classification": "client_local",
+      "requirementKind": "client_local",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Tools/Controllers/Import"
+        }
+      ],
+      "rationale": "Official clients can import locally; server import is not required for personal vault sync."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.org_export",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Tools/Controllers/OrganizationExport"
+        }
+      ],
+      "rationale": "Organization export is not a personal-vault claim.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Tools/Controllers/OrganizationExport"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.sends_family",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-185",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Tools/Controllers/Sends"
+        }
+      ],
+      "rationale": "Send remains 501 until HON-186 activation.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Tools/Controllers/Sends"
+      },
+      "roadmapAnchors": ["Send"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.vault",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Vault/Controllers/Ciphers"
+        }
+      ],
+      "rationale": "Personal cipher routes are implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/Ciphers"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.vault_folders",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Vault/Controllers/Folders"
+        }
+      ],
+      "rationale": "Folder routes are implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/Folders"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.security_tasks",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-200",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Vault/Controllers/SecurityTask"
+        }
+      ],
+      "rationale": "Security tasks belong to the reports decision slice.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/SecurityTask"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.sync_family",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Api/Vault/Controllers/Sync"
+        }
+      ],
+      "rationale": "Sync is implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/Sync"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.billing_webhooks",
+      "kind": "official_family",
+      "classification": "hosted_only",
+      "requirementKind": "cloud_commerce",
+      "ownerIssue": "HON-199",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Billing/"
+        }
+      ],
+      "rationale": "Payment webhooks are hosted commerce."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.events",
+      "kind": "official_family",
+      "classification": "planned",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-200",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Events/"
+        }
+      ],
+      "rationale": "Organization event collection is not an alpha personal-vault claim.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Events"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.icons",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Icons/"
+        }
+      ],
+      "rationale": "Icon proxy is an explicit non-goal.",
+      "roadmapAnchors": ["Icon proxy"]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.identity",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Identity/Controllers/"
+        }
+      ],
+      "rationale": "Identity accounts, prelogin, and info family.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Identity/Controllers"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.identity_billing",
+      "kind": "official_family",
+      "classification": "hosted_only",
+      "requirementKind": "cloud_commerce",
+      "ownerIssue": "HON-199",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Identity/Billing/"
+        }
+      ],
+      "rationale": "Identity billing is hosted commerce."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.identity_sso",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Identity/Controllers/Sso"
+        }
+      ],
+      "rationale": "SSO remains out of scope."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.notifications_family",
+      "kind": "official_family",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "src/Notifications/"
+        }
+      ],
+      "rationale": "Notification hubs are implemented.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Notifications"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "official.seeder",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "controllerMatchers": [
+        {
+          "tree": "oss",
+          "pathPrefix": "util/SeederApi/"
+        }
+      ],
+      "rationale": "Official seeder API is development-only and is not a client protocol surface."
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "web_vault",
+      "kind": "official_family",
+      "classification": "rejected",
+      "requirementKind": "upstream_ui",
+      "ownerIssue": "HON-201",
+      "roadmapAnchors": ["Web Vault"],
+      "adrs": ["0001-project-scope.md"],
+      "rationale": "HonoWarden is API-only; a Web Vault requires a new ADR before any support claim.",
+      "controllerMatchers": []
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "none",
+      "evidence": [],
+      "supportClaim": false,
+      "id": "client_local.password_health",
+      "kind": "official_family",
+      "classification": "client_local",
+      "requirementKind": "client_local",
+      "ownerIssue": "HON-200",
+      "rationale": "Weak and reused password checks in the pinned extension are local; exposed-password range lookups call an external API from the client.",
+      "adrs": ["0009-premium-surface-scope.md"],
+      "sourcePin": {
+        "repository": "github:53538899",
+        "tag": "browser-v2026.6.1",
+        "commit": "723c075bf8b9f45c901e56195be8e94e43ed75a2",
+        "path": "browser extension source map audit recorded in docs/compatibility-matrix.md"
+      }
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/migrations.test.ts"],
+      "supportClaim": true,
+      "id": "migrations.ledger",
+      "kind": "migration_set",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "rationale": "Checked-in D1 migrations currently observed on main.",
+      "migrations": [
+        "0001_initial_schema.sql",
+        "0002_login_defenses.sql",
+        "0003_totp_login.sql",
+        "0004_totp_change.sql",
+        "0005_device_keys.sql",
+        "0006_cipher_attachments.sql",
+        "0007_audit_events.sql",
+        "0008_request_quotas.sql",
+        "0009_inquiry_messages.sql",
+        "0010_equivalent_domains.sql",
+        "0010a_inquiry_message_reconciliation.sql",
+        "0011_inquiry_inbox.sql",
+        "0012_auth_requests.sql",
+        "0013_auth_request_supersede.sql",
+        "0014_organizations.sql",
+        "0014a_kdf_population.sql",
+        "0016_user_key_rotation_wrapper_history.sql",
+        "0017_account_lifecycle.sql",
+        "0018_text_sends.sql"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-02",
+      "evidenceLevel": "fixture",
+      "evidence": ["docs/adr/0001-project-scope.md"],
+      "supportClaim": true,
+      "id": "adrs.ledger",
+      "kind": "adr_set",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "rationale": "Scope ADRs currently observed on main.",
+      "adrs": [
+        "0001-project-scope.md",
+        "0002-cloudflare-hono-d1-r2.md",
+        "0003-send-public-sharing-scope.md",
+        "0004-emergency-access-scope.md",
+        "0005-organizations-shared-vault-scope.md",
+        "0006-policy-management-scope.md",
+        "0007-collection-mutation-scope.md",
+        "0008-login-with-device-scope.md",
+        "0009-premium-surface-scope.md",
+        "0010-organizations-team-vault-product-line.md",
+        "0011-send-public-sharing-product-line.md",
+        "0012-webauthn-passkey-contract.md"
+      ]
+    }
+  ]
+}

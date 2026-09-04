@@ -1,0 +1,793 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T00:00:00Z",
+  "sourceKind": "official-tagged-source",
+  "refresh": {
+    "cadenceDays": 14,
+    "mode": "reviewed_diff",
+    "doesNotMutateClassifications": true,
+    "requiredBeforeRelease": true
+  },
+  "pins": {
+    "server": {
+      "repository": "github:46755185",
+      "tag": "v2026.6.1",
+      "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+    },
+    "web": {
+      "repository": "github:53538899",
+      "tag": "web-v2026.6.1",
+      "commit": "39f07436ca60e3f25eac47777671754f288a98f1"
+    },
+    "browser": {
+      "repository": "github:53538899",
+      "tag": "browser-v2026.6.1",
+      "commit": "723c075bf8b9f45c901e56195be8e94e43ed75a2"
+    },
+    "cli": {
+      "repository": "github:53538899",
+      "tag": "cli-v2026.6.0",
+      "commit": "e6293ff2bc85123e9baaa998cf1543030ec5d9f0"
+    }
+  },
+  "controllers": [
+    {
+      "tree": "commercial",
+      "path": "src/Scim/Controllers/InfoController.cs",
+      "blobSha": "9959bfb0a3780188b6b2c1fd2bd2260783201e71"
+    },
+    {
+      "tree": "commercial",
+      "path": "src/Scim/Controllers/v2/GroupsController.cs",
+      "blobSha": "88d6858cb8619d1167613822f6a6b5bea3ce3557"
+    },
+    {
+      "tree": "commercial",
+      "path": "src/Scim/Controllers/v2/UsersController.cs",
+      "blobSha": "e20271b7992294ab8a6ec2df5dd7fb4113bceb48"
+    },
+    {
+      "tree": "commercial",
+      "path": "src/Sso/Controllers/AccountController.cs",
+      "blobSha": "5ce2f1dc64649b20548f93f474337e940b7d5fc5"
+    },
+    {
+      "tree": "commercial",
+      "path": "src/Sso/Controllers/HomeController.cs",
+      "blobSha": "da30d5106dfbf0b837ec8be2f4c50933c80f5437"
+    },
+    {
+      "tree": "commercial",
+      "path": "src/Sso/Controllers/InfoController.cs",
+      "blobSha": "67794de750a63bca31d6f0d2451409fad15da11e"
+    },
+    {
+      "tree": "commercial",
+      "path": "src/Sso/Controllers/MetadataController.cs",
+      "blobSha": "ba9e350d1735b0d4fbfe26adf5560936547a3b9f"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/AdminConsole/Controllers/OrganizationsController.cs",
+      "blobSha": "c6c301da03cc7112c61a9a10fcaec0b9445ee84e"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/AdminConsole/Controllers/ProviderOrganizationsController.cs",
+      "blobSha": "217d6fc181d4efd3aee9fe56fd76adfe549f8b04"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/AdminConsole/Controllers/ProvidersController.cs",
+      "blobSha": "540dc7055c2f594656d4a1a31675ad0786a97281"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Auth/Controllers/LoginController.cs",
+      "blobSha": "7be161e6d950243b5ea540cea5b8f77920abf299"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Billing/Controllers/BusinessUnitConversionController.cs",
+      "blobSha": "9275f41932bb1750b30642256c809e7dc10e37e9"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Billing/Controllers/OrganizationPlanMigrationCohortsController.cs",
+      "blobSha": "cee783590826848881539dda08f2c2bce68e7f50"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Billing/Controllers/ProcessStripeEventsController.cs",
+      "blobSha": "80ad7fef4e2a50567fa5daf555074815384ace21"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Billing/Controllers/SubscriptionDiscountsController.cs",
+      "blobSha": "1f3261fbe66dba73a65dd429a1d6f930b8b496f6"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Controllers/ErrorController.cs",
+      "blobSha": "9216537ff9f0823653ccb86a326ce8d4b71181ea"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Controllers/HomeController.cs",
+      "blobSha": "958c7d17f724f85a66a1cf66350fad4b7a660964"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Controllers/InfoController.cs",
+      "blobSha": "dc41721de4688d64b8dff9a5fe295a7df242376d"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Controllers/ToolsController.cs",
+      "blobSha": "2dd6de89a0cdeba7f8bed29a01cc9c96d76dac82"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Admin/Controllers/UsersController.cs",
+      "blobSha": "5d63b0aeca6de7a1f9b42e1abd03608605108b07"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/BaseAdminConsoleController.cs",
+      "blobSha": "33efdb0c82535428f1580424d1c886894ee1e778"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/CollectionsController.cs",
+      "blobSha": "873845dd437849e6288887c42cfd281f499cda01"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/GroupsController.cs",
+      "blobSha": "bf7551817fb7ebb3f400c0ffdaa8f48e8262e220"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/OrganizationAuthRequestsController.cs",
+      "blobSha": "915a17ff54f170ea7711bf26c2ae2c9b62858af0"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/OrganizationConnectionsController.cs",
+      "blobSha": "18389755c57b0303009134dcff83920f3969d7f4"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/OrganizationDomainController.cs",
+      "blobSha": "534e27121cdc4a8f97f70af565e4e605b32ba863"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/OrganizationInviteLinksController.cs",
+      "blobSha": "a8f8387cbd6b3ee3311b0f02693741b61c74f5a7"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/OrganizationUsersController.cs",
+      "blobSha": "cc13c010231c4202d50904447963a282bf531bac"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/OrganizationsController.cs",
+      "blobSha": "ee4a31654c561175acf38e44b45e48d44a3df527"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/PoliciesController.cs",
+      "blobSha": "8f0e4e8952f7ac6e7a33378262db3685ef33fb80"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/ProviderClientsController.cs",
+      "blobSha": "5e240c1ef020064d5a17cc0ce7355b285b86c4bc"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/ProviderOrganizationsController.cs",
+      "blobSha": "f18b2916e7181b2d8f48e59be38ddcea7a0eef3d"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/ProviderUsersController.cs",
+      "blobSha": "7746b5cf246f2b9e93b0e55d8201ee5d047e0bdc"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Controllers/ProvidersController.cs",
+      "blobSha": "cae116fcd9c13f1d436692ee559f8b226479cbfb"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Public/Controllers/CollectionsController.cs",
+      "blobSha": "3eb6876d767902441af9f8f46f39b84fddf16e32"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Public/Controllers/GroupsController.cs",
+      "blobSha": "e2054dd4309355d4a016649ba321d25aed0f4116"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Public/Controllers/MembersController.cs",
+      "blobSha": "3db06f7a97660d9fee3fe082dfaa051d5cef43fa"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Public/Controllers/OrganizationController.cs",
+      "blobSha": "553120403363d8ffda33aed1a4b860afdf22bbde"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/AdminConsole/Public/Controllers/PoliciesController.cs",
+      "blobSha": "4d2be624403aa5a1facb365d0ebdfa7d0483b9ee"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Auth/Controllers/AccountsController.cs",
+      "blobSha": "0d23b2cb2504e8735c0b1fa3e5a248733fa82ff6"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Auth/Controllers/AuthRequestsController.cs",
+      "blobSha": "7e7169463bf77f4a41b845c47fde0685b61cf7fd"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Auth/Controllers/EmergencyAccessController.cs",
+      "blobSha": "4e9f9bf9685105f29b9d5ab4872f4e7418cf6b6d"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Auth/Controllers/TwoFactorController.cs",
+      "blobSha": "91ff038d98bd65c223d45d3289064a232c5aa83b"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Auth/Controllers/WebAuthnController.cs",
+      "blobSha": "de6f7e9ddce4d8ecd678097105a3bf0c7c4f64bd"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/AccountsBillingController.cs",
+      "blobSha": "243f4d3c53d78b838484ccc7e02e84d6a38d0c45"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/AccountsController.cs",
+      "blobSha": "1d895e28537ea0b96255401912988140ac934edd"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/BaseBillingController.cs",
+      "blobSha": "057c8309fb9681ad31e91f63cb923034652bf241"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/BaseProviderController.cs",
+      "blobSha": "782bffbc703e6232a1e5ecbdd7075f83e947511b"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/LicensesController.cs",
+      "blobSha": "29313bd4d858bac2c11229cb7fc00348bc83a271"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/OrganizationBillingController.cs",
+      "blobSha": "3d204ef5a5988abc73f5d23992f6ac054134c99f"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/OrganizationSponsorshipsController.cs",
+      "blobSha": "1ab06377bd79f8c78b857b07811046af586feeaa"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/OrganizationsController.cs",
+      "blobSha": "1af251a30668b37cd90ead836b8614e5829abd96"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/PlansController.cs",
+      "blobSha": "f9b52747808b5cffb2ed3898136c7d4ead4b42c0"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/PreviewInvoiceController.cs",
+      "blobSha": "106e72fe4447c5a4f1fde5bbfcc6c727c76d5843"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/ProviderBillingController.cs",
+      "blobSha": "dfa705a329b839e0e8d4f10e86e560c4e712231f"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/StripeController.cs",
+      "blobSha": "6cb10e3165010be8f26e944eb59728f2c8e7e3d9"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/VNext/AccountBillingVNextController.cs",
+      "blobSha": "76d14cce50c410e79e22f88e4653ab09d998dec2"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/VNext/OrganizationBillingVNextController.cs",
+      "blobSha": "0e34583e7443e549752d359479e9df1ce14c586a"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/VNext/ProviderBillingVNextController.cs",
+      "blobSha": "0ea9bad6821901ff8d87b977a167ee4ad9953f97"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/VNext/SelfHostedAccountBillingVNextController.cs",
+      "blobSha": "ccc1dd9734bb64ec74aa47bf9d2b0431c7888a7a"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Controllers/VNext/SelfHostedOrganizationBillingVNextController.cs",
+      "blobSha": "e6f0ee3bbd13d01d8db4a91bb807831e082d7972"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Billing/Public/Controllers/OrganizationController.cs",
+      "blobSha": "79033ba31ee820715e4933b70a53ebb36af17f8b"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Controllers/ConfigController.cs",
+      "blobSha": "9f38a644c2aa0ab2adaa45be3b5fc6e22f12fb06"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Controllers/DevicesController.cs",
+      "blobSha": "d54b3c7b8c5960de7bf5cb7cf063173c3dfda145"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Controllers/InfoController.cs",
+      "blobSha": "590a3006c04315de1272beff4cfaa38f27166fed"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Controllers/SelfHosted/SelfHostedOrganizationLicensesController.cs",
+      "blobSha": "147f2d52eef33a6b9d4826deb952802aa67a7448"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Controllers/SelfHosted/SelfHostedOrganizationSponsorshipsController.cs",
+      "blobSha": "67f21bdf37e07b591a4f0ef9b01a65c6bddbe471"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Controllers/SettingsController.cs",
+      "blobSha": "e872eeeeacb9caa19a2a4acdd6897887710450ed"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/EventsController.cs",
+      "blobSha": "f8de6334810a6b6a6b168595035ce7661668520b"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/HibpController.cs",
+      "blobSha": "80603845023dff5c43ea119f8c79be42ec0d2054"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/OrganizationIntegrationConfigurationController.cs",
+      "blobSha": "4296aa3eddcff1a72f691508fd8e5b109880beed"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/OrganizationIntegrationController.cs",
+      "blobSha": "31acbddd5237c3795b43f6aac1ad8c481a24a18c"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/OrganizationReportsController.cs",
+      "blobSha": "c8ccb70529e03eff91fb915536d7642d1b69ec8c"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/ReportsController.cs",
+      "blobSha": "3e9f2f0e0d6ad6397e59e4efe5c08d2429dd99ea"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/SlackIntegrationController.cs",
+      "blobSha": "e98ed0d3fa698c7f66fff328cf5766b64d63f6ad"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Controllers/TeamsIntegrationController.cs",
+      "blobSha": "b2bd55017ca88c58b92e47fc10e881c3b5559349"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Dirt/Public/Controllers/EventsController.cs",
+      "blobSha": "b7ace39503ead40088b2d84e9ad3dbbea7160534"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/KeyManagement/Controllers/AccountsKeyManagementController.cs",
+      "blobSha": "cf94c1e7f8191ba32994f5afb35a06127276d9c0"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/KeyManagement/Controllers/UsersController.cs",
+      "blobSha": "cfd2f8ee29df7ea627fd93939bbf50699ffe41f4"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/NotificationCenter/Controllers/NotificationsController.cs",
+      "blobSha": "9dc1505cb8d688381a471a5d31bc538043a79255"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Platform/Installations/Controllers/InstallationsController.cs",
+      "blobSha": "96cdc9d95cec4bede76c40b9871402f80b629b91"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Platform/Push/Controllers/PushController.cs",
+      "blobSha": "14c0a206362c45f1ff838602f2667da6dad679a6"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Platform/SsoCookieVendor/Controllers/SsoCookieVendorController.cs",
+      "blobSha": "03db3a01b3dbec69d5c9eb3d7e4dd23ec912bb38"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/AccessPoliciesController.cs",
+      "blobSha": "ad5d5e092b9aad6a0240468e02877988d5fef7b0"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/CountsController.cs",
+      "blobSha": "a37708d9ac722bf2f720c46a839ddd100d31dd0b"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/ProjectsController.cs",
+      "blobSha": "5dce032eceb4365eb6c6da3c41b0007835492308"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/RequestSMAccessController.cs",
+      "blobSha": "c9b393bb2c06cd6f35a6d9eb9d72c79547ddee37"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/SecretVersionsController.cs",
+      "blobSha": "86e2d1f7e9c16a2704d6bcc7e19d59ce5eab1e42"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/SecretsController.cs",
+      "blobSha": "dcfe1be11188530796331ec4e031511b9c79fd32"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/SecretsManagerEventsController.cs",
+      "blobSha": "0f467a4c78812c551ac6a51439fb57440747c89d"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/SecretsManagerPortingController.cs",
+      "blobSha": "7468586702e017a3314bb42344f7c4e4f35518dc"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/SecretsTrashController.cs",
+      "blobSha": "d791fa2341536ace590716c995f776632483cfc4"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/SecretsManager/Controllers/ServiceAccountsController.cs",
+      "blobSha": "0afdc3a1bf0f191fc5259f139f4aa62ca0742e53"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Tools/Controllers/ImportCiphersController.cs",
+      "blobSha": "3c52cbf94f029d63ff4a1a6a547d146dd9340fcf"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Tools/Controllers/OrganizationExportController.cs",
+      "blobSha": "ff0bff1150d78c870861a1a63f2bf253faaa98a8"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Tools/Controllers/SendsController.cs",
+      "blobSha": "99267e2b7ed09183f70622bb8cdd8740c851f12a"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Vault/Controllers/CiphersController.cs",
+      "blobSha": "6b91ed1b0f150eec8740cb63b51f57b898d55acc"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Vault/Controllers/FoldersController.cs",
+      "blobSha": "195931f60cbc53595c70825e90b6498d684130c2"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Vault/Controllers/SecurityTaskController.cs",
+      "blobSha": "efff200e864afa7dcd9635e2d59c11d6ec7b3946"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Api/Vault/Controllers/SyncController.cs",
+      "blobSha": "13eddbc98eb1d1694ad18e65b7c4235491a0406d"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Billing/Controllers/AppleController.cs",
+      "blobSha": "c08f1cfa6166a791eb1de8dcf3c9ce2fa6bdde86"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Billing/Controllers/BitPayController.cs",
+      "blobSha": "f55b4523afb1038abdea524aa656643972e8bfaf"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Billing/Controllers/InfoController.cs",
+      "blobSha": "16c0158442991fcb803b91cf2d72075c1b277c94"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Billing/Controllers/PayPalController.cs",
+      "blobSha": "70023b6bdb0c5b8b12e0f514734ddb0bf1fb1363"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Billing/Controllers/RecoveryController.cs",
+      "blobSha": "3f3dc4e650701db944a9671574548bc8caaf32b0"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Billing/Controllers/StripeController.cs",
+      "blobSha": "18f219811922dcbb15ca8044b5a4088f350fd308"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Events/Controllers/CollectController.cs",
+      "blobSha": "c76f57648a914dd65b605af0f5a0e45b87086874"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Events/Controllers/InfoController.cs",
+      "blobSha": "46f21a0f0cf78f1cc94c47e80adff691139813c4"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Icons/Controllers/ChangePasswordUriController.cs",
+      "blobSha": "935cda77df223c658e67f957f87fbd4227e196fc"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Icons/Controllers/IconsController.cs",
+      "blobSha": "0d32a8254b773067c906838ff73b88c3ab46375e"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Icons/Controllers/InfoController.cs",
+      "blobSha": "253ee7cc78015df158121e331f7fda17fb61b6c1"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Identity/Billing/Controller/AccountsController.cs",
+      "blobSha": "ca7517f3d0645de510cbbe121b4bd08b6ea4f613"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Identity/Controllers/AccountsController.cs",
+      "blobSha": "2bdab0318d33020eb77b733becaca72019220083"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Identity/Controllers/InfoController.cs",
+      "blobSha": "79dfd99c449199bc141d7b6e57e24c5a97659053"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Identity/Controllers/SsoController.cs",
+      "blobSha": "6f843d6ee766bc21908c5613e6dfc4500be9a8bf"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Notifications/Controllers/InfoController.cs",
+      "blobSha": "afd6911a8de1b6b19275e18e906b0949ee907982"
+    },
+    {
+      "tree": "oss",
+      "path": "src/Notifications/Controllers/SendController.cs",
+      "blobSha": "c663102b561098d8d1c7852b4d0de9fb4c536780"
+    },
+    {
+      "tree": "oss",
+      "path": "util/SeederApi/Controllers/InfoController.cs",
+      "blobSha": "347f51ef9ca55f1b4586a431cf37fac5d6744dd2"
+    },
+    {
+      "tree": "oss",
+      "path": "util/SeederApi/Controllers/QueryController.cs",
+      "blobSha": "2994ae78c67fa5b808a04f11bb0230e4549bf352"
+    },
+    {
+      "tree": "oss",
+      "path": "util/SeederApi/Controllers/SeedController.cs",
+      "blobSha": "251ed6cfa967fae39f6bc66fb8186a2cd9a0cfda"
+    }
+  ],
+  "tokenGrants": [
+    {
+      "id": "password",
+      "grant": "password",
+      "sourcePath": "src/Identity/IdentityServer/RequestValidators/ResourceOwnerPasswordValidator.cs",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+      }
+    },
+    {
+      "id": "refresh_token",
+      "grant": "refresh_token",
+      "sourcePath": "src/Identity/IdentityServer/RequestValidators/CustomTokenRequestValidator.cs",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+      }
+    },
+    {
+      "id": "send_access",
+      "grant": "send_access",
+      "sourcePath": "src/Identity/IdentityServer/Enums/CustomGrantTypes.cs",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+      }
+    },
+    {
+      "id": "webauthn",
+      "grant": "webauthn",
+      "sourcePath": "src/Identity/IdentityServer/Enums/CustomGrantTypes.cs",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "official.sends.list",
+      "method": "GET",
+      "path": "/api/sends",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.get",
+      "method": "GET",
+      "path": "/api/sends/:id",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.create",
+      "method": "POST",
+      "path": "/api/sends",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.file_v2",
+      "method": "POST",
+      "path": "/api/sends/file/v2",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.access_anonymous",
+      "method": "POST",
+      "path": "/api/sends/access/:id",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.access_file_anonymous",
+      "method": "POST",
+      "path": "/api/sends/:encodedSendId/access/file/:fileId",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.access_auth",
+      "method": "POST",
+      "path": "/api/sends/access/",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.access_file_auth",
+      "method": "POST",
+      "path": "/api/sends/access/file/:fileId",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.renew_file",
+      "method": "GET",
+      "path": "/api/sends/:id/file/:fileId",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.upload_file",
+      "method": "POST",
+      "path": "/api/sends/:id/file/:fileId",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.update",
+      "method": "PUT",
+      "path": "/api/sends/:id",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.remove_password",
+      "method": "PUT",
+      "path": "/api/sends/:id/remove-password",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.remove_auth",
+      "method": "PUT",
+      "path": "/api/sends/:id/remove-auth",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.delete",
+      "method": "DELETE",
+      "path": "/api/sends/:id",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.sends.azure_validate",
+      "method": "POST",
+      "path": "/api/sends/file/validate/azure",
+      "sourcePath": "src/Api/Tools/Controllers/SendsController.cs"
+    },
+    {
+      "id": "official.config.get",
+      "method": "GET",
+      "path": "/config",
+      "sourcePath": "src/Api/Controllers/ConfigController.cs"
+    },
+    {
+      "id": "official.sync.get",
+      "method": "GET",
+      "path": "/api/sync",
+      "sourcePath": "src/Api/Vault/Controllers/SyncController.cs"
+    },
+    {
+      "id": "official.hibp.breach",
+      "method": "GET",
+      "path": "/api/hibp/breach",
+      "sourcePath": "src/Api/Dirt/Controllers/HibpController.cs"
+    },
+    {
+      "id": "official.emergency_access.family",
+      "method": "ALL",
+      "path": "/api/emergency-access/*",
+      "sourcePath": "src/Api/Auth/Controllers/EmergencyAccessController.cs"
+    }
+  ]
+}
