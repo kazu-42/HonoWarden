@@ -45,7 +45,7 @@ inputs, not minor documentation notes.
   unverified.
 - Hosted billing, commercial licensing, provider/reseller portals,
   sponsorships, and multi-tenant hosted operation are rejected under
-  [ADR 0013](../adr/0013-hosted-billing-licensing-tenancy.md). The Android
+  [ADR 0014](../adr/0014-hosted-billing-licensing-tenancy.md). The Android
   startup read `GET /api/account/billing/vnext/subscription` returns a
   zero-cost canceled cart; that placeholder does not imply a paid subscription,
   entitlement, or hosted support contract. Remaining billing, license, plan,

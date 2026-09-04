@@ -124,7 +124,7 @@ pass environment-specific gates.
 
 ## Hosted Billing, Licensing, Provider, And Tenancy Boundary
 
-[ADR 0013](adr/0013-hosted-billing-licensing-tenancy.md) separates official-client
+[ADR 0014](adr/0014-hosted-billing-licensing-tenancy.md) separates official-client
 startup reads from commercial cloud workflows. The only implemented billing-shaped
 route is authenticated `GET /api/account/billing/vnext/subscription`, which
 returns a zero-cost canceled cart and cannot imply an active paid subscription,

@@ -1,4 +1,4 @@
-# ADR 0013: Hosted Billing, Licensing, Provider, And Tenancy Boundary
+# ADR 0014: Hosted Billing, Licensing, Provider, And Tenancy Boundary
 
 ## Status
 

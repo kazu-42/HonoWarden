@@ -10,7 +10,7 @@ import { FakeD1Database } from './support/fake-d1'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url).toString())
 
-const adrPath = 'docs/adr/0013-hosted-billing-licensing-tenancy.md'
+const adrPath = 'docs/adr/0014-hosted-billing-licensing-tenancy.md'
 const hostedCommerceMessage = 'This feature is unavailable on this server.'
 
 const canceledSubscription = {
@@ -118,7 +118,7 @@ describe('HON-199 hosted billing, licensing, provider, and tenancy boundary', ()
     expect(adr).toContain('nextCharge: null')
 
     for (const document of [adr, compatibility, limitations, threatModel]) {
-      expect(document).toContain('ADR 0013')
+      expect(document).toContain('ADR 0014')
       expect(document).toMatch(/hosted billing/i)
       expect(document).toMatch(/provider\/reseller/i)
       expect(document).toMatch(/multi-tenant/i)
