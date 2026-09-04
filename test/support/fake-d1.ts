@@ -77,6 +77,7 @@ type FakeD1DatabaseOptions = {
   collections?: Record<string, unknown>[]
   collectionUsers?: Record<string, unknown>[]
   collectionCiphers?: Record<string, unknown>[]
+  organizationCipherBatchFailureAt?: 'cipher' | 'mappings'
 }
 
 export type FakeAuditEventInsert = {
@@ -244,6 +245,24 @@ export class FakeD1Database {
             options,
             boundValues,
           ) as T | null
+        }
+
+        if (
+          query.includes('COUNT(DISTINCT collection.id) as count') &&
+          query.includes('membership.status = 2') &&
+          query.includes('membership.type = 0') &&
+          query.includes('collection_user.manage = 1')
+        ) {
+          const row = {
+            count: findManagedOrganizationCollectionIds(
+              options,
+              String(boundValues[0] ?? ''),
+              String(boundValues[1] ?? ''),
+              boundValues.slice(2).map(String),
+            ).length,
+          }
+
+          return (column ? row[column as keyof typeof row] : row) as T
         }
 
         if (
@@ -1379,6 +1398,13 @@ export class FakeD1Database {
       ) as D1Result<T>[]
     }
 
+    if (isOrganizationCipherTransitionBatch(fakeStatements)) {
+      return applyOrganizationCipherTransitionBatch(
+        this.options,
+        fakeStatements,
+      ) as D1Result<T>[]
+    }
+
     if (
       fakeStatements.every(
         (statement) =>
@@ -2399,6 +2425,207 @@ function applyOrganizationCollectionDeleteBatch(
     restoreCollectionCiphers()
     throw error
   }
+}
+
+function isOrganizationCipherTransitionBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  const mutation = statements[0]?.__fakeQuery ?? ''
+  const mappings = statements[1]?.__fakeQuery ?? ''
+
+  return (
+    statements.length === 2 &&
+    (mutation.includes('INSERT INTO ciphers') ||
+      /UPDATE\s+ciphers/.test(mutation)) &&
+    mutation.includes('COUNT(DISTINCT collection.id)') &&
+    mappings.includes('INSERT INTO collection_ciphers') &&
+    mappings.includes('changes() = 1')
+  )
+}
+
+function applyOrganizationCipherTransitionBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+): D1Result[] {
+  const restoreCiphers = snapshotFakeRows(options.ciphers)
+  const restoreMappings = snapshotFakeRows(options.collectionCiphers)
+
+  try {
+    const mutationChanges = applyOrganizationCipherMutation(
+      options,
+      statements[0] as FakePreparedStatement,
+    )
+    if (
+      mutationChanges === 1 &&
+      options.organizationCipherBatchFailureAt === 'cipher'
+    ) {
+      throw new Error('Organization cipher mutation failed')
+    }
+
+    const mappingChanges =
+      mutationChanges === 1
+        ? applyOrganizationCipherMappings(
+            options,
+            statements[1] as FakePreparedStatement,
+          )
+        : 0
+    if (
+      mutationChanges === 1 &&
+      options.organizationCipherBatchFailureAt === 'mappings'
+    ) {
+      throw new Error('Organization cipher mapping insert failed')
+    }
+
+    return [mutationChanges, mappingChanges].map((changes) => ({
+      success: true,
+      results: [],
+      meta: { ...fakeMeta, changes },
+    }))
+  } catch (error) {
+    restoreCiphers()
+    restoreMappings()
+    throw error
+  }
+}
+
+function applyOrganizationCipherMutation(
+  options: FakeD1DatabaseOptions,
+  statement: FakePreparedStatement,
+): number {
+  const values = statement.__fakeBoundValues
+  const query = statement.__fakeQuery
+  const requestedCollectionIds = values.slice(12, -1).map(String)
+  const expectedCollectionCount = Number(values.at(-1))
+  const guardUserId = String(values[10] ?? '')
+  const guardOrganizationId = String(values[11] ?? '')
+  const managedCollectionIds = findManagedOrganizationCollectionIds(
+    options,
+    guardUserId,
+    guardOrganizationId,
+    requestedCollectionIds,
+  )
+
+  if (
+    requestedCollectionIds.length !== expectedCollectionCount ||
+    managedCollectionIds.length !== expectedCollectionCount
+  ) {
+    return 0
+  }
+
+  if (query.includes('INSERT INTO ciphers')) {
+    const id = String(values[0] ?? '')
+    const userId = String(values[1] ?? '')
+    const organizationId = String(values[8] ?? '')
+    if (userId !== guardUserId || organizationId !== guardOrganizationId) {
+      return 0
+    }
+    if (options.ciphers?.some((row) => row.id === id)) {
+      throw new Error('Duplicate cipher')
+    }
+
+    options.ciphers?.push({
+      id,
+      userId,
+      folderId: null,
+      type: Number(values[2]),
+      favorite: Number(values[3]),
+      encryptedJson: String(values[4]),
+      revisionDate: String(values[5]),
+      createdAt: String(values[6]),
+      updatedAt: String(values[7]),
+      deletedAt: null,
+      organizationId,
+      cipherKey: String(values[9]),
+    })
+    return 1
+  }
+
+  const id = String(values[7] ?? '')
+  const userId = String(values[8] ?? '')
+  const expectedRevisionDate = String(values[9] ?? '')
+  const row = options.ciphers?.find(
+    (candidate) =>
+      candidate.id === id &&
+      candidate.userId === userId &&
+      candidate.organizationId == null &&
+      candidate.deletedAt == null &&
+      candidate.revisionDate === expectedRevisionDate &&
+      !(options.collectionCiphers ?? []).some(
+        (mapping) => mapping.cipherId === id,
+      ) &&
+      !(options.attachments ?? []).some(
+        (attachment) => attachment.cipherId === id,
+      ),
+  )
+  if (
+    !row ||
+    userId !== guardUserId ||
+    String(values[5] ?? '') !== guardOrganizationId
+  ) {
+    return 0
+  }
+
+  Object.assign(row, {
+    folderId: null,
+    type: Number(values[0]),
+    favorite: Number(values[1]),
+    encryptedJson: String(values[2]),
+    revisionDate: String(values[3]),
+    updatedAt: String(values[4]),
+    organizationId: String(values[5]),
+    cipherKey: String(values[6]),
+  })
+  return 1
+}
+
+function applyOrganizationCipherMappings(
+  options: FakeD1DatabaseOptions,
+  statement: FakePreparedStatement,
+): number {
+  const values = statement.__fakeBoundValues
+  const cipherId = String(values[0] ?? '')
+  const userId = String(values[1] ?? '')
+  const organizationId = String(values[2] ?? '')
+  const requestedCollectionIds = values.slice(3, -5).map(String)
+  const [transitionedCipherId, transitionedUserId, transitionedOrganizationId] =
+    values.slice(-5, -2).map(String)
+  const revisionDate = String(values.at(-2) ?? '')
+  const updatedAt = String(values.at(-1) ?? '')
+  const managedCollectionIds = findManagedOrganizationCollectionIds(
+    options,
+    userId,
+    organizationId,
+    requestedCollectionIds,
+  )
+  const cipher = options.ciphers?.find(
+    (row) =>
+      row.id === transitionedCipherId &&
+      row.userId === transitionedUserId &&
+      row.organizationId === transitionedOrganizationId &&
+      row.revisionDate === revisionDate &&
+      row.updatedAt === updatedAt,
+  )
+  if (
+    !cipher ||
+    cipherId !== transitionedCipherId ||
+    userId !== transitionedUserId ||
+    organizationId !== transitionedOrganizationId
+  ) {
+    return 0
+  }
+
+  for (const collectionId of managedCollectionIds) {
+    const duplicate = options.collectionCiphers?.some(
+      (mapping) =>
+        mapping.collectionId === collectionId && mapping.cipherId === cipherId,
+    )
+    if (duplicate) {
+      throw new Error('Duplicate collection cipher')
+    }
+    options.collectionCiphers?.push({ collectionId, cipherId })
+  }
+
+  return managedCollectionIds.length
 }
 
 function snapshotFakeRows(

@@ -888,8 +888,6 @@ describe('HonoWarden app', () => {
       { method: 'GET', path: '/api/organizations' },
       { method: 'POST', path: '/api/collections' },
       { method: 'POST', path: '/api/collections/collection-id' },
-      { method: 'POST', path: '/api/ciphers/create' },
-      { method: 'PUT', path: '/api/ciphers/cipher-id/share' },
       { method: 'PUT', path: '/api/ciphers/cipher-id/collections_v2' },
       { method: 'PUT', path: '/api/ciphers/share' },
       { method: 'POST', path: '/api/auth-requests' },
@@ -11933,6 +11931,709 @@ describe('HonoWarden app', () => {
     expect(readResponse.status).toBe(404)
   })
 
+  it('creates an organization cipher and collection assignments atomically', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const ciphers: Record<string, unknown>[] = []
+    const collectionCiphers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers,
+      collectionCiphers,
+      ...access.records,
+    })
+    const requestCipher = {
+      ...cipherCreateBody(),
+      folderId: null,
+      organizationId: access.organizationId,
+      key: '2.opaque-created-cipher-key',
+      encryptedFor: user.id,
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const env = {
+      DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const response = await app.request(
+      '/api/ciphers/create',
+      {
+        method: 'POST',
+        headers: {
+          ...authorization,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'organization-cipher-create-request',
+        },
+        body: JSON.stringify({
+          cipher: requestCipher,
+          collectionIds: [access.collectionId],
+        }),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    const created = (await response.json()) as Record<string, unknown>
+    expect(created).toMatchObject({
+      id: expect.any(String),
+      organizationId: access.organizationId,
+      folderId: null,
+      key: requestCipher.key,
+      collectionIds: [access.collectionId],
+      edit: true,
+      viewPassword: true,
+      name: requestCipher.name,
+    })
+    const cipherId = String(created.id)
+    expect(ciphers).toEqual([
+      expect.objectContaining({
+        id: cipherId,
+        userId: user.id,
+        folderId: null,
+        organizationId: access.organizationId,
+        cipherKey: requestCipher.key,
+      }),
+    ])
+    expect(JSON.parse(String(ciphers[0]?.encryptedJson))).toEqual(requestCipher)
+    expect(collectionCiphers).toEqual([
+      { collectionId: access.collectionId, cipherId },
+    ])
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'cipher.create',
+        outcome: 'success',
+        requestId: 'organization-cipher-create-request',
+        actorUserId: user.id,
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'cipher',
+        targetId: cipherId,
+        contextJson: JSON.stringify({
+          resultStatus: 'created',
+          operation: 'organization_create',
+          cipherType: 1,
+          favorite: true,
+          collectionCount: 1,
+        }),
+      }),
+    ])
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      ciphers: [
+        expect.objectContaining({
+          id: cipherId,
+          organizationId: access.organizationId,
+          key: requestCipher.key,
+          collectionIds: [access.collectionId],
+        }),
+      ],
+    })
+  })
+
+  it('shares an active personal cipher while preserving its id', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const personalCipher = cipherRecord()
+    const ciphers: Record<string, unknown>[] = [personalCipher]
+    const collectionCiphers: Record<string, unknown>[] = []
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers,
+      collectionCiphers,
+      ...access.records,
+    })
+    const requestCipher = {
+      ...cipherCreateBody(),
+      folderId: null,
+      favorite: false,
+      name: '2.reencrypted-organization-cipher',
+      organizationId: access.organizationId,
+      key: '2.opaque-shared-cipher-key',
+      encryptedFor: user.id,
+      lastKnownRevisionDate: personalCipher.revisionDate,
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const env = {
+      DB: database,
+      HONOWARDEN_AUDIT_LOGS: 'true',
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+
+    const response = await app.request(
+      `/api/ciphers/${personalCipher.id}/share`,
+      {
+        method: 'PUT',
+        headers: {
+          ...authorization,
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'organization-cipher-share-request',
+        },
+        body: JSON.stringify({
+          cipher: requestCipher,
+          collectionIds: [access.collectionId],
+        }),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      id: personalCipher.id,
+      organizationId: access.organizationId,
+      folderId: null,
+      key: requestCipher.key,
+      collectionIds: [access.collectionId],
+      favorite: false,
+      name: requestCipher.name,
+    })
+    expect(ciphers).toEqual([
+      expect.objectContaining({
+        id: personalCipher.id,
+        userId: user.id,
+        folderId: null,
+        organizationId: access.organizationId,
+        cipherKey: requestCipher.key,
+      }),
+    ])
+    expect(JSON.parse(String(ciphers[0]?.encryptedJson))).toEqual(requestCipher)
+    expect(collectionCiphers).toEqual([
+      { collectionId: access.collectionId, cipherId: personalCipher.id },
+    ])
+    expect(database.auditEventInserts).toEqual([
+      expect.objectContaining({
+        name: 'cipher.update',
+        outcome: 'success',
+        requestId: 'organization-cipher-share-request',
+        actorUserId: user.id,
+        actorDeviceIdentifier: 'fixture-device',
+        targetType: 'cipher',
+        targetId: personalCipher.id,
+        contextJson: JSON.stringify({
+          resultStatus: 'updated',
+          operation: 'share_to_organization',
+          cipherType: 1,
+          favorite: false,
+          collectionCount: 1,
+        }),
+      }),
+    ])
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      ciphers: [
+        expect.objectContaining({
+          id: personalCipher.id,
+          organizationId: access.organizationId,
+          key: requestCipher.key,
+          collectionIds: [access.collectionId],
+        }),
+      ],
+    })
+  })
+
+  it('fails closed when organization cipher transition audit persistence is unavailable', async () => {
+    const auditLog = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const authorization = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    }
+    const organizationCipher = {
+      ...cipherCreateBody(),
+      folderId: null,
+      organizationId: access.organizationId,
+      key: '2.opaque-audit-failure-cipher-key',
+      encryptedFor: user.id,
+    }
+
+    for (const operation of ['create', 'share'] as const) {
+      const personalCipher = cipherRecord()
+      const ciphers: Record<string, unknown>[] =
+        operation === 'create' ? [] : [personalCipher]
+      const response = await app.request(
+        operation === 'create'
+          ? '/api/ciphers/create'
+          : `/api/ciphers/${personalCipher.id}/share`,
+        {
+          method: operation === 'create' ? 'POST' : 'PUT',
+          headers: {
+            ...authorization,
+            'X-Request-Id': `organization-cipher-${operation}-audit-failure`,
+          },
+          body: JSON.stringify({
+            cipher: {
+              ...organizationCipher,
+              ...(operation === 'share'
+                ? { lastKnownRevisionDate: personalCipher.revisionDate }
+                : {}),
+            },
+            collectionIds: [access.collectionId],
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            auditEventInsertThrows: true,
+            ciphers,
+            collectionCiphers: [],
+            ...access.records,
+          }),
+          HONOWARDEN_AUDIT_LOGS: 'true',
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(503)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'database_unavailable' },
+        requestId: `organization-cipher-${operation}-audit-failure`,
+      })
+      expect(ciphers).toHaveLength(1)
+      expect(ciphers[0]).toMatchObject({
+        organizationId: access.organizationId,
+      })
+    }
+
+    expect(auditLog).toHaveBeenCalledTimes(2)
+    auditLog.mockRestore()
+  })
+
+  it('rejects malformed organization cipher transitions before mutation', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const personalCipher = cipherRecord()
+    const ciphers: Record<string, unknown>[] = [personalCipher]
+    const collectionCiphers: Record<string, unknown>[] = []
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        authUser: user,
+        ciphers,
+        collectionCiphers,
+        ...access.records,
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const validCipher = {
+      ...cipherCreateBody(),
+      folderId: null,
+      organizationId: access.organizationId,
+      key: '2.opaque-organization-cipher-key',
+      encryptedFor: user.id,
+    }
+    const requests = [
+      {
+        method: 'POST',
+        path: '/api/ciphers/create',
+        body: { cipher: validCipher, collectionIds: [] },
+      },
+      {
+        method: 'POST',
+        path: '/api/ciphers/create',
+        body: {
+          cipher: validCipher,
+          collectionIds: [access.collectionId, ` ${access.collectionId} `],
+        },
+      },
+      {
+        method: 'POST',
+        path: '/api/ciphers/create',
+        body: {
+          cipher: { ...validCipher, encryptedFor: 'different-user-id' },
+          collectionIds: [access.collectionId],
+        },
+      },
+      {
+        method: 'POST',
+        path: '/api/ciphers/create',
+        body: {
+          cipher: { ...validCipher, folderId: 'personal-folder-id' },
+          collectionIds: [access.collectionId],
+        },
+      },
+      {
+        method: 'PUT',
+        path: `/api/ciphers/${personalCipher.id}/share`,
+        body: {
+          cipher: validCipher,
+          collectionIds: [access.collectionId],
+        },
+      },
+    ]
+
+    for (const request of requests) {
+      const response = await app.request(
+        request.path,
+        {
+          method: request.method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request.body),
+        },
+        env,
+      )
+
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'invalid_request' },
+      })
+    }
+
+    expect(ciphers).toEqual([personalCipher])
+    expect(collectionCiphers).toEqual([])
+  })
+
+  it('does not disclose inaccessible organization collection relationships', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const scenarios = [
+      {
+        name: 'cross-organization collection',
+        requestedCollectionId: null,
+        mutate(
+          records: ReturnType<
+            typeof organizationCipherAccessFixture
+          >['records'],
+        ) {
+          records.collections[0]!.organizationId = 'different-organization-id'
+        },
+      },
+      {
+        name: 'non-confirmed membership',
+        requestedCollectionId: null,
+        mutate(
+          records: ReturnType<
+            typeof organizationCipherAccessFixture
+          >['records'],
+        ) {
+          records.organizationUsers[0]!.status = 1
+        },
+      },
+      {
+        name: 'confirmed non-owner membership',
+        requestedCollectionId: null,
+        mutate(
+          records: ReturnType<
+            typeof organizationCipherAccessFixture
+          >['records'],
+        ) {
+          records.organizationUsers[0]!.type = 1
+        },
+      },
+      {
+        name: 'collection without manage access',
+        requestedCollectionId: null,
+        mutate(
+          records: ReturnType<
+            typeof organizationCipherAccessFixture
+          >['records'],
+        ) {
+          records.collectionUsers[0]!.manage = 0
+        },
+      },
+      {
+        name: 'unknown collection',
+        requestedCollectionId: 'missing-collection-id',
+        mutate() {},
+      },
+    ]
+
+    for (const scenario of scenarios) {
+      const access = organizationCipherAccessFixture(user.id)
+      scenario.mutate(access.records)
+      const ciphers: Record<string, unknown>[] = []
+      const collectionCiphers: Record<string, unknown>[] = []
+      const response = await app.request(
+        '/api/ciphers/create',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            cipher: {
+              ...cipherCreateBody(),
+              folderId: null,
+              organizationId: access.organizationId,
+              key: '2.opaque-organization-cipher-key',
+            },
+            collectionIds: [
+              scenario.requestedCollectionId ?? access.collectionId,
+            ],
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers,
+            collectionCiphers,
+            ...access.records,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status, scenario.name).toBe(404)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'collection_not_found' },
+      })
+      expect(ciphers, scenario.name).toEqual([])
+      expect(collectionCiphers, scenario.name).toEqual([])
+    }
+  })
+
+  it('does not disclose an ineligible personal cipher share source', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const sources = [
+      { ...cipherRecord(), userId: 'different-user-id' },
+      {
+        ...cipherRecord(),
+        organizationId: access.organizationId,
+        cipherKey: '2.existing-organization-key',
+      },
+      {
+        ...cipherRecord(),
+        deletedAt: '2026-07-06T00:06:00.000Z',
+      },
+    ]
+
+    for (const source of sources) {
+      const sourceSnapshot = { ...source }
+      const ciphers: Record<string, unknown>[] = [source]
+      const collectionCiphers: Record<string, unknown>[] = []
+      const response = await app.request(
+        `/api/ciphers/${source.id}/share`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            cipher: {
+              ...cipherCreateBody(),
+              folderId: null,
+              organizationId: access.organizationId,
+              key: '2.opaque-shared-cipher-key',
+              lastKnownRevisionDate: source.revisionDate,
+            },
+            collectionIds: [access.collectionId],
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: user,
+            ciphers,
+            collectionCiphers,
+            ...access.records,
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        },
+      )
+
+      expect(response.status).toBe(404)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'cipher_not_found' },
+      })
+      expect(ciphers).toEqual([sourceSnapshot])
+      expect(collectionCiphers).toEqual([])
+    }
+  })
+
+  it('leaves an attachment-bearing personal cipher unchanged while attachment sharing is deferred', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const personalCipher = cipherRecord()
+    const attachment = {
+      ...attachmentRecord(),
+      userId: user.id,
+      cipherId: personalCipher.id,
+    }
+    const cipherSnapshot = { ...personalCipher }
+    const attachmentSnapshot = { ...attachment }
+    const ciphers: Record<string, unknown>[] = [personalCipher]
+    const attachments: Record<string, unknown>[] = [attachment]
+    const collectionCiphers: Record<string, unknown>[] = []
+    const response = await app.request(
+      `/api/ciphers/${personalCipher.id}/share`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cipher: {
+            ...cipherCreateBody(),
+            folderId: null,
+            organizationId: access.organizationId,
+            key: '2.opaque-shared-cipher-key',
+            lastKnownRevisionDate: personalCipher.revisionDate,
+          },
+          collectionIds: [access.collectionId],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers,
+          attachments,
+          collectionCiphers,
+          ...access.records,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'cipher_not_found' },
+    })
+    expect(ciphers).toEqual([cipherSnapshot])
+    expect(attachments).toEqual([attachmentSnapshot])
+    expect(collectionCiphers).toEqual([])
+  })
+
+  it('returns a conflict without mutating a stale personal cipher', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const personalCipher = cipherRecord()
+    const cipherSnapshot = { ...personalCipher }
+    const ciphers: Record<string, unknown>[] = [personalCipher]
+    const collectionCiphers: Record<string, unknown>[] = []
+    const response = await app.request(
+      `/api/ciphers/${personalCipher.id}/share`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cipher: {
+            ...cipherCreateBody(),
+            folderId: null,
+            organizationId: access.organizationId,
+            key: '2.opaque-shared-cipher-key',
+            lastKnownRevisionDate: '2026-07-06T00:00:00.000Z',
+          },
+          collectionIds: [access.collectionId],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers,
+          collectionCiphers,
+          ...access.records,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'revision_conflict' },
+    })
+    expect(ciphers).toEqual([cipherSnapshot])
+    expect(collectionCiphers).toEqual([])
+  })
+
+  it('rolls back organization cipher create and share batch failures', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const access = organizationCipherAccessFixture(user.id)
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+    const requestCipher = {
+      ...cipherCreateBody(),
+      folderId: null,
+      organizationId: access.organizationId,
+      key: '2.opaque-organization-cipher-key',
+    }
+    const createdCiphers: Record<string, unknown>[] = []
+    const createdMappings: Record<string, unknown>[] = []
+    const createResponse = await app.request(
+      '/api/ciphers/create',
+      {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cipher: requestCipher,
+          collectionIds: [access.collectionId],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: createdCiphers,
+          collectionCiphers: createdMappings,
+          organizationCipherBatchFailureAt: 'mappings',
+          ...access.records,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(createResponse.status).toBe(503)
+    expect(createdCiphers).toEqual([])
+    expect(createdMappings).toEqual([])
+
+    const personalCipher = cipherRecord()
+    const cipherSnapshot = { ...personalCipher }
+    const sharedCiphers: Record<string, unknown>[] = [personalCipher]
+    const sharedMappings: Record<string, unknown>[] = []
+    const shareResponse = await app.request(
+      `/api/ciphers/${personalCipher.id}/share`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cipher: {
+            ...requestCipher,
+            lastKnownRevisionDate: personalCipher.revisionDate,
+          },
+          collectionIds: [access.collectionId],
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: sharedCiphers,
+          collectionCiphers: sharedMappings,
+          organizationCipherBatchFailureAt: 'mappings',
+          ...access.records,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(shareResponse.status).toBe(503)
+    expect(sharedCiphers).toEqual([cipherSnapshot])
+    expect(sharedMappings).toEqual([])
+  })
+
   it('creates a login cipher for the authenticated user', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
@@ -16101,6 +16802,63 @@ function cipherRecord() {
     revisionDate: '2026-07-06T00:05:00.000Z',
     createdAt: '2026-07-06T00:04:00.000Z',
     deletedAt: null,
+  }
+}
+
+function organizationCipherAccessFixture(userId: string) {
+  const organizationId = 'organization-id'
+  const organizationUserId = 'organization-user-id'
+  const collectionId = 'collection-id'
+
+  return {
+    organizationId,
+    organizationUserId,
+    collectionId,
+    records: {
+      organizations: [
+        {
+          id: organizationId,
+          name: 'Example Organization',
+          billingEmail: 'billing@example.test',
+          planType: 0,
+          publicKey: 'opaque-org-public-key',
+          privateKey: '2.opaque-org-private-key',
+          enabled: 1,
+          useTotp: 1,
+          revisionDate: '2026-07-06T00:01:00.000Z',
+        },
+      ],
+      organizationUsers: [
+        {
+          id: organizationUserId,
+          organizationId,
+          userId,
+          orgKey: '2.member-wrapped-org-key',
+          status: 2,
+          type: 0,
+          permissions: null,
+        },
+      ],
+      collections: [
+        {
+          id: collectionId,
+          organizationId,
+          encryptedName: '2.collection-name',
+          externalId: null,
+          type: 0,
+          revisionDate: '2026-07-06T00:02:00.000Z',
+        },
+      ],
+      collectionUsers: [
+        {
+          collectionId,
+          organizationUserId,
+          readOnly: 0,
+          hidePasswords: 0,
+          manage: 1,
+        },
+      ],
+    },
   }
 }
 

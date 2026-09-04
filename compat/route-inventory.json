@@ -655,7 +655,37 @@
       ]
     },
     {
-      "lastReviewedAt": "2026-09-02",
+      "lastReviewedAt": "2026-09-04",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts"],
+      "supportClaim": true,
+      "id": "ciphers.organization_create_share",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-139",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Vault/Controllers/CiphersController.cs"
+      },
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/api/ciphers/create"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/ciphers/:id/share"
+        }
+      ],
+      "honowardenBehavior": "owner-authenticated organization create and single-share atomic transitions",
+      "roadmapAnchors": ["Collections sharing", "Organizations"],
+      "adrs": ["0010-organizations-team-vault-product-line.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-04",
       "evidenceLevel": "local_api",
       "evidence": ["test/app.test.ts"],
       "supportClaim": false,
@@ -688,7 +718,7 @@
           "path": "/api/ciphers/:id/collections_v2"
         }
       ],
-      "honowardenBehavior": "501 unsupported_feature",
+      "honowardenBehavior": "501 unsupported_feature for bulk share, collections_v2, and remaining methods",
       "roadmapAnchors": ["Collections sharing", "Organizations"],
       "adrs": [
         "0005-organizations-shared-vault-scope.md",

@@ -193,6 +193,7 @@ import {
   bulkRestoreCiphers,
   bulkSoftDeleteCiphers,
   createCipher,
+  createOrganizationCipher,
   findAccessibleCipherById,
   findCipherById,
   listAccessibleCiphersByUser,
@@ -201,8 +202,10 @@ import {
   permanentlyDeleteCipher,
   resolveCipherAccess,
   restoreCipher,
+  sharePersonalCipherWithOrganization,
   softDeleteCipher,
   updateCipher,
+  validateManagedOrganizationCollections,
 } from './repositories/cipher-repository'
 import type {
   AccessibleCipherRecord,
@@ -1771,8 +1774,10 @@ app.get('/api/collections/:id', async (c) => {
 })
 app.all('/api/collections', unsupportedAlphaFeature)
 app.all('/api/collections/*', unsupportedAlphaFeature)
+app.post('/api/ciphers/create', createOrganizationCipherRoute)
 app.all('/api/ciphers/create', unsupportedAlphaFeature)
 app.all('/api/ciphers/share', unsupportedAlphaFeature)
+app.put('/api/ciphers/:id/share', sharePersonalCipherRoute)
 app.all('/api/ciphers/:id/share', unsupportedAlphaFeature)
 app.all('/api/ciphers/:id/collections_v2', unsupportedAlphaFeature)
 app.all('/api/emergency-access', unsupportedPremiumFeature)
@@ -6288,6 +6293,189 @@ app.post('/api/ciphers', async (c) => {
     )
   }
 })
+
+async function createOrganizationCipherRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const request = parseOrganizationCipherTransitionRequestBody(
+    await readJsonBody(c.req.raw),
+    false,
+  )
+  if (
+    !request.ok ||
+    (request.encryptedFor !== null && request.encryptedFor !== auth.user.id)
+  ) {
+    return invalidOrganizationCipherRequest(c)
+  }
+
+  try {
+    const hasCollectionAccess = await validateManagedOrganizationCollections(
+      c.env.DB,
+      {
+        userId: auth.user.id,
+        organizationId: request.organizationId,
+        collectionIds: request.collectionIds,
+      },
+    )
+    if (!hasCollectionAccess) {
+      return c.json(collectionNotFoundError(c.get('requestId')), 404)
+    }
+
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await createOrganizationCipher(c.env.DB, {
+      id,
+      userId: auth.user.id,
+      organizationId: request.organizationId,
+      collectionIds: request.collectionIds,
+      type: request.cipher.type,
+      favorite: request.cipher.favorite,
+      encryptedJson: request.cipher.encryptedJson,
+      cipherKey: request.cipherKey,
+      now,
+    })
+    const cipher = await findAccessibleCipherById(c.env.DB, {
+      id,
+      userId: auth.user.id,
+    })
+    if (!cipher) {
+      throw new Error('Committed organization cipher was not readable.')
+    }
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'cipher.create',
+      outcome: 'success',
+      target: {
+        type: 'cipher',
+        id: cipher.id,
+      },
+      context: {
+        resultStatus: 'created',
+        operation: 'organization_create',
+        cipherType: cipher.type,
+        favorite: cipher.favorite,
+        collectionCount: request.collectionIds.length,
+      },
+    })
+
+    return c.json(buildCipherResponse(cipher))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Organization cipher creation failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function sharePersonalCipherRoute(c: AppContext) {
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const cipherId = c.req.param('id')
+  if (!cipherId) {
+    return invalidOrganizationCipherRequest(c)
+  }
+
+  const request = parseOrganizationCipherTransitionRequestBody(
+    await readJsonBody(c.req.raw),
+    true,
+  )
+  if (
+    !request.ok ||
+    request.expectedRevisionDate === null ||
+    (request.encryptedFor !== null && request.encryptedFor !== auth.user.id)
+  ) {
+    return invalidOrganizationCipherRequest(c)
+  }
+
+  try {
+    const hasCollectionAccess = await validateManagedOrganizationCollections(
+      c.env.DB,
+      {
+        userId: auth.user.id,
+        organizationId: request.organizationId,
+        collectionIds: request.collectionIds,
+      },
+    )
+    if (!hasCollectionAccess) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    const result = await sharePersonalCipherWithOrganization(c.env.DB, {
+      id: cipherId,
+      userId: auth.user.id,
+      organizationId: request.organizationId,
+      collectionIds: request.collectionIds,
+      type: request.cipher.type,
+      favorite: request.cipher.favorite,
+      encryptedJson: request.cipher.encryptedJson,
+      cipherKey: request.cipherKey,
+      expectedRevisionDate: request.expectedRevisionDate,
+      now: new Date().toISOString(),
+    })
+    if (result.status === 'not_found') {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+    if (result.status === 'conflict') {
+      return c.json(revisionConflictError(c.get('requestId')), 409)
+    }
+
+    const cipher = await findAccessibleCipherById(c.env.DB, {
+      id: cipherId,
+      userId: auth.user.id,
+    })
+    if (!cipher) {
+      throw new Error('Committed shared cipher was not readable.')
+    }
+
+    await emitVaultMutationAuditEvent(c, auth, {
+      name: 'cipher.update',
+      outcome: 'success',
+      target: {
+        type: 'cipher',
+        id: cipher.id,
+      },
+      context: {
+        resultStatus: 'updated',
+        operation: 'share_to_organization',
+        cipherType: cipher.type,
+        favorite: cipher.favorite,
+        collectionCount: request.collectionIds.length,
+      },
+    })
+
+    return c.json(buildCipherResponse(cipher))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Cipher sharing failed.',
+      ),
+      503,
+    )
+  }
+}
+
+function invalidOrganizationCipherRequest(c: AppContext) {
+  return c.json(
+    apiError(
+      c.get('requestId'),
+      'invalid_request',
+      'Organization cipher payload is invalid.',
+    ),
+    400,
+  )
+}
 
 app.get('/api/ciphers', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -11285,6 +11473,94 @@ function parseCipherBulkMoveRequestBody(body: unknown):
     ids: request.ids,
     folderId: body.folderId.trim(),
   }
+}
+
+function parseOrganizationCipherTransitionRequestBody(
+  body: unknown,
+  requireRevision: boolean,
+):
+  | {
+      ok: true
+      cipher: {
+        encryptedJson: string
+        favorite: boolean
+        type: 1 | 2
+      }
+      organizationId: string
+      cipherKey: string
+      collectionIds: string[]
+      encryptedFor: string | null
+      expectedRevisionDate: string | null
+    }
+  | { ok: false } {
+  if (
+    !isPlainObject(body) ||
+    !isPlainObject(body.cipher) ||
+    !Array.isArray(body.collectionIds) ||
+    body.collectionIds.length < 1 ||
+    body.collectionIds.length > 100
+  ) {
+    return { ok: false }
+  }
+
+  const cipherRequest = parseCipherCreateRequestBody(body.cipher)
+  if (!cipherRequest.ok || cipherRequest.cipher.folderId !== null) {
+    return { ok: false }
+  }
+
+  const organizationId = parseBoundedIdentifier(body.cipher.organizationId)
+  const cipherKey = parseRequiredOpaqueString(body.cipher.key)
+  const encryptedForValue = body.cipher.encryptedFor
+  const encryptedFor =
+    encryptedForValue === undefined || encryptedForValue === null
+      ? null
+      : parseBoundedIdentifier(encryptedForValue)
+  const expectedRevisionDate = requireRevision
+    ? parseRequiredString(
+        body.cipher.lastKnownRevisionDate ?? body.cipher.revisionDate,
+      )
+    : null
+  if (
+    !organizationId ||
+    !cipherKey ||
+    encryptedFor === undefined ||
+    (requireRevision && !expectedRevisionDate)
+  ) {
+    return { ok: false }
+  }
+
+  const collectionIds: string[] = []
+  const seenCollectionIds = new Set<string>()
+  for (const value of body.collectionIds) {
+    const collectionId = parseBoundedIdentifier(value)
+    if (!collectionId || seenCollectionIds.has(collectionId)) {
+      return { ok: false }
+    }
+    seenCollectionIds.add(collectionId)
+    collectionIds.push(collectionId)
+  }
+
+  return {
+    ok: true,
+    cipher: {
+      encryptedJson: cipherRequest.cipher.encryptedJson,
+      favorite: cipherRequest.cipher.favorite,
+      type: cipherRequest.cipher.type,
+    },
+    organizationId,
+    cipherKey,
+    collectionIds,
+    encryptedFor,
+    expectedRevisionDate: expectedRevisionDate ?? null,
+  }
+}
+
+function parseBoundedIdentifier(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const identifier = value.trim()
+  return identifier && identifier.length <= 128 ? identifier : undefined
 }
 
 function parseCipherCreateRequestBody(body: unknown):
