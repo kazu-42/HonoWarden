@@ -19,6 +19,10 @@ override it.
 - Official-client harness shutdown now waits for the child process to become
   observable before asserting termination. This is test-harness reliability
   only and changes no runtime route or protocol behavior.
+- HON-161 adds migration `0020_personal_api_keys.sql`, recent-auth personal
+  API-key create/rotate, and `grant_type=client_credentials`. Secrets are stored
+  only as keyed HMAC verifiers. `HONOWARDEN_PERSONAL_API_KEYS_ENABLED` stays
+  default-off. Organization API credentials remain `501`.
 - HON-184 adds migration `0018` plus an encrypted Text Send domain, repository,
   and unmounted owner application service. Owner/public `/api/sends*` routes and
   `send_access` remain explicit `501`, config remains `send-enabled: false`, and

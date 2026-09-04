@@ -107,6 +107,13 @@ pnpm backup:export -- \
   guards. Do not install Send keyrings, expose R2, or activate public download
   during this source-only slice. Verify `/health/db` plus the `send_files` and
   `send_download_tickets` tables before any separately approved rollout.
+- `0020_personal_api_keys.sql` is an additive reader-first migration for
+  personal API-key verifiers. Apply it before deploying any Worker that imports
+  the personal API-key repository. Keep
+  `HONOWARDEN_PERSONAL_API_KEYS_ENABLED=false` and do not install
+  `HONOWARDEN_API_KEY_SECRET` during this source-only slice. Organization API
+  credentials remain `501`. Verify `/health/db` plus the `personal_api_keys`
+  table before any separately approved rollout.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.
 - Update `docs/release/migration-freeze.md` in the same change when migrations

@@ -24,7 +24,7 @@ const userKeyRotationHistoryMigration = readFileSync(
   'utf8',
 )
 const personalApiKeysMigration = readFileSync(
-  'migrations/0019_personal_api_keys.sql',
+  'migrations/0020_personal_api_keys.sql',
   'utf8',
 )
 const legacyInquiryMigration = readFileSync(
@@ -399,7 +399,7 @@ describe('initial D1 migration', () => {
     expect(personalApiKeysMigration).toContain(
       'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
     )
-    expect(personalApiKeysMigration).toContain("VALUES ('0019')")
+    expect(personalApiKeysMigration).toContain("VALUES ('0020')")
     expect(personalApiKeysMigration).not.toMatch(/client_secret/i)
     expect(personalApiKeysMigration).not.toMatch(/api_key\s+TEXT/i)
     expect(personalApiKeysMigration).not.toMatch(/\bsecret\s+TEXT/i)
