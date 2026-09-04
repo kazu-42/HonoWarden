@@ -1003,23 +1003,28 @@ app.get('/notifications/anonymous-hub', async (c) => {
 
 async function handlePrelogin(c: AppContext) {
   const body = await readJsonBody(c.req.raw)
-  const decision = resolvePrelogin(body, c.env?.HONOWARDEN_ALLOWED_EMAILS)
+  const allowlistDecision = resolvePrelogin(
+    body,
+    c.env?.HONOWARDEN_ALLOWED_EMAILS,
+  )
 
-  if (!decision.ok) {
+  if (!allowlistDecision.ok && allowlistDecision.status === 400) {
     return c.json(
       {
-        error: decision.error,
+        error: allowlistDecision.error,
         requestId: c.get('requestId'),
       },
-      decision.status,
+      allowlistDecision.status,
     )
   }
 
   const emailNormalized = normalizeEmail(
     (body as { email: string }).email,
   ) as string
+  const allowlisted = allowlistDecision.ok
   const preloginKdfSecret = c.env?.HONOWARDEN_TOKEN_SECRET
-  if (!preloginKdfSecret?.trim()) {
+
+  if (allowlisted && !preloginKdfSecret?.trim()) {
     console.error(
       JSON.stringify({
         event: 'account_prelogin_kdf_lookup_failed',
@@ -1039,6 +1044,41 @@ async function handlePrelogin(c: AppContext) {
 
   try {
     const kdfContext = await findPreloginKdfContext(c.env.DB, emailNormalized)
+    const existingAccount = kdfContext.target != null
+    const decision = resolvePrelogin(
+      body,
+      c.env?.HONOWARDEN_ALLOWED_EMAILS,
+      existingAccount,
+    )
+
+    if (!decision.ok) {
+      return c.json(
+        {
+          error: decision.error,
+          requestId: c.get('requestId'),
+        },
+        decision.status,
+      )
+    }
+
+    if (!preloginKdfSecret?.trim()) {
+      console.error(
+        JSON.stringify({
+          event: 'account_prelogin_kdf_lookup_failed',
+          requestId: c.get('requestId'),
+          reason: 'token_secret_missing',
+        }),
+      )
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Prelogin KDF protection is not configured.',
+        ),
+        503,
+      )
+    }
+
     const response = await buildPreloginKdfResponse(
       emailNormalized,
       kdfContext,

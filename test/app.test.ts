@@ -588,7 +588,9 @@ describe('HonoWarden app', () => {
         }),
       },
       {
+        DB: new FakeD1Database(null, [], { authUsers: [] }),
         HONOWARDEN_ALLOWED_EMAILS: '',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
     )
 
@@ -597,6 +599,105 @@ describe('HonoWarden app', () => {
       error: {
         code: 'prelogin_not_allowed',
       },
+    })
+  })
+
+  it('returns stored prelogin KDF for an existing account when the allowlist is empty', async () => {
+    const user = {
+      ...authUserRecord(),
+      kdfIterations: 650000,
+    }
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'Person@Example.Test',
+        }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUsers: [user] }),
+        HONOWARDEN_ALLOWED_EMAILS: '',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      kdf: 0,
+      kdfIterations: 650000,
+      kdfMemory: null,
+      kdfParallelism: null,
+      kdfSettings: {
+        kdfType: 0,
+        iterations: 650000,
+        memory: null,
+        parallelism: null,
+      },
+      salt: 'person@example.test',
+    })
+  })
+
+  it('keeps disabled existing-account KDF available when the allowlist is empty', async () => {
+    const disabledUser = {
+      ...authUserRecord(),
+      kdfAlgorithm: 'argon2id',
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+      disabledAt: '2026-07-19T00:00:00.000Z',
+    }
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'Person@Example.Test' }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { authUser: disabledUser }),
+        HONOWARDEN_ALLOWED_EMAILS: '',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      kdf: 1,
+      kdfIterations: 6,
+      kdfMemory: 32,
+      kdfParallelism: 4,
+    })
+  })
+
+  it('fails existing-account prelogin loudly when KDF lookup is unavailable', async () => {
+    const response = await app.request(
+      '/identity/accounts/prelogin',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'prelogin-database-failure-request',
+        },
+        body: JSON.stringify({ email: 'Person@Example.Test' }),
+      },
+      {
+        DB: new FakeD1Database(null, [], { preloginKdfLookupThrows: true }),
+        HONOWARDEN_ALLOWED_EMAILS: '',
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'database_unavailable',
+        message: 'Prelogin KDF lookup failed.',
+      },
+      requestId: 'prelogin-database-failure-request',
     })
   })
 

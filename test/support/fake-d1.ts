@@ -17,6 +17,7 @@ type FakeD1DatabaseOptions = {
   lockedIpFailureBucket?: boolean
   authUser?: Record<string, unknown> | null
   authUsers?: Record<string, unknown>[]
+  preloginKdfLookupThrows?: boolean
   authRequests?: Record<string, unknown>[]
   userTotp?: Record<string, unknown> | null
   totpChallenge?: Record<string, unknown> | null
@@ -464,6 +465,10 @@ export class FakeD1Database {
           query.includes('WITH target AS') &&
           query.includes('FROM account_kdf_population')
         ) {
+          if (options.preloginKdfLookupThrows) {
+            throw new Error('Synthetic prelogin KDF lookup failure')
+          }
+
           return {
             success: true,
             results: listPreloginKdfRows(options, boundValues) as T[],
