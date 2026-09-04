@@ -61,7 +61,10 @@ inputs, not minor documentation notes.
   vault breach lookup at `GET /api/hibp/breach` is unsupported; the pinned
   extension performs weak/reused-password evaluation locally and calls the
   external Pwned Passwords range API directly for its manual exposed-password
-  check. ADR 0011 accepts and specifies a future Send product line, including
+  check. ADR 0015 keeps that HIBP route state-free and treats server-origin
+  lookup, at-risk password security tasks, a notification center, and vendor
+  integrations as explicit non-goals unless operator opt-in and a later
+  privacy/security ADR are accepted. ADR 0011 accepts and specifies a future Send product line, including
   public access-token entropy, but no stateful Send source or runtime support is
   implemented by that design slice.
   File Sends and all other Send/public-sharing operations remain behind the

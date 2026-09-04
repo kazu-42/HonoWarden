@@ -1040,7 +1040,10 @@
       ],
       "officialIds": ["official.hibp.breach"],
       "honowardenBehavior": "501 unsupported_feature",
-      "adrs": ["0009-premium-surface-scope.md"]
+      "adrs": [
+        "0009-premium-surface-scope.md",
+        "0015-hibp-reports-integrations-scope.md"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -2631,7 +2634,8 @@
         "0011-send-public-sharing-product-line.md",
         "0012-webauthn-passkey-contract.md",
         "0013-emergency-access-product-line.md",
-        "0014-hosted-billing-licensing-tenancy.md"
+        "0014-hosted-billing-licensing-tenancy.md",
+        "0015-hibp-reports-integrations-scope.md"
       ]
     }
   ]

@@ -138,6 +138,16 @@ rejected. Those families return the same client-readable `501` contract as
 other unavailable premium surfaces. A future hosted product would need a new
 ADR and security/compliance-gated children before implementation.
 
+## HIBP, Reports, And Integrations Boundary
+
+HonoWarden does not originate breach lookup, password-health reports, security
+tasks, a notification center, or vendor event integrations. Official clients
+keep local client password-health on the device; `GET /api/hibp/breach` remains
+the state-free `501` guard.
+[ADR 0015](adr/0015-hibp-reports-integrations-scope.md) inventories
+encrypted-metadata report candidates versus plaintext or third-party
+disclosure non-goals.
+
 ## Explicit Unsupported Responses
 
 The alpha API returns typed `501` JSON errors for feature families that are

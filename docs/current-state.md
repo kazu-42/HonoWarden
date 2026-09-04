@@ -2769,3 +2769,21 @@ Not implemented or not yet verified:
 - file Send/R2 state, public-token and anonymous access surfaces, cleanup and
   quota operations, keyring secret installation, staging/production migration,
   deployment, or official-client live evidence
+
+## HIBP, Reports, And Integrations Decision
+
+Accepted in ADR 0015 for HON-200:
+
+- local client password-health (weak, reused, unsecured, inactive 2FA, and the
+  client-direct Pwned Passwords range API) stays on the device and does not add
+  HonoWarden routes
+- `GET /api/hibp/breach` remains the ADR 0009 state-free HTTP `501`
+  `unsupported_feature` guard; username query values are not stored, forwarded,
+  or echoed
+- server-origin Have I Been Pwned lookup, at-risk password security tasks, a
+  notification center, and vendor SIEM/Slack adapters are explicit non-goals
+  unless a later privacy/security ADR and operator opt-in are accepted
+- member/collection access reports and operator-owned `audit_events` export may
+  later operate on encrypted metadata only; they are not implemented here
+- no HIBP API key, migration, or vendor contact is added, and no compatibility
+  row is promoted

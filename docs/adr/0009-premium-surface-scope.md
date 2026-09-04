@@ -71,7 +71,10 @@ Weak-password and reused-password evaluation in the pinned extension is local.
 Its manual exposed-password check calls the external Pwned Passwords range API
 directly. Those flows do not add HonoWarden routes. TOTP remains client-side, and
 cipher-scoped attachment routes are outside this decision and remain governed by
-their existing authenticated contract.
+their existing authenticated contract. ADR 0015 records the broader reports,
+security-task, notification-center, and vendor-integration non-goal and keeps
+this HIBP route state-free unless a later privacy/security ADR and operator
+opt-in replace the guard.
 
 ## Consequences
 

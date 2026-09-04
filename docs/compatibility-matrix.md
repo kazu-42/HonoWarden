@@ -110,7 +110,10 @@ The pinned extension evaluates weak and reused passwords locally and performs
 its manual exposed-password check directly against the external Pwned Passwords
 range API, so those flows do not add HonoWarden report routes. TOTP remains a
 client-side operation, and authenticated cipher-scoped attachment routes are not
-part of this unsupported set. This source audit and route contract add no live
+part of this unsupported set. ADR 0015 keeps `GET /api/hibp/breach` state-free
+and records reports, security tasks, notification center, and vendor
+integrations as non-goals unless a later privacy/security ADR replaces the
+guard. This source audit and route contract add no live
 client evidence and do not change any verification level in the matrix.
 
 ## Metadata Refresh Policy

@@ -9,6 +9,7 @@ Use these documents together when reviewing alpha readiness:
 - [Send Wire Contract](../protocol/send-wire-contract.md)
 - [Emergency Access Threat Model](emergency-access-threat-model.md)
 - [Emergency Access Wire Contract](../protocol/emergency-access-wire-contract.md)
+- [ADR 0015: HIBP, Reports, Security Tasks, And Integrations Scope](../adr/0015-hibp-reports-integrations-scope.md)
 - [Data Flow](data-flow.md)
 - [Authentication State Machine](auth-state-machine.md)
 - [Secrets Inventory](secrets-inventory.md)
