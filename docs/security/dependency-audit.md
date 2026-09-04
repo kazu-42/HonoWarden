@@ -109,7 +109,7 @@ generators with attacker-controlled sizes.
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `7ad9c3ce791152759a897dc0f7aa7a5bc2e2e7dcf99d30ebd8b702c1ed2c4814`
+  `044b663442018f743e4964b9a1349a21f737d5421c91ae028f08870940fd7b64`
 
 ## Scope
 
