@@ -1,0 +1,77 @@
+{
+  "name": "webauthn-list-success",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/webauthn"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "object": "webauthnCredential",
+          "id": "webauthn-row-id",
+          "name": "Laptop",
+          "prfStatus": 2,
+          "encryptedUserKey": null,
+          "encryptedPublicKey": null
+        }
+      ],
+      "continuationToken": null
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "list"
+    },
+    {
+      "path": "$.data",
+      "type": "array",
+      "length": 1
+    },
+    {
+      "path": "$.data.0.object",
+      "type": "string",
+      "value": "webauthnCredential"
+    },
+    {
+      "path": "$.data.0.id",
+      "type": "string",
+      "value": "webauthn-row-id"
+    },
+    {
+      "path": "$.data.0.name",
+      "type": "string",
+      "value": "Laptop"
+    },
+    {
+      "path": "$.data.0.prfStatus",
+      "type": "number",
+      "value": 2
+    },
+    {
+      "path": "$.data.0.credentialId",
+      "absent": true
+    },
+    {
+      "path": "$.data.0.publicKey",
+      "absent": true
+    },
+    {
+      "path": "$.data.0.aaguid",
+      "absent": true
+    },
+    {
+      "path": "$.continuationToken",
+      "type": "null"
+    }
+  ]
+}

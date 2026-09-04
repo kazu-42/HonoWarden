@@ -1,0 +1,32 @@
+{
+  "name": "webauthn-create-malformed",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/webauthn"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "content-type": "application/json"
+    },
+    "body": {
+      "name": "Laptop"
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "invalid_request",
+        "message": "WebAuthn registration request is invalid."
+      }
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.error.code",
+      "type": "string",
+      "value": "invalid_request"
+    }
+  ]
+}

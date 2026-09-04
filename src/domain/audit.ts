@@ -42,6 +42,8 @@ export type AuditEventName =
   | 'session.revoke_all'
   | 'totp.change'
   | 'totp.disable'
+  | 'webauthn.create'
+  | 'webauthn.registration_options'
 
 export type AuditEventOutcome = 'success' | 'failure'
 
@@ -67,6 +69,7 @@ export type AuditEvent = {
       | 'emergency_access'
       | 'folder'
       | 'session'
+      | 'webauthn_credential'
     id?: string
   }
   context?: AuditContext
@@ -94,6 +97,7 @@ type AuditEventInput = {
       | 'emergency_access'
       | 'folder'
       | 'session'
+      | 'webauthn_credential'
     id?: string | undefined
   }
   context?: AuditContext

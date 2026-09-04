@@ -67,20 +67,36 @@ describe('HON-208 WebAuthn contract boundary', () => {
     ).toBe(false)
   })
 
-  it('keeps representative WebAuthn routes absent even when policy inputs are present', async () => {
+  it('keeps later WebAuthn children unmounted and enrollment disabled by default', async () => {
     const env = {
-      HONOWARDEN_WEBAUTHN_ENABLED: 'true',
+      HONOWARDEN_WEBAUTHN_ENABLED: 'false',
       HONOWARDEN_WEBAUTHN_ORIGINS: 'https://vault.example.com',
       HONOWARDEN_WEBAUTHN_RP_ID: 'example.com',
     } as Bindings
-    const requests = [
-      ['GET', '/identity/accounts/webauthn/assertion-options'],
+    const enrollment = [
       ['GET', '/api/webauthn'],
       ['POST', '/api/webauthn/attestation-options'],
+      ['POST', '/api/webauthn'],
+    ] as const
+    const laterChildren = [
+      ['GET', '/identity/accounts/webauthn/assertion-options'],
       ['POST', '/api/webauthn/credential-id/delete'],
     ] as const
 
-    for (const [method, path] of requests) {
+    for (const [method, path] of enrollment) {
+      const response = await app.request(
+        `https://vault.example.com${path}`,
+        { method },
+        env,
+      )
+
+      expect(response.status, `${method} ${path}`).toBe(501)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'unsupported_feature' },
+      })
+    }
+
+    for (const [method, path] of laterChildren) {
       const response = await app.request(
         `https://vault.example.com${path}`,
         { method },
@@ -94,7 +110,7 @@ describe('HON-208 WebAuthn contract boundary', () => {
     }
   })
 
-  it('pins the maintained verifier without mounting WebAuthn routes', () => {
+  it('pins the maintained verifier without advertising WebAuthn in config', () => {
     const packageJson = JSON.parse(readRepoFile('package.json')) as {
       dependencies?: Record<string, string>
     }
@@ -108,7 +124,8 @@ describe('HON-208 WebAuthn contract boundary', () => {
     expect(migrationText).toContain('CREATE TABLE webauthn_credentials')
     expect(migrationText).toContain('CREATE TABLE webauthn_challenges')
     expect(migrationText).toContain("VALUES ('0015')")
-    expect(appSource).not.toMatch(/\/api\/webauthn|grant_type=webauthn/i)
+    expect(appSource).toContain('/api/webauthn/attestation-options')
+    expect(appSource).not.toMatch(/grant_type=webauthn/i)
   })
 
   it('declares all policy inputs as optional Worker bindings', () => {

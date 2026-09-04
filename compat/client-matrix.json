@@ -46,7 +46,8 @@
         "revision_conflict",
         "device_revoke",
         "session_revoke",
-        "totp_login"
+        "totp_login",
+        "webauthn_enrollment"
       ],
       "knownIssues": [
         "No official Browser 2026.7.0 binary live smoke is recorded; this row is fixture-only.",
@@ -92,7 +93,8 @@
         "revision_conflict",
         "device_revoke",
         "session_revoke",
-        "totp_login"
+        "totp_login",
+        "webauthn_enrollment"
       ],
       "knownIssues": [
         "No official Desktop 2026.7.0 binary live smoke is recorded; this row is fixture-only.",
@@ -139,7 +141,8 @@
         "revision_conflict",
         "device_revoke",
         "session_revoke",
-        "totp_login"
+        "totp_login",
+        "webauthn_enrollment"
       ],
       "knownIssues": [
         "No official Android 2026.7.1 build 21803 live smoke is recorded; this row is fixture-only.",
@@ -186,7 +189,8 @@
         "revision_conflict",
         "device_revoke",
         "session_revoke",
-        "totp_login"
+        "totp_login",
+        "webauthn_enrollment"
       ],
       "knownIssues": [
         "No official iOS 2026.7.1 build 3432 live smoke is recorded; this row is fixture-only.",
@@ -232,7 +236,8 @@
         "revision_conflict",
         "device_revoke",
         "session_revoke",
-        "totp_login"
+        "totp_login",
+        "webauthn_enrollment"
       ],
       "knownIssues": [
         "No official CLI 2026.7.0 binary live smoke is recorded; this row is fixture-only.",

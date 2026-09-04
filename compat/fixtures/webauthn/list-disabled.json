@@ -1,0 +1,28 @@
+{
+  "name": "webauthn-list-disabled",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/webauthn"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token"
+    }
+  },
+  "response": {
+    "status": 501,
+    "body": {
+      "error": {
+        "code": "unsupported_feature",
+        "message": "This feature is intentionally not implemented in the alpha scope."
+      }
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.error.code",
+      "type": "string",
+      "value": "unsupported_feature"
+    }
+  ]
+}

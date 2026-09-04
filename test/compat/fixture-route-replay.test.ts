@@ -6,7 +6,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { hashRefreshToken } from '../../src/domain/tokens'
 import { encryptTotpSecret } from '../../src/domain/totp-secret'
-import { runCompatFixture } from './fixture-replay-support'
+import {
+  runCompatFixture,
+  type FixtureReplayOptions,
+} from './fixture-replay-support'
 
 const fixturesRoot = fileURLToPath(
   new URL('../../compat/fixtures', import.meta.url).toString(),
@@ -455,6 +458,68 @@ const replayFixtures = [
       cipherUpdateChanges: 0,
     },
   },
+  {
+    path: 'webauthn/list-disabled.json',
+  },
+  {
+    path: 'webauthn/attestation-options-disabled.json',
+    allowMutatingFixtures: true,
+  },
+  {
+    path: 'webauthn/create-disabled.json',
+    allowMutatingFixtures: true,
+  },
+  {
+    path: 'webauthn/list-unauthenticated.json',
+    webauthnEnabled: 'true',
+  },
+  {
+    path: 'webauthn/attestation-options-reauth.json',
+    allowMutatingFixtures: true,
+    webauthnEnabled: 'true',
+    tokenIssuedAt: 1,
+  },
+  {
+    path: 'webauthn/list-success.json',
+    webauthnEnabled: 'true',
+    database: {
+      webauthnCredentials: [
+        {
+          id: 'webauthn-row-id',
+          userId: replayUser.id,
+          credentialId: 'seeded-credential',
+          publicKey: 'public-key-bytes',
+          userHandle: 'user-handle',
+          signCount: 0,
+          credentialType: 'public-key',
+          transports: JSON.stringify(['internal']),
+          aaguid: '00000000-0000-0000-0000-000000000000',
+          discoverable: 1,
+          backupEligible: 1,
+          backupState: 0,
+          prfSupported: 0,
+          encryptedUserKey: null,
+          encryptedPublicKey: null,
+          encryptedPrivateKey: null,
+          name: 'Laptop',
+          createdAt: '2026-07-06T00:00:00.000Z',
+          revisionDate: '2026-07-06T00:00:00.000Z',
+          lastUsedAt: null,
+        },
+      ],
+    },
+  },
+  {
+    path: 'webauthn/attestation-options-success.json',
+    allowMutatingFixtures: true,
+    webauthnEnabled: 'true',
+    tokenIssuedAt: Math.floor(Date.now() / 1000),
+  },
+  {
+    path: 'webauthn/create-malformed.json',
+    allowMutatingFixtures: true,
+    webauthnEnabled: 'true',
+  },
 ] as const
 
 describe('compatibility fixture route replay', () => {
@@ -499,9 +564,21 @@ describe('compatibility fixture route replay', () => {
         ...('passwordChangeEnabled' in fixture
           ? { passwordChangeEnabled: fixture.passwordChangeEnabled }
           : {}),
+        ...('webauthnEnabled' in fixture
+          ? { webauthnEnabled: fixture.webauthnEnabled }
+          : {}),
+        ...('webauthnRpId' in fixture
+          ? { webauthnRpId: fixture.webauthnRpId }
+          : {}),
+        ...('webauthnOrigins' in fixture
+          ? { webauthnOrigins: fixture.webauthnOrigins }
+          : {}),
       }
       const runFixture = () =>
-        runCompatFixture(fixturePath(fixture.path), replayOptions)
+        runCompatFixture(
+          fixturePath(fixture.path),
+          replayOptions as FixtureReplayOptions,
+        )
       const result =
         'systemTime' in fixture
           ? await withSystemTime(fixture.systemTime, runFixture)

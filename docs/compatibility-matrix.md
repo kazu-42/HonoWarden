@@ -268,6 +268,7 @@ opaque continuation tokens.
 - `device_revoke`
 - `session_revoke`
 - `totp_login`
+- `webauthn_enrollment`
 
 ## Sealed Alpha Evidence And Post-Tag History
 

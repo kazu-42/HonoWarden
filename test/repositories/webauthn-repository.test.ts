@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   cleanupExpiredWebAuthnChallenges,
+  completeWebAuthnRegistration,
   consumeWebAuthnChallenge,
   createWebAuthnCredential,
   deleteWebAuthnCredential,
@@ -254,6 +255,40 @@ describe('WebAuthn repository', () => {
     )
     expect(database.boundValues).toEqual(['2026-07-07T00:00:00.000Z', 5])
   })
+
+  it('consumes a registration challenge and inserts a credential in one batch', async () => {
+    const database = new RecordingWebAuthnDatabase({
+      runChanges: 1,
+      credentialRows: [],
+    })
+
+    await expect(
+      completeWebAuthnRegistration(database, {
+        consume: {
+          tokenHash: 'token-hash',
+          challengeHash: 'challenge-hash',
+          purpose: 'registration',
+          rpId: 'example.com',
+          originPolicyVersion: 'origin-policy',
+          userId: 'user-1',
+          credentialId: null,
+          consumedAt: '2026-07-06T00:01:00.000Z',
+          now: '2026-07-06T00:01:00.000Z',
+        },
+        credential,
+      }),
+    ).resolves.toEqual({ status: 'created', credential })
+
+    const query = database.queries.join('\n')
+    expect(query).toContain('UPDATE webauthn_challenges')
+    expect(query).toContain('INSERT INTO webauthn_credentials')
+    expect(query).toContain('challenge_hash = ?')
+    expect(query).toContain('NOT EXISTS')
+    expect(database.batchCount).toBe(1)
+    expect(database.boundValues).toContain('challenge-hash')
+    expect(database.boundValues).not.toContain('raw-challenge')
+    expect(database.boundValues).not.toContain('opaque-route-token')
+  })
 })
 
 function credentialRow(record: WebAuthnCredentialRecord) {
@@ -270,6 +305,7 @@ function credentialRow(record: WebAuthnCredentialRecord) {
 class RecordingWebAuthnDatabase {
   boundValues: unknown[] = []
   queries: string[] = []
+  batchCount = 0
   private remainingDeleteChanges: number
 
   constructor(
@@ -320,5 +356,16 @@ class RecordingWebAuthnDatabase {
       raw: async <T = unknown>(): Promise<T[]> => [],
     } as D1PreparedStatement
     return statement
+  }
+
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
+    this.batchCount += 1
+    const results: D1Result<T>[] = []
+    for (const statement of statements) {
+      results.push((await statement.run()) as D1Result<T>)
+    }
+    return results
   }
 }

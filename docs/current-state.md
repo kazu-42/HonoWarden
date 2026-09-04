@@ -31,11 +31,15 @@ This section is the present-tense source boundary. The dated Week 1–26 and
 official-client sections below are historical delivery records and do not
 override it.
 
+- HON-210 adds authenticated `POST /api/webauthn/attestation-options`,
+  `POST /api/webauthn`, and `GET /api/webauthn` against the HON-209 D1/verifier
+  foundation. Routes fail closed with `501` when `HONOWARDEN_WEBAUTHN_ENABLED`
+  is false, stay default-off in tracked Wrangler config, and `/api/config` still
+  does not advertise WebAuthn or passkeys. PRF output remains client-side.
 - HON-209 adds forward-only migration `0015_webauthn.sql`, pinned
   `@simplewebauthn/server` 13.3.3, owner-scoped WebAuthn credential/challenge
-  repositories, and bounded expired-challenge cleanup. Routes remain absent,
-  `HONOWARDEN_WEBAUTHN_ENABLED` stays default-off, and `/config` still does not
-  advertise WebAuthn or passkeys.
+  repositories, and bounded expired-challenge cleanup. Anonymous assertion,
+  grant, PRF enablement, rename, and delete remain later children.
 - The integration candidate is based on source commit
   `52ef7293615702b399cf5b3bcac7e607f191e51f`; it remains an uncommitted local
   worktree and has not been pushed, published, or deployed.

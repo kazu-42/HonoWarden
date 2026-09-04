@@ -131,6 +131,28 @@ import {
   verifyPersonalApiKeySecret,
 } from './domain/personal-api-key'
 import { decryptTotpSecret, encryptTotpSecret } from './domain/totp-secret'
+import {
+  resolveWebAuthnRuntimePolicy,
+  hashWebAuthnChallenge,
+  hashWebAuthnRouteToken,
+  buildWebAuthnOriginPolicyVersion,
+  webAuthnChallengeTtlSeconds,
+  webAuthnRetentionDeleteAfter,
+  webAuthnPolicy,
+} from './domain/webauthn'
+import type { WebAuthnRuntimePolicy } from './domain/webauthn'
+import { verifyWebAuthnRegistrationResponse } from './domain/webauthn-verifier'
+import {
+  buildWebAuthnCredentialListResponse,
+  buildWebAuthnCredentialSummary,
+  buildWebAuthnRegistrationOptions,
+  encodeWebAuthnPublicKey,
+  encodeWebAuthnUserHandle,
+  generateWebAuthnOpaqueToken,
+  parseWebAuthnRegistrationCreateBody,
+  readWebAuthnClientDataChallenge,
+  webAuthnRegistrationPolicy,
+} from './domain/webauthn-registration'
 import { generateTotpSecret, totpPolicy, verifyTotpCode } from './domain/totp'
 import { getDatabaseHealth } from './infra/db-health'
 import { readBoundedJsonBody } from './infra/bounded-json'
@@ -290,6 +312,11 @@ import {
   startPendingTotpChange,
   upsertPendingTotpSetup,
 } from './repositories/totp-repository'
+import {
+  completeWebAuthnRegistration,
+  issueWebAuthnChallenge,
+  listWebAuthnCredentialsByUser,
+} from './repositories/webauthn-repository'
 import { cleanupTransientAuthData } from './maintenance/retention-cleanup'
 import {
   createBootstrapUser,
@@ -333,6 +360,7 @@ type AuditInput = {
       | 'device'
       | 'folder'
       | 'session'
+      | 'webauthn_credential'
     id?: string | undefined
   }
   context?: Record<string, string | number | boolean | null>
@@ -5819,6 +5847,13 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
   }
 })
 
+app.get('/api/webauthn', listWebAuthnCredentialsRoute)
+app.post(
+  '/api/webauthn/attestation-options',
+  createWebAuthnAttestationOptionsRoute,
+)
+app.post('/api/webauthn', createWebAuthnCredentialRoute)
+
 app.post('/api/devices/:id/revoke', async (c) => {
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
@@ -10183,6 +10218,412 @@ async function pollAuthRequestRoute(c: AppContext) {
       503,
     )
   }
+}
+
+async function listWebAuthnCredentialsRoute(c: AppContext) {
+  const runtime = resolveWebAuthnEnrollmentRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  try {
+    const page = await listWebAuthnCredentialsByUser(c.env.DB, {
+      userId: auth.user.id,
+      limit: webAuthnPolicy.maxCredentialsPerUser,
+      cursor: null,
+    })
+    c.header('Cache-Control', 'no-store')
+    return c.json(buildWebAuthnCredentialListResponse(page.items))
+  } catch {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'WebAuthn credential list failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function createWebAuthnAttestationOptionsRoute(c: AppContext) {
+  const runtime = resolveWebAuthnEnrollmentRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const auth = await authenticateRecentPasswordRequest(c)
+  if (!auth.ok) {
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.registration_options',
+      outcome: 'failure',
+      reason: 'reauth_required',
+    })
+    return auth.response
+  }
+
+  const now = new Date()
+  const expiresAt = new Date(
+    now.getTime() + webAuthnChallengeTtlSeconds('registration') * 1000,
+  ).toISOString()
+  const createdAt = now.toISOString()
+
+  try {
+    const existing = await listWebAuthnCredentialsByUser(c.env.DB, {
+      userId: auth.user.id,
+      limit: webAuthnPolicy.maxCredentialsPerUser,
+      cursor: null,
+    })
+    const originPolicyVersion = await buildWebAuthnOriginPolicyVersion({
+      rpId: runtime.policy.rpId,
+      origins: runtime.policy.origins,
+    })
+    const built = await buildWebAuthnRegistrationOptions({
+      accountId: auth.user.id,
+      email: auth.user.emailNormalized,
+      displayName: auth.user.displayName,
+      rpId: runtime.policy.rpId,
+      existingCredentials: existing.items,
+    })
+    const token = generateWebAuthnOpaqueToken()
+    await issueWebAuthnChallenge(c.env.DB, {
+      id: crypto.randomUUID(),
+      tokenHash: await hashWebAuthnRouteToken(runtime.tokenSecret, token),
+      challengeHash: await hashWebAuthnChallenge(
+        runtime.tokenSecret,
+        built.challenge,
+      ),
+      purpose: 'registration',
+      userId: auth.user.id,
+      credentialId: null,
+      rpId: runtime.policy.rpId,
+      originPolicyVersion,
+      expiresAt,
+      consumedAt: null,
+      createdAt,
+      retentionDeleteAfter: webAuthnRetentionDeleteAfter(expiresAt),
+    })
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.registration_options',
+      outcome: 'success',
+      auth,
+      reason: 'issued',
+    })
+    c.header('Cache-Control', 'no-store')
+    return c.json({
+      object: 'webauthnCredentialCreateOptions',
+      options: built.options,
+      token,
+    })
+  } catch {
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.registration_options',
+      outcome: 'failure',
+      auth,
+      reason: 'database_unavailable',
+    })
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'WebAuthn registration options failed.',
+      ),
+      503,
+    )
+  }
+}
+
+async function createWebAuthnCredentialRoute(c: AppContext) {
+  const runtime = resolveWebAuthnEnrollmentRuntime(c)
+  if (!runtime.ok) {
+    return runtime.response
+  }
+
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) {
+    return auth.response
+  }
+
+  const body = await readBoundedJsonBody(
+    c.req.raw,
+    webAuthnRegistrationPolicy.requestJsonMaxBytes,
+  )
+  if (!body.ok) {
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.create',
+      outcome: 'failure',
+      auth,
+      reason: 'invalid_request',
+    })
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'WebAuthn registration request is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const parsed = parseWebAuthnRegistrationCreateBody(body.value)
+  if (!parsed.ok) {
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.create',
+      outcome: 'failure',
+      auth,
+      reason: parsed.code,
+    })
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'WebAuthn registration request is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const clientDataJSON = parsed.request.deviceResponse.response.clientDataJSON
+  const presentedChallenge =
+    typeof clientDataJSON === 'string'
+      ? readWebAuthnClientDataChallenge(clientDataJSON)
+      : null
+  if (!presentedChallenge) {
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.create',
+      outcome: 'failure',
+      auth,
+      reason: 'invalid_request',
+    })
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'WebAuthn registration request is invalid.',
+      ),
+      400,
+    )
+  }
+
+  const verification = await verifyWebAuthnRegistrationResponse({
+    response: parsed.request.deviceResponse,
+    expectedChallenge: presentedChallenge,
+    expectedOrigin: runtime.policy.origins,
+    expectedRpId: runtime.policy.rpId,
+  })
+  if (!verification.ok) {
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.create',
+      outcome: 'failure',
+      auth,
+      reason: 'verification_failed',
+    })
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Unable to complete WebAuthn registration.',
+      ),
+      400,
+    )
+  }
+
+  const now = new Date().toISOString()
+  const originPolicyVersion = await buildWebAuthnOriginPolicyVersion({
+    rpId: runtime.policy.rpId,
+    origins: runtime.policy.origins,
+  })
+  const credentialId = crypto.randomUUID()
+  const credential = {
+    id: credentialId,
+    userId: auth.user.id,
+    credentialId: verification.credentialId,
+    publicKey: encodeWebAuthnPublicKey(verification.publicKey),
+    userHandle: encodeWebAuthnUserHandle(auth.user.id),
+    signCount: verification.signCount,
+    credentialType: verification.credentialType,
+    transports: verification.transports,
+    aaguid: verification.aaguid,
+    discoverable: verification.discoverable,
+    backupEligible: verification.backupEligible,
+    backupState: verification.backupState,
+    prfSupported: parsed.request.supportsPrf,
+    encryptedUserKey: parsed.request.keys.encryptedUserKey,
+    encryptedPublicKey: parsed.request.keys.encryptedPublicKey,
+    encryptedPrivateKey: parsed.request.keys.encryptedPrivateKey,
+    name: parsed.request.name,
+    createdAt: now,
+    revisionDate: now,
+    lastUsedAt: null,
+  }
+
+  try {
+    const result = await completeWebAuthnRegistration(c.env.DB, {
+      consume: {
+        tokenHash: await hashWebAuthnRouteToken(
+          runtime.tokenSecret,
+          parsed.request.token,
+        ),
+        challengeHash: await hashWebAuthnChallenge(
+          runtime.tokenSecret,
+          presentedChallenge,
+        ),
+        purpose: 'registration',
+        rpId: runtime.policy.rpId,
+        originPolicyVersion,
+        userId: auth.user.id,
+        credentialId: null,
+        consumedAt: now,
+        now,
+      },
+      credential,
+    })
+    if (result.status !== 'created') {
+      await emitWebAuthnEnrollmentAuditEvent(c, {
+        name: 'webauthn.create',
+        outcome: 'failure',
+        auth,
+        reason: result.status,
+      })
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'Unable to complete WebAuthn registration.',
+        ),
+        400,
+      )
+    }
+
+    const summary = buildWebAuthnCredentialSummary(result.credential)
+    if (!summary) {
+      await emitWebAuthnEnrollmentAuditEvent(c, {
+        name: 'webauthn.create',
+        outcome: 'failure',
+        auth,
+        reason: 'partial_prf_key_set',
+      })
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'Unable to complete WebAuthn registration.',
+        ),
+        400,
+      )
+    }
+
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.create',
+      outcome: 'success',
+      auth,
+      reason: 'created',
+      prfStatus: summary.prfStatus,
+      targetId: summary.id,
+    })
+    c.header('Cache-Control', 'no-store')
+    return c.json(summary)
+  } catch {
+    await emitWebAuthnEnrollmentAuditEvent(c, {
+      name: 'webauthn.create',
+      outcome: 'failure',
+      auth,
+      reason: 'database_unavailable',
+    })
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'WebAuthn registration failed.',
+      ),
+      503,
+    )
+  }
+}
+
+function resolveWebAuthnEnrollmentRuntime(c: AppContext):
+  | {
+      ok: true
+      policy: Extract<WebAuthnRuntimePolicy, { status: 'ready' }>
+      tokenSecret: string
+    }
+  | { ok: false; response: Response } {
+  const policy = resolveWebAuthnRuntimePolicy(c.env ?? {})
+  if (policy.status === 'disabled') {
+    return { ok: false, response: unsupportedAlphaFeature(c) }
+  }
+  if (policy.status !== 'ready') {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'WebAuthn is not configured.',
+        ),
+        503,
+      ),
+    }
+  }
+
+  const accessTokenConfig = resolveAccessTokenRuntimeConfig(c.env)
+  if (!accessTokenConfig.ok) {
+    return {
+      ok: false,
+      response: c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Token signing is not configured.',
+        ),
+        503,
+      ),
+    }
+  }
+
+  return {
+    ok: true,
+    policy,
+    tokenSecret: accessTokenConfig.refreshTokenSecret,
+  }
+}
+
+async function emitWebAuthnEnrollmentAuditEvent(
+  c: AppContext,
+  input: {
+    name: 'webauthn.create' | 'webauthn.registration_options'
+    outcome: AuditEventOutcome
+    auth?: Extract<AuthenticatedVaultRequest, { ok: true }>
+    reason: string
+    prfStatus?: number
+    targetId?: string
+  },
+): Promise<void> {
+  await emitAuditEvent(c, {
+    name: input.name,
+    outcome: input.outcome,
+    ...(input.auth
+      ? {
+          actor: {
+            userId: input.auth.user.id,
+            deviceIdentifier: input.auth.deviceIdentifier,
+          },
+          target: {
+            type: 'webauthn_credential',
+            id: input.targetId ?? input.auth.user.id,
+          },
+        }
+      : {}),
+    context: {
+      reason: input.reason,
+      ...(input.prfStatus === undefined ? {} : { prfStatus: input.prfStatus }),
+    },
+  })
 }
 
 function resolveAuthRequestRuntime(

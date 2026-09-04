@@ -1,0 +1,24 @@
+{
+  "name": "webauthn-list-unauthenticated",
+  "endpoint": {
+    "method": "GET",
+    "path": "/api/webauthn"
+  },
+  "request": {},
+  "response": {
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "missing_token",
+        "message": "Bearer authorization is required."
+      }
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.error.code",
+      "type": "string",
+      "value": "missing_token"
+    }
+  ]
+}

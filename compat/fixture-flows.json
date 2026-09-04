@@ -129,6 +129,19 @@
       "fixtures": ["token/totp-challenge.json", "token/totp-login-success.json"]
     },
     {
+      "id": "webauthn_enrollment",
+      "fixtures": [
+        "webauthn/list-disabled.json",
+        "webauthn/attestation-options-disabled.json",
+        "webauthn/create-disabled.json",
+        "webauthn/list-unauthenticated.json",
+        "webauthn/attestation-options-reauth.json",
+        "webauthn/list-success.json",
+        "webauthn/attestation-options-success.json",
+        "webauthn/create-malformed.json"
+      ]
+    },
+    {
       "id": "sync_with_items",
       "fixtures": ["sync/with-folder-and-cipher.json"]
     },

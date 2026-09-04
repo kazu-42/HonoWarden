@@ -72,6 +72,8 @@ type FakeD1DatabaseOptions = {
   inquiryForwardUpdateThrows?: boolean
   inquiryInsertThrows?: boolean
   personalApiKeys?: Record<string, unknown>[]
+  webauthnChallenges?: Record<string, unknown>[]
+  webauthnCredentials?: Record<string, unknown>[]
   organizations?: Record<string, unknown>[]
   organizationUsers?: Record<string, unknown>[]
   collections?: Record<string, unknown>[]
@@ -194,7 +196,14 @@ export class FakeD1Database {
     private readonly schemaVersion: string | null,
     private readonly tables: readonly string[],
     private readonly options: FakeD1DatabaseOptions = {},
-  ) {}
+  ) {
+    options.webauthnChallenges ??= []
+    options.webauthnCredentials ??= []
+  }
+
+  get webauthnCredentials(): Record<string, unknown>[] {
+    return this.options.webauthnCredentials ?? []
+  }
 
   prepare(query: string): D1PreparedStatement {
     const schemaVersion = this.schemaVersion
@@ -453,6 +462,18 @@ export class FakeD1Database {
           return findPersonalApiKeyRow(options, boundValues, query) as T | null
         }
 
+        if (query.includes('FROM webauthn_credentials')) {
+          return findWebAuthnCredentialRow(
+            options,
+            boundValues,
+            query,
+          ) as T | null
+        }
+
+        if (query.includes('FROM webauthn_challenges')) {
+          return findWebAuthnChallengeRow(options, boundValues) as T | null
+        }
+
         if (query.includes('FROM users')) {
           return findAuthUser(options, query, boundValues) as T | null
         }
@@ -613,6 +634,18 @@ export class FakeD1Database {
           }
         }
 
+        if (query.includes('FROM webauthn_credentials')) {
+          return {
+            success: true,
+            results: listWebAuthnCredentialRows(
+              options,
+              boundValues,
+              query,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('sqlite_master')) {
           return {
             success: true,
@@ -628,6 +661,40 @@ export class FakeD1Database {
         }
       },
       async run(): Promise<D1Result> {
+        if (query.includes('INSERT INTO webauthn_challenges')) {
+          const changes = insertWebAuthnChallenge(options, boundValues)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
+        if (query.includes('INSERT INTO webauthn_credentials')) {
+          const changes = insertWebAuthnCredential(options, boundValues, query)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
+        if (/UPDATE\s+webauthn_challenges/.test(query)) {
+          const changes = consumeWebAuthnChallengeRow(
+            options,
+            boundValues,
+            query,
+          )
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
         if (query.includes('INSERT INTO personal_api_keys')) {
           const changes = insertPersonalApiKey(options, boundValues)
 
@@ -1564,6 +1631,18 @@ export class FakeD1Database {
     if (
       fakeStatements.every((statement) =>
         /(?:UPDATE|DELETE\s+FROM)\s+ciphers/.test(statement.__fakeQuery),
+      )
+    ) {
+      const results: D1Result<T>[] = []
+      for (const statement of statements) {
+        results.push(await statement.run<T>())
+      }
+      return results
+    }
+
+    if (
+      fakeStatements.some((statement) =>
+        /webauthn_challenges|webauthn_credentials/.test(statement.__fakeQuery),
       )
     ) {
       const results: D1Result<T>[] = []
@@ -4769,6 +4848,232 @@ function filterDeviceRows(
 
     return revokedAt === null || revokedAt === undefined
   })
+}
+
+function webAuthnChallenges(
+  options: FakeD1DatabaseOptions,
+): Record<string, unknown>[] {
+  options.webauthnChallenges ??= []
+  return options.webauthnChallenges
+}
+
+function webAuthnCredentials(
+  options: FakeD1DatabaseOptions,
+): Record<string, unknown>[] {
+  options.webauthnCredentials ??= []
+  return options.webauthnCredentials
+}
+
+function insertWebAuthnChallenge(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  const [
+    id,
+    tokenHash,
+    challengeHash,
+    purpose,
+    userId,
+    credentialId,
+    rpId,
+    originPolicyVersion,
+    expiresAt,
+    createdAt,
+    retentionDeleteAfter,
+  ] = boundValues
+  webAuthnChallenges(options).push({
+    id,
+    tokenHash,
+    challengeHash,
+    purpose,
+    userId,
+    credentialId,
+    rpId,
+    originPolicyVersion,
+    expiresAt,
+    consumedAt: null,
+    createdAt,
+    retentionDeleteAfter,
+  })
+  return 1
+}
+
+function insertWebAuthnCredential(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  const credentials = webAuthnCredentials(options)
+  const userId = String(boundValues[1])
+  const credentialId = String(boundValues[2])
+  const ownerCount = credentials.filter(
+    (row) => String(row.userId) === userId,
+  ).length
+  const limit = Number(boundValues[22] ?? 5)
+  if (ownerCount >= limit) {
+    return 0
+  }
+  if (credentials.some((row) => String(row.credentialId) === credentialId)) {
+    return 0
+  }
+  if (query.includes('EXISTS') && query.includes('webauthn_challenges')) {
+    const tokenHash = String(boundValues[23])
+    const challengeHash = String(boundValues[24])
+    const consumedAt = String(boundValues[25])
+    const purpose = String(boundValues[26])
+    const matchingChallenge = webAuthnChallenges(options).some(
+      (row) =>
+        String(row.tokenHash) === tokenHash &&
+        String(row.challengeHash) === challengeHash &&
+        String(row.consumedAt) === consumedAt &&
+        String(row.purpose) === purpose,
+    )
+    if (!matchingChallenge) {
+      return 0
+    }
+  }
+
+  credentials.push({
+    id: boundValues[0],
+    userId: boundValues[1],
+    credentialId: boundValues[2],
+    publicKey: boundValues[3],
+    userHandle: boundValues[4],
+    signCount: boundValues[5],
+    credentialType: boundValues[6],
+    transports: boundValues[7],
+    aaguid: boundValues[8],
+    discoverable: boundValues[9],
+    backupEligible: boundValues[10],
+    backupState: boundValues[11],
+    prfSupported: boundValues[12],
+    encryptedUserKey: boundValues[13],
+    encryptedPublicKey: boundValues[14],
+    encryptedPrivateKey: boundValues[15],
+    name: boundValues[16],
+    createdAt: boundValues[17],
+    revisionDate: boundValues[18],
+    lastUsedAt: boundValues[19],
+    updatedAt: boundValues[20],
+  })
+  return 1
+}
+
+function consumeWebAuthnChallengeRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  const consumedAt = String(boundValues[0])
+  const userId = String(boundValues[1])
+  const tokenHash = String(boundValues[2])
+  const usesChallengeHash = query.includes('challenge_hash = ?')
+  const purpose = String(boundValues[usesChallengeHash ? 4 : 3])
+  const rpId = String(boundValues[usesChallengeHash ? 5 : 4])
+  const originPolicyVersion = String(boundValues[usesChallengeHash ? 6 : 5])
+  const now = String(boundValues[usesChallengeHash ? 7 : 6])
+  const ownerId = String(boundValues[usesChallengeHash ? 8 : 7])
+  const credentialId = boundValues[usesChallengeHash ? 9 : 8]
+  const challengeHash = usesChallengeHash ? String(boundValues[3]) : null
+  const credentialLimit = query.includes('COUNT(*)')
+    ? Number(boundValues[usesChallengeHash ? 12 : 11] ?? 5)
+    : Number.POSITIVE_INFINITY
+  const duplicateCredentialId =
+    query.includes('NOT EXISTS') && query.includes('credential_id = ?')
+      ? String(boundValues[usesChallengeHash ? 13 : 12] ?? '')
+      : null
+
+  if (
+    credentialLimit < Number.POSITIVE_INFINITY &&
+    webAuthnCredentials(options).filter((row) => String(row.userId) === ownerId)
+      .length >= credentialLimit
+  ) {
+    return 0
+  }
+  if (
+    duplicateCredentialId &&
+    webAuthnCredentials(options).some(
+      (row) => String(row.credentialId) === duplicateCredentialId,
+    )
+  ) {
+    return 0
+  }
+
+  const row = webAuthnChallenges(options).find((candidate) => {
+    const sameCredential =
+      credentialId == null
+        ? candidate.credentialId == null
+        : String(candidate.credentialId) === String(credentialId)
+    return (
+      String(candidate.tokenHash) === tokenHash &&
+      String(candidate.purpose) === purpose &&
+      String(candidate.rpId) === rpId &&
+      String(candidate.originPolicyVersion) === originPolicyVersion &&
+      candidate.consumedAt == null &&
+      String(candidate.expiresAt) > now &&
+      (candidate.userId == null || String(candidate.userId) === ownerId) &&
+      sameCredential &&
+      (challengeHash === null ||
+        String(candidate.challengeHash) === challengeHash)
+    )
+  })
+  if (!row) {
+    return 0
+  }
+
+  row.consumedAt = consumedAt
+  row.userId = row.userId ?? userId
+  return 1
+}
+
+function listWebAuthnCredentialRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown>[] {
+  const userId = String(boundValues[0] ?? '')
+  const limit = Number(boundValues[boundValues.length - 1] ?? 6)
+  return webAuthnCredentials(options)
+    .filter((row) => {
+      if (query.includes('credential_id = ?')) {
+        return String(row.credentialId) === String(boundValues[0])
+      }
+      if (query.includes('id = ? AND user_id = ?')) {
+        return (
+          String(row.id) === String(boundValues[0]) &&
+          String(row.userId) === String(boundValues[1])
+        )
+      }
+      return String(row.userId) === userId
+    })
+    .sort((left, right) => {
+      const revision = String(left.revisionDate).localeCompare(
+        String(right.revisionDate),
+      )
+      return revision !== 0
+        ? revision
+        : String(left.id).localeCompare(String(right.id))
+    })
+    .slice(0, Number.isFinite(limit) ? limit : undefined)
+}
+
+function findWebAuthnCredentialRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown> | null {
+  return listWebAuthnCredentialRows(options, boundValues, query)[0] ?? null
+}
+
+function findWebAuthnChallengeRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): Record<string, unknown> | null {
+  return (
+    webAuthnChallenges(options).find(
+      (row) => String(row.tokenHash) === String(boundValues[0]),
+    ) ?? null
+  )
 }
 
 export const requiredTables = [
