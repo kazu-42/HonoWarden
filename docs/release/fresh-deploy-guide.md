@@ -58,7 +58,7 @@ A future reviewed execution packet must bind all of these before any write:
 2. the scoped credential and its verified permissions;
 3. D1, R2, Worker, route, and custom-domain target identities;
 4. the complete migration-freeze ledger, including `0018_text_sends.sql` and
-   `0020_personal_api_keys.sql`;
+   `0020_personal_api_keys.sql` and `0021_emergency_access.sql`;
 5. secret names and a stdin-only provisioning mechanism;
 6. pre-write readback and per-operation authority;
 7. partial-success classification and recovery for resource, secret, migration,

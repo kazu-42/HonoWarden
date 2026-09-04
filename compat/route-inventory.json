@@ -2674,7 +2674,8 @@
         "0017_account_lifecycle.sql",
         "0018_text_sends.sql",
         "0019_send_files.sql",
-        "0020_personal_api_keys.sql"
+        "0020_personal_api_keys.sql",
+        "0021_emergency_access.sql"
       ]
     },
     {

@@ -134,6 +134,27 @@ describe('release feature-freeze docs', () => {
     expect(releaseNotes).toContain('source-only')
   })
 
+  it('locks the Emergency Access invitation migration as source-only and default-off', () => {
+    const upgradeGuide = readReleaseDoc('upgrade-guide.md')
+    const rollbackGuide = readReleaseDoc('rollback-guide.md')
+    const releaseNotes = readReleaseDoc('v0.1.0-alpha-release-notes.md')
+
+    for (const requirement of [
+      '0021_emergency_access.sql',
+      'HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED=false',
+      'emergency_access',
+      '/health/db',
+    ]) {
+      expect(upgradeGuide).toContain(requirement)
+    }
+    expect(rollbackGuide).toContain('Migration `0021` is forward-only')
+    expect(rollbackGuide).toContain('existing `501` guards remain in force')
+    expect(releaseNotes).toContain(
+      'Emergency Access invitation and trust source',
+    )
+    expect(releaseNotes).toContain('source-only')
+  })
+
   it('keeps the text Send foundation reader-first and activation-gated', () => {
     const upgradeGuide = readReleaseDoc('upgrade-guide.md')
     const rollbackGuide = readReleaseDoc('rollback-guide.md')

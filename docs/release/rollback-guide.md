@@ -248,6 +248,15 @@ normal rollback is to a Worker that ignores the additive tables while the
 existing `501` guards remain in force. Never prefix-delete R2 objects and never
 clean a generation unless the D1 tombstone still names that exact object key.
 
+## Emergency Access Invitation Rollback
+
+Migration `0021` is forward-only. Keep the `emergency_access` table during
+Worker rollback. HON-189 does not mount Emergency Access routes, enable
+`HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED`, or send invite mail, so the
+normal rollback is to a Worker that ignores the additive table while the
+existing `501` guards remain in force. Never copy invite tokens, wrapped keys,
+or raw emails into logs or incident evidence.
+
 After a later Send activation, never roll back to code that cannot read the
 stored capability-envelope and verifier key versions. First disable Send at
 the kill gate, drain owner and public requests, preserve D1 tombstones and

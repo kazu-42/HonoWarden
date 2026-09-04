@@ -18,18 +18,19 @@ Do not commit real secret values to the repository.
 
 ## Runtime Configuration
 
-| Name                                   | Secret?                                        | Security Role                                                 |
-| -------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
-| `HONOWARDEN_ALLOWED_EMAILS`            | no, but operationally sensitive                | restricts bootstrap/prelogin account set                      |
-| `HONOWARDEN_BOOTSTRAP_ENABLED`         | no                                             | keeps bootstrap default-off                                   |
-| `HONOWARDEN_AUTH_REQUESTS_ENABLED`     | no                                             | gates auth-request routes and cleanup; production default-off |
-| `HONOWARDEN_PASSWORD_CHANGE_ENABLED`   | no                                             | keeps password-change writes default-off                      |
-| `HONOWARDEN_ACCOUNT_KEYS_ENABLED`      | no                                             | keeps account-key read/initialization routes default-off      |
-| `HONOWARDEN_KDF_MUTATION_ENABLED`      | no                                             | keeps KDF-generation writes default-off                       |
-| `HONOWARDEN_USER_KEY_ROTATION_ENABLED` | no                                             | keeps full user-key generation writes default-off             |
-| `HONOWARDEN_AUDIT_LOGS`                | no                                             | controls audit JSON-line emission                             |
-| `HONOWARDEN_ENV`                       | no                                             | separates development, staging, and production behavior       |
-| `HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID`   | no, but rotate with the matching active secret | identifies the active access-token signing key in JWT headers |
+| Name                                          | Secret?                                        | Security Role                                                 |
+| --------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
+| `HONOWARDEN_ALLOWED_EMAILS`                   | no, but operationally sensitive                | restricts bootstrap/prelogin account set                      |
+| `HONOWARDEN_BOOTSTRAP_ENABLED`                | no                                             | keeps bootstrap default-off                                   |
+| `HONOWARDEN_AUTH_REQUESTS_ENABLED`            | no                                             | gates auth-request routes and cleanup; production default-off |
+| `HONOWARDEN_PASSWORD_CHANGE_ENABLED`          | no                                             | keeps password-change writes default-off                      |
+| `HONOWARDEN_ACCOUNT_KEYS_ENABLED`             | no                                             | keeps account-key read/initialization routes default-off      |
+| `HONOWARDEN_KDF_MUTATION_ENABLED`             | no                                             | keeps KDF-generation writes default-off                       |
+| `HONOWARDEN_USER_KEY_ROTATION_ENABLED`        | no                                             | keeps full user-key generation writes default-off             |
+| `HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED` | no                                             | keeps Emergency Access routes at `501` until later activation |
+| `HONOWARDEN_AUDIT_LOGS`                       | no                                             | controls audit JSON-line emission                             |
+| `HONOWARDEN_ENV`                              | no                                             | separates development, staging, and production behavior       |
+| `HONOWARDEN_ACCESS_TOKEN_ACTIVE_KID`          | no, but rotate with the matching active secret | identifies the active access-token signing key in JWT headers |
 
 ## Sensitive Stored Data
 
@@ -48,6 +49,8 @@ Do not commit real secret values to the repository.
 | auth failure bucket keys      | D1 `auth_*` tables                       | hashed bucket metadata, not raw IP                    |
 | audit event rows and lines    | D1 `audit_events`, Cloudflare logs       | sensitive operational metadata                        |
 | auth-request verifier state   | D1 `auth_requests`                       | keyed hashes and opaque client ciphertext only        |
+| emergency-access invite hash  | D1 `emergency_access.invite_token_hash`  | keyed verifier only; never store the raw invite token |
+| emergency-access wrapped key  | D1 `emergency_access.key_encrypted`      | opaque ciphertext; server must not parse or decrypt   |
 | backup directories            | operator filesystem                      | include D1 dump, manifest, and optional R2 objects    |
 
 ## Rotation Notes

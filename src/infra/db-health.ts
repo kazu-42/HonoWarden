@@ -22,6 +22,7 @@ export const requiredSchemaTables = [
   'webauthn_credentials',
   'webauthn_challenges',
   'personal_api_keys',
+  'emergency_access',
 ] as const
 
 export type DatabaseHealth =
