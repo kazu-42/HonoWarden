@@ -1,10 +1,22 @@
+import { hashRefreshToken } from './tokens'
+
 export const webAuthnPolicy = {
   assertionChallengeTtlSeconds: 7 * 60,
+  challengeRetentionSeconds: 24 * 60 * 60,
+  cleanupRowsPerSlice: 100,
   keySetChallengeTtlSeconds: 17 * 60,
+  maxCredentialNameLength: 64,
   maxCredentialsPerUser: 5,
   maxOrigins: 16,
   registrationChallengeTtlSeconds: 7 * 60,
 } as const
+
+export const webAuthnPrfSaltLabel = 'passwordless-login'
+
+export type WebAuthnChallengePurpose =
+  'registration' | 'authentication' | 'prf_key_set'
+
+export type WebAuthnPrfState = 'unsupported' | 'supported' | 'enabled'
 
 export type WebAuthnRuntimeBindings = {
   HONOWARDEN_WEBAUTHN_ALLOW_INSECURE_LOCALHOST?: string
@@ -275,4 +287,109 @@ function orderedErrors(
   const present = new Set(errors)
 
   return errorOrder.filter((error) => present.has(error))
+}
+
+export function webAuthnChallengeTtlSeconds(
+  purpose: WebAuthnChallengePurpose,
+): number {
+  if (purpose === 'prf_key_set') {
+    return webAuthnPolicy.keySetChallengeTtlSeconds
+  }
+  if (purpose === 'registration') {
+    return webAuthnPolicy.registrationChallengeTtlSeconds
+  }
+  return webAuthnPolicy.assertionChallengeTtlSeconds
+}
+
+export function webAuthnRetentionDeleteAfter(expiresAt: string): string {
+  return new Date(
+    Date.parse(expiresAt) + webAuthnPolicy.challengeRetentionSeconds * 1000,
+  ).toISOString()
+}
+
+export async function hashWebAuthnRouteToken(
+  secret: string,
+  token: string,
+): Promise<string> {
+  return hashRefreshToken(secret, `webauthn-token:${token}`)
+}
+
+export async function hashWebAuthnChallenge(
+  secret: string,
+  challenge: string,
+): Promise<string> {
+  return hashRefreshToken(secret, `webauthn-challenge:${challenge}`)
+}
+
+export async function buildWebAuthnOriginPolicyVersion(input: {
+  rpId: string
+  origins: readonly string[]
+}): Promise<string> {
+  const material = [input.rpId, ...[...input.origins].sort()].join('\n')
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(material),
+  )
+
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+export function evaluateWebAuthnSignCount(input: {
+  storedSignCount: number
+  reportedSignCount: number
+}):
+  | { ok: true; nextSignCount: number }
+  | { ok: false; code: 'counter_regression' } {
+  const { storedSignCount, reportedSignCount } = input
+  if (
+    !Number.isSafeInteger(storedSignCount) ||
+    storedSignCount < 0 ||
+    !Number.isSafeInteger(reportedSignCount) ||
+    reportedSignCount < 0
+  ) {
+    return { ok: false, code: 'counter_regression' }
+  }
+  if (storedSignCount === 0 && reportedSignCount === 0) {
+    return { ok: true, nextSignCount: 0 }
+  }
+  if (reportedSignCount > storedSignCount) {
+    return { ok: true, nextSignCount: reportedSignCount }
+  }
+  return { ok: false, code: 'counter_regression' }
+}
+
+export function resolveWebAuthnPrfState(input: {
+  prfSupported: boolean
+  encryptedUserKey: string | null
+  encryptedPublicKey: string | null
+  encryptedPrivateKey: string | null
+}):
+  | { ok: true; state: WebAuthnPrfState }
+  | { ok: false; code: 'partial_prf_key_set' } {
+  const keys = [
+    presentKey(input.encryptedUserKey),
+    presentKey(input.encryptedPublicKey),
+    presentKey(input.encryptedPrivateKey),
+  ]
+  const presentCount = keys.filter((key) => key !== null).length
+  if (presentCount !== 0 && presentCount !== 3) {
+    return { ok: false, code: 'partial_prf_key_set' }
+  }
+  if (!input.prfSupported) {
+    if (presentCount > 0) {
+      return { ok: false, code: 'partial_prf_key_set' }
+    }
+    return { ok: true, state: 'unsupported' }
+  }
+  if (presentCount === 3) {
+    return { ok: true, state: 'enabled' }
+  }
+  return { ok: true, state: 'supported' }
+}
+
+function presentKey(value: string | null): string | null {
+  const trimmed = value?.trim() ?? ''
+  return trimmed.length > 0 ? trimmed : null
 }

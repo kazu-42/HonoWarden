@@ -109,7 +109,7 @@ generators with attacker-controlled sizes.
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `7ad9c3ce791152759a897dc0f7aa7a5bc2e2e7dcf99d30ebd8b702c1ed2c4814`
+  `044b663442018f743e4964b9a1349a21f737d5421c91ae028f08870940fd7b64`
 
 ## Scope
 
@@ -117,6 +117,12 @@ This audit covers advisories available through the package manager registry at
 scan time. It does not prove that dependencies are vulnerability-free, nor does
 it cover Cloudflare platform vulnerabilities, browser client vulnerabilities, or
 security issues in project code.
+
+## HON-209 WebAuthn Verifier Pin
+
+HON-209 adds production dependency `@simplewebauthn/server` 13.3.3. This pin
+does not enable WebAuthn routes or advertised passkey capability. Re-run
+`pnpm audit --audit-level low` before the next release candidate.
 
 ## Follow-Up Rules
 

@@ -1,7 +1,7 @@
 # WebAuthn Threat Model
 
-Status: design review for HON-208. No WebAuthn route, credential, challenge, or
-live authenticator exists in HonoWarden at this stage.
+Status: HON-209 persistence and verifier source capability exist. No WebAuthn
+route, advertised feature, or live authenticator is enabled.
 
 Last reviewed: 2026-07-19.
 
@@ -186,9 +186,9 @@ promote another host or the CLI.
 
 - DNS ownership and public-suffix validity are operator/verifier responsibilities;
   the pure parser validates canonical labels but is not a public suffix list.
-- Maintained verifier defects and supply-chain compromise remain possible;
-  HON-209 must pin and audit the dependency and prove a Cloudflare Workers
-  bundle/dry-run.
+- Maintained verifier defects and supply-chain compromise remain possible.
+  HON-209 pins `@simplewebauthn/server` 13.3.3 and proved a Cloudflare Workers
+  bundle dry-run without mounting routes.
 - Synced-passkey counters cannot always detect cloned credentials; backup state
   improves interpretation but does not eliminate risk.
 - TOTP interaction with the pinned client's WebAuthn flow is unresolved and must

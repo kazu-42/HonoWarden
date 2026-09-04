@@ -15,6 +15,8 @@ import {
 import { requestQuotaPolicy } from '../domain/request-quota'
 import { cleanupExpiredRequestQuotaBuckets } from '../repositories/request-quota-repository'
 import { cleanupExpiredTotpChallenges } from '../repositories/totp-repository'
+import { cleanupExpiredWebAuthnChallenges } from '../repositories/webauthn-repository'
+import { webAuthnPolicy } from '../domain/webauthn'
 import {
   deleteRetainedAuthRequests,
   expireAuthRequests,
@@ -58,6 +60,11 @@ export async function cleanupTransientAuthData(
   await cleanupExpiredTotpChallenges(database, {
     expiredBefore: now,
     limit: authDefenseCleanupRowsPerSlice,
+  })
+
+  await cleanupExpiredWebAuthnChallenges(database, {
+    expiredBefore: now,
+    limit: webAuthnPolicy.cleanupRowsPerSlice,
   })
 
   await deleteExpiredPendingCipherAttachments(database, {

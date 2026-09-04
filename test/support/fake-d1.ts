@@ -953,6 +953,14 @@ export class FakeD1Database {
           }
         }
 
+        if (/DELETE\s+FROM\s+webauthn_challenges/.test(query)) {
+          return {
+            success: true,
+            results: [],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('INSERT INTO auth_failure_buckets')) {
           const bucketKey = String(boundValues[0])
           const now = String(boundValues[1])
@@ -4375,4 +4383,6 @@ export const requiredTables = [
   'collection_ciphers',
   'account_kdf_population',
   'user_key_rotation_wrapper_history',
+  'webauthn_credentials',
+  'webauthn_challenges',
 ] as const

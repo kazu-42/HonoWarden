@@ -57,6 +57,14 @@ pnpm backup:export -- \
 - `0014a_kdf_population.sql` must be applied before deploying a Worker commit
   that serves materialized KDF prelogin reads. Keep KDF mutation disabled while
   migration and reader behavior are verified.
+- `0015_webauthn.sql` must be applied before deploying a Worker that imports the
+  WebAuthn credential or challenge repository. Keep
+  `HONOWARDEN_WEBAUTHN_ENABLED=false` at every tracked scope. The migration
+  creates `webauthn_credentials` and `webauthn_challenges` only; it does not
+  mount routes, advertise a passkey feature, or consume a challenge. Verify
+  `/health/db` reports both tables before any later ceremony work. Rollback
+  disables enablement and never un-consumes a challenge, restores a deleted
+  credential, or rolls a sign counter backward.
 - `0016_user_key_rotation_wrapper_history.sql` must be applied before deploying
   the Worker commit that records account-key initialization, password, KDF, and
   user-key wrapper history. The migration and canonical fingerprint writer are

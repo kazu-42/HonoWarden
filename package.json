@@ -80,6 +80,7 @@
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "@microsoft/signalr-protocol-msgpack": "^10.0.0",
+    "@simplewebauthn/server": "13.3.3",
     "hono": "~4.12.34"
   },
   "devDependencies": {

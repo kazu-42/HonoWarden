@@ -8,6 +8,11 @@ This section is the present-tense source boundary. The dated Week 1–26 and
 official-client sections below are historical delivery records and do not
 override it.
 
+- HON-209 adds forward-only migration `0015_webauthn.sql`, pinned
+  `@simplewebauthn/server` 13.3.3, owner-scoped WebAuthn credential/challenge
+  repositories, and bounded expired-challenge cleanup. Routes remain absent,
+  `HONOWARDEN_WEBAUTHN_ENABLED` stays default-off, and `/config` still does not
+  advertise WebAuthn or passkeys.
 - The integration candidate is based on source commit
   `52ef7293615702b399cf5b3bcac7e607f191e51f`; it remains an uncommitted local
   worktree and has not been pushed, published, or deployed.

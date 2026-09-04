@@ -212,6 +212,20 @@ outage rollback is limited to disabling new public requests and retrying token
 delivery with a new token; provider responses and raw tokens must never be
 copied into incident evidence.
 
+## WebAuthn Persistence Rollback
+
+Migration `0015` is forward-only. Keep `webauthn_credentials` and
+`webauthn_challenges` during Worker rollback. HON-209 does not mount WebAuthn
+routes or enable `HONOWARDEN_WEBAUTHN_ENABLED`, so the normal rollback is to
+leave the additive tables in place while tracked configuration stays
+default-off.
+
+Rollback never un-consumes a challenge, restores a deleted credential, rolls a
+sign counter backward, or down-migrates authenticator state. Failed
+verification must continue to write nothing. After a later activation, first
+set enablement false, read back route absence, and preserve D1 state for
+review.
+
 ## Encrypted Text Send Foundation Rollback
 
 Migration `0018` is forward-only. Keep the `sends` table and its indexes during
