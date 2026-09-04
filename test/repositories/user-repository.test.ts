@@ -100,22 +100,21 @@ describe('updateAccountProfile', () => {
 })
 
 describe('getAccountRevisionDate', () => {
-  it('includes confirmed organization revisions in account revision polling', async () => {
+  it('derives the revision from confirmed membership and managed collection access', async () => {
     const database = new RecordingD1Database(1)
 
     await expect(
       getAccountRevisionDate(database, 'user-id'),
     ).resolves.toBeNull()
 
-    expect(database.query).toContain('FROM organizations organization')
-    expect(database.query).toContain('INNER JOIN organization_users membership')
+    expect(database.query).toContain('WITH requested_user AS')
     expect(database.query).toContain('membership.status = 2')
-    expect(database.values).toEqual([
-      'user-id',
-      'user-id',
-      'user-id',
-      'user-id',
-    ])
+    expect(database.query).toContain(
+      'collection.organization_id = membership.organizationId',
+    )
+    expect(database.query).toContain('accessible_collection.manage = 1')
+    expect(database.query).toContain('cipher.organization_id IS NULL')
+    expect(database.values).toEqual(['user-id'])
   })
 })
 

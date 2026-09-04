@@ -5819,6 +5819,138 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toBe('2026-07-06T00:05:00.000Z')
   })
 
+  it('includes accessible organization ciphers in the account revision date', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const response = await app.request(
+      '/api/accounts/revision-date',
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [
+            {
+              id: 'accessible-organization-cipher-id',
+              userId: 'other-user-id',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: '{}',
+              revisionDate: '2026-07-06T00:08:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              organizationId: 'organization-id',
+              cipherKey: '2.organization-cipher-key',
+            },
+            {
+              id: 'unmanaged-organization-cipher-id',
+              userId: 'other-user-id',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: '{}',
+              revisionDate: '2026-07-06T00:09:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              organizationId: 'organization-id',
+              cipherKey: '2.unmanaged-organization-cipher-key',
+            },
+            {
+              id: 'invited-organization-cipher-id',
+              userId: 'other-user-id',
+              folderId: null,
+              type: 1,
+              favorite: 0,
+              encryptedJson: '{}',
+              revisionDate: '2026-07-06T00:10:00.000Z',
+              createdAt: '2026-07-06T00:00:00.000Z',
+              organizationId: 'invited-organization-id',
+              cipherKey: '2.invited-organization-cipher-key',
+            },
+          ],
+          organizations: [
+            {
+              id: 'organization-id',
+              revisionDate: '2026-07-06T00:06:00.000Z',
+            },
+            {
+              id: 'invited-organization-id',
+              revisionDate: '2026-07-06T00:11:00.000Z',
+            },
+          ],
+          organizationUsers: [
+            {
+              id: 'confirmed-membership-id',
+              organizationId: 'organization-id',
+              userId: user.id,
+              status: 2,
+            },
+            {
+              id: 'invited-membership-id',
+              organizationId: 'invited-organization-id',
+              userId: user.id,
+              status: 0,
+            },
+          ],
+          collections: [
+            {
+              id: 'managed-collection-id',
+              organizationId: 'organization-id',
+              revisionDate: '2026-07-06T00:07:00.000Z',
+            },
+            {
+              id: 'unmanaged-collection-id',
+              organizationId: 'organization-id',
+              revisionDate: '2026-07-06T00:05:00.000Z',
+            },
+            {
+              id: 'invited-collection-id',
+              organizationId: 'invited-organization-id',
+              revisionDate: '2026-07-06T00:12:00.000Z',
+            },
+          ],
+          collectionUsers: [
+            {
+              collectionId: 'managed-collection-id',
+              organizationUserId: 'confirmed-membership-id',
+              manage: 1,
+            },
+            {
+              collectionId: 'unmanaged-collection-id',
+              organizationUserId: 'confirmed-membership-id',
+              manage: 0,
+            },
+            {
+              collectionId: 'invited-collection-id',
+              organizationUserId: 'invited-membership-id',
+              manage: 1,
+            },
+          ],
+          collectionCiphers: [
+            {
+              collectionId: 'managed-collection-id',
+              cipherId: 'accessible-organization-cipher-id',
+            },
+            {
+              collectionId: 'unmanaged-collection-id',
+              cipherId: 'unmanaged-organization-cipher-id',
+            },
+            {
+              collectionId: 'invited-collection-id',
+              cipherId: 'invited-organization-cipher-id',
+            },
+          ],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toBe('2026-07-06T00:08:00.000Z')
+  })
+
   it('returns account profile metadata for a valid access token', async () => {
     const user = {
       ...authUserRecord(),
@@ -10588,6 +10720,387 @@ describe('HonoWarden app', () => {
         requestId: 'opaque-cipher-not-found-request',
       })
     }
+  })
+
+  it('syncs and reads accessible organization ciphers with authoritative relationship metadata', async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const organizationId = 'organization-id'
+    const organizationUserId = 'organization-user-id'
+    const organizationCipher = {
+      ...cipherRecord(),
+      id: 'organization-cipher-id',
+      userId: 'creator-user-id',
+      folderId: null,
+      encryptedJson: JSON.stringify({
+        ...cipherCreateBody(),
+        folderId: null,
+        name: '2.organization-cipher-name',
+        organizationId: '2.untrusted-payload-organization',
+        collectionIds: ['2.untrusted-payload-collection'],
+        key: '2.untrusted-payload-key',
+        edit: false,
+        viewPassword: false,
+      }),
+      revisionDate: '2026-07-06T00:06:00.000Z',
+      organizationId,
+      cipherKey: '2.opaque-organization-cipher-key',
+    }
+    const database = new FakeD1Database(null, [], {
+      authUser: user,
+      ciphers: [
+        cipherRecord(),
+        organizationCipher,
+        {
+          ...cipherRecord(),
+          id: 'other-user-personal-cipher-id',
+          userId: 'other-user-id',
+          revisionDate: '2026-07-06T00:07:00.000Z',
+        },
+      ],
+      organizations: [
+        {
+          id: organizationId,
+          name: 'Example Organization',
+          billingEmail: 'billing@example.test',
+          planType: 0,
+          publicKey: 'opaque-org-public-key',
+          privateKey: '2.opaque-org-private-key',
+          enabled: 1,
+          useTotp: 1,
+          revisionDate: '2026-07-06T00:01:00.000Z',
+        },
+      ],
+      organizationUsers: [
+        {
+          id: organizationUserId,
+          organizationId,
+          userId: user.id,
+          orgKey: '2.member-wrapped-org-key',
+          status: 2,
+          type: 2,
+          permissions: null,
+        },
+      ],
+      collections: [
+        {
+          id: 'collection-two',
+          organizationId,
+          encryptedName: '2.collection-two',
+          externalId: null,
+          type: 0,
+          revisionDate: '2026-07-06T00:02:00.000Z',
+        },
+        {
+          id: 'collection-one',
+          organizationId,
+          encryptedName: '2.collection-one',
+          externalId: null,
+          type: 0,
+          revisionDate: '2026-07-06T00:02:00.000Z',
+        },
+      ],
+      collectionUsers: [
+        {
+          collectionId: 'collection-one',
+          organizationUserId,
+          readOnly: 0,
+          hidePasswords: 0,
+          manage: 1,
+        },
+        {
+          collectionId: 'collection-two',
+          organizationUserId,
+          readOnly: 0,
+          hidePasswords: 0,
+          manage: 1,
+        },
+      ],
+      collectionCiphers: [
+        { collectionId: 'collection-two', cipherId: organizationCipher.id },
+        { collectionId: 'collection-one', cipherId: organizationCipher.id },
+        { collectionId: 'collection-one', cipherId: organizationCipher.id },
+      ],
+    })
+    const env = {
+      DB: database,
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    const sync = (await syncResponse.json()) as {
+      ciphers: Array<Record<string, unknown>>
+    }
+    expect(sync.ciphers.map((cipher) => cipher.id)).toEqual([
+      'cipher-id',
+      'organization-cipher-id',
+    ])
+    expect(
+      sync.ciphers.find((cipher) => cipher.id === 'cipher-id'),
+    ).toMatchObject({
+      organizationId: null,
+      collectionIds: [],
+    })
+    expect(
+      sync.ciphers.find((cipher) => cipher.id === 'cipher-id'),
+    ).not.toHaveProperty('key')
+    expect(
+      sync.ciphers.find((cipher) => cipher.id === organizationCipher.id),
+    ).toMatchObject({
+      organizationId,
+      collectionIds: ['collection-one', 'collection-two'],
+      key: '2.opaque-organization-cipher-key',
+      edit: true,
+      viewPassword: true,
+      name: '2.organization-cipher-name',
+    })
+
+    const listResponse = await app.request(
+      '/api/ciphers',
+      { headers: authorization },
+      env,
+    )
+    expect(listResponse.status).toBe(200)
+    const list = (await listResponse.json()) as {
+      data: Array<Record<string, unknown>>
+    }
+    expect(list.data.map((cipher) => cipher.id)).toEqual([
+      'cipher-id',
+      'organization-cipher-id',
+    ])
+    expect(
+      list.data.find((cipher) => cipher.id === organizationCipher.id),
+    ).toMatchObject({
+      organizationId,
+      collectionIds: ['collection-one', 'collection-two'],
+      key: '2.opaque-organization-cipher-key',
+    })
+
+    const readResponse = await app.request(
+      `/api/ciphers/${organizationCipher.id}`,
+      { headers: authorization },
+      env,
+    )
+    expect(readResponse.status).toBe(200)
+    await expect(readResponse.json()).resolves.toMatchObject({
+      id: organizationCipher.id,
+      organizationId,
+      collectionIds: ['collection-one', 'collection-two'],
+      key: '2.opaque-organization-cipher-key',
+      edit: true,
+      viewPassword: true,
+    })
+  })
+
+  it.each([
+    { name: 'invited membership', status: 0, manage: 1, mapped: true },
+    { name: 'accepted membership', status: 1, manage: 1, mapped: true },
+    { name: 'revoked membership', status: -1, manage: 1, mapped: true },
+    { name: 'non-manage assignment', status: 2, manage: 0, mapped: true },
+    { name: 'missing cipher mapping', status: 2, manage: 1, mapped: false },
+    {
+      name: 'cross-organization collection',
+      status: 2,
+      manage: 1,
+      mapped: true,
+      collectionOrganizationId: 'other-organization-id',
+    },
+  ])(
+    'hides organization ciphers for a $name',
+    async ({ status, manage, mapped, collectionOrganizationId }) => {
+      const user = authUserRecord()
+      const accessToken = await accessTokenFor(user)
+      const organizationId = 'organization-id'
+      const organizationCipher = {
+        ...cipherRecord(),
+        id: 'organization-cipher-id',
+        userId: 'creator-user-id',
+        organizationId,
+        cipherKey: '2.opaque-organization-cipher-key',
+      }
+      const env = {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers: [organizationCipher],
+          organizations: [
+            {
+              id: organizationId,
+              name: 'Example Organization',
+              planType: 0,
+              enabled: 1,
+              useTotp: 1,
+              revisionDate: '2026-07-06T00:01:00.000Z',
+            },
+          ],
+          organizationUsers: [
+            {
+              id: 'organization-user-id',
+              organizationId,
+              userId: user.id,
+              orgKey: '2.member-wrapped-org-key',
+              status,
+              type: 2,
+              permissions: null,
+            },
+          ],
+          collections: [
+            {
+              id: 'collection-id',
+              organizationId: collectionOrganizationId ?? organizationId,
+              encryptedName: '2.collection-name',
+              externalId: null,
+              type: 0,
+              revisionDate: '2026-07-06T00:02:00.000Z',
+            },
+          ],
+          collectionUsers: [
+            {
+              collectionId: 'collection-id',
+              organizationUserId: 'organization-user-id',
+              readOnly: 0,
+              hidePasswords: 0,
+              manage,
+            },
+          ],
+          collectionCiphers: mapped
+            ? [
+                {
+                  collectionId: 'collection-id',
+                  cipherId: organizationCipher.id,
+                },
+              ]
+            : [],
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      }
+      const authorization = { Authorization: `Bearer ${accessToken}` }
+
+      const syncResponse = await app.request(
+        '/api/sync',
+        { headers: authorization },
+        env,
+      )
+      expect(syncResponse.status).toBe(200)
+      await expect(syncResponse.json()).resolves.toMatchObject({ ciphers: [] })
+
+      const listResponse = await app.request(
+        '/api/ciphers',
+        { headers: authorization },
+        env,
+      )
+      expect(listResponse.status).toBe(200)
+      await expect(listResponse.json()).resolves.toMatchObject({ data: [] })
+
+      const readResponse = await app.request(
+        `/api/ciphers/${organizationCipher.id}`,
+        { headers: authorization },
+        env,
+      )
+      expect(readResponse.status).toBe(404)
+      await expect(readResponse.json()).resolves.toMatchObject({
+        error: { code: 'cipher_not_found' },
+      })
+    },
+  )
+
+  it("never returns another user's personal cipher through an organization path", async () => {
+    const user = authUserRecord()
+    const accessToken = await accessTokenFor(user)
+    const organizationId = 'organization-id'
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        authUser: user,
+        ciphers: [
+          {
+            ...cipherRecord(),
+            id: 'other-user-personal-cipher-id',
+            userId: 'other-user-id',
+            organizationId: null,
+            encryptedJson: JSON.stringify({
+              ...cipherCreateBody(),
+              name: '2.other-user-personal-cipher',
+            }),
+          },
+        ],
+        organizations: [
+          {
+            id: organizationId,
+            name: 'Example Organization',
+            planType: 0,
+            enabled: 1,
+            useTotp: 1,
+            revisionDate: '2026-07-06T00:01:00.000Z',
+          },
+        ],
+        organizationUsers: [
+          {
+            id: 'organization-user-id',
+            organizationId,
+            userId: user.id,
+            orgKey: '2.member-wrapped-org-key',
+            status: 2,
+            type: 2,
+            permissions: null,
+          },
+        ],
+        collections: [
+          {
+            id: 'collection-id',
+            organizationId,
+            encryptedName: '2.collection-name',
+            externalId: null,
+            type: 0,
+            revisionDate: '2026-07-06T00:02:00.000Z',
+          },
+        ],
+        collectionUsers: [
+          {
+            collectionId: 'collection-id',
+            organizationUserId: 'organization-user-id',
+            readOnly: 0,
+            hidePasswords: 0,
+            manage: 1,
+          },
+        ],
+        collectionCiphers: [
+          {
+            collectionId: 'collection-id',
+            cipherId: 'other-user-personal-cipher-id',
+          },
+        ],
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const authorization = { Authorization: `Bearer ${accessToken}` }
+
+    const syncResponse = await app.request(
+      '/api/sync',
+      { headers: authorization },
+      env,
+    )
+    expect(syncResponse.status).toBe(200)
+    await expect(syncResponse.json()).resolves.toMatchObject({ ciphers: [] })
+
+    const listResponse = await app.request(
+      '/api/ciphers',
+      { headers: authorization },
+      env,
+    )
+    expect(listResponse.status).toBe(200)
+    await expect(listResponse.json()).resolves.toMatchObject({ data: [] })
+
+    const readResponse = await app.request(
+      '/api/ciphers/other-user-personal-cipher-id',
+      { headers: authorization },
+      env,
+    )
+    expect(readResponse.status).toBe(404)
   })
 
   it('creates a login cipher for the authenticated user', async () => {

@@ -173,16 +173,21 @@ import {
   bulkRestoreCiphers,
   bulkSoftDeleteCiphers,
   createCipher,
+  findAccessibleCipherById,
   findCipherById,
+  listAccessibleCiphersByUser,
+  listAccessibleCiphersByUserPage,
   listCiphersByUser,
-  listCiphersByUserPage,
   permanentlyDeleteCipher,
   resolveCipherAccess,
   restoreCipher,
   softDeleteCipher,
   updateCipher,
 } from './repositories/cipher-repository'
-import type { CipherRecord } from './repositories/cipher-repository'
+import type {
+  AccessibleCipherRecord,
+  CipherRecord,
+} from './repositories/cipher-repository'
 import {
   createOrganizationCollection,
   createOrganizationFoundation,
@@ -2542,7 +2547,7 @@ app.get('/api/sync', async (c) => {
       collections,
     ] = await Promise.all([
       listFoldersByUser(c.env.DB, auth.user.id),
-      listCiphersByUser(c.env.DB, auth.user.id),
+      listAccessibleCiphersByUser(c.env.DB, auth.user.id),
       listCipherAttachmentsByUser(c.env.DB, auth.user.id),
       getDomainSettingsForUser(c.env.DB, auth.user.id),
       listConfirmedOrganizationMemberships(c.env.DB, auth.user.id),
@@ -5620,7 +5625,7 @@ app.get('/api/ciphers', async (c) => {
 
   try {
     const [page, attachments] = await Promise.all([
-      listCiphersByUserPage(c.env.DB, {
+      listAccessibleCiphersByUserPage(c.env.DB, {
         userId: auth.user.id,
         ...pagination.value,
       }),
@@ -5990,7 +5995,7 @@ app.get('/api/ciphers/:id', async (c) => {
     }
 
     const [cipher, attachments] = await Promise.all([
-      findCipherById(c.env.DB, {
+      findAccessibleCipherById(c.env.DB, {
         id: c.req.param('id'),
         userId: auth.user.id,
       }),
@@ -6788,7 +6793,7 @@ function buildSyncResponse(
   user: AuthUserRecord,
   premiumFeaturesEnabled: boolean,
   folders: readonly FolderRecord[] = [],
-  ciphers: readonly CipherRecord[] = [],
+  ciphers: readonly (CipherRecord | AccessibleCipherRecord)[] = [],
   attachments: readonly CipherAttachmentRecord[] = [],
   domainSettings: DomainSettings = emptyDomainSettings,
   organizations: readonly OrganizationMembershipRecord[] = [],
@@ -7386,7 +7391,7 @@ function buildFolderListResponse(
 }
 
 function buildCipherListResponse(
-  ciphers: readonly CipherRecord[],
+  ciphers: readonly (CipherRecord | AccessibleCipherRecord)[],
   continuationToken: string | null = null,
   attachmentsByCipherId: ReadonlyMap<
     string,
@@ -7431,31 +7436,53 @@ function isTrustedDevice(device: DeviceRecord): boolean {
 }
 
 function buildCipherResponse(
-  cipher: CipherRecord,
+  cipher: CipherRecord | AccessibleCipherRecord,
   attachments: readonly CipherAttachmentRecord[] = [],
 ) {
   const payload = normalizeCipherResponsePayload(
     parseStoredCipherPayload(cipher.encryptedJson),
     attachments,
   )
+  const accessibleCipher = isAccessibleCipherRecord(cipher) ? cipher : null
+  const organizationMetadata =
+    accessibleCipher?.organizationId !== undefined &&
+    accessibleCipher.organizationId !== null
+      ? {
+          organizationId: accessibleCipher.organizationId,
+          key: accessibleCipher.cipherKey,
+          collectionIds: accessibleCipher.collectionIds,
+          edit: true,
+          viewPassword: true,
+        }
+      : {
+          organizationId: null,
+          collectionIds: accessibleCipher
+            ? accessibleCipher.collectionIds
+            : readStringArray(payload.collectionIds),
+          edit: readBoolean(payload.edit, true),
+          viewPassword: readBoolean(payload.viewPassword, true),
+        }
 
   return {
     ...payload,
     object: 'cipher',
     id: cipher.id,
-    organizationId: null,
+    ...organizationMetadata,
     folderId: cipher.folderId,
     type: cipher.type,
     favorite: cipher.favorite,
-    edit: readBoolean(payload.edit, true),
-    viewPassword: readBoolean(payload.viewPassword, true),
     organizationUseTotp: readBoolean(payload.organizationUseTotp, false),
-    collectionIds: readStringArray(payload.collectionIds),
     permissions: normalizeCipherPermissions(payload.permissions),
     revisionDate: normalizeApiTimestamp(cipher.revisionDate),
     creationDate: normalizeApiTimestamp(cipher.createdAt),
     deletedDate: normalizeNullableApiTimestamp(cipher.deletedAt),
   }
+}
+
+function isAccessibleCipherRecord(
+  cipher: CipherRecord | AccessibleCipherRecord,
+): cipher is AccessibleCipherRecord {
+  return 'collectionIds' in cipher
 }
 
 function normalizeCipherResponsePayload(

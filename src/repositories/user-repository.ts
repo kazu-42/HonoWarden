@@ -93,30 +93,69 @@ export async function getAccountRevisionDate(
   const row = await database
     .prepare(
       `
+        WITH requested_user AS (
+          SELECT ? AS userId
+        ),
+        confirmed_memberships AS (
+          SELECT
+            membership.id as organizationUserId,
+            membership.organization_id as organizationId
+          FROM organization_users membership
+          INNER JOIN requested_user
+            ON requested_user.userId = membership.user_id
+          WHERE membership.status = 2
+        ),
+        accessible_organization_collections AS (
+          SELECT DISTINCT
+            collection.id as collectionId,
+            collection.organization_id as organizationId,
+            collection_user.manage
+          FROM confirmed_memberships membership
+          INNER JOIN collection_users collection_user
+            ON collection_user.organization_user_id = membership.organizationUserId
+          INNER JOIN collections collection
+            ON collection.id = collection_user.collection_id
+            AND collection.organization_id = membership.organizationId
+        )
         SELECT MAX(revision_date) as revisionDate
         FROM (
-          SELECT revision_date
-          FROM users
-          WHERE id = ?
+          SELECT user.revision_date
+          FROM users user
+          INNER JOIN requested_user
+            ON requested_user.userId = user.id
           UNION ALL
-          SELECT revision_date
-          FROM folders
-          WHERE user_id = ?
+          SELECT folder.revision_date
+          FROM folders folder
+          INNER JOIN requested_user
+            ON requested_user.userId = folder.user_id
           UNION ALL
-          SELECT revision_date
-          FROM ciphers
-          WHERE user_id = ?
+          SELECT cipher.revision_date
+          FROM ciphers cipher
+          INNER JOIN requested_user
+            ON requested_user.userId = cipher.user_id
+          WHERE cipher.organization_id IS NULL
           UNION ALL
           SELECT organization.revision_date
           FROM organizations organization
-          INNER JOIN organization_users membership
-            ON membership.organization_id = organization.id
-          WHERE membership.user_id = ?
-            AND membership.status = 2
+          INNER JOIN confirmed_memberships membership
+            ON membership.organizationId = organization.id
+          UNION ALL
+          SELECT cipher.revision_date
+          FROM ciphers cipher
+          WHERE cipher.organization_id IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM collection_ciphers mapping
+              INNER JOIN accessible_organization_collections accessible_collection
+                ON accessible_collection.collectionId = mapping.collection_id
+                AND accessible_collection.organizationId = cipher.organization_id
+                AND accessible_collection.manage = 1
+              WHERE mapping.cipher_id = cipher.id
+            )
         )
       `,
     )
-    .bind(userId, userId, userId, userId)
+    .bind(userId)
     .first<AccountRevisionRow>()
 
   return row?.revisionDate ?? null
