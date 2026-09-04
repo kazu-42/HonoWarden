@@ -84,7 +84,7 @@ Integrity Check — non‑browser UAs get a `403 error code: 1010` before reachi
 
 ```bash
 UA="HonoWarden-Health/1.0"
-BASE="https://honowarden-staging.ghive42.workers.dev"      # vault staging
+BASE="https://vault-staging.honowarden.com"      # vault staging
 curl -s -o /dev/null -w "GET / -> %{http_code}\n" -H "User-Agent: $UA" "$BASE/"
 # prelogin (correct path is /identity/accounts/prelogin; /api/accounts/prelogin is 404)
 curl -s -o /dev/null -w "prelogin -> %{http_code}\n" -X POST -H "User-Agent: $UA" \
@@ -108,8 +108,14 @@ Cloudflare Access when unauthenticated — that is the healthy protected state.
 
 ## 5. Official clients
 
-Point an official upstream client (browser extension, desktop, mobile) at the server
-URL. Compatibility is pinned against real client bundles — see
+Point an official upstream client (browser extension, desktop, mobile) at the
+stable environment URL: `https://vault-staging.honowarden.com` for synthetic
+staging evidence or `https://vault.honowarden.com` for an explicitly authorized
+production run. `https://honowarden.com` is the website and must not be entered
+as the client's Server URL. Setup, preflight, DNS diagnosis, and rollback are in
+[official-client-endpoints.md](official-client-endpoints.md).
+
+Compatibility is pinned against real client bundles — see
 [compatibility-matrix.md](../compatibility-matrix.md) and
 [compatibility.md](../compatibility.md). Bulk vault actions, premium TOTP/attachment surfaces, and
 login‑with‑device are exercised with live‑client evidence. The ADR 0010 organization foundation and

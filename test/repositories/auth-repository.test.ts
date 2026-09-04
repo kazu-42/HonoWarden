@@ -183,6 +183,7 @@ describe('auth repository', () => {
     expect(database.boundValues[0]).toBe('person@example.test')
     expect(database.query).toContain('WITH target AS')
     expect(database.query).toContain('FROM account_kdf_population')
+    expect(database.query).not.toContain('master_password_hash')
     expect(database.query).toContain('account_count as accountCount')
     expect(database.query).not.toContain('COUNT(*)')
     expect(database.query).not.toContain('GROUP BY')

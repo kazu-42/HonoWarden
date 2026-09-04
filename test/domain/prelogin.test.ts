@@ -51,6 +51,32 @@ describe('prelogin domain', () => {
     })
   })
 
+  it('allows an existing account when the bootstrap allowlist is empty', () => {
+    expect(resolvePrelogin({ email: 'Person@Example.Test' }, '', true)).toEqual(
+      {
+        ok: true,
+        response: {
+          kdf: 0,
+          kdfIterations: 600000,
+          kdfMemory: null,
+          kdfParallelism: null,
+        },
+      },
+    )
+  })
+
+  it('still denies unknown accounts when the bootstrap allowlist is empty', () => {
+    expect(
+      resolvePrelogin({ email: 'Person@Example.Test' }, '', false),
+    ).toMatchObject({
+      ok: false,
+      status: 403,
+      error: {
+        code: 'prelogin_not_allowed',
+      },
+    })
+  })
+
   it('rejects malformed requests', () => {
     expect(resolvePrelogin({ email: '' }, 'person@example.test')).toEqual({
       ok: false,

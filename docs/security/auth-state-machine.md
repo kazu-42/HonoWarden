@@ -1,6 +1,6 @@
 # Authentication State Machine
 
-Last reviewed: 2026-07-19.
+Last reviewed: 2026-09-04.
 
 This document records the server-side authentication and session states that
 must remain stable for alpha.
@@ -9,7 +9,7 @@ must remain stable for alpha.
 
 | State              | Entered By                     | Allowed Actions                                        | Rejected Actions                                 |
 | ------------------ | ------------------------------ | ------------------------------------------------------ | ------------------------------------------------ |
-| no account         | default                        | prelogin metadata only                                 | password grant, sync, refresh                    |
+| no account         | default                        | allowlisted bootstrap prelogin metadata                | password grant, sync, refresh                    |
 | active             | bootstrap                      | password grant, refresh, sync, vault CRUD              | none by account state                            |
 | temporarily locked | failed password attempts       | prelogin, eventual retry                               | password grant until lock expires                |
 | TOTP setup pending | authenticated setup            | setup verify                                           | login without valid challenge if TOTP is enabled |
@@ -23,6 +23,31 @@ stable while disabled; replacing either with an unknown-account decoy would
 make the disable transition observable through this anonymous endpoint. Every
 grant and authenticated-session path still rejects the disabled account with
 the same generic boundary used for invalid credentials.
+
+## Prelogin
+
+```text
+request
+  -> valid normalized email?
+  -> decoy/token secret configured?
+  -> account KDF lookup succeeds?
+  -> existing account?
+       yes -> return stored generation, including while disabled
+       no  -> email present in bootstrap allowlist?
+              yes -> return synthetic or default bootstrap KDF
+              no  -> reject without disclosing account existence
+```
+
+Failure invariants:
+
+- the environment allowlist gates only pre-account bootstrap; removing an
+  existing account from it must not break later client login
+- disabled accounts keep the same prelogin KDF target so disable is not
+  observable through this anonymous endpoint
+- the lookup selects KDF generation fields and never the master password hash
+- database lookup failures and unsupported stored KDF configurations return a
+  loud `503` instead of being disguised as credential failures
+- unknown accounts outside the bootstrap allowlist use generic denial wording
 
 ## Password Grant
 

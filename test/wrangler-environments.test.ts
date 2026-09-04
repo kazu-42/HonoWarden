@@ -15,6 +15,10 @@ type WranglerEnvironment = {
   name: string
   preview_urls: boolean
   workers_dev: boolean
+  routes: Array<{
+    pattern: string
+    custom_domain: boolean
+  }>
   triggers: {
     crons: string[]
   }
@@ -78,6 +82,33 @@ describe('wrangler configuration scopes', () => {
     expect(config.preview_urls).toBe(false)
     expect(config.env.staging.preview_urls).toBe(false)
     expect(config.env.production.preview_urls).toBe(false)
+  })
+
+  it('publishes environment-specific vault custom domains without taking the website apex', () => {
+    expect(config.env.staging.routes).toEqual([
+      {
+        pattern: 'vault-staging.honowarden.com',
+        custom_domain: true,
+      },
+    ])
+    expect(config.env.production.routes).toEqual([
+      {
+        pattern: 'vault.honowarden.com',
+        custom_domain: true,
+      },
+    ])
+
+    const deployablePatterns = [
+      ...config.env.staging.routes,
+      ...config.env.production.routes,
+    ].map((route) => route.pattern)
+
+    expect(new Set(deployablePatterns).size).toBe(deployablePatterns.length)
+    expect(deployablePatterns).not.toContain('honowarden.com')
+    expect(deployablePatterns).not.toContain('www.honowarden.com')
+    expect(config.workers_dev).toBe(false)
+    expect(config.env.staging.workers_dev).toBe(false)
+    expect(config.env.production.workers_dev).toBe(false)
   })
 
   it('keeps runtime environment labels explicit', () => {

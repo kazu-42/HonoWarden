@@ -65,6 +65,12 @@
       "name": "honowarden-staging",
       "preview_urls": false,
       "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "vault-staging.honowarden.com",
+          "custom_domain": true,
+        },
+      ],
       "triggers": {
         "crons": ["0 * * * *"],
       },
@@ -124,6 +130,12 @@
       "name": "honowarden",
       "preview_urls": false,
       "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "vault.honowarden.com",
+          "custom_domain": true,
+        },
+      ],
       "triggers": {
         "crons": ["0 * * * *"],
       },

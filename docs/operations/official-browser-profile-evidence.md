@@ -130,7 +130,7 @@ HON-95 owns human entry of the synthetic fixture and the UI flow. In HON-95,
 select the self-hosted environment and use only:
 
 ```text
-https://honowarden-staging.ghive42.workers.dev
+https://vault-staging.honowarden.com
 ```
 
 Retrieve synthetic email/password one field at a time with

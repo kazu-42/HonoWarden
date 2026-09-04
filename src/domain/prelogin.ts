@@ -76,6 +76,7 @@ export const preloginKdfPolicy = {
 export function resolvePrelogin(
   requestBody: unknown,
   allowedEmailsValue: string | undefined,
+  existingAccount = false,
 ): PreloginDecision {
   if (!isRecord(requestBody)) {
     return invalidPreloginRequest()
@@ -91,7 +92,10 @@ export function resolvePrelogin(
     return invalidPreloginRequest()
   }
 
-  if (!parseAllowedEmails(allowedEmailsValue).has(normalizedEmail)) {
+  if (
+    !existingAccount &&
+    !parseAllowedEmails(allowedEmailsValue).has(normalizedEmail)
+  ) {
     return {
       ok: false,
       status: 403,

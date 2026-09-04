@@ -42,6 +42,28 @@ override it.
 - HonoWarden remains API-only, pre-alpha, without an independent security
   audit, and must not be used for real secrets.
 
+## 2026-09-04 HON-136 Desktop Login Routing Source
+
+Implemented in source only:
+
+- declarative Custom Domain routes for
+  `https://vault.honowarden.com` (production) and
+  `https://vault-staging.honowarden.com` (staging)
+- website apex `https://honowarden.com` remains off the API Worker route list
+- `workers_dev` and preview URLs stay disabled in every Wrangler scope
+- existing-account prelogin independent of an empty bootstrap allowlist, using
+  the stored KDF generation already projected by `findPreloginKdfContext`
+- unknown emails still require the bootstrap allowlist
+- disabled accounts keep the same prelogin KDF target so disable is not
+  observable through this anonymous endpoint
+- operator runbook `docs/operations/official-client-endpoints.md`
+
+Not implemented or not yet verified in this change:
+
+- production login verification, Desktop live rerun, or any Cloudflare deploy
+- HON-137 production enrollment / auth-secret activation
+- remounting `/api/sends*` (those routes remain explicit `501`)
+
 ## Week 1 Status
 
 Historical Week 1 checkpoint: HonoWarden was introduced as a Cloudflare Workers
