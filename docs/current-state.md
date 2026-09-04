@@ -1,8 +1,8 @@
 # Current State
 
-Last updated: 2026-09-02
+Last updated: 2026-09-01
 
-## 2026-09-02 Integration Candidate Snapshot
+## 2026-09-01 Integration Candidate Snapshot
 
 This section is the present-tense source boundary. The dated Week 1–26 and
 official-client sections below are historical delivery records and do not
