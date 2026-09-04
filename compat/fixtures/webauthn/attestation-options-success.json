@@ -1,0 +1,66 @@
+{
+  "name": "webauthn-attestation-options-success",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/webauthn/attestation-options"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "content-type": "application/json"
+    },
+    "body": {}
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "webauthnCredentialCreateOptions",
+      "options": {
+        "rp": { "name": "HonoWarden", "id": "example.com" },
+        "challenge": "synthetic-challenge",
+        "attestation": "none",
+        "authenticatorSelection": {
+          "residentKey": "required",
+          "requireResidentKey": true,
+          "userVerification": "required"
+        }
+      },
+      "token": "synthetic-token"
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.object",
+      "type": "string",
+      "value": "webauthnCredentialCreateOptions"
+    },
+    {
+      "path": "$.token",
+      "type": "string"
+    },
+    {
+      "path": "$.options.rp.id",
+      "type": "string",
+      "value": "example.com"
+    },
+    {
+      "path": "$.options.attestation",
+      "type": "string",
+      "value": "none"
+    },
+    {
+      "path": "$.options.authenticatorSelection.residentKey",
+      "type": "string",
+      "value": "required"
+    },
+    {
+      "path": "$.options.authenticatorSelection.userVerification",
+      "type": "string",
+      "value": "required"
+    },
+    {
+      "path": "$.options.challenge",
+      "type": "string"
+    }
+  ]
+}

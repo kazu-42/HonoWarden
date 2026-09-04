@@ -1904,6 +1904,45 @@
       "adrs": ["0012-webauthn-passkey-contract.md"]
     },
     {
+      "lastReviewedAt": "2026-09-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app-webauthn-enrollment.test.ts",
+        "compat/fixtures/webauthn/list-success.json",
+        "compat/fixtures/webauthn/attestation-options-success.json"
+      ],
+      "supportClaim": false,
+      "id": "protocol.webauthn.enrollment",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-210",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/WebAuthnController.cs"
+      },
+      "rationale": "Authenticated passkey enrollment and inventory are source-capable behind default-off HONOWARDEN_WEBAUTHN_ENABLED. /api/config does not advertise passkeys. Anonymous assertion, grant, PRF enablement, rename, and delete remain later children.",
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/webauthn"
+        },
+        {
+          "method": "POST",
+          "path": "/api/webauthn"
+        },
+        {
+          "method": "POST",
+          "path": "/api/webauthn/attestation-options"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_WEBAUTHN_ENABLED"],
+      "adrs": ["0012-webauthn-passkey-contract.md"],
+      "migrations": ["0015_webauthn.sql"]
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "none",
       "evidence": [],

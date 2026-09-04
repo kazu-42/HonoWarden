@@ -56,6 +56,12 @@ export type ConsumeWebAuthnChallengeInput = {
   credentialId: string | null
   consumedAt: string
   now: string
+  challengeHash?: string
+}
+
+export type CompleteWebAuthnRegistrationInput = {
+  consume: ConsumeWebAuthnChallengeInput & { challengeHash: string }
+  credential: WebAuthnCredentialRecord
 }
 
 export type SuccessfulWebAuthnAssertionInput = {
@@ -75,6 +81,7 @@ export type RenameWebAuthnCredentialInput = {
 }
 
 type WebAuthnDatabase = Pick<D1Database, 'prepare'>
+type WebAuthnMutationDatabase = Pick<D1Database, 'prepare' | 'batch'>
 
 type WebAuthnCredentialRow = Omit<
   WebAuthnCredentialRecord,
@@ -160,6 +167,9 @@ export async function consumeWebAuthnChallenge(
   database: WebAuthnDatabase,
   input: ConsumeWebAuthnChallengeInput,
 ): Promise<{ status: 'consumed' } | { status: 'not_consumed' }> {
+  const challengeHashPredicate = input.challengeHash
+    ? 'AND challenge_hash = ?'
+    : ''
   const result = await database
     .prepare(
       `
@@ -178,6 +188,7 @@ export async function consumeWebAuthnChallenge(
             (? IS NULL AND credential_id IS NULL)
             OR credential_id = ?
           )
+          ${challengeHashPredicate}
       `,
     )
     .bind(
@@ -191,6 +202,7 @@ export async function consumeWebAuthnChallenge(
       input.userId,
       input.credentialId,
       input.credentialId,
+      ...(input.challengeHash ? [input.challengeHash] : []),
     )
     .run()
 
@@ -270,6 +282,185 @@ export async function createWebAuthnCredential(
   return result.meta.changes === 1
     ? { status: 'created', credential: input }
     : { status: 'limit_reached' }
+}
+
+export async function completeWebAuthnRegistration(
+  database: WebAuthnMutationDatabase,
+  input: CompleteWebAuthnRegistrationInput,
+): Promise<
+  | { status: 'created'; credential: WebAuthnCredentialRecord }
+  | { status: 'not_consumed' }
+  | { status: 'limit_reached' }
+  | { status: 'duplicate_credential' }
+> {
+  const consumeStatement = database
+    .prepare(
+      `
+        UPDATE webauthn_challenges
+        SET
+          consumed_at = ?,
+          user_id = COALESCE(user_id, ?)
+        WHERE token_hash = ?
+          AND challenge_hash = ?
+          AND purpose = ?
+          AND rp_id = ?
+          AND origin_policy_version = ?
+          AND consumed_at IS NULL
+          AND expires_at > ?
+          AND (user_id IS NULL OR user_id = ?)
+          AND (
+            (? IS NULL AND credential_id IS NULL)
+            OR credential_id = ?
+          )
+          AND (
+            SELECT COUNT(*)
+            FROM webauthn_credentials
+            WHERE user_id = ?
+          ) < ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM webauthn_credentials
+            WHERE credential_id = ?
+          )
+      `,
+    )
+    .bind(
+      input.consume.consumedAt,
+      input.consume.userId,
+      input.consume.tokenHash,
+      input.consume.challengeHash,
+      input.consume.purpose,
+      input.consume.rpId,
+      input.consume.originPolicyVersion,
+      input.consume.now,
+      input.consume.userId,
+      input.consume.credentialId,
+      input.consume.credentialId,
+      input.consume.userId,
+      webAuthnPolicy.maxCredentialsPerUser,
+      input.credential.credentialId,
+    )
+  const insertStatement = database
+    .prepare(
+      `
+        INSERT INTO webauthn_credentials (
+          id,
+          user_id,
+          credential_id,
+          public_key,
+          user_handle,
+          sign_count,
+          credential_type,
+          transports,
+          aaguid,
+          discoverable,
+          backup_eligible,
+          backup_state,
+          prf_supported,
+          encrypted_user_key,
+          encrypted_public_key,
+          encrypted_private_key,
+          name,
+          created_at,
+          revision_date,
+          last_used_at,
+          updated_at
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE (
+          SELECT COUNT(*)
+          FROM webauthn_credentials
+          WHERE user_id = ?
+        ) < ?
+          AND EXISTS (
+            SELECT 1
+            FROM webauthn_challenges
+            WHERE token_hash = ?
+              AND challenge_hash = ?
+              AND consumed_at = ?
+              AND purpose = ?
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM webauthn_credentials
+            WHERE credential_id = ?
+          )
+      `,
+    )
+    .bind(
+      input.credential.id,
+      input.credential.userId,
+      input.credential.credentialId,
+      input.credential.publicKey,
+      input.credential.userHandle,
+      input.credential.signCount,
+      input.credential.credentialType,
+      JSON.stringify(input.credential.transports),
+      input.credential.aaguid,
+      input.credential.discoverable ? 1 : 0,
+      input.credential.backupEligible ? 1 : 0,
+      input.credential.backupState ? 1 : 0,
+      input.credential.prfSupported ? 1 : 0,
+      input.credential.encryptedUserKey,
+      input.credential.encryptedPublicKey,
+      input.credential.encryptedPrivateKey,
+      input.credential.name,
+      input.credential.createdAt,
+      input.credential.revisionDate,
+      input.credential.lastUsedAt,
+      input.credential.revisionDate,
+      input.credential.userId,
+      webAuthnPolicy.maxCredentialsPerUser,
+      input.consume.tokenHash,
+      input.consume.challengeHash,
+      input.consume.consumedAt,
+      input.consume.purpose,
+      input.credential.credentialId,
+    )
+
+  try {
+    const results = await database.batch([consumeStatement, insertStatement])
+    const consumed = (results[0]?.meta.changes ?? 0) === 1
+    const created = (results[1]?.meta.changes ?? 0) === 1
+    if (consumed && created) {
+      return { status: 'created', credential: input.credential }
+    }
+    if (created && !consumed) {
+      return { status: 'not_consumed' }
+    }
+
+    const existing = await listWebAuthnCredentialsByUser(database, {
+      userId: input.credential.userId,
+      limit: webAuthnPolicy.maxCredentialsPerUser,
+      cursor: null,
+    })
+    if (existing.items.length >= webAuthnPolicy.maxCredentialsPerUser) {
+      return { status: 'limit_reached' }
+    }
+    if (
+      existing.items.some(
+        (item) => item.credentialId === input.credential.credentialId,
+      )
+    ) {
+      return { status: 'duplicate_credential' }
+    }
+
+    return { status: 'not_consumed' }
+  } catch (error) {
+    if (isUniqueCredentialConstraintError(error)) {
+      return { status: 'duplicate_credential' }
+    }
+
+    throw error
+  }
+}
+
+function isUniqueCredentialConstraintError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    /UNIQUE constraint failed/i.test(message) &&
+    /webauthn_credentials/i.test(message)
+  )
 }
 
 export async function findWebAuthnCredentialForOwner(

@@ -125,6 +125,10 @@ Fields:
 - `session.revoke_all`: successful revoke-all-other-sessions attempts
 - `totp.change`: TOTP change start and verify outcomes
 - `totp.disable`: successful and not-enabled TOTP disable attempts
+- `webauthn.registration_options`: authenticated passkey registration-options
+  issue or recent-auth failure, with reason codes only
+- `webauthn.create`: authenticated passkey create success or fail-closed
+  verification/limit/replay outcomes, with reason and PRF status codes only
 
 ## D1 Persistence
 

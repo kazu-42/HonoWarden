@@ -1,0 +1,30 @@
+{
+  "name": "webauthn-attestation-options-reauth",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/webauthn/attestation-options"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer synthetic-access-token",
+      "content-type": "application/json"
+    },
+    "body": {}
+  },
+  "response": {
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "reauth_required",
+        "message": "Recent password authentication is required."
+      }
+    }
+  },
+  "assertions": [
+    {
+      "path": "$.error.code",
+      "type": "string",
+      "value": "reauth_required"
+    }
+  ]
+}

@@ -88,9 +88,11 @@ type CompatFixtureDatabaseSeed = {
   totpChallenge?: Record<string, JsonValue> | null
   totpChallengeUpdateChanges?: number
   userTotp?: Record<string, JsonValue> | null
+  webauthnCredentials?: readonly Record<string, JsonValue>[]
+  webauthnChallenges?: readonly Record<string, JsonValue>[]
 }
 
-type FixtureReplayOptions = {
+export type FixtureReplayOptions = {
   database?: CompatFixtureDatabaseSeed
   requestHeaders?: Record<string, string>
   validateResponse?: boolean
@@ -103,6 +105,9 @@ type FixtureReplayOptions = {
   accountKeysEnabled?: string
   passwordChangeEnabled?: string
   totpSecret?: string
+  webauthnEnabled?: string
+  webauthnRpId?: string
+  webauthnOrigins?: string
 }
 
 type BuiltRequest = {
@@ -208,7 +213,11 @@ export async function runCompatFixture(
   const database = new FakeD1Database(
     databaseSeed.schemaVersion ?? null,
     [...(databaseSeed.tables ?? requiredTables)],
-    databaseSeed,
+    {
+      ...databaseSeed,
+      webauthnCredentials: [...databaseSeed.webauthnCredentials],
+      webauthnChallenges: [...databaseSeed.webauthnChallenges],
+    },
   )
   const requestInit: {
     method: CompatFixture['endpoint']['method']
@@ -232,6 +241,10 @@ export async function runCompatFixture(
     HONOWARDEN_ACCOUNT_KEYS_ENABLED: options.accountKeysEnabled ?? 'false',
     HONOWARDEN_PASSWORD_CHANGE_ENABLED:
       options.passwordChangeEnabled ?? 'false',
+    HONOWARDEN_WEBAUTHN_ENABLED: options.webauthnEnabled ?? 'false',
+    HONOWARDEN_WEBAUTHN_RP_ID: options.webauthnRpId ?? 'example.com',
+    HONOWARDEN_WEBAUTHN_ORIGINS:
+      options.webauthnOrigins ?? 'https://vault.example.com',
   })
 
   const responseBody = await parseResponseBody(response)
@@ -379,6 +392,8 @@ function buildDatabaseSeed(
     totpChallenge: seed.totpChallenge ?? null,
     totpChallengeUpdateChanges: seed.totpChallengeUpdateChanges ?? 1,
     userTotp: seed.userTotp ?? null,
+    webauthnCredentials: [...(seed.webauthnCredentials ?? [])],
+    webauthnChallenges: [...(seed.webauthnChallenges ?? [])],
   }
 }
 

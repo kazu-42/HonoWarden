@@ -152,6 +152,7 @@ const requiredFlows = [
   'totp_login',
   'sync_with_items',
   'attachment_metadata',
+  'webauthn_enrollment',
 ] as const
 
 describe('client compatibility matrix', () => {
