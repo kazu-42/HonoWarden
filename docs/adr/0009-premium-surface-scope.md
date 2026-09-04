@@ -18,7 +18,10 @@ by Emergency Access, the server-side account lookup required by the bundled HIBP
 service, or active Send metadata and public sharing. ADR 0011 accepts a future
 Send product line and supersedes ADR 0003's permanent exclusion, but explicitly
 preserves this runtime guard until the stateful, public-control, operational, and
-live-evidence gates pass. ADR 0004 still excludes Emergency Access.
+live-evidence gates pass. ADR 0013 accepts a future Emergency Access product
+line and supersedes ADR 0004's permanent exclusion, but explicitly preserves
+this runtime guard until the identity, wait, cryptographic, operational, and
+live-evidence gates pass.
 Returning the general route catch-all for any of these calls would make an
 intentional product boundary look like an accidental missing route.
 
@@ -87,6 +90,12 @@ their existing authenticated contract.
   slices remain hidden behind this guard, and only HON-186 may replace it after
   quotas, audit, cleanup, kill-switch, rollback, and live compatibility gates
   pass. Until then, reverting this guard would be a security regression.
+- ADR 0013 defines the future Emergency Access product line. Its HON-189/HON-190
+  stateful slices remain hidden behind this guard, and only HON-191 may replace
+  it after identity, wait/approval, cryptographic handoff, audit, kill-switch,
+  rollback, and live compatibility gates pass. Returning an empty trusted list
+  or `404` would be a security regression.
 - Reverting the current guard requires no data migration because it persists no
   state. Later Send rollback follows ADR 0011 and is separately evidenced.
+  Later Emergency Access rollback follows ADR 0013.
 - No compatibility verification level is promoted by this decision.

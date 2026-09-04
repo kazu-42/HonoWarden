@@ -45,8 +45,11 @@ inputs, not minor documentation notes.
   unverified.
 - Premium-gated surfaces outside TOTP and cipher-scoped attachments are
   intentionally unavailable under ADR 0009. Emergency Access requires ADR
-  0004's grantee identity, delayed access, cancellation, notification,
-  cryptographic handoff, audit, abuse-control, and rollback design. Server-origin
+  0004's original design gates; ADR 0013 now accepts and specifies the future
+  product line, including grantee identity, delayed access, cancellation,
+  notification, cryptographic handoff, audit, abuse-control, and rollback, but
+  no stateful Emergency Access source or runtime support is implemented by that
+  design slice. Server-origin
   vault breach lookup at `GET /api/hibp/breach` is unsupported; the pinned
   extension performs weak/reused-password evaluation locally and calls the
   external Pwned Passwords range API directly for its manual exposed-password

@@ -248,8 +248,10 @@ Implemented:
 - explicit Send/public-sharing runtime exclusion plus the accepted future
   product-line contract in ADR 0011, its dedicated threat model/wire contract,
   and compatibility docs; runtime remains `501` and config remains disabled
-- explicit Emergency Access exclusion and future delegated-recovery design gates
-  in ADR 0004, threat model, and compatibility docs
+- explicit Emergency Access runtime exclusion plus the accepted future
+  product-line contract in ADR 0013, its dedicated threat model/wire contract,
+  and compatibility docs; runtime remains `501` and ADR 0004 remains the
+  superseded historical defer decision
 - compatibility matrix validation in `pnpm compat:test`
 - repeatable live regression packet generator in
   `scripts/honowarden-live-regression-packet.mjs` and release runbook in

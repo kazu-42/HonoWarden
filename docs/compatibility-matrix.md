@@ -180,9 +180,12 @@ exact flow and client version proven after abuse, cleanup, activation,
 rollback, and live-evidence gates pass.
 
 There is intentionally no Emergency Access row. Delegated recovery requires
-[ADR 0004](adr/0004-emergency-access-scope.md)'s grantee identity, delay,
-cancellation, notification, cryptographic handoff, abuse-control, audit,
-rollback, and incident-response design before compatibility can be claimed.
+[ADR 0004](adr/0004-emergency-access-scope.md)'s original design gates, now
+specified by [ADR 0013](adr/0013-emergency-access-product-line.md). That
+accepted future contract is not source capability or runtime support. All
+Emergency Access routes remain explicit `501` until identity, wait/approval,
+cryptographic handoff, audit, kill-switch, rollback, and live-evidence gates
+pass.
 
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
 HON-124 records historical issue-local official Desktop `2026.6.1` staging
