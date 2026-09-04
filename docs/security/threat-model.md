@@ -159,6 +159,10 @@ Explicitly bounded sharing and organization surfaces:
   `GET /api/account/billing/vnext/subscription`, which stays zero-cost and
   canceled. Multi-tenant hosted operation, payment processors, and commercial
   license authorities remain out of scope.
+- `GET /api/hibp/breach` returns a state-free typed `501` unsupported-feature
+  error. ADR 0015 keeps server-origin Have I Been Pwned lookup, at-risk
+  password security tasks, a notification center, and vendor integrations as
+  non-goals because they require plaintext or third-party disclosure.
 
 ## STRIDE Summary
 
@@ -245,7 +249,15 @@ Explicitly bounded sharing and organization surfaces:
     audit, quotas, and request supersession constrain the flow. Production
     remains default-off, and official-extension timed polling is not yet proven.
 
-13. Account-key overwrite or partial-key disclosure.
+13. Third-party breach-lookup identity disclosure.
+    Current mitigation: `GET /api/hibp/breach` remains a state-free `501`.
+    ADR 0015 forbids HaveIBeenPwned forwarding, vendor API keys, at-risk
+    password security tasks, and a notification center unless a later
+    privacy/security ADR and operator opt-in accept the third-party disclosure,
+    rate-limit, false-positive, and vendor-retention consequences. Local client
+    password-health stays on the device.
+
+14. Account-key overwrite or partial-key disclosure.
     Current mitigation: dedicated routes are default-off and owner-authenticated;
     initialization requires a non-empty wrapped user key and the exact active
     both-null stamp/revision generation, persists a required redacted audit in
