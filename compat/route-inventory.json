@@ -2459,6 +2459,119 @@
       }
     },
     {
+      "lastReviewedAt": "2026-09-04",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/hon-199-billing-tenancy.test.ts"],
+      "supportClaim": true,
+      "id": "billing.startup_subscription_read",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-199",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Billing/Controllers/AccountsController.cs"
+      },
+      "rationale": "Authenticated zero-cost canceled subscription read for official-client startup. Does not imply a paid plan.",
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/account/billing/vnext/subscription"
+        }
+      ],
+      "honowardenBehavior": "200 canceled cart; quantity 0; cost 0; nextCharge null",
+      "adrs": ["0014-hosted-billing-licensing-tenancy.md"]
+    },
+    {
+      "lastReviewedAt": "2026-09-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/hon-199-billing-tenancy.test.ts",
+        "docs/adr/0014-hosted-billing-licensing-tenancy.md"
+      ],
+      "supportClaim": false,
+      "id": "billing.hosted_commerce_rejected",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "cloud_commerce",
+      "ownerIssue": "HON-199",
+      "rationale": "Hosted billing mutations, licenses, plans, provider portals, and sponsorships are rejected 501.",
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/account/billing"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/account/billing/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/billing"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/billing/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/cancel"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/license"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/subscription"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/billing"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/billing/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/licenses"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/licenses/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/organization/sponsorship"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/organization/sponsorship/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/plans"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/plans/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/providers"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/providers/*"
+        }
+      ],
+      "honowardenBehavior": "501 unsupported_feature",
+      "adrs": ["0014-hosted-billing-licensing-tenancy.md"]
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
       "evidence": ["test/migrations.test.ts"],
@@ -2486,9 +2599,11 @@
         "0013_auth_request_supersede.sql",
         "0014_organizations.sql",
         "0014a_kdf_population.sql",
+        "0015_webauthn.sql",
         "0016_user_key_rotation_wrapper_history.sql",
         "0017_account_lifecycle.sql",
-        "0018_text_sends.sql"
+        "0018_text_sends.sql",
+        "0019_send_files.sql"
       ]
     },
     {
@@ -2514,7 +2629,9 @@
         "0009-premium-surface-scope.md",
         "0010-organizations-team-vault-product-line.md",
         "0011-send-public-sharing-product-line.md",
-        "0012-webauthn-passkey-contract.md"
+        "0012-webauthn-passkey-contract.md",
+        "0013-emergency-access-product-line.md",
+        "0014-hosted-billing-licensing-tenancy.md"
       ]
     }
   ]

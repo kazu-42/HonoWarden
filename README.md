@@ -18,6 +18,8 @@ The first milestone is a narrow compatibility target:
 ## Non-Goals
 
 - hosted multi-tenant service
+- hosted billing, paid subscriptions, and seat commerce
+- commercial licensing and provider/reseller portals
 - public account registration
 - broad organization administration and shared-cipher workflows
 - public file sharing
