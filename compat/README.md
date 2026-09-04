@@ -61,8 +61,17 @@ Packet limitations:
 | `recovery.writers.disabled.local-api`            | `recovery.writers.disabled`      | `local_api`     | `local_api`             | [03c-disable-forward-recovery.md](../.workflow/hon-207-credential-closeout/results/03c-disable-forward-recovery.md) |
 | `recovery.forward-generation.client-readback`    | `recovery.forward_generation`    | `local_api`     | `local_official_client` | [03c-disable-forward-recovery.md](../.workflow/hon-207-credential-closeout/results/03c-disable-forward-recovery.md) |
 
+The HON-201 route inventory is [`route-inventory.json`](route-inventory.json).
+It classifies pinned official surfaces against HonoWarden behavior.
+`pnpm compat:inventory` fails CI when a newly observed surface is
+unclassified, a support claim is stale, a ROADMAP non-goal has no owner, or a
+tracked flag is enabled without evidence. Catalog refresh is a reviewed diff
+and does not rewrite classifications. See
+[`docs/compatibility-inventory.md`](../docs/compatibility-inventory.md).
+
 Run the fixture suite with:
 
 ```sh
 pnpm compat:test
+pnpm compat:inventory
 ```

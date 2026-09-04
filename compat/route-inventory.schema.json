@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://honowarden.dev/schemas/route-inventory.schema.json",
+  "title": "HonoWarden route inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "checkedAt",
+    "program",
+    "lastReviewedAt",
+    "refresh",
+    "pins",
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "checkedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T" },
+    "program": { "const": "HON-201" },
+    "capabilityKey": { "type": "string" },
+    "lastReviewedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "refresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cadenceDays", "mode", "doesNotMutateClassifications"],
+      "properties": {
+        "cadenceDays": { "type": "integer", "minimum": 1 },
+        "mode": { "const": "reviewed_diff" },
+        "doesNotMutateClassifications": { "const": true }
+      }
+    },
+    "pins": { "type": "object" },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "classification",
+          "requirementKind",
+          "evidenceLevel",
+          "lastReviewedAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "route",
+              "token_grant",
+              "config_flag",
+              "profile_flag",
+              "sync_field",
+              "official_family",
+              "migration_set",
+              "adr_set"
+            ]
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "implemented",
+              "planned",
+              "client_local",
+              "hosted_only",
+              "rejected"
+            ]
+          },
+          "requirementKind": {
+            "type": "string",
+            "enum": [
+              "protocol",
+              "upstream_ui",
+              "cloud_commerce",
+              "client_local",
+              "optional_integration",
+              "operator"
+            ]
+          },
+          "ownerIssue": { "type": "string", "pattern": "^HON-\\d+$" },
+          "rationale": { "type": "string" },
+          "sourcePin": { "type": "object" },
+          "covers": { "type": "array" },
+          "officialIds": { "type": "array", "items": { "type": "string" } },
+          "controllerMatchers": { "type": "array" },
+          "grant": { "type": "string" },
+          "flag": { "type": "string" },
+          "field": { "type": "string" },
+          "honowardenBehavior": { "type": "string" },
+          "honowardenValue": {},
+          "runtimeFlags": { "type": "array", "items": { "type": "string" } },
+          "roadmapAnchors": { "type": "array", "items": { "type": "string" } },
+          "adrs": { "type": "array", "items": { "type": "string" } },
+          "migrations": { "type": "array", "items": { "type": "string" } },
+          "evidenceLevel": {
+            "type": "string",
+            "enum": [
+              "none",
+              "fixture",
+              "local_api",
+              "local_official_client",
+              "live_smoke",
+              "live_regression"
+            ]
+          },
+          "evidence": { "type": "array", "items": { "type": "string" } },
+          "supportClaim": { "type": "boolean" },
+          "lastReviewedAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

@@ -35,6 +35,7 @@
     "backup:schedule:packet": "node scripts/honowarden-scheduled-backup-packet.mjs plan",
     "cf:typegen": "wrangler types",
     "compat:test": "vitest run test/compat",
+    "compat:inventory": "node scripts/honowarden-route-inventory.mjs",
     "brand:scan": "node scripts/honowarden-brand-scan.mjs",
     "cloudflare:tokens": "node scripts/honowarden-cloudflare-token-remediation.mjs",
     "client:auth-fixture": "node scripts/honowarden-client-auth-fixture.mjs",

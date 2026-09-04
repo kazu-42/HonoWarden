@@ -33,6 +33,7 @@ HonoWarden aims for the smallest useful upstream-compatible API surface for pers
 - Add compatibility tests before implementing each API surface.
 - Keep executable JSON fixtures for client-facing response shapes under `compat/fixtures`.
 - Treat fixture regressions as compatibility regressions once a route has been implemented.
+- Keep the HON-201 surface inventory in [`compat/route-inventory.json`](../compat/route-inventory.json) classified; `pnpm compat:inventory` fails on unclassified official or HonoWarden surfaces, stale support claims, orphan roadmap entries, and enabled capabilities without evidence. Refreshing official metadata opens a reviewed catalog diff and does not silently change compatibility claims. See [`docs/compatibility-inventory.md`](compatibility-inventory.md).
 
 ## Credential Closeout Boundary
 
