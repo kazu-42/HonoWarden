@@ -300,6 +300,18 @@ describe('wrangler configuration scopes', () => {
     ).toBe('false')
   })
 
+  it('keeps Emergency Access runtime disabled in every tracked environment', () => {
+    expect(config.vars.HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED).toBe(
+      'false',
+    )
+    expect(
+      config.env.staging.vars.HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED,
+    ).toBe('false')
+    expect(
+      config.env.production.vars.HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED,
+    ).toBe('false')
+  })
+
   it('keeps account-key initialization disabled in every tracked environment', () => {
     expect(config.vars.HONOWARDEN_ACCOUNT_KEYS_ENABLED).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_ACCOUNT_KEYS_ENABLED).toBe(

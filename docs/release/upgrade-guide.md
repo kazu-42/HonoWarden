@@ -114,6 +114,14 @@ pnpm backup:export -- \
   `HONOWARDEN_API_KEY_SECRET` during this source-only slice. Organization API
   credentials remain `501`. Verify `/health/db` plus the `personal_api_keys`
   table before any separately approved rollout.
+- `0021_emergency_access.sql` is an additive reader-first migration for
+  Emergency Access invitation and trust state. Apply it before deploying any
+  Worker that imports the Emergency Access repository or trust service. Keep
+  `HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED=false` and the explicit
+  `/api/emergency-access*` `501` guards. Do not send invite mail, store raw
+  invite tokens, or replace the unsupported-feature guard during this
+  source-only slice. Verify `/health/db` plus the `emergency_access` table
+  before any separately approved rollout.
 - Do not edit an already-applied migration file.
 - Add forward-only migrations for future schema changes.
 - Update `docs/release/migration-freeze.md` in the same change when migrations

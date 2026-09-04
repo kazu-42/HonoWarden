@@ -2,6 +2,29 @@
 
 Last updated: 2026-09-01
 
+## 2026-09-04 HON-189 Emergency Access Invitation Source
+
+Implemented in source only:
+
+- additive forward-only migration `0021_emergency_access.sql` with grantor/grantee
+  relationship state, hashed invite proofs, opaque `key_encrypted`, and unique
+  grantor/email and grantor/grantee indexes
+- unmounted invite/accept/confirm/reinvite/update/cancel trust service
+- invite tokens stored only as `hmac-sha256:v1:` verifiers bound to relationship
+  id and recipient email; logs and audit omit tokens, keys, and raw emails
+- `HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED` stays default-off in every
+  tracked Wrangler scope
+- public `/api/emergency-access` and `/api/emergency-access/*` remain the ADR
+  0009 `501 unsupported_feature` guard, including when the runtime flag is true
+
+Not implemented or not yet verified:
+
+- initiate/wait/approve/reject/timeout (HON-190)
+- view, attachment, takeover, password closeout, rotation rewrap, or official
+  client evidence (HON-191)
+- mail delivery to real contacts, production activation, or replacing the `501`
+  guard
+
 ## 2026-09-01 Integration Candidate Snapshot
 
 This section is the present-tense source boundary. The dated Week 1–26 and

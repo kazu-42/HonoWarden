@@ -4795,4 +4795,5 @@ export const requiredTables = [
   'webauthn_credentials',
   'webauthn_challenges',
   'personal_api_keys',
+  'emergency_access',
 ] as const

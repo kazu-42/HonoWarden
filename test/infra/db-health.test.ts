@@ -80,4 +80,20 @@ describe('getDatabaseHealth', () => {
       missingTables: ['webauthn_credentials', 'webauthn_challenges'],
     })
   })
+
+  it('fails readiness when Emergency Access invitation tables are missing', async () => {
+    const health = await getDatabaseHealth(
+      new FakeD1Database(
+        '0021',
+        requiredTables.filter((name) => name !== 'emergency_access'),
+      ),
+    )
+
+    expect(health).toEqual({
+      ok: false,
+      code: 'required_tables_missing',
+      message: 'Database schema is missing required tables.',
+      missingTables: ['emergency_access'],
+    })
+  })
 })

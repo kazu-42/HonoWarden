@@ -165,15 +165,24 @@ describe('HON-188 Emergency Access design contract', () => {
     }
   })
 
-  it('does not add Emergency Access schema, routes, or rotation payload support', () => {
+  it('adds invitation schema without mounting Emergency Access HTTP routes', () => {
     const migrationText = readdirSync(join(repoRoot, 'migrations'))
       .filter((entry) => entry.endsWith('.sql'))
       .map((entry) => read(`migrations/${entry}`))
       .join('\n')
+    const app = read('src/app.ts')
 
-    expect(migrationText).not.toMatch(/emergency_access/i)
-    expect(read('src/app.ts')).not.toMatch(
-      /emergency-access\/(invite|trusted|granted)/,
+    expect(migrationText).toContain('CREATE TABLE emergency_access')
+    expect(migrationText).toContain("VALUES ('0021')")
+    expect(app).toContain(
+      "app.all('/api/emergency-access', unsupportedPremiumFeature)",
+    )
+    expect(app).toContain(
+      "app.all('/api/emergency-access/*', unsupportedPremiumFeature)",
+    )
+    expect(app).not.toMatch(/emergency-access\/(invite|trusted|granted)/)
+    expect(read('src/domain/user-key-rotation.ts')).toContain(
+      "!isRequiredEmptyArray(value, 'emergencyAccessUnlockData')",
     )
   })
 

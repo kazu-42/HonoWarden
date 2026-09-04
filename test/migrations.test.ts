@@ -27,6 +27,10 @@ const personalApiKeysMigration = readFileSync(
   'migrations/0020_personal_api_keys.sql',
   'utf8',
 )
+const emergencyAccessMigration = readFileSync(
+  'migrations/0021_emergency_access.sql',
+  'utf8',
+)
 const legacyInquiryMigration = readFileSync(
   'migrations/0009_inquiry_messages.sql',
   'utf8',
@@ -404,6 +408,23 @@ describe('initial D1 migration', () => {
     expect(personalApiKeysMigration).not.toMatch(/api_key\s+TEXT/i)
     expect(personalApiKeysMigration).not.toMatch(/\bsecret\s+TEXT/i)
   })
+
+  it('stores Emergency Access invitation proofs without raw tokens or keys as credentials', () => {
+    expect(emergencyAccessMigration).toContain('CREATE TABLE emergency_access')
+    expect(emergencyAccessMigration).toContain('invite_token_hash TEXT')
+    expect(emergencyAccessMigration).toContain(
+      "invite_token_hash LIKE 'hmac-sha256:v1:%'",
+    )
+    expect(emergencyAccessMigration).toContain('key_encrypted TEXT')
+    expect(emergencyAccessMigration).toContain(
+      'idx_emergency_access_grantor_email_invited',
+    )
+    expect(emergencyAccessMigration).toContain(
+      'idx_emergency_access_grantor_grantee',
+    )
+    expect(emergencyAccessMigration).toContain("VALUES ('0021')")
+    expect(emergencyAccessMigration).not.toMatch(/\binvite_token\s+TEXT\b/i)
+  })
 })
 
 const allMigrations = [
@@ -425,4 +446,5 @@ const allMigrations = [
   kdfPopulationMigration,
   userKeyRotationHistoryMigration,
   personalApiKeysMigration,
+  emergencyAccessMigration,
 ].join('\n')

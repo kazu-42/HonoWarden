@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-09-02.
+Last updated: 2026-09-04.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -34,6 +34,7 @@ changes and update this document in the same change.
 | `migrations/0018_text_sends.sql`                        | `c4cc6047f2e2bebcc9d15ff034be340785a06e6c0d1fe39560a53cf0d32bf2de` |
 | `migrations/0019_send_files.sql`                        | `d59ba11466f324a6664e03f775f37c100d2147cbfacee51a366b4367dc749ec9` |
 | `migrations/0020_personal_api_keys.sql`                 | `7b70b5c2284509990bc223991e5f5fcd09868027f0a5fae6ed17464d2618eb14` |
+| `migrations/0021_emergency_access.sql`                  | `7fc2730ee3c2ff63c99bc27f27dcedfc16482813a66e6852fef38540848853d5` |
 
 ## Required Tables At Freeze
 
@@ -68,6 +69,7 @@ changes and update this document in the same change.
 - `webauthn_credentials`
 - `webauthn_challenges`
 - `personal_api_keys`
+- `emergency_access`
 
 ## Policy
 

@@ -2110,6 +2110,12 @@ describe('HonoWarden app', () => {
     const requests = [
       // Emergency Access endpoints shipped in the pinned browser extension.
       { method: 'GET', path: '/api/emergency-access/trusted' },
+      { method: 'GET', path: '/api/emergency-access/granted' },
+      { method: 'POST', path: '/api/emergency-access/invite' },
+      { method: 'POST', path: '/api/emergency-access/emergency-id/accept' },
+      { method: 'POST', path: '/api/emergency-access/emergency-id/reinvite' },
+      { method: 'POST', path: '/api/emergency-access/emergency-id/confirm' },
+      { method: 'DELETE', path: '/api/emergency-access/emergency-id' },
       {
         method: 'GET',
         path: '/api/emergency-access/emergency-id/cipher-id/attachment/attachment-id',
@@ -2179,6 +2185,44 @@ describe('HonoWarden app', () => {
           message,
         },
         requestId: 'unsupported-premium-surface-request',
+      })
+    }
+  })
+
+  it('keeps Emergency Access routes at 501 even when the runtime flag is true', async () => {
+    const message = 'This feature is unavailable on this server.'
+    const requests = [
+      { method: 'GET', path: '/api/emergency-access/trusted' },
+      { method: 'POST', path: '/api/emergency-access/invite' },
+      { method: 'POST', path: '/api/emergency-access/emergency-id/accept' },
+      { method: 'DELETE', path: '/api/emergency-access/emergency-id' },
+    ]
+
+    for (const request of requests) {
+      const response = await app.request(
+        request.path,
+        {
+          method: request.method,
+          headers: {
+            'X-Request-Id': 'emergency-access-runtime-flag-request',
+            ...(request.method === 'GET'
+              ? {}
+              : { 'Content-Type': 'application/json' }),
+          },
+          ...(request.method === 'GET' ? {} : { body: '{}' }),
+        },
+        { HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED: 'true' },
+      )
+
+      expect(response.status, `${request.method} ${request.path}`).toBe(501)
+      expect(response.headers.get('Cache-Control')).toBe('no-store')
+      await expect(response.json()).resolves.toEqual({
+        Message: message,
+        error: {
+          code: 'unsupported_feature',
+          message,
+        },
+        requestId: 'emergency-access-runtime-flag-request',
       })
     }
   })

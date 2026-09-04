@@ -30,6 +30,12 @@ export type AuditEventName =
   | 'cipher.restore'
   | 'cipher.update'
   | 'device.revoke'
+  | 'emergency.accept'
+  | 'emergency.confirm'
+  | 'emergency.delete'
+  | 'emergency.invite'
+  | 'emergency.reinvite'
+  | 'emergency.update'
   | 'folder.create'
   | 'folder.delete'
   | 'folder.update'
@@ -58,6 +64,7 @@ export type AuditEvent = {
       | 'auth_request'
       | 'cipher'
       | 'device'
+      | 'emergency_access'
       | 'folder'
       | 'session'
     id?: string
@@ -84,6 +91,7 @@ type AuditEventInput = {
       | 'auth_request'
       | 'cipher'
       | 'device'
+      | 'emergency_access'
       | 'folder'
       | 'session'
     id?: string | undefined
@@ -93,6 +101,7 @@ type AuditEventInput = {
 
 const sensitiveContextKeyFragments = [
   'body',
+  'email',
   'encrypted',
   'hash',
   'key',
