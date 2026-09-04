@@ -35,7 +35,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": true,
       "id": "operator.health",
       "kind": "route",
@@ -91,12 +93,16 @@
           "path": "/config"
         }
       ],
-      "officialIds": ["official.config.get"]
+      "officialIds": [
+        "official.config.get"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
-      "evidence": ["docs/release/desktop-notification-transport-evidence.md"],
+      "evidence": [
+        "docs/release/desktop-notification-transport-evidence.md"
+      ],
       "supportClaim": true,
       "id": "protocol.notifications",
       "kind": "route",
@@ -119,8 +125,12 @@
           "path": "/notifications/anonymous-hub"
         }
       ],
-      "runtimeFlags": ["HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED"],
-      "adrs": ["0008-login-with-device-scope.md"]
+      "runtimeFlags": [
+        "HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED"
+      ],
+      "adrs": [
+        "0008-login-with-device-scope.md"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -203,7 +213,9 @@
           "path": "/api/sync"
         }
       ],
-      "officialIds": ["official.sync.get"]
+      "officialIds": [
+        "official.sync.get"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -246,7 +258,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
-      "evidence": ["docs/release/android-mobile-live-client-evidence.md"],
+      "evidence": [
+        "docs/release/android-mobile-live-client-evidence.md"
+      ],
       "supportClaim": true,
       "id": "accounts.billing_stub",
       "kind": "route",
@@ -271,7 +285,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "accounts.register",
       "kind": "route",
@@ -295,12 +311,16 @@
         }
       ],
       "honowardenBehavior": "403 public registration disabled",
-      "roadmapAnchors": ["public registration UI"]
+      "roadmapAnchors": [
+        "public registration UI"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": true,
       "id": "accounts.bootstrap",
       "kind": "route",
@@ -344,7 +364,9 @@
           "path": "/api/accounts/keys"
         }
       ],
-      "runtimeFlags": ["HONOWARDEN_ACCOUNT_KEYS_ENABLED"]
+      "runtimeFlags": [
+        "HONOWARDEN_ACCOUNT_KEYS_ENABLED"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -383,12 +405,16 @@
           "path": "/api/accounts/security-stamp"
         }
       ],
-      "runtimeFlags": ["HONOWARDEN_PASSWORD_CHANGE_ENABLED"]
+      "runtimeFlags": [
+        "HONOWARDEN_PASSWORD_CHANGE_ENABLED"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_official_client",
-      "evidence": ["docs/release/account-kdf-change-local-evidence.md"],
+      "evidence": [
+        "docs/release/account-kdf-change-local-evidence.md"
+      ],
       "supportClaim": false,
       "id": "accounts.kdf",
       "kind": "route",
@@ -411,12 +437,16 @@
           "path": "/api/accounts/kdf"
         }
       ],
-      "runtimeFlags": ["HONOWARDEN_KDF_MUTATION_ENABLED"]
+      "runtimeFlags": [
+        "HONOWARDEN_KDF_MUTATION_ENABLED"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_official_client",
-      "evidence": ["docs/release/user-key-rotation-local-evidence.md"],
+      "evidence": [
+        "docs/release/user-key-rotation-local-evidence.md"
+      ],
       "supportClaim": false,
       "id": "accounts.user_key_rotation",
       "kind": "route",
@@ -439,12 +469,16 @@
           "path": "/api/accounts/key-management/rotate-user-account-keys"
         }
       ],
-      "runtimeFlags": ["HONOWARDEN_USER_KEY_ROTATION_ENABLED"]
+      "runtimeFlags": [
+        "HONOWARDEN_USER_KEY_ROTATION_ENABLED"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "accounts.lifecycle",
       "kind": "route",
@@ -491,13 +525,19 @@
           "path": "/api/accounts/verify-email-token"
         }
       ],
-      "runtimeFlags": ["HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED"],
-      "migrations": ["0017_account_lifecycle.sql"]
+      "runtimeFlags": [
+        "HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED"
+      ],
+      "migrations": [
+        "0017_account_lifecycle.sql"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "accounts.export",
       "kind": "route",
@@ -520,7 +560,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/devices/list-success.json"],
+      "evidence": [
+        "compat/fixtures/devices/list-success.json"
+      ],
       "supportClaim": true,
       "id": "devices",
       "kind": "route",
@@ -575,12 +617,16 @@
           "path": "/api/devices/update-trust"
         }
       ],
-      "migrations": ["0005_device_keys.sql"]
+      "migrations": [
+        "0005_device_keys.sql"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/folders/list-success.json"],
+      "evidence": [
+        "compat/fixtures/folders/list-success.json"
+      ],
       "supportClaim": true,
       "id": "folders",
       "kind": "route",
@@ -657,7 +703,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "ciphers.share",
       "kind": "route",
@@ -689,7 +737,10 @@
         }
       ],
       "honowardenBehavior": "501 unsupported_feature",
-      "roadmapAnchors": ["Collections sharing", "Organizations"],
+      "roadmapAnchors": [
+        "Collections sharing",
+        "Organizations"
+      ],
       "adrs": [
         "0005-organizations-shared-vault-scope.md",
         "0007-collection-mutation-scope.md",
@@ -699,7 +750,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/ciphers/get-login-success.json"],
+      "evidence": [
+        "compat/fixtures/ciphers/get-login-success.json"
+      ],
       "supportClaim": true,
       "id": "attachments.cipher",
       "kind": "route",
@@ -734,12 +787,16 @@
           "path": "/api/ciphers/:id/attachment/*"
         }
       ],
-      "migrations": ["0006_cipher_attachments.sql"]
+      "migrations": [
+        "0006_cipher_attachments.sql"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "attachments.public",
       "kind": "route",
@@ -763,12 +820,16 @@
         }
       ],
       "honowardenBehavior": "501 unsupported_feature",
-      "adrs": ["0003-send-public-sharing-scope.md"]
+      "adrs": [
+        "0003-send-public-sharing-scope.md"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/metadata/collections-list-success.json"],
+      "evidence": [
+        "compat/fixtures/metadata/collections-list-success.json"
+      ],
       "supportClaim": true,
       "id": "collections.read",
       "kind": "route",
@@ -799,7 +860,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "collections.catch_all",
       "kind": "route",
@@ -823,13 +886,19 @@
         }
       ],
       "honowardenBehavior": "501 unsupported_feature for remaining collection mutation",
-      "roadmapAnchors": ["Collections sharing"],
-      "adrs": ["0007-collection-mutation-scope.md"]
+      "roadmapAnchors": [
+        "Collections sharing"
+      ],
+      "adrs": [
+        "0007-collection-mutation-scope.md"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": true,
       "id": "organizations.owner_collections",
       "kind": "route",
@@ -872,14 +941,22 @@
           "path": "/api/organizations/:id/collections/:collectionId/users"
         }
       ],
-      "adrs": ["0010-organizations-team-vault-product-line.md"],
-      "migrations": ["0014_organizations.sql"],
-      "roadmapAnchors": ["Organizations"]
+      "adrs": [
+        "0010-organizations-team-vault-product-line.md"
+      ],
+      "migrations": [
+        "0014_organizations.sql"
+      ],
+      "roadmapAnchors": [
+        "Organizations"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "organizations.catch_all",
       "kind": "route",
@@ -954,13 +1031,17 @@
         "official.sends.delete"
       ],
       "honowardenBehavior": "501 unsupported_feature; send-enabled remains false",
-      "roadmapAnchors": ["Send"],
+      "roadmapAnchors": [
+        "Send"
+      ],
       "adrs": [
         "0003-send-public-sharing-scope.md",
         "0009-premium-surface-scope.md",
         "0011-send-public-sharing-product-line.md"
       ],
-      "migrations": ["0018_text_sends.sql"]
+      "migrations": [
+        "0018_text_sends.sql"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -978,14 +1059,18 @@
         "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
         "path": "src/Api/Tools/Controllers/SendsController.cs"
       },
-      "officialIds": ["official.sends.azure_validate"],
+      "officialIds": [
+        "official.sends.azure_validate"
+      ],
       "rationale": "Official Azure Event Grid file-validation is a hosted storage callback, not a self-hosted protocol requirement.",
       "covers": []
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "emergency_access",
       "kind": "route",
@@ -1008,9 +1093,13 @@
           "path": "/api/emergency-access/*"
         }
       ],
-      "officialIds": ["official.emergency_access.family"],
+      "officialIds": [
+        "official.emergency_access.family"
+      ],
       "honowardenBehavior": "501 unsupported_feature",
-      "roadmapAnchors": ["emergency access"],
+      "roadmapAnchors": [
+        "emergency access"
+      ],
       "adrs": [
         "0004-emergency-access-scope.md",
         "0009-premium-surface-scope.md"
@@ -1019,7 +1108,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "hibp.breach",
       "kind": "route",
@@ -1038,14 +1129,20 @@
           "path": "/api/hibp/breach"
         }
       ],
-      "officialIds": ["official.hibp.breach"],
+      "officialIds": [
+        "official.hibp.breach"
+      ],
       "honowardenBehavior": "501 unsupported_feature",
-      "adrs": ["0009-premium-surface-scope.md"]
+      "adrs": [
+        "0009-premium-surface-scope.md"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/metadata/policies-list-success.json"],
+      "evidence": [
+        "compat/fixtures/metadata/policies-list-success.json"
+      ],
       "supportClaim": true,
       "id": "policies.read",
       "kind": "route",
@@ -1068,13 +1165,19 @@
           "path": "/api/policies/new"
         }
       ],
-      "roadmapAnchors": ["enterprise policies"],
-      "adrs": ["0006-policy-management-scope.md"]
+      "roadmapAnchors": [
+        "enterprise policies"
+      ],
+      "adrs": [
+        "0006-policy-management-scope.md"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/metadata/domains-success.json"],
+      "evidence": [
+        "compat/fixtures/metadata/domains-success.json"
+      ],
       "supportClaim": true,
       "id": "domains",
       "kind": "route",
@@ -1097,12 +1200,16 @@
           "path": "/api/settings/domains"
         }
       ],
-      "migrations": ["0010_equivalent_domains.sql"]
+      "migrations": [
+        "0010_equivalent_domains.sql"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
-      "evidence": ["docs/release/totp-recent-auth-live-evidence.md"],
+      "evidence": [
+        "docs/release/totp-recent-auth-live-evidence.md"
+      ],
       "supportClaim": true,
       "id": "totp",
       "kind": "route",
@@ -1137,12 +1244,17 @@
           "path": "/identity/accounts/totp/change/verify"
         }
       ],
-      "migrations": ["0003_totp_login.sql", "0004_totp_change.sql"]
+      "migrations": [
+        "0003_totp_login.sql",
+        "0004_totp_change.sql"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
-      "evidence": ["docs/release/login-with-device-live-client-evidence.md"],
+      "evidence": [
+        "docs/release/login-with-device-live-client-evidence.md"
+      ],
       "supportClaim": true,
       "id": "auth_requests",
       "kind": "route",
@@ -1181,8 +1293,12 @@
           "path": "/api/auth-requests/*"
         }
       ],
-      "runtimeFlags": ["HONOWARDEN_AUTH_REQUESTS_ENABLED"],
-      "adrs": ["0008-login-with-device-scope.md"],
+      "runtimeFlags": [
+        "HONOWARDEN_AUTH_REQUESTS_ENABLED"
+      ],
+      "adrs": [
+        "0008-login-with-device-scope.md"
+      ],
       "migrations": [
         "0012_auth_requests.sql",
         "0013_auth_request_supersede.sql"
@@ -1191,7 +1307,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
-      "evidence": ["compat/fixtures/token/password-grant-success.json"],
+      "evidence": [
+        "compat/fixtures/token/password-grant-success.json"
+      ],
       "supportClaim": true,
       "id": "grant.password",
       "kind": "token_grant",
@@ -1209,7 +1327,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
-      "evidence": ["compat/fixtures/token/refresh-grant-success.json"],
+      "evidence": [
+        "compat/fixtures/token/refresh-grant-success.json"
+      ],
       "supportClaim": true,
       "id": "grant.refresh_token",
       "kind": "token_grant",
@@ -1223,12 +1343,16 @@
         "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
         "path": "src/Identity/IdentityServer/RequestValidators/CustomTokenRequestValidator.cs"
       },
-      "runtimeFlags": ["HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED"]
+      "runtimeFlags": [
+        "HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
+      "evidence": [
+        "test/app.test.ts"
+      ],
       "supportClaim": false,
       "id": "grant.send_access",
       "kind": "token_grant",
@@ -1243,7 +1367,9 @@
         "path": "src/Identity/IdentityServer/Enums/CustomGrantTypes.cs"
       },
       "honowardenBehavior": "501 unsupported_feature",
-      "roadmapAnchors": ["Send"],
+      "roadmapAnchors": [
+        "Send"
+      ],
       "adrs": [
         "0009-premium-surface-scope.md",
         "0011-send-public-sharing-product-line.md"
@@ -1266,14 +1392,20 @@
         "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
         "path": "src/Identity/IdentityServer/Enums/CustomGrantTypes.cs"
       },
-      "roadmapAnchors": ["Passkey login"],
-      "adrs": ["0012-webauthn-passkey-contract.md"],
+      "roadmapAnchors": [
+        "Passkey login"
+      ],
+      "adrs": [
+        "0012-webauthn-passkey-contract.md"
+      ],
       "rationale": "Official custom grant is pinned; HonoWarden does not accept webauthn grants yet."
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "evidence": [
+        "compat/fixtures/config/server-config-success.json"
+      ],
       "supportClaim": false,
       "id": "config.cipher-key-encryption",
       "kind": "config_flag",
@@ -1293,7 +1425,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "evidence": [
+        "compat/fixtures/config/server-config-success.json"
+      ],
       "supportClaim": false,
       "id": "config.duo-redirect",
       "kind": "config_flag",
@@ -1313,7 +1447,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "evidence": [
+        "compat/fixtures/config/server-config-success.json"
+      ],
       "supportClaim": false,
       "id": "config.email-verification",
       "kind": "config_flag",
@@ -1333,7 +1469,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "evidence": [
+        "compat/fixtures/config/server-config-success.json"
+      ],
       "supportClaim": false,
       "id": "config.send-enabled",
       "kind": "config_flag",
@@ -1348,7 +1486,9 @@
         "path": "src/Api/Controllers/ConfigController.cs"
       },
       "honowardenValue": false,
-      "roadmapAnchors": ["Send"],
+      "roadmapAnchors": [
+        "Send"
+      ],
       "adrs": [
         "0009-premium-surface-scope.md",
         "0011-send-public-sharing-product-line.md"
@@ -1357,7 +1497,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/config/server-config-success.json"],
+      "evidence": [
+        "compat/fixtures/config/server-config-success.json"
+      ],
       "supportClaim": false,
       "id": "config.web-push",
       "kind": "config_flag",
@@ -1377,7 +1519,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.object",
       "kind": "sync_field",
@@ -1395,7 +1539,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.profile",
       "kind": "sync_field",
@@ -1413,7 +1559,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.folders",
       "kind": "sync_field",
@@ -1431,7 +1579,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.collections",
       "kind": "sync_field",
@@ -1449,7 +1599,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.ciphers",
       "kind": "sync_field",
@@ -1467,7 +1619,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.domains",
       "kind": "sync_field",
@@ -1485,7 +1639,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.policies",
       "kind": "sync_field",
@@ -1503,7 +1659,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.policiesNew",
       "kind": "sync_field",
@@ -1521,7 +1679,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": false,
       "id": "sync.sends",
       "kind": "sync_field",
@@ -1540,7 +1700,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "sync.userDecryption",
       "kind": "sync_field",
@@ -1558,7 +1720,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "profile.premiumFromOrganization",
       "kind": "profile_flag",
@@ -1577,7 +1741,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "profile.forcePasswordReset",
       "kind": "profile_flag",
@@ -1596,7 +1762,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "profile.emailVerified",
       "kind": "profile_flag",
@@ -1614,7 +1782,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": true,
       "id": "profile.twoFactorEnabled",
       "kind": "profile_flag",
@@ -1632,7 +1802,9 @@
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
-      "evidence": ["docs/release/android-mobile-live-client-evidence.md"],
+      "evidence": [
+        "docs/release/android-mobile-live-client-evidence.md"
+      ],
       "supportClaim": true,
       "id": "profile.premium",
       "kind": "profile_flag",
@@ -1646,13 +1818,17 @@
         "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
         "path": "src/Api/Auth/Controllers/AccountsController.cs"
       },
-      "runtimeFlags": ["HONOWARDEN_PREMIUM_FEATURES_ENABLED"],
+      "runtimeFlags": [
+        "HONOWARDEN_PREMIUM_FEATURES_ENABLED"
+      ],
       "rationale": "Staging may advertise premium profile state for attachment/TOTP compatibility. It does not enable Sends."
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
+      "evidence": [
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
       "supportClaim": false,
       "id": "profile.usesKeyConnector",
       "kind": "profile_flag",
@@ -1722,7 +1898,9 @@
         }
       ],
       "rationale": "Admin console UI is upstream hosted operations, not the API-only Worker.",
-      "roadmapAnchors": ["Web Vault"]
+      "roadmapAnchors": [
+        "Web Vault"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -1867,8 +2045,12 @@
         "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
         "path": "src/Api/Auth/Controllers/WebAuthn"
       },
-      "roadmapAnchors": ["Passkey login"],
-      "adrs": ["0012-webauthn-passkey-contract.md"]
+      "roadmapAnchors": [
+        "Passkey login"
+      ],
+      "adrs": [
+        "0012-webauthn-passkey-contract.md"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -2163,7 +2345,9 @@
         "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
         "path": "src/Api/Tools/Controllers/Sends"
       },
-      "roadmapAnchors": ["Send"]
+      "roadmapAnchors": [
+        "Send"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -2320,7 +2504,9 @@
         }
       ],
       "rationale": "Icon proxy is an explicit non-goal.",
-      "roadmapAnchors": ["Icon proxy"]
+      "roadmapAnchors": [
+        "Icon proxy"
+      ]
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -2434,8 +2620,12 @@
       "classification": "rejected",
       "requirementKind": "upstream_ui",
       "ownerIssue": "HON-201",
-      "roadmapAnchors": ["Web Vault"],
-      "adrs": ["0001-project-scope.md"],
+      "roadmapAnchors": [
+        "Web Vault"
+      ],
+      "adrs": [
+        "0001-project-scope.md"
+      ],
       "rationale": "HonoWarden is API-only; a Web Vault requires a new ADR before any support claim.",
       "controllerMatchers": []
     },
@@ -2450,7 +2640,9 @@
       "requirementKind": "client_local",
       "ownerIssue": "HON-200",
       "rationale": "Weak and reused password checks in the pinned extension are local; exposed-password range lookups call an external API from the client.",
-      "adrs": ["0009-premium-surface-scope.md"],
+      "adrs": [
+        "0009-premium-surface-scope.md"
+      ],
       "sourcePin": {
         "repository": "github:53538899",
         "tag": "browser-v2026.6.1",
@@ -2459,9 +2651,130 @@
       }
     },
     {
+      "lastReviewedAt": "2026-09-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/hon-199-billing-tenancy.test.ts"
+      ],
+      "supportClaim": true,
+      "id": "billing.startup_subscription_read",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-199",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Billing/Controllers/AccountsController.cs"
+      },
+      "rationale": "Authenticated zero-cost canceled subscription read for official-client startup. Does not imply a paid plan.",
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/account/billing/vnext/subscription"
+        }
+      ],
+      "honowardenBehavior": "200 canceled cart; quantity 0; cost 0; nextCharge null",
+      "adrs": [
+        "0014-hosted-billing-licensing-tenancy.md"
+      ]
+    },
+    {
+      "lastReviewedAt": "2026-09-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/hon-199-billing-tenancy.test.ts",
+        "docs/adr/0014-hosted-billing-licensing-tenancy.md"
+      ],
+      "supportClaim": false,
+      "id": "billing.hosted_commerce_rejected",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "cloud_commerce",
+      "ownerIssue": "HON-199",
+      "rationale": "Hosted billing mutations, licenses, plans, provider portals, and sponsorships are rejected 501.",
+      "covers": [
+        {
+          "method": "ALL",
+          "path": "/api/account/billing"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/account/billing/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/billing"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/billing/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/cancel"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/license"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/accounts/subscription"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/billing"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/billing/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/licenses"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/licenses/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/organization/sponsorship"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/organization/sponsorship/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/plans"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/plans/*"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/providers"
+        },
+        {
+          "method": "ALL",
+          "path": "/api/providers/*"
+        }
+      ],
+      "honowardenBehavior": "501 unsupported_feature",
+      "adrs": [
+        "0014-hosted-billing-licensing-tenancy.md"
+      ]
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
-      "evidence": ["test/migrations.test.ts"],
+      "evidence": [
+        "test/migrations.test.ts"
+      ],
       "supportClaim": true,
       "id": "migrations.ledger",
       "kind": "migration_set",
@@ -2486,15 +2799,19 @@
         "0013_auth_request_supersede.sql",
         "0014_organizations.sql",
         "0014a_kdf_population.sql",
+        "0015_webauthn.sql",
         "0016_user_key_rotation_wrapper_history.sql",
         "0017_account_lifecycle.sql",
-        "0018_text_sends.sql"
+        "0018_text_sends.sql",
+        "0019_send_files.sql"
       ]
     },
     {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "fixture",
-      "evidence": ["docs/adr/0001-project-scope.md"],
+      "evidence": [
+        "docs/adr/0001-project-scope.md"
+      ],
       "supportClaim": true,
       "id": "adrs.ledger",
       "kind": "adr_set",
@@ -2514,7 +2831,9 @@
         "0009-premium-surface-scope.md",
         "0010-organizations-team-vault-product-line.md",
         "0011-send-public-sharing-product-line.md",
-        "0012-webauthn-passkey-contract.md"
+        "0012-webauthn-passkey-contract.md",
+        "0013-emergency-access-product-line.md",
+        "0014-hosted-billing-licensing-tenancy.md"
       ]
     }
   ]
