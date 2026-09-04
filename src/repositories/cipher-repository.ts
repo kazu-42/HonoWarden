@@ -71,6 +71,31 @@ export type AccessibleCipherListPage = {
   hasMore: boolean
 }
 
+export type OrganizationCipherWriteInput = {
+  id: string
+  userId: string
+  organizationId: string
+  collectionIds: readonly string[]
+  type: number
+  favorite: boolean
+  encryptedJson: string
+  cipherKey: string
+  now: string
+}
+
+export type OrganizationCipherCreateResult = {
+  status: 'created'
+}
+
+export type OrganizationCipherShareInput = OrganizationCipherWriteInput & {
+  expectedRevisionDate: string
+}
+
+export type OrganizationCipherShareResult =
+  | { status: 'shared' }
+  | { status: 'not_found' }
+  | { status: 'conflict'; currentRevisionDate: string }
+
 export type CipherAccess = {
   found: boolean
   canRead: boolean
@@ -142,6 +167,10 @@ type CipherRow = {
 
 type CipherRevisionRow = {
   revisionDate: string
+}
+
+type CollectionCountRow = {
+  count: number
 }
 
 type CipherAccessRow = {
@@ -486,6 +515,276 @@ function deniedCipherAccess(
     canDelete: false,
     organizationId,
   }
+}
+
+function managedOrganizationCollectionsSql(collectionIds: readonly string[]) {
+  return `
+    FROM collections collection
+    INNER JOIN collection_users collection_user
+      ON collection_user.collection_id = collection.id
+      AND collection_user.manage = 1
+    INNER JOIN organization_users membership
+      ON membership.id = collection_user.organization_user_id
+      AND membership.organization_id = collection.organization_id
+    WHERE membership.user_id = ?
+      AND membership.status = 2
+      AND membership.type = 0
+      AND membership.organization_id = ?
+      AND collection.id IN (${cipherIdPlaceholders(collectionIds)})
+  `
+}
+
+export async function validateManagedOrganizationCollections(
+  database: CipherDatabase,
+  input: {
+    userId: string
+    organizationId: string
+    collectionIds: readonly string[]
+  },
+): Promise<boolean> {
+  if (!hasUniqueCollectionIds(input.collectionIds)) {
+    return false
+  }
+
+  const row = await database
+    .prepare(
+      `
+        SELECT COUNT(DISTINCT collection.id) as count
+        ${managedOrganizationCollectionsSql(input.collectionIds)}
+      `,
+    )
+    .bind(input.userId, input.organizationId, ...input.collectionIds)
+    .first<CollectionCountRow>()
+
+  return Number(row?.count ?? 0) === input.collectionIds.length
+}
+
+export async function createOrganizationCipher(
+  database: CipherBatchDatabase,
+  input: OrganizationCipherWriteInput,
+): Promise<OrganizationCipherCreateResult> {
+  assertOrganizationCipherInput(input)
+
+  const statements = organizationCipherTransitionStatements(database, input, {
+    mutationSql: `
+      INSERT INTO ciphers (
+        id,
+        user_id,
+        folder_id,
+        type,
+        favorite,
+        encrypted_json,
+        revision_date,
+        created_at,
+        updated_at,
+        organization_id,
+        cipher_key
+      )
+      SELECT ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE (
+        SELECT COUNT(DISTINCT collection.id)
+        ${managedOrganizationCollectionsSql(input.collectionIds)}
+      ) = ?
+    `,
+    mutationValues: [
+      input.id,
+      input.userId,
+      input.type,
+      input.favorite ? 1 : 0,
+      input.encryptedJson,
+      input.now,
+      input.now,
+      input.now,
+      input.organizationId,
+      input.cipherKey,
+      input.userId,
+      input.organizationId,
+      ...input.collectionIds,
+      input.collectionIds.length,
+    ],
+  })
+  const results = await database.batch(statements)
+
+  assertOrganizationCipherBatch(results, input.collectionIds.length)
+  return { status: 'created' }
+}
+
+export async function sharePersonalCipherWithOrganization(
+  database: CipherBatchDatabase,
+  input: OrganizationCipherShareInput,
+): Promise<OrganizationCipherShareResult> {
+  assertOrganizationCipherInput(input)
+
+  const statements = organizationCipherTransitionStatements(database, input, {
+    mutationSql: `
+      UPDATE ciphers
+      SET
+        folder_id = NULL,
+        type = ?,
+        favorite = ?,
+        encrypted_json = ?,
+        revision_date = ?,
+        updated_at = ?,
+        organization_id = ?,
+        cipher_key = ?
+      WHERE id = ?
+        AND user_id = ?
+        AND organization_id IS NULL
+        AND deleted_at IS NULL
+        AND revision_date = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM collection_ciphers existing_mapping
+          WHERE existing_mapping.cipher_id = ciphers.id
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM cipher_attachments attachment
+          WHERE attachment.cipher_id = ciphers.id
+        )
+        AND (
+          SELECT COUNT(DISTINCT collection.id)
+          ${managedOrganizationCollectionsSql(input.collectionIds)}
+        ) = ?
+    `,
+    mutationValues: [
+      input.type,
+      input.favorite ? 1 : 0,
+      input.encryptedJson,
+      input.now,
+      input.now,
+      input.organizationId,
+      input.cipherKey,
+      input.id,
+      input.userId,
+      input.expectedRevisionDate,
+      input.userId,
+      input.organizationId,
+      ...input.collectionIds,
+      input.collectionIds.length,
+    ],
+  })
+  const results = await database.batch(statements)
+  const mutationChanges = results[0]?.meta.changes ?? 0
+  const mappingChanges = results[1]?.meta.changes ?? 0
+
+  if (mutationChanges === 1 && mappingChanges === input.collectionIds.length) {
+    return { status: 'shared' }
+  }
+  if (mutationChanges !== 0 || mappingChanges !== 0) {
+    throw new Error('Organization cipher batch did not fully apply.')
+  }
+
+  const currentRevisionDate = await findActivePersonalCipherRevision(database, {
+    id: input.id,
+    userId: input.userId,
+  })
+  if (
+    currentRevisionDate &&
+    currentRevisionDate !== input.expectedRevisionDate
+  ) {
+    return { status: 'conflict', currentRevisionDate }
+  }
+
+  return { status: 'not_found' }
+}
+
+function organizationCipherTransitionStatements(
+  database: CipherBatchDatabase,
+  input: OrganizationCipherWriteInput,
+  mutation: { mutationSql: string; mutationValues: unknown[] },
+): D1PreparedStatement[] {
+  return [
+    database.prepare(mutation.mutationSql).bind(...mutation.mutationValues),
+    database
+      .prepare(
+        `
+          INSERT INTO collection_ciphers (collection_id, cipher_id)
+          SELECT DISTINCT collection.id, ?
+          ${managedOrganizationCollectionsSql(input.collectionIds)}
+            AND EXISTS (
+              SELECT 1
+              FROM ciphers transitioned_cipher
+              WHERE transitioned_cipher.id = ?
+                AND transitioned_cipher.user_id = ?
+                AND transitioned_cipher.organization_id = ?
+                AND transitioned_cipher.revision_date = ?
+                AND transitioned_cipher.updated_at = ?
+            )
+            AND changes() = 1
+          ORDER BY collection.id ASC
+        `,
+      )
+      .bind(
+        input.id,
+        input.userId,
+        input.organizationId,
+        ...input.collectionIds,
+        input.id,
+        input.userId,
+        input.organizationId,
+        input.now,
+        input.now,
+      ),
+  ]
+}
+
+function assertOrganizationCipherBatch(
+  results: readonly D1Result[],
+  expectedMappingCount: number,
+): void {
+  if (
+    results.length !== 2 ||
+    results.some((result) => !result.success) ||
+    results[0]?.meta.changes !== 1 ||
+    results[1]?.meta.changes !== expectedMappingCount
+  ) {
+    throw new Error('Organization cipher batch did not fully apply.')
+  }
+}
+
+function assertOrganizationCipherInput(
+  input: OrganizationCipherWriteInput,
+): void {
+  if (
+    !input.id ||
+    !input.userId ||
+    !input.organizationId ||
+    !input.cipherKey ||
+    !hasUniqueCollectionIds(input.collectionIds)
+  ) {
+    throw new Error('Organization cipher input is invalid.')
+  }
+}
+
+function hasUniqueCollectionIds(collectionIds: readonly string[]): boolean {
+  return (
+    collectionIds.length > 0 &&
+    collectionIds.every((id) => id.length > 0) &&
+    new Set(collectionIds).size === collectionIds.length
+  )
+}
+
+async function findActivePersonalCipherRevision(
+  database: CipherDatabase,
+  input: Pick<CipherRecord, 'id' | 'userId'>,
+): Promise<string | null> {
+  const row = await database
+    .prepare(
+      `
+        SELECT revision_date as revisionDate
+        FROM ciphers
+        WHERE id = ?
+          AND user_id = ?
+          AND organization_id IS NULL
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+    )
+    .bind(input.id, input.userId)
+    .first<CipherRevisionRow>()
+
+  return row?.revisionDate ?? null
 }
 
 export async function createCipher(

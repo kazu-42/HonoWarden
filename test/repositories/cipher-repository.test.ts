@@ -6,16 +6,19 @@ import {
   bulkRestoreCiphers,
   bulkSoftDeleteCiphers,
   createCipher,
+  createOrganizationCipher,
   findAccessibleCipherById,
   findCipherById,
   listAccessibleCiphersByUser,
   listAccessibleCiphersByUserPage,
   permanentlyDeleteCipher,
   restoreCipher,
+  sharePersonalCipherWithOrganization,
   softDeleteCipher,
   listCiphersByUser,
   listCiphersByUserPage,
   updateCipher,
+  validateManagedOrganizationCollections,
 } from '../../src/repositories/cipher-repository'
 
 const fakeMeta = {
@@ -29,6 +32,162 @@ const fakeMeta = {
 } satisfies D1Meta & Record<string, unknown>
 
 describe('cipher repository', () => {
+  it('validates the complete confirmed owner-managed collection set', async () => {
+    const database = new RecordingCipherD1Database([{ count: 2 }])
+
+    await expect(
+      validateManagedOrganizationCollections(database, {
+        userId: 'user-id',
+        organizationId: 'organization-id',
+        collectionIds: ['collection-one', 'collection-two'],
+      }),
+    ).resolves.toBe(true)
+
+    expect(database.queries.join('\n')).toContain(
+      'COUNT(DISTINCT collection.id)',
+    )
+    expect(database.queries.join('\n')).toContain('membership.status = 2')
+    expect(database.queries.join('\n')).toContain('membership.type = 0')
+    expect(database.queries.join('\n')).toContain('collection_user.manage = 1')
+    expect(database.queries.join('\n')).toContain(
+      'membership.organization_id = collection.organization_id',
+    )
+    expect(database.boundValueSets).toEqual([
+      ['user-id', 'organization-id', 'collection-one', 'collection-two'],
+    ])
+  })
+
+  it('creates an organization cipher and every collection assignment in one guarded batch', async () => {
+    const database = new RecordingCipherD1Database([], {
+      batchChanges: [1, 2],
+    })
+
+    await expect(
+      createOrganizationCipher(database, {
+        id: 'organization-cipher-id',
+        userId: 'user-id',
+        organizationId: 'organization-id',
+        collectionIds: ['collection-one', 'collection-two'],
+        type: 1,
+        favorite: true,
+        encryptedJson: '{"name":"2.organization"}',
+        cipherKey: '2.opaque-cipher-key',
+        now: '2026-07-06T00:10:00.000Z',
+      }),
+    ).resolves.toEqual({ status: 'created' })
+
+    expect(database.queries).toHaveLength(2)
+    expect(database.queries[0]).toContain('INSERT INTO ciphers')
+    expect(database.queries[0]).toContain('organization_id')
+    expect(database.queries[0]).toContain('cipher_key')
+    expect(database.queries[0]).toContain('COUNT(DISTINCT collection.id)')
+    expect(database.queries[1]).toContain('INSERT INTO collection_ciphers')
+    expect(database.queries[1]).toContain('FROM ciphers transitioned_cipher')
+    expect(database.queries[1]).toContain('changes() = 1')
+    expect(database.boundValues).toEqual(
+      expect.arrayContaining([
+        'organization-cipher-id',
+        'user-id',
+        'organization-id',
+        'collection-one',
+        'collection-two',
+        '2.opaque-cipher-key',
+      ]),
+    )
+  })
+
+  it('shares an active personal cipher without changing its id or provenance owner', async () => {
+    const database = new RecordingCipherD1Database([], {
+      batchChanges: [1, 2],
+    })
+
+    await expect(
+      sharePersonalCipherWithOrganization(database, {
+        id: 'cipher-id',
+        userId: 'user-id',
+        organizationId: 'organization-id',
+        collectionIds: ['collection-one', 'collection-two'],
+        type: 1,
+        favorite: false,
+        encryptedJson: '{"name":"2.reencrypted"}',
+        cipherKey: '2.opaque-cipher-key',
+        expectedRevisionDate: '2026-07-06T00:05:00.000Z',
+        now: '2026-07-06T00:10:00.000Z',
+      }),
+    ).resolves.toEqual({ status: 'shared' })
+
+    expect(database.queries).toHaveLength(2)
+    expect(database.queries[0]).toContain('UPDATE ciphers')
+    expect(database.queries[0]).toContain('organization_id IS NULL')
+    expect(database.queries[0]).toContain('deleted_at IS NULL')
+    expect(database.queries[0]).toContain('revision_date = ?')
+    expect(database.queries[0]).toContain(
+      'FROM collection_ciphers existing_mapping',
+    )
+    expect(database.queries[0]).toContain('FROM cipher_attachments attachment')
+    expect(database.queries[1]).toContain('INSERT INTO collection_ciphers')
+    expect(database.boundValues).toEqual(
+      expect.arrayContaining([
+        'cipher-id',
+        'user-id',
+        'organization-id',
+        '2026-07-06T00:05:00.000Z',
+      ]),
+    )
+  })
+
+  it('distinguishes a stale owned source from a missing or ineligible share source', async () => {
+    const conflictDatabase = new RecordingCipherD1Database(
+      [{ revisionDate: '2026-07-06T00:06:00.000Z' }],
+      { batchChanges: [0, 0] },
+    )
+    const input = {
+      id: 'cipher-id',
+      userId: 'user-id',
+      organizationId: 'organization-id',
+      collectionIds: ['collection-id'],
+      type: 1 as const,
+      favorite: false,
+      encryptedJson: '{"name":"2.reencrypted"}',
+      cipherKey: '2.opaque-cipher-key',
+      expectedRevisionDate: '2026-07-06T00:05:00.000Z',
+      now: '2026-07-06T00:10:00.000Z',
+    }
+
+    await expect(
+      sharePersonalCipherWithOrganization(conflictDatabase, input),
+    ).resolves.toEqual({
+      status: 'conflict',
+      currentRevisionDate: '2026-07-06T00:06:00.000Z',
+    })
+    await expect(
+      sharePersonalCipherWithOrganization(
+        new RecordingCipherD1Database([], { batchChanges: [0, 0] }),
+        input,
+      ),
+    ).resolves.toEqual({ status: 'not_found' })
+  })
+
+  it('fails loudly when an organization transition batch is incomplete', async () => {
+    const database = new RecordingCipherD1Database([], {
+      batchChanges: [1, 1],
+    })
+
+    await expect(
+      createOrganizationCipher(database, {
+        id: 'organization-cipher-id',
+        userId: 'user-id',
+        organizationId: 'organization-id',
+        collectionIds: ['collection-one', 'collection-two'],
+        type: 1,
+        favorite: true,
+        encryptedJson: '{"name":"2.organization"}',
+        cipherKey: '2.opaque-cipher-key',
+        now: '2026-07-06T00:10:00.000Z',
+      }),
+    ).rejects.toThrow('Organization cipher batch did not fully apply')
+  })
+
   it('projects personal and accessible organization ciphers without duplicate collection ids', async () => {
     const database = new RecordingCipherD1Database([
       {
