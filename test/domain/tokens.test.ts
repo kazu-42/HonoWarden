@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   generateRefreshToken,
   hashRefreshToken,
+  invalidClientError,
   isRefreshTokenRetentionEnabled,
   parseAuthRequestGrantForm,
+  parseClientCredentialsGrantForm,
   parsePasswordGrantForm,
   parseRefreshTokenGrantForm,
   refreshTokenRetentionDays,
@@ -68,6 +70,73 @@ describe('token domain', () => {
           name: 'Fixture Device',
           type: 9,
         },
+      },
+    })
+  })
+
+  it('parses the official CLI personal API-key grant form', () => {
+    const form = new URLSearchParams({
+      grant_type: 'client_credentials',
+      scope: 'api',
+      client_id: 'user.11111111-1111-4111-8111-111111111111',
+      client_secret: 'synthetic-personal-api-key-secret',
+      deviceType: '8',
+      deviceIdentifier: 'fixture-cli-device',
+      deviceName: 'Fixture CLI',
+    })
+
+    expect(parseClientCredentialsGrantForm(form)).toEqual({
+      ok: true,
+      grant: {
+        clientId: 'user.11111111-1111-4111-8111-111111111111',
+        clientSecret: 'synthetic-personal-api-key-secret',
+        scope: 'api',
+        device: {
+          identifier: 'fixture-cli-device',
+          name: 'Fixture CLI',
+          type: 8,
+        },
+      },
+    })
+  })
+
+  it('does not classify password grants as client-credentials grants', () => {
+    expect(
+      parseClientCredentialsGrantForm(
+        new URLSearchParams({
+          grant_type: 'password',
+          username: 'person@example.test',
+          password: 'synthetic-master-password-hash',
+        }),
+      ),
+    ).toEqual({ ok: false, reason: 'not_client_credentials' })
+  })
+
+  it('rejects incomplete client-credentials grants without echoing credentials', () => {
+    expect(
+      parseClientCredentialsGrantForm(
+        new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: 'user.11111111-1111-4111-8111-111111111111',
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        error: 'invalid_request',
+        errorModel: {
+          Message: 'Client credentials are required.',
+        },
+      },
+    })
+  })
+
+  it('uses one generic invalid-client response for credential failures', () => {
+    expect(invalidClientError()).toEqual({
+      error: 'invalid_client',
+      errorModel: {
+        Message: 'Invalid client credentials.',
+        Object: 'error',
       },
     })
   })
@@ -434,6 +503,23 @@ describe('token domain', () => {
         premium: false,
         amr: ['Application'],
       },
+    })
+  })
+
+  it('accepts signed access tokens issued for personal API-key login', async () => {
+    const token = await signAccessToken('secret', {
+      sub: 'user-id',
+      email: 'person@example.test',
+      device: 'device-id',
+      securityStamp: 'security-stamp',
+      iat: 1,
+      exp: 100,
+      authMethod: 'api_key',
+    })
+
+    await expect(verifyAccessToken('secret', token, 2)).resolves.toMatchObject({
+      ok: true,
+      claims: { authMethod: 'api_key' },
     })
   })
 

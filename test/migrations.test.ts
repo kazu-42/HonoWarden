@@ -23,6 +23,10 @@ const userKeyRotationHistoryMigration = readFileSync(
   'migrations/0016_user_key_rotation_wrapper_history.sql',
   'utf8',
 )
+const personalApiKeysMigration = readFileSync(
+  'migrations/0020_personal_api_keys.sql',
+  'utf8',
+)
 const legacyInquiryMigration = readFileSync(
   'migrations/0009_inquiry_messages.sql',
   'utf8',
@@ -380,6 +384,26 @@ describe('initial D1 migration', () => {
     expect(userKeyRotationHistoryMigration).not.toContain('wrapped_user_key')
     expect(userKeyRotationHistoryMigration).not.toContain('wrapped_private_key')
   })
+
+  it('stores only a keyed personal API-key verifier per owner', () => {
+    expect(personalApiKeysMigration).toContain('CREATE TABLE personal_api_keys')
+    expect(personalApiKeysMigration).toContain('user_id TEXT PRIMARY KEY')
+    expect(personalApiKeysMigration).toContain('secret_verifier TEXT NOT NULL')
+    expect(personalApiKeysMigration).toContain(
+      "CHECK (secret_verifier LIKE 'hmac-sha256:v1:%')",
+    )
+    expect(personalApiKeysMigration).toContain('created_at TEXT NOT NULL')
+    expect(personalApiKeysMigration).toContain('rotated_at TEXT')
+    expect(personalApiKeysMigration).toContain('last_used_at TEXT')
+    expect(personalApiKeysMigration).toContain('revision_date TEXT NOT NULL')
+    expect(personalApiKeysMigration).toContain(
+      'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE',
+    )
+    expect(personalApiKeysMigration).toContain("VALUES ('0020')")
+    expect(personalApiKeysMigration).not.toMatch(/client_secret/i)
+    expect(personalApiKeysMigration).not.toMatch(/api_key\s+TEXT/i)
+    expect(personalApiKeysMigration).not.toMatch(/\bsecret\s+TEXT/i)
+  })
 })
 
 const allMigrations = [
@@ -400,4 +424,5 @@ const allMigrations = [
   organizationsMigration,
   kdfPopulationMigration,
   userKeyRotationHistoryMigration,
+  personalApiKeysMigration,
 ].join('\n')

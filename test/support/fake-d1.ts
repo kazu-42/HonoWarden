@@ -71,6 +71,7 @@ type FakeD1DatabaseOptions = {
   requestQuotaInsertThrows?: boolean
   inquiryForwardUpdateThrows?: boolean
   inquiryInsertThrows?: boolean
+  personalApiKeys?: Record<string, unknown>[]
   organizations?: Record<string, unknown>[]
   organizationUsers?: Record<string, unknown>[]
   collections?: Record<string, unknown>[]
@@ -429,6 +430,10 @@ export class FakeD1Database {
           return (options.totpChallenge ?? null) as T | null
         }
 
+        if (query.includes('FROM personal_api_keys')) {
+          return findPersonalApiKeyRow(options, boundValues, query) as T | null
+        }
+
         if (query.includes('FROM users')) {
           return findAuthUser(options, query, boundValues) as T | null
         }
@@ -604,6 +609,26 @@ export class FakeD1Database {
         }
       },
       async run(): Promise<D1Result> {
+        if (query.includes('INSERT INTO personal_api_keys')) {
+          const changes = insertPersonalApiKey(options, boundValues)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
+        if (/UPDATE\s+personal_api_keys/.test(query)) {
+          const changes = updatePersonalApiKey(options, boundValues, query)
+
+          return {
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes },
+          }
+        }
+
         if (/UPDATE\s+collections/.test(query)) {
           const changes = updateOrganizationCollectionRow(options, boundValues)
 
@@ -1315,6 +1340,15 @@ export class FakeD1Database {
         fakeStatements,
         this.auditEventInserts,
       ) as D1Result<T>[]
+    }
+
+    if (isPersonalApiKeyMutationBatch(fakeStatements)) {
+      return applyPersonalApiKeyMutationBatch(
+        this.options,
+        statements,
+        fakeStatements,
+        this.auditEventInserts,
+      ) as Promise<D1Result<T>[]>
     }
 
     if (isOrganizationFoundationBatch(fakeStatements)) {
@@ -3362,6 +3396,149 @@ function findAuthUser(
   return options.authUsers[0] ?? null
 }
 
+function isPersonalApiKeyMutationBatch(
+  statements: FakePreparedStatement[],
+): boolean {
+  return (
+    statements.some((statement) =>
+      /(?:INSERT INTO|UPDATE)\s+personal_api_keys/.test(statement.__fakeQuery),
+    ) &&
+    statements.some((statement) =>
+      statement.__fakeQuery.includes('INSERT INTO audit_events'),
+    )
+  )
+}
+
+async function applyPersonalApiKeyMutationBatch<T = unknown>(
+  options: FakeD1DatabaseOptions,
+  statements: D1PreparedStatement[],
+  fakeStatements: FakePreparedStatement[],
+  auditEventInserts: FakeAuditEventInsert[],
+): Promise<D1Result<T>[]> {
+  const personalApiKeys = (options.personalApiKeys ??= [])
+  const personalApiKeySnapshot = personalApiKeys.map((row) => ({ ...row }))
+  const auditEventCount = auditEventInserts.length
+  const results: D1Result<T>[] = []
+  let previousChanges = 0
+
+  try {
+    for (let index = 0; index < statements.length; index += 1) {
+      const fakeStatement = fakeStatements[index]
+      const statement = statements[index]
+      if (!fakeStatement || !statement) {
+        throw new Error('Fake D1 batch statement mismatch.')
+      }
+
+      if (
+        fakeStatement.__fakeQuery.includes('WHERE changes() = 1') &&
+        previousChanges !== 1
+      ) {
+        results.push({
+          success: true,
+          results: [],
+          meta: fakeMeta,
+        })
+        previousChanges = 0
+        continue
+      }
+
+      const result = await statement.run<T>()
+      results.push(result)
+      previousChanges = result.meta.changes
+    }
+
+    return results
+  } catch (error) {
+    personalApiKeys.splice(0, personalApiKeys.length, ...personalApiKeySnapshot)
+    auditEventInserts.splice(auditEventCount)
+    throw error
+  }
+}
+
+function findPersonalApiKeyRow(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown> | null {
+  const userId = String(boundValues[0] ?? '')
+  const row = (options.personalApiKeys ?? []).find(
+    (candidate) => candidate.userId === userId,
+  )
+  if (!row) {
+    return null
+  }
+
+  if (query.includes('secret_verifier as secretVerifier')) {
+    return {
+      userId: row.userId,
+      secretVerifier: row.secretVerifier,
+      revisionDate: row.revisionDate,
+    }
+  }
+
+  return {
+    userId: row.userId,
+    createdAt: row.createdAt,
+    rotatedAt: row.rotatedAt ?? null,
+    lastUsedAt: row.lastUsedAt ?? null,
+    revisionDate: row.revisionDate,
+  }
+}
+
+function insertPersonalApiKey(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+): number {
+  const rows = (options.personalApiKeys ??= [])
+  const userId = String(boundValues[0] ?? '')
+  if (rows.some((row) => row.userId === userId)) {
+    return 0
+  }
+
+  rows.push({
+    userId,
+    secretVerifier: String(boundValues[1] ?? ''),
+    createdAt: String(boundValues[2] ?? ''),
+    rotatedAt: null,
+    lastUsedAt: null,
+    revisionDate: String(boundValues[3] ?? ''),
+  })
+  return 1
+}
+
+function updatePersonalApiKey(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): number {
+  const rows = options.personalApiKeys ?? []
+
+  if (query.includes('SET last_used_at = ?')) {
+    const userId = String(boundValues[1] ?? '')
+    const expectedVerifier = String(boundValues[2] ?? '')
+    const row = rows.find(
+      (candidate) =>
+        candidate.userId === userId &&
+        candidate.secretVerifier === expectedVerifier,
+    )
+    if (!row) {
+      return 0
+    }
+    row.lastUsedAt = String(boundValues[0] ?? '')
+    return 1
+  }
+
+  const userId = String(boundValues[3] ?? '')
+  const row = rows.find((candidate) => candidate.userId === userId)
+  if (!row) {
+    return 0
+  }
+  row.secretVerifier = String(boundValues[0] ?? '')
+  row.rotatedAt = String(boundValues[1] ?? '')
+  row.revisionDate = String(boundValues[2] ?? '')
+  return 1
+}
+
 function listPreloginKdfRows(
   options: FakeD1DatabaseOptions,
   boundValues: unknown[],
@@ -4390,4 +4567,5 @@ export const requiredTables = [
   'user_key_rotation_wrapper_history',
   'webauthn_credentials',
   'webauthn_challenges',
+  'personal_api_keys',
 ] as const

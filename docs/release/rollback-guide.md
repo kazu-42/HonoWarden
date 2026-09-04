@@ -228,6 +228,11 @@ review.
 
 ## Encrypted Text Send Foundation Rollback
 
+Migration `0020` is forward-only. Keep the `personal_api_keys` table during
+Worker rollback. HON-161 does not enable personal API keys at tracked scopes,
+so the normal rollback is to a Worker that ignores the additive table while
+`HONOWARDEN_PERSONAL_API_KEYS_ENABLED` remains false.
+
 Migration `0018` is forward-only. Keep the `sends` table and its indexes during
 Worker rollback. HON-184 does not mount Send routes, enable `send-enabled`,
 write runtime secrets, or create remote rows, so the normal rollback is to a

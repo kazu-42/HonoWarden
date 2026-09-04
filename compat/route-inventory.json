@@ -2575,6 +2575,43 @@
       "adrs": ["0014-hosted-billing-licensing-tenancy.md"]
     },
     {
+      "lastReviewedAt": "2026-09-04",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app.test.ts", "test/domain/personal-api-key.test.ts"],
+      "supportClaim": true,
+      "id": "accounts.personal_api_key",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-161",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/Auth/Controllers/AccountsController.cs"
+      },
+      "rationale": "Personal API-key create/rotate and client_credentials grant. Runtime flag default-off.",
+      "covers": [
+        {
+          "method": "GET",
+          "path": "/api/accounts/api-key"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/api-key"
+        },
+        {
+          "method": "GET",
+          "path": "/api/accounts/rotate-api-key"
+        },
+        {
+          "method": "POST",
+          "path": "/api/accounts/rotate-api-key"
+        }
+      ],
+      "honowardenBehavior": "recent-auth create/rotate; secret shown once; HONOWARDEN_PERSONAL_API_KEYS_ENABLED default-off"
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
       "evidence": ["test/migrations.test.ts"],
@@ -2606,7 +2643,8 @@
         "0016_user_key_rotation_wrapper_history.sql",
         "0017_account_lifecycle.sql",
         "0018_text_sends.sql",
-        "0019_send_files.sql"
+        "0019_send_files.sql",
+        "0020_personal_api_keys.sql"
       ]
     },
     {

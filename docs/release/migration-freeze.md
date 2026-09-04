@@ -33,6 +33,7 @@ changes and update this document in the same change.
 | `migrations/0017_account_lifecycle.sql`                 | `5ed91a78fea52d661b07bdebbc4d74654b4bab0a84010829874202bd6bf219dc` |
 | `migrations/0018_text_sends.sql`                        | `c4cc6047f2e2bebcc9d15ff034be340785a06e6c0d1fe39560a53cf0d32bf2de` |
 | `migrations/0019_send_files.sql`                        | `d59ba11466f324a6664e03f775f37c100d2147cbfacee51a366b4367dc749ec9` |
+| `migrations/0020_personal_api_keys.sql`                 | `7b70b5c2284509990bc223991e5f5fcd09868027f0a5fae6ed17464d2618eb14` |
 
 ## Required Tables At Freeze
 
@@ -66,6 +67,7 @@ changes and update this document in the same change.
 - `sends`
 - `webauthn_credentials`
 - `webauthn_challenges`
+- `personal_api_keys`
 
 ## Policy
 
