@@ -772,6 +772,7 @@ export function mountAdminApp(
     render()
   }
   function selectView(next: View): void {
+    if (loading && !selectedOrganizationId) return
     invalidate()
     view = next
     focusMainAfterLoad = true
@@ -2624,6 +2625,7 @@ export function mountAdminApp(
       symbol.setAttribute('aria-hidden', 'true')
       const item = button(viewLabels[next], () => selectView(next))
       item.className = 'nav-button'
+      item.disabled = loading && !selectedOrganizationId
       item.prepend(symbol)
       if (view === next) item.setAttribute('aria-current', 'page')
       nav.append(item)
@@ -2743,15 +2745,7 @@ export function mountAdminApp(
         ),
       )
     for (const error of snapshot.errors) main.append(noticeNode(error))
-    if (!selectedOrganizationId)
-      main.append(
-        emptyState(
-          '組織のワークスペースを始める',
-          '組織を作成するか、会社からの招待を承諾してください。',
-          button('組織を作成', () => createOrganizationDialog(), 'primary'),
-        ),
-      )
-    else if (loading) {
+    if (loading) {
       const pending = element(
         'div',
         'loading-state',
@@ -2759,7 +2753,15 @@ export function mountAdminApp(
       )
       pending.setAttribute('role', 'status')
       main.append(pending)
-    } else {
+    } else if (!selectedOrganizationId)
+      main.append(
+        emptyState(
+          '組織のワークスペースを始める',
+          '組織を作成するか、会社からの招待を承諾してください。',
+          button('組織を作成', () => createOrganizationDialog(), 'primary'),
+        ),
+      )
+    else {
       const renderers: Record<View, () => HTMLElement> = {
         overview: overviewView,
         members: membersView,

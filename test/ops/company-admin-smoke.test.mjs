@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import {
   mkdtemp,
+  chmod,
   mkdir,
   readFile,
   realpath,
@@ -13,15 +16,187 @@ import { join } from 'node:path'
 import process from 'node:process'
 import {
   childEnvironment,
+  classifyNativeStderr,
+  closeOwnedBrowserServer,
   beforeDeadline,
   migrationStatements,
+  nativeCommandAction,
   ownedRunPath,
   parseOptions,
+  refreshWorkspaceFromUi,
   safeErrorClassification,
   writeSupervisorProof,
+  verifyNativeBootstrapFile,
 } from '../../scripts/honowarden-company-admin-smoke.mjs'
 
+function absentProcess() {
+  const error = new Error('owned process absent')
+  error.code = 'ESRCH'
+  throw error
+}
+
 describe('company administration acceptance execution boundary', () => {
+  it('allows only exact owned-profile bootstrap bytes on the first version action', () => {
+    const path = '/owned/private/profile/data.json'
+    const notice = Buffer.from(
+      'Could not find data file, "' + path + '"; creating it instead.\n',
+    )
+    assert.equal(
+      classifyNativeStderr(notice, path, true),
+      'official_cli_first_profile_bootstrap',
+    )
+    assert.equal(classifyNativeStderr(notice, path, false), 'unexpected_stderr')
+    assert.equal(
+      classifyNativeStderr(notice, '/other/profile/data.json', true),
+      'unexpected_stderr',
+    )
+    const extra = Buffer.concat([notice, Buffer.from('private-canary-token\n')])
+    const classification = classifyNativeStderr(extra, path, true)
+    assert.equal(classification, 'unexpected_stderr')
+    assert.ok(!classification.includes('private-canary'))
+    assert.equal(classifyNativeStderr(Buffer.alloc(0), path, false), 'empty')
+  })
+
+  it('native action projection excludes login codes, passwords and server URLs', () => {
+    assert.equal(nativeCommandAction(['--version']), 'version')
+    assert.equal(
+      nativeCommandAction([
+        'login',
+        'private-canary@example.invalid',
+        '--code',
+        '123456',
+      ]),
+      'login',
+    )
+    assert.equal(
+      nativeCommandAction([
+        'config',
+        'server',
+        'https://private.invalid/#canary',
+      ]),
+      'configure_server',
+    )
+    assert.equal(nativeCommandAction(['eval', 'private-canary']), 'unsupported')
+  })
+
+  it('bootstrap readback rejects public files and symlinks', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'company-bootstrap-private-'))
+    try {
+      const data = join(root, 'data.json')
+      await writeFile(data, '{}', { mode: 0o600 })
+      await verifyNativeBootstrapFile(data)
+      await chmod(data, 0o644)
+      await assert.rejects(
+        verifyNativeBootstrapFile(data),
+        /native_bootstrap_file_not_private/,
+      )
+      await chmod(data, 0o600)
+      const linked = join(root, 'linked.json')
+      await symlink(data, linked)
+      await assert.rejects(
+        verifyNativeBootstrapFile(linked),
+        /native_bootstrap_file_not_private/,
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('hung graceful close is bounded, forcibly terminates only the owned browser, and reports escalation', async () => {
+    let kills = 0
+    const result = await closeOwnedBrowserServer(
+      {
+        process: () => ({ pid: 123 }),
+        close: () => new Promise(() => {}),
+        kill: async () => {
+          kills += 1
+        },
+      },
+      { gracefulMs: 10, forceMs: 10, processKill: absentProcess },
+    )
+    assert.equal(kills, 1)
+    assert.equal(result.graceful, false)
+    assert.equal(result.publicKillCompleted, true)
+    assert.equal(result.processGroupAbsent, true)
+  })
+
+  it('public kill hanging still performs mandatory owned-process termination and readback', async () => {
+    let probes = 0
+    const result = await closeOwnedBrowserServer(
+      {
+        process: () => ({ pid: 123 }),
+        close: () => new Promise(() => {}),
+        kill: () => new Promise(() => {}),
+      },
+      {
+        gracefulMs: 10,
+        forceMs: 10,
+        processKill: () => {
+          probes += 1
+          absentProcess()
+        },
+      },
+    )
+    assert.equal(result.graceful, false)
+    assert.equal(result.publicKillCompleted, false)
+    assert.equal(result.processGroupAbsent, true)
+    assert.ok(probes >= 2)
+  })
+
+  it('successful graceful close never invokes force close', async () => {
+    let kills = 0
+    const result = await closeOwnedBrowserServer(
+      {
+        process: () => ({ pid: 123 }),
+        close: async () => {},
+        kill: async () => {
+          kills += 1
+        },
+      },
+      { gracefulMs: 10, processKill: absentProcess },
+    )
+    assert.equal(kills, 0)
+    assert.equal(result.graceful, true)
+    assert.equal(result.processGroupAbsent, true)
+  })
+  it('waits for a disabled refresh action even when an organization-less view has no loading status', async () => {
+    vi.useFakeTimers()
+    let enabled = true
+    let statusCount = 0
+    let completed = false
+    const refresh = {
+      click: vi.fn(async () => {
+        enabled = false
+      }),
+      isEnabled: vi.fn(async () => enabled),
+    }
+    const statuses = {
+      filter: () => ({ count: async () => statusCount }),
+    }
+    const page = {
+      getByRole: (role) => (role === 'button' ? refresh : statuses),
+    }
+    try {
+      const pending = refreshWorkspaceFromUi(page).then(() => {
+        completed = true
+      })
+      await vi.advanceTimersByTimeAsync(50)
+      expect(refresh.click).toHaveBeenCalledTimes(1)
+      expect(completed).toBe(false)
+      enabled = true
+      statusCount = 1
+      await vi.advanceTimersByTimeAsync(100)
+      expect(completed).toBe(false)
+      statusCount = 0
+      await vi.advanceTimersByTimeAsync(100)
+      await pending
+      expect(completed).toBe(true)
+      expect(refresh.isEnabled).toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('does not write an artifact when the child never acquired the fresh run root', async () => {
     const temporary = await mkdtemp(join(tmpdir(), 'company-smoke-unowned-'))
     try {
