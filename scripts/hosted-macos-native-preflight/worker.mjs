@@ -465,21 +465,53 @@ async function startup() {
   )
 }
 
+function runtimeFailureKind(error) {
+  // Read only own data descriptors and emit labels, never exception content.
+  try {
+    const message = Object.getOwnPropertyDescriptor(error, 'message')
+    if (
+      !message ||
+      !Object.hasOwn(message, 'value') ||
+      typeof message.value !== 'string' ||
+      message.value.length > 16384 ||
+      Buffer.byteLength(message.value, 'utf8') > 16384
+    )
+      return 'miniflare_runtime_failure'
+    if (
+      message.value ===
+      'The Workers runtime failed to start. There is likely additional logging output above.'
+    )
+      return 'miniflare_runtime_ports_missing'
+    if (message.value === 'Unable to access the runtime inspector socket.')
+      return 'miniflare_runtime_inspector_socket_missing'
+    const stderrPrefix =
+      'The Workers runtime failed to start. There was likely a problem with the workerd binary or your configuration.\nRuntime stderr:\n'
+    if (message.value.startsWith(stderrPrefix)) {
+      const nonWhitespaceSuffix = /\S/g
+      nonWhitespaceSuffix.lastIndex = stderrPrefix.length
+      if (nonWhitespaceSuffix.test(message.value))
+        return 'miniflare_runtime_stderr_present'
+    }
+  } catch {
+    // Descriptor failure supplies no diagnostic evidence.
+  }
+  return 'miniflare_runtime_failure'
+}
+
 function failureKind(error) {
   if (error instanceof BinaryProbeFailure) {
     const kind = Object.getOwnPropertyDescriptor(error, 'kind')
     if (kind && 'value' in kind && BINARY_FAILURE_KINDS.has(kind.value))
       return kind.value
   }
-  // Pinned SDK class and own data property only; never invoke or copy exception fields.
+  // Pinned SDK class and own data properties only; never emit exception fields.
   if (
     typeof miniflareCoreErrorClass === 'function' &&
     error instanceof miniflareCoreErrorClass
   ) {
     const code = Object.getOwnPropertyDescriptor(error, 'code')
-    if (code && 'value' in code) {
-      if (code.value === 'ERR_RUNTIME_FAILURE')
-        return 'miniflare_runtime_failure'
+    if (code && Object.hasOwn(code, 'value')) {
+      if (code.value === 'ERR_RUNTIME_FAILURE') return runtimeFailureKind(error)
       if (code.value === 'ERR_ADDRESS_IN_USE') return 'miniflare_address_in_use'
     }
   }

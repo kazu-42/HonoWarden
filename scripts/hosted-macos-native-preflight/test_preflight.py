@@ -1213,6 +1213,278 @@ console.log(JSON.stringify(result));
                     self.assertNotIn("private", json.dumps(result))
 
 
+class RuntimeFailureMessageTests(unittest.TestCase):
+    STDERR_PREFIX = ("The Workers runtime failed to start. There was likely a problem with the workerd binary or your configuration.\n"
+                     "Runtime stderr:\n")
+    PORTS_MESSAGE = "The Workers runtime failed to start. There is likely additional logging output above."
+    INSPECTOR_MESSAGE = "Unable to access the runtime inspector socket."
+    NEW_KINDS = ("miniflare_runtime_stderr_present", "miniflare_runtime_ports_missing",
+                 "miniflare_runtime_inspector_socket_missing")
+
+    def classifier(self, body):
+        source = (p.HERE / "worker.mjs").read_text()
+        marker = "function runtimeFailureKind(error)"
+        start = source.index(marker if marker in source else "function failureKind(error)")
+        helpers = source[start:source.index("startup().catch", start)]
+        # Extract only pure classifiers. No Worker entrypoint, SDK, runtime or target is loaded.
+        script = """
+const vm = require('node:vm');
+let byteLengthCalls = 0;
+let forbiddenCalls = 0;
+const forbidden = () => { forbiddenCalls++; throw new Error('fixture_forbidden_api'); };
+const sandbox = {
+  publicMessages: PUBLIC_MESSAGES,
+  console: {log:forbidden, error:forbidden, warn:forbidden},
+  process: {stdout:{write:forbidden}, stderr:{write:forbidden}, exit:forbidden},
+  require:forbidden, fetch:forbidden, spawn:forbidden,
+  Buffer: {byteLength(value, encoding) {
+    byteLengthCalls++;
+    if (typeof value !== 'string' || value.length > 16384)
+      throw new Error('fixture_unsafe_byte_length_input');
+    if (encoding !== undefined && encoding !== 'utf8' && encoding !== 'utf-8')
+      throw new Error('fixture_unsafe_byte_length_encoding');
+    return Buffer.byteLength(value, encoding);
+  }, from:forbidden, alloc:forbidden},
+  byteLengthCalls: () => byteLengthCalls,
+};
+vm.createContext(sandbox);
+const prelude = `
+class BinaryProbeFailure extends Error {}
+const BINARY_FAILURE_KINDS = new Set(['binary_digest_mismatch']);
+let miniflareCoreErrorClass = class MiniflareCoreError extends Error {
+  constructor(code, message) {
+    super();
+    Object.defineProperty(this, 'code', {value:code, writable:true, configurable:true});
+    if (arguments.length > 1)
+      Object.defineProperty(this, 'message', {value:message, writable:true, configurable:true});
+  }
+};
+const [stderrPrefix, portsMessage, inspectorMessage] = publicMessages;
+const secretSentinel = 'FICTIONAL_RUNTIME_SECRET_17';
+const urlSentinel = 'https://fictional-runtime.invalid/diagnostic?token=FICTIONAL_RUNTIME_SECRET_17';
+let helperCalls = 0;
+`;
+const instrumentation = `
+if (typeof runtimeFailureKind === 'function') {
+  const original = runtimeFailureKind;
+  runtimeFailureKind = function(error) { helperCalls++; return original(error); };
+}
+function classify(error) {
+  try { return failureKind(error); }
+  catch { return 'fixture_unexpected_throw'; }
+}
+`;
+const result = vm.runInContext(prelude + HELPERS + instrumentation
+  + BODY, sandbox, {timeout:1000});
+process.stdout.write(JSON.stringify({value:result, forbiddenCalls}) + '\\n');
+""".replace("PUBLIC_MESSAGES", json.dumps([self.STDERR_PREFIX, self.PORTS_MESSAGE, self.INSPECTOR_MESSAGE]), 1)
+        script = script.replace("HELPERS", json.dumps(helpers), 1).replace(
+            "BODY", json.dumps("\n(() => { " + body + " })()"), 1)
+        result = p.subprocess.run(["node", "--input-type=commonjs", "-e", script],
+                                  env={"PATH": p.os.environ["PATH"]}, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, "Pure runtime classifier fixture failed")
+        self.assertTrue(result.stderr == b"", "Pure runtime classifier fixture emitted stderr")
+        self.assertLessEqual(len(result.stdout), 4096)
+        for sentinel in [b"FICTIONAL_RUNTIME_SECRET_17", b"fictional-runtime.invalid"]:
+            self.assertTrue(sentinel not in result.stdout, "Classifier copied a fictional private field")
+        projected = json.loads(result.stdout)
+        self.assertEqual(projected["forbiddenCalls"], 0)
+        return projected["value"]
+
+    def test_runtime_message_stderr_exact_prefix_has_closed_label(self):
+        result = self.classifier("return {kind:classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',stderrPrefix+secretSentinel+' '+urlSentinel))};")
+        self.assertEqual(result, {"kind": "miniflare_runtime_stderr_present"})
+
+    def test_runtime_message_ports_exact_whole_message_has_closed_label(self):
+        result = self.classifier("return {kind:classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',portsMessage))};")
+        self.assertEqual(result, {"kind": "miniflare_runtime_ports_missing"})
+
+    def test_runtime_message_inspector_exact_whole_message_has_closed_label(self):
+        result = self.classifier("return {kind:classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',inspectorMessage))};")
+        self.assertEqual(result, {"kind": "miniflare_runtime_inspector_socket_missing"})
+
+    def test_runtime_message_missing_own_data_and_accessors_are_generic_without_reads(self):
+        result = self.classifier(r"""
+let getters=0;
+const missing=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+const ownAccessor=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+Object.defineProperty(ownAccessor,'message',{get(){getters++;return portsMessage;}});
+const inheritedValue=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+Object.setPrototypeOf(inheritedValue,Object.create(miniflareCoreErrorClass.prototype,{message:{value:inspectorMessage}}));
+const inheritedAccessor=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+Object.setPrototypeOf(inheritedAccessor,Object.create(miniflareCoreErrorClass.prototype,{message:{get(){getters++;return portsMessage;}}}));
+return {kinds:[missing,ownAccessor,inheritedValue,inheritedAccessor].map(classify),
+  getters,bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {"kinds": ["miniflare_runtime_failure"] * 4, "getters": 0, "bytes": 0})
+
+    def test_runtime_message_nonprimitive_values_never_coerce_or_measure_bytes(self):
+        result = self.classifier(r"""
+let coercions=0, lengthReads=0;
+const coercible={
+  get length(){lengthReads++;return 1;},
+  toString(){coercions++;throw new Error(secretSentinel);},
+  valueOf(){coercions++;throw new Error(secretSentinel);},
+  [Symbol.toPrimitive](){coercions++;throw new Error(secretSentinel);}
+};
+const messages=[new String(portsMessage),coercible,null,undefined,1,true,Symbol('fictional'),1n,()=>portsMessage];
+return {kinds:messages.map(message=>classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',message))),
+  coercions,lengthReads,bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {"kinds": ["miniflare_runtime_failure"] * 9,
+                                  "coercions": 0, "lengthReads": 0, "bytes": 0})
+
+    def test_runtime_message_outer_class_and_own_code_gates_never_touch_message(self):
+        result = self.classifier(r"""
+let codeGetters=0, messageGetters=0, descriptorReads=0, coercions=0;
+const guarded=error=>{
+  Object.defineProperty(error,'message',{get(){messageGetters++;return portsMessage;},configurable:true});
+  return new Proxy(error,{getOwnPropertyDescriptor(target,key){
+    if(key==='message')descriptorReads++;
+    return Reflect.getOwnPropertyDescriptor(target,key);
+  }});
+};
+const foreign=new Error();
+Object.defineProperty(foreign,'code',{value:'ERR_RUNTIME_FAILURE'});
+const missing=new miniflareCoreErrorClass('unused');delete missing.code;
+const inherited=new miniflareCoreErrorClass('unused');delete inherited.code;
+Object.setPrototypeOf(inherited,Object.create(miniflareCoreErrorClass.prototype,{code:{value:'ERR_RUNTIME_FAILURE'}}));
+const accessor=new miniflareCoreErrorClass('unused');
+Object.defineProperty(accessor,'code',{get(){codeGetters++;throw new Error(secretSentinel);}});
+const coercible={toString(){coercions++;return 'ERR_RUNTIME_FAILURE';},
+  [Symbol.toPrimitive](){coercions++;return 'ERR_RUNTIME_FAILURE';}};
+const errors=[foreign,missing,inherited,accessor,
+  new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE '),
+  new miniflareCoreErrorClass(new String('ERR_RUNTIME_FAILURE')),
+  new miniflareCoreErrorClass(coercible),new miniflareCoreErrorClass('ERR_ADDRESS_IN_USE')];
+const kinds=errors.map(error=>classify(guarded(error)));
+const unpinned=guarded(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE'));
+miniflareCoreErrorClass=undefined;kinds.push(classify(unpinned));
+return {kinds,codeGetters,messageGetters,descriptorReads,coercions,helperCalls,bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {"kinds": ["error"] * 7 + ["miniflare_address_in_use", "error"],
+                                  "codeGetters": 0, "messageGetters": 0, "descriptorReads": 0,
+                                  "coercions": 0, "helperCalls": 0, "bytes": 0})
+
+    def test_runtime_message_descriptor_failure_is_generic_without_exception_output(self):
+        result = self.classifier(r"""
+let messageDescriptors=0;
+const error=new Proxy(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',portsMessage),{
+  getOwnPropertyDescriptor(target,key){
+    if(key==='message'){messageDescriptors++;throw new Error(secretSentinel+' '+urlSentinel);}
+    return Reflect.getOwnPropertyDescriptor(target,key);
+  }
+});
+return {kind:classify(error),messageDescriptors,bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {"kind": "miniflare_runtime_failure", "messageDescriptors": 1, "bytes": 0})
+
+    def test_runtime_message_ascii_exact_cap_and_utf16_overcap_are_distinct(self):
+        result = self.classifier(r"""
+const exact=stderrPrefix+'x'.repeat(16384-stderrPrefix.length);
+const accepted=classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',exact));
+const measured=byteLengthCalls();
+const over=classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',exact+'x'));
+return {accepted,over,units:exact.length,acceptedMeasurements:measured,overMeasurements:byteLengthCalls()-measured};
+""")
+        self.assertEqual(result, {"accepted": "miniflare_runtime_stderr_present",
+                                  "over": "miniflare_runtime_failure", "units": 16384,
+                                  "acceptedMeasurements": 1, "overMeasurements": 0})
+
+    def test_runtime_message_utf8_exact_cap_overcap_and_surrogates_are_bounded(self):
+        result = self.classifier(r"""
+const remaining=16384-stderrPrefix.length;
+const exact=stderrPrefix+'é'.repeat(Math.floor(remaining/2))+'x'.repeat(remaining%2);
+const messages=[exact,exact+'x',stderrPrefix+'😀'.repeat(5000),stderrPrefix+'\ud800'.repeat(6000)];
+return {kinds:messages.map(message=>classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',message))),
+  belowUtf16Cap:messages.every(message=>message.length<=16384),bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {"kinds": ["miniflare_runtime_stderr_present"] + ["miniflare_runtime_failure"] * 3,
+                                  "belowUtf16Cap": True, "bytes": 4})
+
+    def test_runtime_message_unknown_partial_whitespace_and_extra_text_are_generic(self):
+        result = self.classifier(r"""
+const messages=[
+  '',secretSentinel+' '+urlSentinel,stderrPrefix,stderrPrefix+' ',stderrPrefix+'\t\r\n',
+  stderrPrefix+'\u00a0\ufeff',stderrPrefix.slice(0,-1)+'x',
+  stderrPrefix.replace('\n','\r\n')+'x',stderrPrefix.toLowerCase()+'x',
+  ' '+stderrPrefix+'x','different '+stderrPrefix+'x',
+  stderrPrefix.replace('Runtime stderr:','Runtime stderr')+'x',
+  portsMessage+' ',portsMessage+'\n',portsMessage+secretSentinel,'different '+portsMessage,
+  inspectorMessage+' ',inspectorMessage+'\n',inspectorMessage+urlSentinel,'different '+inspectorMessage
+];
+return {kinds:messages.map(message=>classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',message)))};
+""")
+        self.assertEqual(result, {"kinds": ["miniflare_runtime_failure"] * 20})
+
+    def test_runtime_message_existing_nonruntime_classifiers_remain_closed(self):
+        result = self.classifier(r"""
+const binary=new BinaryProbeFailure();
+Object.defineProperty(binary,'kind',{value:'binary_digest_mismatch'});
+return {kinds:[binary,new TypeError(secretSentinel),new RangeError(secretSentinel),
+  new SyntaxError(secretSentinel),new ReferenceError(secretSentinel),new Error(secretSentinel),
+  secretSentinel,null].map(classify),helperCalls,bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {"kinds": ["binary_digest_mismatch", "type_error", "range_error",
+                                           "syntax_error", "reference_error", "error", "unknown_exception",
+                                           "unknown_exception"], "helperCalls": 0, "bytes": 0})
+
+    def test_runtime_message_new_labels_are_terminal_failure_frames_not_readiness(self):
+        reader = WorkerReadinessTests()
+        for kind in self.NEW_KINDS:
+            with self.subTest(kind=kind):
+                frame = {"phase": "runtime_ready", "kind": kind, "binary": p.WORKER_BINARY_PROOF}
+                raw = json.dumps(frame).encode() + b"\n"
+                self.assertEqual(p.parse_worker_frame(raw), frame)
+                value, report, code = reader.read([raw[:9], raw[9:], b""], exited=1)
+                self.assertIsNone(value)
+                self.assertEqual(code, "worker_readiness_failed")
+                self.assertEqual(report["workerFailurePhase"], "runtime_ready")
+                self.assertEqual(report["workerFailureKind"], kind)
+                self.assertEqual(report["workerBinaryProof"], p.WORKER_BINARY_PROOF)
+                self.assertFalse(report["authenticated"])
+                self.assertFalse(report["credentialAdmission"])
+                self.assertTrue({"workerReady", "d1Ready", "r2Ready", "port"}.isdisjoint(report))
+
+    def test_runtime_message_new_labels_survive_failed_finalization_without_admission(self):
+        for kind in self.NEW_KINDS:
+            with self.subTest(kind=kind):
+                report = {"status": "pre_auth_blocked", "code": "worker_readiness_failed", "failureKind": "blocked",
+                          "workerFailurePhase": "runtime_ready", "workerFailureKind": kind,
+                          "workerBinaryProof": p.WORKER_BINARY_PROOF, "nativeExecuted": False,
+                          "authenticated": False, "credentialAdmission": False}
+                projected = p.escaped_error_projection(p.FinalizationFailure(p.finalization_projection(
+                    report, PermissionError("FICTIONAL_RUNTIME_SECRET_17"))))
+                self.assertEqual(projected["status"], "cleanup_failed")
+                self.assertEqual(projected["code"], "worker_readiness_failed")
+                self.assertEqual(projected["failureKind"], "blocked")
+                self.assertEqual(projected["workerFailurePhase"], "runtime_ready")
+                self.assertEqual(projected["workerFailureKind"], kind)
+                self.assertEqual(projected["workerBinaryProof"], p.WORKER_BINARY_PROOF)
+                self.assertEqual(projected["cleanupFailureCodes"], ["cleanup_finalization_permission_denied"])
+                self.assertFalse(projected["cleanupComplete"])
+                self.assertFalse(projected["nativeExecuted"])
+                self.assertFalse(projected["authenticated"])
+                self.assertFalse(projected["credentialAdmission"])
+                p.apply_execute_outcome(projected, "success")
+                self.assertEqual(projected["status"], "cleanup_failed")
+                self.assertFalse(projected["credentialAdmission"])
+                self.assertTrue("FICTIONAL_RUNTIME_SECRET_17" not in json.dumps(projected))
+
+    def test_runtime_message_new_enum_refuses_raw_fields_unknown_or_partial_labels(self):
+        for kind in self.NEW_KINDS:
+            with self.subTest(kind=kind):
+                frame = {"phase": "runtime_ready", "kind": kind}
+                for extra in [{"stderr": "FICTIONAL_RUNTIME_SECRET_17"}, {"message": self.PORTS_MESSAGE}]:
+                    with self.assertRaisesRegex(p.Blocked, "worker_projection_invalid"):
+                        p.parse_worker_frame(json.dumps({**frame, **extra}).encode())
+                for invalid in [kind + "_extra", True, [], "FICTIONAL_RUNTIME_SECRET_17"]:
+                    with self.assertRaisesRegex(p.Blocked, "worker_projection_invalid"):
+                        p.parse_worker_frame(json.dumps({**frame, "kind": invalid}).encode())
+                with self.assertRaisesRegex(p.Blocked, "worker_failure_projection_invalid"):
+                    p.public_report({"workerFailureKind": kind, "authenticated": False, "credentialAdmission": False})
+
+
 class WorkflowBootstrapTests(unittest.TestCase):
     def workflow(self):
         local = p.HERE / "hosted-macos-native.yml"
