@@ -769,7 +769,49 @@ class WorkerReadinessTests(unittest.TestCase):
             write("package.json", '{}')
             write("node_modules/wrangler/package.json", '{"name":"wrangler"}')
             write("node_modules/esbuild/package.json", '{"name":"esbuild","main":"index.cjs"}')
-            write("node_modules/miniflare/package.json", '{"name":"miniflare","main":"index.cjs"}')
+            write("node_modules/miniflare/package.json", '{"name":"miniflare","main":"index.cjs","version":"4.20260714.0","dependencies":{"workerd":"1.20260714.1"}}')
+            write("node_modules/workerd/package.json", '{"name":"workerd","main":"index.cjs","version":"1.20260714.1"}')
+            write("node_modules/workerd/index.cjs", "exports.default = require.resolve('@cloudflare/workerd-darwin-arm64/bin/workerd'); exports.version='1.20260714.1';")
+            write("node_modules/@cloudflare/workerd-darwin-arm64/package.json", '{"name":"@cloudflare/workerd-darwin-arm64","version":"1.20260714.1","os":["darwin"],"cpu":["arm64"]}')
+            write("node_modules/@cloudflare/workerd-darwin-arm64/bin/workerd", 'synthetic-not-an-executable')
+            write("binary-mock.mjs", """
+import cp from 'node:child_process';
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
+import {PassThrough} from 'node:stream';
+Object.defineProperty(process, 'platform', {value: 'darwin'});
+Object.defineProperty(process, 'arch', {value: 'arm64'});
+const native = '/@cloudflare/workerd-darwin-arm64/bin/workerd';
+const originalOpen = fs.open, originalStat = fs.stat;
+const metadata = () => ({dev:1n,ino:2n,size:114566712n,mode:0o100755n,
+  uid:BigInt(process.getuid()),mtimeNs:3n,ctimeNs:4n,isFile:()=>true});
+fs.open = async (path, ...args) => {
+  if (!String(path).endsWith(native)) return originalOpen(path, ...args);
+  let cursor=0;
+  return {stat:async()=>metadata(),close:async()=>{},read:async(buffer,offset,length)=>{
+    const count=Math.min(length,114566712-cursor); buffer.fill(0);
+    if (cursor===0) Buffer.from('cffaedfe0c000001','hex').copy(buffer);
+    cursor+=count; return {bytesRead:count};
+  }};
+};
+fs.stat = async (path, ...args) => String(path).endsWith(native) ? metadata() : originalStat(path, ...args);
+crypto.createHash = () => ({update(){return this;},digest(){return (
+  process.env.FAKE_STAGE==='runtime_binary_probe' ? '0'.repeat(64)
+  : '1b652bc9930d82924f9b416a384df910bc667f88cfb72972a0b39532c94a4cfe');}});
+cp.spawn = (path,args,options) => {
+  if (!String(path).endsWith(native) || JSON.stringify(args)!=='["--version"]')
+    throw new Error('fixture refuses executable launch');
+  if (Object.keys(options.env).some(k=>!['PATH','HOME','TMPDIR','LANG'].includes(k)))
+    throw new Error('fixture refuses inherited environment');
+  const child=new cp.ChildProcess();child.pid=12345;child.stdout=new PassThrough();child.stderr=new PassThrough();
+  child.kill=()=>{throw new Error('unexpected fake signal');};
+  queueMicrotask(()=>{child.stdout.end('workerd 2026-07-14\\n');child.stderr.end();
+    child.exitCode=0;child.signalCode=null;child.emit('exit',0,null);child.emit('close',0,null);});
+  return child;
+};
+syncBuiltinESMExports();
+""")
             write("scripts/honowarden-company-admin-smoke.mjs", """
 if (process.env.FAKE_STAGE === 'dependency_import') throw new TypeError('private');
 export const migrationStatements = () => ['SELECT 1'];
@@ -824,14 +866,14 @@ exports.Miniflare = class {
             cases += [("build", kind) for kind in ["range_error", "syntax_error", "reference_error", "error", "unknown_exception"]]
             cases += [("runtime_ready", kind) for kind in ["miniflare_runtime_failure", "miniflare_address_in_use",
                                                            "sdk_unknown", "foreign_known", "sdk_getter", "sdk_inherited"]]
-            cases += [("runtime_loopback_validate", "error")]
+            cases += [("runtime_loopback_validate", "error"), ("runtime_binary_probe", "binary_digest_mismatch")]
             for phase, kind in cases + [("success", None), ("state_prepare", "error")]:
                 with self.subTest(phase=phase, kind=kind):
                     if (owned / "state").is_dir():
                         p.shutil.rmtree(owned / "state")
                     if phase == "state_prepare":
                         (owned / "state").touch(mode=0o600)
-                    args = ["node", str(p.HERE / "worker.mjs")]
+                    args = ["node", "--import", str(company / "binary-mock.mjs"), str(p.HERE / "worker.mjs")]
                     if phase != "module_setup":
                         args += [str(company), str(owned)]
                     result = p.subprocess.run(args, env={"PATH": p.os.environ["PATH"], "FAKE_STAGE": phase,
@@ -842,11 +884,14 @@ exports.Miniflare = class {
                     frame = json.loads(result.stdout)
                     if phase == "success":
                         self.assertEqual(result.returncode, 0)
-                        self.assertEqual(frame, {"port": 8123, "d1": True, "r2": True, "worker": True})
+                        self.assertEqual(frame, {"port": 8123, "d1": True, "r2": True, "worker": True, "binary": p.WORKER_BINARY_PROOF})
                     else:
                         self.assertEqual(result.returncode, 1)
                         expected_kind = "error" if kind in {"sdk_unknown", "foreign_known", "sdk_getter", "sdk_inherited"} else kind
-                        self.assertEqual(frame, {"phase": phase, "kind": expected_kind})
+                        expected = {"phase": phase, "kind": expected_kind}
+                        if phase not in {"module_setup", "dependency_import", "runtime_binary_probe"}:
+                            expected["binary"] = p.WORKER_BINARY_PROOF
+                        self.assertEqual(frame, expected)
 
     def test_sdk_runtime_kinds_and_loopback_phase_are_closed_and_preserved(self):
         for phase, kind in [("runtime_ready", "miniflare_runtime_failure"),
@@ -878,7 +923,7 @@ exports.Miniflare = class {
                 return None, report, str(error)
 
     def test_fragmented_success_requires_live_child_and_typed_loopback_port(self):
-        frame = b'{"port":8123,"d1":true,"r2":true,"worker":true}\n'
+        frame = json.dumps({"port": 8123, "d1": True, "r2": True, "worker": True, "binary": p.WORKER_BINARY_PROOF}).encode() + b'\n'
         value, report, error = self.read([frame[:12], frame[12:]])
         self.assertIsNone(error)
         self.assertEqual(value["port"], 8123)
@@ -975,6 +1020,197 @@ exports.Miniflare = class {
                 p.public_report({"authenticated": False, "credentialAdmission": False, **original, **delta})
         with self.assertRaises(p.Blocked):
             p.public_report({"authenticated": False, "credentialAdmission": False, "workerFailurePhase": "runtime_ready"})
+
+
+class RuntimeBinaryControlTests(unittest.TestCase):
+    def helper(self, body):
+        source = (p.HERE / "worker.mjs").read_text()
+        start = source.index("// Binary-only control.")
+        helpers = source[start:source.index("async function startup()", start)]
+        # Only these exact helper functions run; all filesystem, process and clock APIs are fake.
+        script = """
+import vm from 'node:vm';
+import {EventEmitter} from 'node:events';
+let clock=0, opened=0, closedFiles=0, hashValue='1b652bc9930d82924f9b416a384df910bc667f88cfb72972a0b39532c94a4cfe';
+let changed=false, readCursor=0, timers=[];
+const before={dev:1n,ino:2n,size:114566712n,mode:0o100755n,uid:501n,mtimeNs:3n,ctimeNs:4n,isFile:()=>true};
+const metadata={
+ 'miniflare/package.json':{name:'miniflare',version:'4.20260714.0',dependencies:{workerd:'1.20260714.1'}},
+ 'workerd/package.json':{name:'workerd',version:'1.20260714.1'},
+ '@cloudflare/workerd-darwin-arm64/package.json':{name:'@cloudflare/workerd-darwin-arm64',version:'1.20260714.1',os:['darwin'],cpu:['arm64']}
+};
+const nativeModule={default:'/native',version:'1.20260714.1'};
+const req=(name)=>{if(name==='workerd')return nativeModule;throw new Error('uncontrolled dependency');};
+req.resolve=(name)=>name;
+const sandbox={Buffer,BigInt,JSON,Object,Number,Error,Set,
+ process:{platform:'darwin',arch:'arm64',getuid:()=>501,env:{PATH:'/fake',HOME:'/owned/home',TMPDIR:'/owned/tmp',LANG:'en_US.UTF-8',GITHUB_TOKEN:'synthetic-must-drop'}},
+ performance:{now:()=>clock},constants:{O_RDONLY:0,O_NOFOLLOW:0x20000},createRequire:()=>req,
+ readFile:async(path)=>Buffer.from(JSON.stringify(metadata[path])),realpath:async()=>'/native',
+ stat:async()=>({...before,ino:changed?99n:before.ino}),
+ open:async(path,flags)=>{opened++;if(flags!==0x20000)throw new Error('nofollow absent');
+  return{stat:async()=>({...before}),close:async()=>{closedFiles++;},read:async(buffer,offset,length)=>{
+   const count=Math.min(length,114566712-readCursor);buffer.fill(0);
+   if(readCursor===0)Buffer.from('cffaedfe0c000001','hex').copy(buffer);readCursor+=count;return{bytesRead:count};}};},
+ createHash:()=>({update(){return this;},digest(){return hashValue;}}),
+ setTimeout:(fn,delay)=>{const timer={fn,at:clock+delay,cancelled:false};timers.push(timer);return timer;},
+ clearTimeout:(timer)=>{timer.cancelled=true;}
+};
+vm.createContext(sandbox);
+vm.runInContext(HELPERS + '\\nglobalThis.control={verifyRuntimeBinary,runBinaryVersion,BinaryProbeFailure,BINARY_PROOF,BINARY_SHA};',sandbox);
+const control=sandbox.control;
+async function verify(){try{await control.verifyRuntimeBinary('/sdk',5000);return'passed';}catch(error){return error instanceof control.BinaryProbeFailure?error.kind:'unexpected_exception';}}
+function exit(child,code=0,signal=null,close=true){child.exitCode=code;child.signalCode=signal;child.emit('exit',code,signal);if(close)child.emit('close',code,signal);}
+function driveTimers(overdueAt){for(const timer of [...timers].sort((a,b)=>a.at-b.at)){if(!timer.cancelled){clock=overdueAt??timer.at;timer.fn();}}}
+async function version(events,options={}){
+ clock=0;timers=[];const kills=[];let launch;
+ const child=new EventEmitter();child.pid=12345;child.exitCode=null;child.signalCode=null;
+ child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=(signal)=>{kills.push(signal);options.onKill?.(child,signal);return true;};
+ if(options.unknownOwner){child.exitCode=undefined;child.signalCode=undefined;}
+ if(options.invalidPid){child.pid=0;}
+ if(options.missingPipes){child.stdout=null;child.stderr=null;}
+ sandbox.spawn=(path,args,config)=>{if(options.throwSpawn)throw new Error('private');
+  launch={exactArgs:JSON.stringify(args)==='["--version"]',envKeys:Object.keys(config.env).sort(),detached:config.detached,stdio:config.stdio};
+  queueMicrotask(()=>events(child));return child;};
+ let kind='passed';try{await control.runBinaryVersion({path:'/native',before},5000);}
+ catch(error){kind=error instanceof control.BinaryProbeFailure?error.kind:'unexpected_exception';}
+ return{kind,kills,launch,clock};
+}
+const result=await (async()=>{ BODY })();
+console.log(JSON.stringify(result));
+""".replace("HELPERS", json.dumps(helpers), 1).replace("BODY", body, 1)
+        result = p.subprocess.run(["node", "--input-type=module", "-e", script],
+                                  env={"PATH": p.os.environ["PATH"]}, capture_output=True, timeout=8)
+        self.assertEqual(result.returncode, 0, "Pure helper fixture failed")
+        self.assertEqual(result.stderr, b"")
+        self.assertLessEqual(len(result.stdout), 4096)
+        return json.loads(result.stdout)
+
+    def test_exact_native_identity_digest_and_fd_stat_control(self):
+        result = self.helper("const outcome=await verify();return {outcome,opened,closedFiles,proof:control.BINARY_PROOF,sha:control.BINARY_SHA};")
+        self.assertEqual(result, {"outcome": "passed", "opened": 1, "closedFiles": 1,
+                                  "proof": p.WORKER_BINARY_PROOF, "sha": p.WORKERD_BINARY_SHA})
+
+    def test_platform_metadata_override_and_digest_changes_fail_closed(self):
+        for body, expected in [
+            ("sandbox.process.arch='x64';", "binary_platform_unproved"),
+            ("sandbox.process.platform='linux';", "binary_platform_unproved"),
+            ("sandbox.process.env.MINIFLARE_WORKERD_PATH='/private';", "binary_identity_unproved"),
+            ("metadata['miniflare/package.json'].version='0.0.0';", "binary_identity_unproved"),
+            ("nativeModule.version='0.0.0';", "binary_identity_unproved"),
+            ("hashValue='0'.repeat(64);", "binary_digest_mismatch"),
+            ("changed=true;", "binary_file_changed"),
+        ]:
+            with self.subTest(expected=expected):
+                result = self.helper(body + "return {outcome:await verify(),closedFiles};")
+                self.assertEqual(result["outcome"], expected)
+
+    def test_fragmented_exact_version_exit_and_sanitized_child_environment(self):
+        result = self.helper("return await version(child=>{child.stdout.emit('data',Buffer.from('work'));child.stdout.emit('data',Buffer.from('erd 2026-07-14\\n'));exit(child);});")
+        self.assertEqual(result["kind"], "passed")
+        self.assertEqual(result["kills"], [])
+        self.assertEqual(result["launch"], {"exactArgs": True, "envKeys": ["HOME", "LANG", "PATH", "TMPDIR"],
+                                           "detached": False, "stdio": ["ignore", "pipe", "pipe"]})
+
+    def test_version_extra_invalid_or_secret_output_is_never_proof(self):
+        for value in ["workerd 2026-07-14\\nprivate", "workerd 2026-07-14\\n\\n", "workerd 2026-07-15\\n", "private"]:
+            with self.subTest(value=value):
+                result = self.helper("return await version(child=>{child.stdout.emit('data',Buffer.from(" + json.dumps(value) + "));exit(child);});")
+                self.assertEqual(result["kind"], "binary_probe_output_invalid")
+                self.assertNotIn("private", json.dumps(result))
+
+    def test_stderr_output_cap_and_stream_errors_are_closed(self):
+        for events, expected in [
+            ("child.stderr.emit('data',Buffer.from('private'));", "binary_probe_stderr_present"),
+            ("child.stdout.emit('data',Buffer.alloc(257,65));", "binary_probe_output_limit"),
+            ("child.stderr.emit('data',Buffer.alloc(257,65));", "binary_probe_output_limit"),
+            ("child.stdout.emit('error',new Error('private'));", "binary_probe_stream_failed"),
+            ("child.stdout.emit('data','private');", "binary_probe_stream_failed"),
+        ]:
+            with self.subTest(expected=expected):
+                result = self.helper("return await version(child=>{" + events + "exit(child);});")
+                self.assertEqual(result["kind"], expected)
+                self.assertNotIn("private", json.dumps(result))
+
+    def test_spawn_exit_signal_and_close_are_distinct_finite_controls(self):
+        for body, expected in [
+            ("return await version(()=>{},{throwSpawn:true});", "binary_probe_spawn_failed"),
+            ("return await version(child=>{child.emit('error',new Error('private'));child.emit('close');});", "binary_probe_spawn_failed"),
+            ("return await version(child=>{child.emit('error',new Error('private'));child.emit('close');},{missingPipes:true});", "binary_probe_stream_failed"),
+            ("return await version(child=>exit(child,1));", "binary_probe_nonzero_exit"),
+            ("return await version(child=>exit(child,null,'SIGABRT'));", "binary_probe_terminated"),
+            ("return await version(child=>child.emit('close'));", "binary_probe_cleanup_unproved"),
+        ]:
+            with self.subTest(expected=expected):
+                self.assertEqual(self.helper(body)["kind"], expected)
+
+    def test_deadline_escalates_only_original_unreaped_child_inside_same_budget(self):
+        result = self.helper("return await version(()=>driveTimers());")
+        self.assertEqual(result["kind"], "binary_probe_deadline")
+        self.assertEqual(result["kills"], ["SIGTERM", "SIGKILL"])
+        self.assertEqual(result["clock"], 5000)
+        result = self.helper("return await version(()=>driveTimers(),{onKill:(child,signal)=>{if(signal==='SIGTERM')exit(child,0,null,false);}});")
+        self.assertEqual(result["kills"], ["SIGTERM"])
+        self.assertEqual(result["kind"], "binary_probe_deadline")
+        result = self.helper("return await version(()=>driveTimers(),{unknownOwner:true});")
+        self.assertEqual(result["kills"], [])
+        self.assertEqual(result["kind"], "binary_probe_deadline")
+
+    def test_binary_proof_is_exact_scalar_and_survives_secondary_cleanup_failure(self):
+        report = {"code": "worker_readiness_failed", "failureKind": "blocked", "workerFailurePhase": "runtime_ready",
+                  "workerFailureKind": "miniflare_runtime_failure", "workerBinaryProof": p.WORKER_BINARY_PROOF}
+        carried = p.FinalizationFailure(p.finalization_projection(report, PermissionError("private")))
+        result = p.escaped_error_projection(carried)
+        self.assertEqual(result["workerBinaryProof"], p.WORKER_BINARY_PROOF)
+        self.assertEqual(result["code"], "worker_readiness_failed")
+        self.assertEqual(result["cleanupFailureCodes"], ["cleanup_finalization_permission_denied"])
+        self.assertEqual(result["status"], "cleanup_failed")
+        self.assertFalse(result["cleanupComplete"])
+        result["workerBinaryProof"] = "private"
+        self.assertEqual(carried.projection["workerBinaryProof"], p.WORKER_BINARY_PROOF)
+        for invalid in [True, False, None, {}, "private"]:
+            with self.subTest(invalid=invalid), self.assertRaises(p.Blocked):
+                p.public_report({"authenticated": False, "credentialAdmission": False, "workerBinaryProof": invalid})
+
+    def test_strict_terminal_binary_proof_cannot_promote_failed_gate(self):
+        for frame in [
+            {"port": 8123, "d1": True, "r2": True, "worker": True},
+            {"phase": "runtime_binary_probe", "kind": "binary_probe_deadline", "binary": p.WORKER_BINARY_PROOF},
+            {"phase": "runtime_ready", "kind": "miniflare_runtime_failure", "binary": True},
+        ]:
+            with self.subTest(frame=frame), self.assertRaises(p.Blocked):
+                p.parse_worker_frame(json.dumps(frame).encode())
+        frame = {"phase": "runtime_ready", "kind": "miniflare_runtime_failure", "binary": p.WORKER_BINARY_PROOF}
+        self.assertEqual(p.parse_worker_frame(json.dumps(frame).encode()), frame)
+
+    def test_success_without_native_binary_proof_is_refused(self):
+        with self.assertRaises(p.Blocked):
+            p.parse_worker_frame(b'{"port":8123,"d1":true,"r2":true,"worker":true}\n')
+
+    def test_binary_pin_remains_stable_after_version_child_closes(self):
+        result = self.helper("return await version(child=>{child.stdout.emit('data',Buffer.from('workerd 2026-07-14\\n'));exit(child);changed=true;});")
+        self.assertEqual(result["kind"], "binary_file_changed")
+
+    def test_version_close_without_owned_child_pid_is_not_proof(self):
+        result = self.helper("return await version(child=>{child.stdout.emit('data',Buffer.from('workerd 2026-07-14\\n'));exit(child);},{invalidPid:true});")
+        self.assertEqual(result["kind"], "binary_probe_cleanup_unproved")
+
+    def test_overdue_timer_callbacks_never_signal_after_native_deadline(self):
+        result = self.helper("return await version(()=>driveTimers(5001));")
+        self.assertEqual(result["kind"], "binary_probe_deadline")
+        self.assertEqual(result["clock"], 5001)
+        self.assertEqual(result["kills"], [])
+
+    def test_output_error_callbacks_cannot_signal_at_or_after_native_deadline(self):
+        for now in [5000, 5001]:
+            for event, expected in [
+                ("child.stdout.emit('data',Buffer.alloc(257,65));", "binary_probe_output_limit"),
+                ("child.stdout.emit('data','private');", "binary_probe_stream_failed"),
+            ]:
+                with self.subTest(now=now, expected=expected):
+                    result = self.helper("return await version(child=>{clock=" + str(now) + ";" + event + "exit(child);});")
+                    self.assertEqual(result["kind"], expected)
+                    self.assertEqual(result["kills"], [])
+                    self.assertNotIn("private", json.dumps(result))
 
 
 class WorkflowBootstrapTests(unittest.TestCase):

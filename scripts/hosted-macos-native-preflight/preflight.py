@@ -59,10 +59,16 @@ CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", 
                                                 "keychain_readback_failed", "cleanup_finalization_failed",
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
                                                  "cleanup_finalization_api_unavailable"}
-WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "state_prepare", "build", "runtime_construct",
+WORKER_BINARY_PROOF = "pinned_darwin_arm64_version_verified"
+WORKERD_BINARY_SHA = "1b652bc9930d82924f9b416a384df910bc667f88cfb72972a0b39532c94a4cfe"
+WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "runtime_binary_probe", "state_prepare", "build", "runtime_construct",
                          "runtime_ready", "runtime_loopback_validate", "d1_migrate", "d1_probe", "r2_probe", "http_probe"}
 WORKER_FAILURE_KINDS = {"type_error", "range_error", "syntax_error", "reference_error", "error", "unknown_exception",
-                       "miniflare_runtime_failure", "miniflare_address_in_use"}
+                        "miniflare_runtime_failure", "miniflare_address_in_use", "binary_identity_unproved",
+                        "binary_platform_unproved", "binary_digest_mismatch", "binary_file_changed",
+                        "binary_probe_spawn_failed", "binary_probe_nonzero_exit", "binary_probe_terminated",
+                        "binary_probe_output_invalid", "binary_probe_stderr_present", "binary_probe_output_limit",
+                        "binary_probe_deadline", "binary_probe_cleanup_unproved", "binary_probe_stream_failed"}
 
 
 def effective_client_identity():
@@ -91,7 +97,9 @@ class FinalizationFailure(Blocked):
 def validate_finalization_projection(projection):
     keys = {"schemaVersion", "status", "code", "failureKind", "cleanupFailureCodes", "cleanupComplete",
             "nativeExecuted", "authenticated", "credentialAdmission"}
-    require(type(projection) is dict and set(projection) in (keys, keys | {"workerFailurePhase", "workerFailureKind"})
+    diagnostic_keys = {"workerFailurePhase", "workerFailureKind"}
+    require(type(projection) is dict and set(projection) in
+            (keys, keys | diagnostic_keys, keys | {"workerBinaryProof"}, keys | diagnostic_keys | {"workerBinaryProof"})
             and type(projection["schemaVersion"]) is int and projection["schemaVersion"] == 1
             and projection["status"] == "cleanup_failed" and projection["cleanupComplete"] is False
             and (type(projection["nativeExecuted"]) is bool or projection["nativeExecuted"] is None), "escaped_projection_invalid")
@@ -169,6 +177,8 @@ def finalization_projection(report, error):
                    "nativeExecuted": report.get("nativeExecuted"), "authenticated": False, "credentialAdmission": False}
     if "workerFailurePhase" in report or "workerFailureKind" in report:
         projection.update({key: report.get(key) for key in ["workerFailurePhase", "workerFailureKind"]})
+    if "workerBinaryProof" in report:
+        projection["workerBinaryProof"] = report["workerBinaryProof"]
     return public_report(projection)
 
 
@@ -619,12 +629,15 @@ def public_report(report):
             "assetSha256", "companySha", "osVersion", "architecture", "nodeVersion", "freeBytes",
             "signatureVerified", "gatekeeperAccepted", "d1Ready", "r2Ready", "workerReady",
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
-            "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes", "workerFailurePhase", "workerFailureKind"}
+            "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes", "workerFailurePhase", "workerFailureKind", "workerBinaryProof"}
     require(set(report) <= keys, "report_unknown_field")
     if "failureKind" in report:
         require(type(report["failureKind"]) is str and report["failureKind"] in FAILURE_KINDS, "failure_kind_invalid")
     if "cleanupFailureCodes" in report:
         validate_cleanup_codes(report["cleanupFailureCodes"])
+    if "workerBinaryProof" in report:
+        require(type(report["workerBinaryProof"]) is str and report["workerBinaryProof"] == WORKER_BINARY_PROOF,
+                "worker_binary_projection_invalid")
     if "workerFailurePhase" in report or "workerFailureKind" in report:
         require(type(report.get("workerFailurePhase")) is str and report["workerFailurePhase"] in WORKER_FAILURE_PHASES
                 and type(report.get("workerFailureKind")) is str and report["workerFailureKind"] in WORKER_FAILURE_KINDS,
@@ -659,12 +672,16 @@ def parse_worker_frame(raw):
     except (ValueError, UnicodeError, Blocked):
         raise Blocked("worker_projection_invalid") from None
     require(type(frame) is dict, "worker_projection_invalid")
-    if set(frame) == {"phase", "kind"}:
+    if set(frame) in ({"phase", "kind"}, {"phase", "kind", "binary"}):
         require(type(frame["phase"]) is str and frame["phase"] in WORKER_FAILURE_PHASES
                 and type(frame["kind"]) is str and frame["kind"] in WORKER_FAILURE_KINDS, "worker_projection_invalid")
+        if "binary" in frame:
+            require(type(frame["binary"]) is str and frame["binary"] == WORKER_BINARY_PROOF
+                    and frame["phase"] != "runtime_binary_probe", "worker_projection_invalid")
         return frame
-    require(set(frame) == {"port", "d1", "r2", "worker"} and type(frame["port"]) is int
-            and 1024 <= frame["port"] <= 65535 and all(frame[key] is True for key in ["d1", "r2", "worker"]),
+    require(set(frame) == {"port", "d1", "r2", "worker", "binary"} and type(frame["port"]) is int
+            and 1024 <= frame["port"] <= 65535 and all(frame[key] is True for key in ["d1", "r2", "worker"])
+            and type(frame["binary"]) is str and frame["binary"] == WORKER_BINARY_PROOF,
             "worker_projection_invalid")
     return frame
 
@@ -688,6 +705,8 @@ def read_worker_readiness(worker, report):
             if not block:
                 if failed is not None:
                     report.update(workerFailurePhase=failed["phase"], workerFailureKind=failed["kind"])
+                    if "binary" in failed:
+                        report["workerBinaryProof"] = failed["binary"]
                     raise Blocked("worker_readiness_failed")
                 raise Blocked("worker_readiness_eof")
             require(failed is None, "worker_projection_invalid")
@@ -696,10 +715,11 @@ def read_worker_readiness(worker, report):
             if b"\n" in line:
                 require(line.endswith(b"\n") and line.count(b"\n") == 1, "worker_projection_invalid")
                 frame = parse_worker_frame(bytes(line))
-                if set(frame) == {"phase", "kind"}:
+                if "phase" in frame:
                     failed = frame
                     continue
                 require(worker.poll() is None, "worker_success_child_exited")
+                report["workerBinaryProof"] = frame["binary"]
                 return frame
 
 
