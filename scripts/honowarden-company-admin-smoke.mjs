@@ -101,6 +101,81 @@ function invariant(condition, code) {
   if (!condition) throw new SmokeFailure(code)
 }
 
+export function auditRunWindow(startedAt, nowMs = Date.now()) {
+  const startMs = Date.parse(startedAt)
+  const fromMs = startMs - 60000
+  invariant(
+    Number.isFinite(startMs) &&
+      Number.isFinite(nowMs) &&
+      startMs <= nowMs &&
+      nowMs - fromMs <= 31 * 86400000,
+    'audit_run_window_invalid',
+  )
+  return {
+    from: new Date(fromMs).toISOString(),
+    to: new Date(nowMs).toISOString(),
+  }
+}
+
+export async function searchRunAuditFromUi(page, startedAt) {
+  const query = auditRunWindow(startedAt)
+  const local = await page.evaluate(({ from, to }) => {
+    const inputValue = (value) => {
+      const date = new Date(value)
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 23)
+    }
+    return { from: inputValue(from), to: inputValue(to) }
+  }, query)
+  const from = page.getByLabel('開始日時', { exact: true })
+  const to = page.getByLabel('終了日時（この時刻は含まない）', { exact: true })
+  invariant(
+    (await from.getAttribute('step')) === '0.001' &&
+      (await to.getAttribute('step')) === '0.001',
+    'audit_input_precision_unsupported',
+  )
+  await from.fill(local.from)
+  await to.fill(local.to)
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (value) => {
+        const url = new URL(value.url())
+        return (
+          value.request().method() === 'GET' &&
+          /^\/api\/organizations\/[^/]+\/audit-events$/.test(url.pathname) &&
+          url.searchParams.get('from') === query.from &&
+          url.searchParams.get('to') === query.to
+        )
+      },
+      { timeout: 20000 },
+    ),
+    page.getByRole('button', { name: '検索', exact: true }).click(),
+  ])
+  invariant(response.status() === 200, 'audit_search_not_acknowledged')
+  await page
+    .getByRole('cell', { name: '認証ポリシーを変更', exact: true })
+    .waitFor()
+  return query
+}
+
+export async function logoutFromUiAndAwaitRevocation(page) {
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (value) =>
+        new URL(value.url()).pathname === '/identity/accounts/logout' &&
+        value.request().method() === 'POST',
+      { timeout: 20000 },
+    ),
+    page.getByRole('button', { name: 'サインアウト', exact: true }).click(),
+  ])
+  invariant(response.status() === 200, 'browser_logout_not_acknowledged')
+  await page
+    .getByRole('heading', { name: '組織管理にサインイン', exact: true })
+    .waitFor()
+  return { acknowledged: true }
+}
+
 export async function verifyEnrollmentAssurance(page, readAssurance) {
   invariant(
     (await page.locator('.setup-secret').count()) === 0,
@@ -2435,8 +2510,11 @@ async function companyFlow(context) {
     'ui_scoped_audit_query_and_actual_csv_export',
     async () => {
       await navigateView(ownerPage, '監査')
-      await ownerPage.getByRole('button', { name: '検索', exact: true }).click()
-      await ownerPage.getByText('認証ポリシーを変更', { exact: true }).waitFor()
+      report.browser.lastAction = {
+        actor: 'owner',
+        action: 'search_explicit_audit_range',
+      }
+      const query = await searchRunAuditFromUi(ownerPage, report.startedAt)
       const downloadPromise = ownerPage.waitForEvent('download')
       await ownerPage
         .getByRole('button', { name: '検索範囲をCSV出力', exact: true })
@@ -2464,6 +2542,8 @@ async function companyFlow(context) {
         recipient.password,
         owner.hash,
         recipient.hash,
+        owner.factor,
+        recipient.factor,
         organizationKey.toString('base64'),
         ...deliveries.map((delivery) => delivery.token),
       ])
@@ -2493,6 +2573,7 @@ async function companyFlow(context) {
         404,
       )
       report.audit = {
+        query,
         scopedEventCounts: counts,
         csvHasExpectedEvents: true,
         csvSecretExcluded: true,
@@ -2516,20 +2597,10 @@ async function companyFlow(context) {
       .getByRole('button', { name: 'サインアウト', exact: true })
       .waitFor()
     const previous = owner.token
-    await ownerPage
-      .getByRole('button', { name: 'サインアウト', exact: true })
-      .click()
-    await ownerPage
-      .getByRole('heading', { name: '組織管理にサインイン', exact: true })
-      .waitFor()
+    await logoutFromUiAndAwaitRevocation(ownerPage)
     await api('/api/accounts/profile', 'GET', undefined, previous, 401)
     const previousStepUp = ownerStepUp.token
-    await ownerStepUp.page
-      .getByRole('button', { name: 'サインアウト', exact: true })
-      .click()
-    await ownerStepUp.page
-      .getByRole('heading', { name: '組織管理にサインイン', exact: true })
-      .waitFor()
+    await logoutFromUiAndAwaitRevocation(ownerStepUp.page)
     await api('/api/accounts/profile', 'GET', undefined, previousStepUp, 401)
     report.mfa.ownerStepUpFamilyLoggedOut = true
     if (options.nativeCli) {

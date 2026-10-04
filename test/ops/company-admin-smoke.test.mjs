@@ -14,7 +14,12 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
+import { setImmediate } from 'node:timers'
+import { URL } from 'node:url'
 import {
+  auditRunWindow,
+  logoutFromUiAndAwaitRevocation,
+  searchRunAuditFromUi,
   assertDistinctBrowserFamilies,
   completeDistinctFamilyStepUpUi,
   verifyEnrollmentAssurance,
@@ -609,5 +614,248 @@ describe('company administration acceptance execution boundary', () => {
       /stepup_family_not_assured/,
     )
     assert.ok(unverified.events.includes('submit_stepup'))
+  })
+
+  function auditUi({ status = 200, step = '0.001' } = {}) {
+    const events = []
+    const fields = {}
+    let predicate
+    let release
+    const response = new Promise((resolve) => {
+      release = resolve
+    })
+    return {
+      fields,
+      events,
+      page: {
+        evaluate: async (operation, values) => operation(values),
+        getByLabel: (label) => {
+          const name = label === '開始日時' ? 'from' : 'to'
+          assert.ok(
+            ['開始日時', '終了日時（この時刻は含まない）'].includes(label),
+          )
+          return {
+            getAttribute: async () => step,
+            fill: async (value) => {
+              fields[name] = value
+              events.push('fill_' + name)
+            },
+          }
+        },
+        waitForResponse: (check, options) => {
+          assert.equal(options.timeout, 20000)
+          predicate = check
+          events.push('audit_response_wait_attached')
+          return response
+        },
+        getByRole: (role, options) => {
+          if (role === 'cell') {
+            assert.equal(options.name, '認証ポリシーを変更')
+            return {
+              waitFor: async () => {
+                events.push('policy_table_cell_visible')
+              },
+            }
+          }
+          assert.equal(role, 'button')
+          assert.equal(options.name, '検索')
+          return {
+            click: async () => {
+              events.push('submit_search')
+              const url = new URL(
+                'https://127.0.0.1:7777/api/organizations/synthetic/audit-events',
+              )
+              for (const key of ['from', 'to'])
+                url.searchParams.set(key, new Date(fields[key]).toISOString())
+              const value = {
+                url: () => url.href,
+                request: () => ({ method: () => 'GET' }),
+                status: () => status,
+              }
+              assert.equal(predicate(value), true)
+              events.push('exact_query_response')
+              release(value)
+            },
+          }
+        },
+        getByText: () => {
+          throw new Error('policy text matches hidden option and event cell')
+        },
+      },
+    }
+  }
+
+  function stubClock(at) {
+    const original = Date.now
+    Date.now = () => at
+    return () => {
+      Date.now = original
+    }
+  }
+
+  it('audit search cannot use stale defaults or match the hidden select option instead of an event cell', async () => {
+    const now = Date.parse('2026-10-04T11:54:14.321Z')
+    const restore = stubClock(now)
+    try {
+      const fixture = auditUi()
+      const query = await searchRunAuditFromUi(
+        fixture.page,
+        '2026-10-04T11:52:54.792Z',
+      )
+      assert.equal(query.from, '2026-10-04T11:51:54.792Z')
+      assert.equal(query.to, '2026-10-04T11:54:14.321Z')
+      assert.ok(fixture.fields.from.endsWith('.792'))
+      assert.ok(fixture.fields.to.endsWith('.321'))
+      assert.equal(new Date(fixture.fields.from).toISOString(), query.from)
+      assert.equal(new Date(fixture.fields.to).toISOString(), query.to)
+      assert.deepEqual(fixture.events, [
+        'fill_from',
+        'fill_to',
+        'audit_response_wait_attached',
+        'submit_search',
+        'exact_query_response',
+        'policy_table_cell_visible',
+      ])
+    } finally {
+      restore()
+    }
+  })
+
+  it('audit run bounds include all run events, preserve half-open precision, and reject invalid or oversized ranges', () => {
+    const start = '2026-10-04T11:52:54.792Z'
+    const now = Date.parse('2026-10-04T11:54:14.321Z')
+    const query = auditRunWindow(start, now)
+    assert.ok(Date.parse(query.from) < Date.parse(start))
+    assert.equal(Date.parse(query.to), now)
+    assert.ok(Date.parse(start) + 1 < Date.parse(query.to))
+    for (const [value, at] of [
+      ['invalid-private-canary', now],
+      [start, NaN],
+      [start, Date.parse(start) - 1],
+      [start, now + 32 * 86400000],
+    ])
+      assert.throws(() => auditRunWindow(value, at), /audit_run_window_invalid/)
+  })
+
+  it('audit HTTP failures and minute-only UI fields cannot pass or reach the table assertion', async () => {
+    const restore = stubClock(Date.parse('2026-10-04T11:54:14.321Z'))
+    try {
+      const failure = auditUi({ status: 503 })
+      await assert.rejects(
+        searchRunAuditFromUi(failure.page, '2026-10-04T11:52:54.792Z'),
+        /audit_search_not_acknowledged/,
+      )
+      assert.ok(!failure.events.includes('policy_table_cell_visible'))
+      const rounded = auditUi({ step: '60' })
+      await assert.rejects(
+        searchRunAuditFromUi(rounded.page, '2026-10-04T11:52:54.792Z'),
+        /audit_input_precision_unsupported/,
+      )
+      assert.equal(rounded.events.length, 0)
+    } finally {
+      restore()
+    }
+  })
+
+  function logoutUi({ status = 200 } = {}) {
+    const events = []
+    let predicate
+    let release
+    let revoked = false
+    const response = new Promise((resolve) => {
+      release = resolve
+    })
+    return {
+      events,
+      get revoked() {
+        return revoked
+      },
+      get predicate() {
+        return predicate
+      },
+      complete: () => {
+        revoked = status === 200
+        events.push('server_revocation_response')
+        release({ status: () => status })
+      },
+      page: {
+        waitForResponse: (check, options) => {
+          assert.equal(options.timeout, 20000)
+          predicate = check
+          events.push('logout_response_wait_attached')
+          return response
+        },
+        getByRole: (role, options) =>
+          role === 'button'
+            ? {
+                click: async () => {
+                  assert.equal(options.name, 'サインアウト')
+                  events.push('click_logout')
+                },
+              }
+            : {
+                waitFor: async () => {
+                  assert.equal(options.name, '組織管理にサインイン')
+                  events.push('signed_out_heading')
+                },
+              },
+      },
+    }
+  }
+
+  it('logout cannot complete at signed-out render before the server revocation response', async () => {
+    const fixture = logoutUi()
+    let completed = false
+    const task = logoutFromUiAndAwaitRevocation(fixture.page).then(() => {
+      completed = true
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(completed, false)
+    assert.deepEqual(fixture.events, [
+      'logout_response_wait_attached',
+      'click_logout',
+    ])
+    fixture.complete()
+    assert.deepEqual(await task, undefined)
+    assert.equal(fixture.revoked, true)
+    assert.equal(completed, true)
+    assert.deepEqual(fixture.events, [
+      'logout_response_wait_attached',
+      'click_logout',
+      'server_revocation_response',
+      'signed_out_heading',
+    ])
+  })
+
+  it('failed server logout acknowledgement does not pass on the signed-out DOM', async () => {
+    const fixture = logoutUi({ status: 503 })
+    const task = logoutFromUiAndAwaitRevocation(fixture.page)
+    fixture.complete()
+    await assert.rejects(task, /browser_logout_not_acknowledged/)
+    assert.equal(fixture.revoked, false)
+    assert.ok(!fixture.events.includes('signed_out_heading'))
+  })
+
+  it('logout response matching accepts only the exact POST endpoint', async () => {
+    const fixture = logoutUi()
+    const task = logoutFromUiAndAwaitRevocation(fixture.page)
+    const response = (path, method) => ({
+      url: () => 'https://127.0.0.1:7777' + path,
+      request: () => ({ method: () => method }),
+    })
+    assert.equal(
+      fixture.predicate(response('/identity/accounts/logout', 'POST')),
+      true,
+    )
+    assert.equal(
+      fixture.predicate(response('/identity/accounts/logout', 'GET')),
+      false,
+    )
+    assert.equal(
+      fixture.predicate(response('/identity/connect/token', 'POST')),
+      false,
+    )
+    fixture.complete()
+    await task
   })
 })
