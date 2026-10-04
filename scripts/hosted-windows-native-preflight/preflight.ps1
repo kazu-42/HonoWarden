@@ -55,8 +55,8 @@ function Read-ExternalPayload {
   try { $digest=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($text)))).Replace('-','').ToLowerInvariant() }
   finally { $sha.Dispose() }
   if ($digest -ne '7baaf42799ec914f5e0f08cffca3641d97b3c4b98bd02da06ec678c7cedbd2a8') { throw 'payload_equivalence' }
-  $files=@($text | ConvertFrom-Json)
-  if ($files.Count -ne 85) { throw 'asset_members' }
+  $files=ConvertFrom-Json -InputObject $text
+  if ($files -isnot [array] -or $files.Count -ne 85) { throw 'asset_members' }
   $url=Decode-ExternalUtf8 $encoded.assetUrlBase64 2048
   $uri=[Uri]$url
   if (-not $uri.IsAbsoluteUri -or $uri.Scheme -ne 'https' -or $uri.Host -ne 'github.com' -or $uri.UserInfo -or -not $uri.IsDefaultPort -or $uri.Query -or $uri.Fragment) { throw 'asset_url' }

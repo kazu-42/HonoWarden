@@ -4,8 +4,8 @@
   "files": [
     {
       "path": "preflight.ps1",
-      "bytes": 15878,
-      "sha256": "e2f27e24b7e2154c69984c0c3b86610d0cf01ed5161cc0e6b447644359a6336c"
+      "bytes": 15912,
+      "sha256": "a2b7b0466078e1a5e6de099c5f1ffa460a214c38dee866fff8c31401a388ca09"
     },
     {
       "path": "preflight.mjs",
@@ -19,8 +19,8 @@
     },
     {
       "path": "preflight.test.mjs",
-      "bytes": 9971,
-      "sha256": "8cc5bb95b9795a37e285e0a934c3950df8982348b53f3a014b1f8d62ea9afe0e"
+      "bytes": 14644,
+      "sha256": "a589acbf714ecb344657bb0832a51440deb504d6e367c0835f0d5640a553bd4a"
     },
     {
       "path": "preauth-native.cs",

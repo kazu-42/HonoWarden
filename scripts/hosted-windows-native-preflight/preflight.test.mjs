@@ -1,8 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { URL } from 'node:url'
+import { URL, fileURLToPath } from 'node:url'
 import { Buffer } from 'node:buffer'
+import { execFileSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import process from 'node:process'
 import { hasControlCharacter } from './policy.mjs'
 import {
   admitProbe,
@@ -299,3 +302,107 @@ test('failure diagnostics expose only fixed phase and allowlisted codes while pr
   )
   assert.match(ps, /\$clean -and \$journalAuthenticated/)
 })
+
+test('payload admission preserves the JSON root array and the strict reviewed 85-member gate', async () => {
+  const ps = await readFile(new URL('./preflight.ps1', import.meta.url), 'utf8')
+  assert.equal(/\$files=ConvertFrom-Json -InputObject \$text/.test(ps), true)
+  assert.equal(
+    /if \(\$files -isnot \[array\] -or \$files.Count -ne 85\) \{ throw 'asset_members' \}/.test(
+      ps,
+    ),
+    true,
+  )
+  assert.equal(/\$files=@\(\$text \| ConvertFrom-Json\)/.test(ps), false)
+})
+
+test(
+  'Windows PowerShell 5.1 parses the real controller and admits the exact public manifest before download',
+  { skip: process.platform !== 'win32' },
+  () => {
+    const systemRoot = process.env.SystemRoot
+    if (
+      typeof systemRoot !== 'string' ||
+      !/^[A-Za-z]:\\/.test(systemRoot) ||
+      systemRoot.length > 243 ||
+      hasControlCharacter(systemRoot)
+    )
+      throw Error('powershell_system_root_unavailable')
+    const root = dirname(fileURLToPath(import.meta.url)).replace(/'/g, "''")
+    // Only the two public-data functions are evaluated; controller admission,
+    // network, journal, native and cleanup statements remain inert.
+    const command = `
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'powershell_version' }
+$root='${root}'
+$tokens=$null; $parseErrors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'preflight.ps1'),[ref]$tokens,[ref]$parseErrors)
+if ($null -ne $parseErrors -and $parseErrors.Length -ne 0) { throw 'powershell_parse' }
+$names=@('Decode-ExternalUtf8','Read-ExternalPayload')
+$functions=@($ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $_.Name })
+if ($functions.Count -ne 2 -or @($functions.Name | Select-Object -Unique).Count -ne 2) { throw 'public_functions' }
+$definition=[ScriptBlock]::Create(($functions | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine)
+. $definition
+$legacy=@('[1,2]' | ConvertFrom-Json)
+if ($legacy.Count -ne 1 -or $legacy[0] -isnot [array] -or $legacy[0].Count -ne 2) { throw 'legacy_array_control' }
+$direct=ConvertFrom-Json -InputObject '[1,2]'
+if ($direct -isnot [array] -or $direct.Count -ne 2) { throw 'direct_array_control' }
+$single=ConvertFrom-Json -InputObject '[1]'
+if ($single -isnot [array] -or $single.Count -ne 1) { throw 'single_array_control' }
+$object=ConvertFrom-Json -InputObject '{"x":1}'
+if ($object -is [array]) { throw 'object_array_control' }
+$payload=Read-ExternalPayload
+if ($payload.files -isnot [array] -or $payload.files.Count -ne 85) { throw 'public_manifest_control' }
+foreach ($file in $payload.files) { if ($file -is [array] -or $file.path -isnot [string] -or $file.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $file.bytes -le 0) { throw 'public_member_control' } }
+$executables=@($payload.files | Where-Object { $_.sha256 -eq '48232882cc5412f8c9e3ddb1b2b1dc50f7247f7f9444fde2bee5c5f010ffac8a' })
+if ($executables.Count -ne 1) { throw 'public_executable_control' }
+[Console]::Out.Write('{"object":"windowsPayloadControl","legacyWrapperCount":1,"directCount":2,"members":85,"parserErrors":0}')
+`
+    let output
+    try {
+      output = execFileSync(
+        join(
+          systemRoot,
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        ),
+        [
+          '-NoLogo',
+          '-NoProfile',
+          '-NonInteractive',
+          '-EncodedCommand',
+          Buffer.from(command, 'utf16le').toString('base64'),
+        ],
+        {
+          encoding: 'utf8',
+          timeout: 10000,
+          maxBuffer: 4096,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            SystemRoot: systemRoot,
+            windir: systemRoot,
+            PATH: join(systemRoot, 'System32'),
+            PSModulePath: join(
+              systemRoot,
+              'System32',
+              'WindowsPowerShell',
+              'v1.0',
+              'Modules',
+            ),
+          },
+        },
+      )
+    } catch {
+      // Never forward child errors, output, command text or environment values.
+      throw Error('powershell_public_payload_control_failed')
+    }
+    if (
+      output.trim() !==
+      '{"object":"windowsPayloadControl","legacyWrapperCount":1,"directCount":2,"members":85,"parserErrors":0}'
+    )
+      throw Error('powershell_public_payload_projection_failed')
+  },
+)
