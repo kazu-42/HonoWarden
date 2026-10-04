@@ -14,13 +14,13 @@
     },
     {
       "path": "preflight-policy.mjs",
-      "bytes": 5284,
-      "sha256": "8c16799983d35b509e53a9a3fe79bd6e0a501537e91e6d4119c6bb1131d601e7"
+      "bytes": 6837,
+      "sha256": "b0630b569c3ea3ee100b4f136a7776baf9e2b9df6f88e41e19683c64add32c0d"
     },
     {
       "path": "preflight.node-check.mjs",
-      "bytes": 17786,
-      "sha256": "cbeb1e805aefa24e608b4cc7bf2b13541347295a9067413b4ddae66f1079d89e"
+      "bytes": 20035,
+      "sha256": "e06045bd6204653bf605638f87cb44ee00e40db33d667590cc73669d06612ebc"
     },
     {
       "path": "preauth-native.cs",

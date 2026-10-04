@@ -48,6 +48,68 @@ export function publicControlFailureCode(value) {
   return generic + '_' + match[1] + '_' + match[2]
 }
 
+export function publicExecFailureMetadata(error) {
+  let code, status, stdout, stderr
+  try {
+    if (error && typeof error === 'object') {
+      code = error.code
+      status = error.status
+      stdout = error.stdout
+      stderr = error.stderr
+    }
+  } catch {
+    return {
+      object: 'windowsPublicControlExecFailure',
+      code: 'OTHER',
+      statusBucket: 'other',
+      stdoutType: 'other',
+      stdoutBytes: null,
+      stdoutFrameValid: false,
+      stderrBytes: null,
+    }
+  }
+  const byteCount = (value) => {
+    if (typeof value === 'string') return Buffer.byteLength(value, 'utf8')
+    if (Buffer.isBuffer(value)) return value.length
+    if (value === null || value === undefined) return 0
+    return null
+  }
+  return {
+    object: 'windowsPublicControlExecFailure',
+    code: [
+      'ETIMEDOUT',
+      'ENOENT',
+      'EACCES',
+      'ENOBUFS',
+      'E2BIG',
+      'OTHER',
+    ].includes(code)
+      ? code
+      : 'OTHER',
+    statusBucket:
+      status === null
+        ? 'null'
+        : status === 0
+          ? 'zero'
+          : Number.isSafeInteger(status)
+            ? 'nonzero'
+            : 'other',
+    stdoutType:
+      typeof stdout === 'string'
+        ? 'string'
+        : Buffer.isBuffer(stdout)
+          ? 'buffer'
+          : stdout === null || stdout === undefined
+            ? 'absent'
+            : 'other',
+    stdoutBytes: byteCount(stdout),
+    stdoutFrameValid:
+      publicControlFailureCode(stdout) !==
+      'powershell_public_payload_control_failed',
+    stderrBytes: byteCount(stderr),
+  }
+}
+
 export function decodeExternalUtf8(value, maximum = 16384) {
   if (
     typeof value !== 'string' ||

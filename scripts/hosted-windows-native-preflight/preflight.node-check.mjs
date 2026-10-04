@@ -15,6 +15,7 @@ import {
   requirePayloadPath,
   decodeDesktopPayload,
   publicControlFailureCode,
+  publicExecFailureMetadata,
 } from './preflight-policy.mjs'
 import { migrationStatements } from './preflight.mjs'
 
@@ -382,6 +383,75 @@ test('public parser failure frames reject arbitrary fields, labels and raw strin
   }
 })
 
+test('public exec failure metadata uses closed code/status buckets and only output counts', () => {
+  const stdout =
+    '{"object":"windowsPayloadControlFailure","phase":"parser","code":"powershell_parse"}'
+  for (const code of [
+    'ETIMEDOUT',
+    'ENOENT',
+    'EACCES',
+    'ENOBUFS',
+    'E2BIG',
+    'OTHER',
+  ])
+    assert.deepEqual(
+      publicExecFailureMetadata({ code, status: 1, stdout, stderr: 'x' }),
+      {
+        object: 'windowsPublicControlExecFailure',
+        code,
+        statusBucket: 'nonzero',
+        stdoutType: 'string',
+        stdoutBytes: Buffer.byteLength(stdout, 'utf8'),
+        stdoutFrameValid: true,
+        stderrBytes: 1,
+      },
+    )
+  assert.equal(publicExecFailureMetadata({ status: 0 }).statusBucket, 'zero')
+  assert.equal(publicExecFailureMetadata({ status: null }).statusBucket, 'null')
+  assert.equal(
+    publicExecFailureMetadata({ status: -1 }).statusBucket,
+    'nonzero',
+  )
+  assert.equal(publicExecFailureMetadata({ status: NaN }).statusBucket, 'other')
+  assert.equal(
+    publicExecFailureMetadata({ stdout: Buffer.from([255]) }).stdoutBytes,
+    1,
+  )
+  assert.equal(
+    publicExecFailureMetadata({ stdout: Buffer.from(stdout) }).stdoutFrameValid,
+    false,
+  )
+})
+
+test('public exec failure metadata rejects unknown fields and never returns raw strings', () => {
+  const marker = 'private-test-marker'
+  const result = publicExecFailureMetadata({
+    code: marker,
+    status: marker,
+    stdout: marker,
+    stderr: marker,
+    message: marker,
+    cmd: marker,
+    stack: marker,
+    cause: { message: marker },
+  })
+  assert.deepEqual(result, {
+    object: 'windowsPublicControlExecFailure',
+    code: 'OTHER',
+    statusBucket: 'other',
+    stdoutType: 'string',
+    stdoutBytes: marker.length,
+    stdoutFrameValid: false,
+    stderrBytes: marker.length,
+  })
+  assert.equal(JSON.stringify(result).includes(marker), false)
+  for (const value of [false, undefined, marker, { stdout: {}, stderr: false }])
+    assert.equal(
+      JSON.stringify(publicExecFailureMetadata(value)).includes(marker),
+      false,
+    )
+})
+
 test(
   'Windows PowerShell 5.1 parses the real controller and admits the exact public manifest before download',
   { skip: process.platform !== 'win32' },
@@ -445,6 +515,7 @@ if ($executables.Count -ne 1) { throw 'public_executable_control' }
 `
     let output
     let failureCode
+    let failureMetadata
     try {
       output = execFileSync(
         join(
@@ -484,8 +555,10 @@ if ($executables.Count -ne 1) { throw 'public_executable_control' }
     } catch (error) {
       // Never forward raw child errors, output, command text or environment values.
       failureCode = publicControlFailureCode(error?.stdout)
+      failureMetadata = publicExecFailureMetadata(error)
     }
-    if (failureCode) throw Error(failureCode)
+    if (failureCode)
+      throw Error(failureCode + ' ' + JSON.stringify(failureMetadata))
     if (
       output.trim() !==
       '{"object":"windowsPayloadControl","legacyWrapperCount":1,"directCount":2,"members":85,"parserErrors":0}'
