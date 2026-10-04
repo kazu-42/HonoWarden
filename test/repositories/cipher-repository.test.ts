@@ -32,7 +32,7 @@ const fakeMeta = {
 } satisfies D1Meta & Record<string, unknown>
 
 describe('cipher repository', () => {
-  it('validates the complete confirmed owner-managed collection set', async () => {
+  it('validates the complete confirmed assigned-writable collection set', async () => {
     const database = new RecordingCipherD1Database([{ count: 2 }])
 
     await expect(
@@ -47,8 +47,12 @@ describe('cipher repository', () => {
       'COUNT(DISTINCT collection.id)',
     )
     expect(database.queries.join('\n')).toContain('membership.status = 2')
-    expect(database.queries.join('\n')).toContain('membership.type = 0')
-    expect(database.queries.join('\n')).toContain('collection_user.manage = 1')
+    expect(database.queries.join('\n')).toContain(
+      'membership.type IN (0, 1, 2)',
+    )
+    expect(database.queries.join('\n')).toContain(
+      'collection_user.read_only = 0',
+    )
     expect(database.queries.join('\n')).toContain(
       'membership.organization_id = collection.organization_id',
     )
@@ -216,6 +220,8 @@ describe('cipher repository', () => {
         cipherKey: '2.opaque-cipher-key',
         collectionIdsJson:
           '["collection-two","collection-one","collection-one"]',
+        canEdit: 1,
+        canViewPassword: 1,
       },
     ])
 
@@ -234,6 +240,8 @@ describe('cipher repository', () => {
         organizationId: null,
         cipherKey: null,
         collectionIds: [],
+        canEdit: true,
+        canViewPassword: true,
       },
       {
         id: 'organization-cipher-id',
@@ -247,6 +255,8 @@ describe('cipher repository', () => {
         organizationId: 'organization-id',
         cipherKey: '2.opaque-cipher-key',
         collectionIds: ['collection-one', 'collection-two'],
+        canEdit: true,
+        canViewPassword: true,
       },
     ])
     expect(database.boundValueSets).toEqual([['user-id', 'user-id']])
@@ -254,7 +264,9 @@ describe('cipher repository', () => {
       'WITH accessible_organization_collections AS',
     )
     expect(database.queries.join('\n')).toContain('membership.status = 2')
-    expect(database.queries.join('\n')).toContain('collection_user.manage = 1')
+    expect(database.queries.join('\n')).not.toContain(
+      'collection_user.manage = 1',
+    )
     expect(database.queries.join('\n')).toContain('json_group_array')
   })
 
@@ -271,6 +283,8 @@ describe('cipher repository', () => {
       organizationId: 'organization-id',
       cipherKey: '2.opaque-cipher-key',
       collectionIdsJson: '["collection-id"]',
+      canEdit: 0,
+      canViewPassword: 0,
     }
     const pageDatabase = new RecordingCipherD1Database([
       row,
@@ -300,6 +314,8 @@ describe('cipher repository', () => {
           organizationId: 'organization-id',
           cipherKey: '2.opaque-cipher-key',
           collectionIds: ['collection-id'],
+          canEdit: false,
+          canViewPassword: false,
         },
       ],
       hasMore: true,
@@ -337,6 +353,8 @@ describe('cipher repository', () => {
       organizationId: 'organization-id',
       cipherKey: '2.opaque-cipher-key',
       collectionIds: ['collection-id'],
+      canEdit: false,
+      canViewPassword: false,
     })
     expect(findDatabase.boundValueSets).toEqual([
       ['user-id', 'organization-cipher-id', 'user-id'],
@@ -856,6 +874,16 @@ class RecordingCipherD1Database {
         return statement
       },
       async first<T = unknown>(): Promise<T | null> {
+        if (
+          /DELETE\s+FROM\s+ciphers/.test(query) &&
+          query.includes('RETURNING id')
+        ) {
+          return (
+            (getOptions().permanentDeleteChanges ?? 1) > 0
+              ? { id: 'cipher-id' }
+              : null
+          ) as T | null
+        }
         return (getRows()[0] ?? null) as T | null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {

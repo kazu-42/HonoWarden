@@ -1,6 +1,142 @@
 # Current State
 
-Last updated: 2026-09-01
+Last updated: 2026-10-03
+
+## 2026-10-03 Company Readiness Continuation
+
+The requested company scope includes organization management, invitations, and
+permission management. Work continues in the protected September integration
+checkout from source `2846198`; the root checkout's intentional WIP is preserved.
+These are uncommitted local changes under aggregate verification, not a deployed
+release or permission to use real company secrets.
+
+New migration 0023 binds bearer and refresh tokens to an immutable login
+generation. Revocation, refresh reuse, and same-device relogin cannot revive or
+invalidate a newer family. Legacy sessionless tokens require a fresh login.
+See [device session rollout and recovery](operations/device-sessions.md).
+
+Organization and personal mutation boundaries are enforced inside SQL. Disabled
+organizations are excluded, read-only collection grants cannot authorize writes,
+and attachment allocation rechecks personal ownership atomically. Actual local
+D1 tests also exposed cascade delete counts causing false failure responses;
+direct deleted-row readback fixes those responses.
+
+Migration 0024 and default-off membership APIs implement invitation, acceptance,
+encrypted key confirmation, roles and collection grants, reinvitation, revocation,
+and removal. The server does not receive an organization plaintext key or return
+another member's wrapped key. Local synthetic delivery is separate from any
+real invitation email. See [membership operations](operations/organization-membership.md).
+
+Compatible dependency updates reduce the fresh registry audit from 27 entries
+to zero on the exact candidate lockfile; this advisory lookup is separate from
+independent security assessment. A durable current-CLI runner replaces the
+missing temporary execution script and verifies an isolated official binary
+against fresh local storage. Final whole-suite and expanded CLI acceptance are
+recorded independently after source edits finish.
+
+Source integration, remote migration, deployed enforcement, exact-version
+organization client acceptance, operator hardening, restore evidence, and
+real-secret risk acceptance remain distinct gates. All tracked membership and
+credential writer flags stay default-off. Historical checkpoints below retain
+their original results and limitations.
+
+## 2026-09-22 Current CLI Local Smoke Passed After Approved Repair
+
+The user approved local API/storage/rotation work after the initial official
+CLI login failed at the missing user-key ID registration route. Migration 0022
+adds nullable validated metadata; the authenticated route conditionally writes
+once and commits its required audit row atomically. Rotation replaces or clears
+the ID, and a database trigger protects older wrapped-key writers. All tracked
+writer flags remain false; no remote migration, deployment, or activation ran.
+
+The unmodified checksum-pinned official CLI 2026.9.0 passed a fresh isolated
+synthetic run at 2026-09-22T09:56:02.367Z: login, one-time key-ID registration,
+populated sync, five decrypted fields, lock/unlock/sync/decryption, logout,
+and a second login/decryption without repeating registration. The CLI row is
+now `live_smoke`, not broad `live_regression`. Four other current rows remain
+`fixture_only`. See [current CLI evidence](release/current-cli-2026-9-smoke.md)
+and [registration/rollback rules](operations/user-key-id.md).
+
+The user subsequently installed the official iOS client on the authorized iPhone.
+Device readback confirmed version 2026.9.0, build 3521; normal
+launch succeeded, and iPhone Mirroring showed the pre-login onboarding screen.
+The earlier direct-IPA installation rejection (`0xe800801f`, Beta profile
+entitlement) is historical, not the current blocker. No signature bypass was
+used. Local HTTPS connectivity and test-certificate trust are not yet configured
+for the iPhone; device-wide trust changes require separate approval. No actual
+iOS login, sync, or decryption is claimed, and its row remains `fixture_only`.
+
+These local flow results do not imply staging/production readiness. The older
+metadata-only verification and archived release evidence below are historical
+checkpoints, not verification of this new source change.
+
+The final full-source test run is not clean: 2,663/2,667 passed, with four
+time-sensitive failures in existing scanner, KDF-migration, and release-bundle
+tests. All new key-ID/rotation tests passed. The full run and targeted reruns
+are recorded separately in `.workflow/integration-2026-09-06/verification.md`;
+passing native CLI smoke must not be read as a fully green repository gate.
+The unchanged-condition recheck of the three affected files subsequently
+passed 257/257, including all four failed cases. The original full run remains
+recorded as failed; no threshold was relaxed and no test was excluded.
+
+## 2026-09-22 Client Metadata Refresh Follow-up
+
+Official release metadata was re-read at 2026-09-22T05:32:22Z. The current
+matrix now tracks Browser 2026.9.1, Desktop/CLI 2026.9.0, Android 2026.9.0
+build 21909, and iOS 2026.9.0 build 3521. At this metadata-only checkpoint all
+five rows were `fixture_only`; neither historical client runs nor fixture tests
+promoted these exact versions. The later exact CLI run described above promoted
+only CLI 2026.9.0 to local `live_smoke`; the other four rows remain `fixture_only`.
+The next required metadata refresh is due at 2026-10-06T05:32:22Z.
+
+The standalone strict repository-evidence gate at 2026-09-22T05:33:55.466Z
+passed 12 checks with zero blocks; current metadata and the sealed alpha
+archive are consistent. `executionStatus` remains `not_admitted`. This resolves
+the stale-metadata block recorded in the preceding integration checkpoint,
+not current-version live compatibility, publication, or deployment admission.
+The pinned official-client harness still targets CLI 2026.6.0. Running current
+clients requires separately verified assets and exact-version synthetic runs;
+changing matrix labels or reusing old evidence cannot satisfy that requirement.
+
+The refresh changes metadata, documentation, and deterministic test clocks only.
+Verification passed 148 files / 2,641 tests, typecheck, lint, formatting, and
+brand scan. Stale-metadata rejection remains covered through test-only child
+clocks; the actual release gate continues to evaluate the real observation time.
+No production source, runtime flags, archived evidence, deployment, remote
+resource, or secrets are changed by this metadata-refresh follow-up. See
+`.workflow/integration-2026-09-06/verification.md` for verification evidence.
+
+## 2026-09-22 Integration Checkpoint Before Metadata Refresh
+
+The four integration candidates were preserved in commit
+`9e89c2ab94b61c6d28ed824e19db6edaebaad6c3`, whose tree is identical to landed
+commit `744097a4f3e31b7511f17e50d6b83356ac63fdd9`. A fresh remote read on
+2026-09-22 confirms `origin/main` at
+`2846198beb18c085771b6d91a6a7ed28ac51d27e`, including that landed commit.
+The active local integration follow-up starts from this main revision.
+
+Local changes close token-apply writes, require an explicit runtime environment,
+add the Text Send audit vocabulary, and evaluate client-metadata freshness.
+The 2026-08-16 metadata snapshot became stale on 2026-09-06; at this checkpoint,
+current release acceptance was blocked pending refresh, while the sealed alpha archive remained
+separate. Independent review approved the follow-up code, and focused/static/
+compatibility checks passed. The first full verification found one HON-210 enrollment
+failure (2,628 passed / 1 failed): a same-millisecond rejected registration
+replay can still insert a second credential. This was reproduced with the
+actual repository function on real local D1. With the user's approval, the
+follow-up now requires the immediately preceding consume UPDATE to affect one
+row in the same batch before credential INSERT (`changes() = 1`). Sequential
+replay, concurrent single-winner, failure rollback/retry, owner/RP/policy/expiry
+rejection, and credential limits pass real local D1 tests. The unchanged-source
+full rerun passed all 147 files / 2,639 tests; final focused verification passed
+18 files / 264 tests, and compatibility verification passed 8 files / 973 tests.
+Independent re-review approved the repair. This is local source integration
+acceptance, not release or deployment readiness: client metadata was still stale
+at this checkpoint, and Worker execution stayed not admitted. WebAuthn stays default-off in all
+tracked scopes.
+See `.workflow/integration-2026-09-06/verification.md` for exact evidence.
+This follow-up has not committed, pushed, published, or performed remote
+runtime mutations.
 
 ## 2026-09-04 HON-189 Emergency Access Invitation Source
 
@@ -27,9 +163,9 @@ Not implemented or not yet verified:
 
 ## 2026-09-01 Integration Candidate Snapshot
 
-This section is the present-tense source boundary. The dated Week 1–26 and
-official-client sections below are historical delivery records and do not
-override it.
+This section retains the earlier candidate checkpoint and subsequent source
+notes. The integration status above supersedes its publication status. The
+dated Week 1–26 and official-client sections below are historical records.
 
 - HON-210 adds authenticated `POST /api/webauthn/attestation-options`,
   `POST /api/webauthn`, and `GET /api/webauthn` against the HON-209 D1/verifier
@@ -40,9 +176,9 @@ override it.
   `@simplewebauthn/server` 13.3.3, owner-scoped WebAuthn credential/challenge
   repositories, and bounded expired-challenge cleanup. Anonymous assertion,
   grant, PRF enablement, rename, and delete remain later children.
-- The integration candidate is based on source commit
-  `52ef7293615702b399cf5b3bcac7e607f191e51f`; it remains an uncommitted local
-  worktree and has not been pushed, published, or deployed.
+- The original integration candidate was based on source commit
+  `52ef7293615702b399cf5b3bcac7e607f191e51f`. Its source was subsequently
+  committed and landed as recorded in the integration follow-up above.
 - Official-client harness shutdown now waits for the child process to become
   observable before asserting termination. This is test-harness reliability
   only and changes no runtime route or protocol behavior.

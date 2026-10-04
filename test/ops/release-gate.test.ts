@@ -1,11 +1,9 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-const execFileAsync = promisify(execFile)
+import { execFileWithStaleMatrixClock as execFileAsync } from '../support/release-clock'
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const releaseGateScript = join(repoRoot, 'scripts/honowarden-release-gate.mjs')
 
@@ -14,6 +12,7 @@ type ReleaseGateReport = {
   target: string
   scope: 'repository_release_evidence'
   evidenceStatus: 'consistent' | 'inconsistent'
+  historicalEvidenceStatus: 'consistent' | 'inconsistent'
   executionStatus: 'not_admitted'
   overall: 'ready' | 'not_ready'
   layers: Record<
@@ -45,16 +44,18 @@ describe('release gate preflight', () => {
     expect(report.schemaVersion).toBe(2)
     expect(report.target).toBe('v0.1.0-alpha')
     expect(report.scope).toBe('repository_release_evidence')
-    expect(report.evidenceStatus).toBe('consistent')
+    expect(report.evidenceStatus).toBe('inconsistent')
+    expect(report.historicalEvidenceStatus).toBe('consistent')
     expect(report.executionStatus).toBe('not_admitted')
-    expect(report.overall).toBe('ready')
-    expect(report.layers.currentTree).toMatchObject({ status: 'consistent' })
+    expect(report.overall).toBe('not_ready')
+    expect(report.layers.currentTree).toMatchObject({ status: 'inconsistent' })
     expect(report.layers.currentTree.checkIds).toEqual(
       expect.arrayContaining([
         'release_docs_present',
         'migration_freeze_hashes',
         'dependency_audit_evidence',
         'staging_deploy_evidence',
+        'current_client_matrix',
       ]),
     )
     expect(report.layers.currentTree.checkIds).not.toContain(
@@ -65,7 +66,11 @@ describe('release gate preflight', () => {
       checkIds: ['compatibility_matrix_conservative', 'live_client_evidence'],
     })
     expect(report.summary.pass).toBeGreaterThan(0)
-    expect(report.summary.block).toBe(0)
+    expect(report.summary.block).toBe(1)
+    expect(checkById(report, 'current_client_matrix')).toMatchObject({
+      status: 'block',
+      details: { freshness: { status: 'stale', releaseReady: false } },
+    })
 
     expect(statusById(report, 'release_docs_present')).toBe('pass')
     expect(statusById(report, 'package_version')).toBe('pass')
@@ -195,11 +200,12 @@ describe('release gate preflight', () => {
     )
   })
 
-  it('passes in strict mode when historical repository evidence is consistent', async () => {
+  it('blocks strict mode when current metadata is stale despite sealed historical evidence', async () => {
     await expect(
       execFileAsync('node', [releaseGateScript, '--strict']),
-    ).resolves.toMatchObject({
-      stderr: '',
+    ).rejects.toMatchObject({
+      code: 1,
+      stderr: 'release gate is not ready: 1 blocking check(s)\n',
     })
   })
 })

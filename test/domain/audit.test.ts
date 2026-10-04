@@ -49,6 +49,40 @@ describe('audit domain', () => {
     expect(serializeAuditEvent(event)).not.toContain('2.encrypted-value')
   })
 
+  it('keeps Text Send creation audit events in the central secret-safe vocabulary', () => {
+    const event = buildAuditEvent({
+      name: 'send.text.create',
+      outcome: 'success',
+      requestId: 'send-request-id',
+      occurredAt: '2026-09-06T00:00:00.000Z',
+      actor: { userId: 'owner-user-id' },
+      target: { type: 'send', id: 'send-id' },
+      context: {
+        revision: 1,
+        capabilityToken: 'synthetic-capability-token',
+        encryptedPayload: 'synthetic-encrypted-payload',
+      },
+    })
+
+    expect(event).toEqual({
+      object: 'auditEvent',
+      schemaVersion: 1,
+      name: 'send.text.create',
+      outcome: 'success',
+      requestId: 'send-request-id',
+      occurredAt: '2026-09-06T00:00:00.000Z',
+      actor: { userId: 'owner-user-id' },
+      target: { type: 'send', id: 'send-id' },
+      context: { revision: 1 },
+    })
+    expect(serializeAuditEvent(event)).not.toContain(
+      'synthetic-capability-token',
+    )
+    expect(serializeAuditEvent(event)).not.toContain(
+      'synthetic-encrypted-payload',
+    )
+  })
+
   it('keeps audit logging opt-in', () => {
     expect(isAuditLoggingEnabled(undefined)).toBe(false)
     expect(isAuditLoggingEnabled('false')).toBe(false)

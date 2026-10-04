@@ -17,13 +17,6 @@ const scriptPath = join(
   repoRoot,
   'scripts/honowarden-cloudflare-token-remediation.mjs',
 )
-const nonDeployTokenEnvVars = [
-  'CLOUDFLARE_HONOWARDEN_DNS_ROUTES_TOKEN',
-  'CLOUDFLARE_HONOWARDEN_EMAIL_ROUTING_TOKEN',
-  'CLOUDFLARE_HONOWARDEN_D1_R2_TOKEN',
-  'CLOUDFLARE_HONOWARDEN_READONLY_TOKEN',
-] as const
-
 describe('Cloudflare scoped token remediation', () => {
   it('plans scoped tokens without printing configured secret values', () => {
     const secretValues = {
@@ -54,7 +47,7 @@ describe('Cloudflare scoped token remediation', () => {
     expect(report).toMatchObject({
       action: 'cloudflare_token_remediation_plan',
       status: 'ready',
-      executeRequiredForMutation: true,
+      executeRequiredForMutation: false,
       secretsOut: '~/.config/honowarden/cloudflare-scoped.env',
     })
     expect(report.tokenClasses).toHaveLength(5)
@@ -64,135 +57,53 @@ describe('Cloudflare scoped token remediation', () => {
     expect(output).not.toContain(secretValues.CLOUDFLARE_API_EMAIL)
     expect(report.safetyBoundaries).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('non-deploy token classes only'),
-        expect.stringMatching(/^STOP: automated deploy-token/),
+        expect.stringContaining('apply is a static stop'),
+        expect.stringMatching(/^STOP: automated Cloudflare token/),
       ]),
     )
     expect(
-      report.tokenClasses.find(
-        (tokenClass: { id: string }) => tokenClass.id === 'deploy',
+      report.tokenClasses.every(
+        (tokenClass: { mutationPolicy: string }) =>
+          tokenClass.mutationPolicy === 'stopped',
       ),
-    ).toMatchObject({ mutationPolicy: 'stopped' })
-    expect(
-      report.tokenClasses
-        .filter((tokenClass: { id: string }) => tokenClass.id !== 'deploy')
-        .every(
-          (tokenClass: { mutationPolicy: string }) =>
-            tokenClass.mutationPolicy === 'execute_required',
-        ),
     ).toBe(true)
   })
 
-  it('stops deploy-token mutation before POST while creating non-deploy tokens', () => {
-    const fixture = createCloudflareApiFixture()
+  it.each([
+    ['readback-shaped apply', []],
+    ['execute apply', ['--execute']],
+  ])(
+    'stops %s before credentials, network, or secret-file access',
+    (_name, applyArguments) => {
+      const fixture = createCloudflareApiFixture()
 
-    try {
-      const execution = runApplyExecute(fixture)
-      const report = JSON.parse(execution.stdout)
-      const deployResult = report.tokenResults.find(
-        (result: { id: string }) => result.id === 'deploy',
-      )
+      try {
+        const execution = runApply(fixture, applyArguments)
+        const report = JSON.parse(execution.stdout)
 
-      expect(execution.status).toBe(1)
-      expect(execution.stderr).toBe('')
-      expect(report).toMatchObject({
-        action: 'cloudflare_token_remediation_apply',
-        executed: true,
-        status: 'not_ready',
-      })
-      expect(deployResult).toMatchObject({
-        id: 'deploy',
-        action: 'stopped',
-        status: 'not_ready',
-        detail: expect.stringContaining('STOP'),
-      })
-      expect(
-        report.tokenResults
-          .filter((result: { id: string }) => result.id !== 'deploy')
-          .map((result: { action: string; id: string }) => ({
-            id: result.id,
-            action: result.action,
-          })),
-      ).toEqual([
-        { id: 'dns_routes', action: 'created' },
-        { id: 'email_routing', action: 'created' },
-        { id: 'd1_r2', action: 'created' },
-        { id: 'readonly', action: 'created' },
-      ])
-
-      const requests = readRequestLog(fixture.requestLog)
-      const tokenPosts = requests.filter(
-        (request) =>
-          request.method === 'POST' &&
-          request.path === '/accounts/account_id_for_test/tokens',
-      )
-
-      expect(tokenPosts).toHaveLength(4)
-      expect(tokenPosts.map((request) => request.body?.name)).not.toContain(
-        deployResult.name,
-      )
-      expect(requests.filter((request) => request.method !== 'GET')).toEqual(
-        tokenPosts,
-      )
-      expect(
-        JSON.stringify(tokenPosts.map((request) => request.body)),
-      ).not.toContain('Workers Scripts Write')
-
-      const secretFile = readFileSync(fixture.secretFile, 'utf8')
-      expect(secretFile).not.toContain('CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN')
-      for (const envVar of nonDeployTokenEnvVars) {
-        expect(secretFile).toContain(`export ${envVar}=`)
+        expect(execution.status).toBe(1)
+        expect(execution.stderr).toBe('')
+        expect(report).toMatchObject({
+          action: 'cloudflare_token_remediation_apply',
+          executed: false,
+          requestedExecute: applyArguments.includes('--execute'),
+          status: 'not_ready',
+          mutationPolicy: 'stopped',
+          detail: expect.stringMatching(/^STOP:/),
+        })
+        expect(existsSync(fixture.requestLog)).toBe(false)
+        expect(existsSync(fixture.secretFile)).toBe(false)
+        const implementation = readRepoFile(
+          'scripts/honowarden-cloudflare-token-remediation.mjs',
+        )
+        expect(implementation).not.toContain('createAccountToken')
+        expect(implementation).not.toContain('writeSecretFile')
+        expect(implementation).not.toMatch(/method:\s*'POST'/u)
+      } finally {
+        rmSync(fixture.directory, { recursive: true, force: true })
       }
-    } finally {
-      rmSync(fixture.directory, { recursive: true, force: true })
-    }
-  })
-
-  it('stops replacement of an existing deploy token and secret', () => {
-    const fixture = createCloudflareApiFixture({ existingDeployToken: true })
-    const existingDeploySecret =
-      "export CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN='existing-deploy-secret'"
-    writeFileSync(fixture.secretFile, `${existingDeploySecret}\n`, 'utf8')
-
-    try {
-      const execution = runApplyExecute(fixture)
-      const report = JSON.parse(execution.stdout)
-      const deployResult = report.tokenResults.find(
-        (result: { id: string }) => result.id === 'deploy',
-      )
-      const requests = readRequestLog(fixture.requestLog)
-      const tokenPosts = requests.filter(
-        (request) =>
-          request.method === 'POST' &&
-          request.path === '/accounts/account_id_for_test/tokens',
-      )
-
-      expect(execution.status).toBe(1)
-      expect(execution.stderr).toBe('')
-      expect(deployResult).toMatchObject({
-        id: 'deploy',
-        action: 'stopped',
-        status: 'not_ready',
-        existingTokenDetected: true,
-        detail: expect.stringContaining('STOP'),
-      })
-      expect(tokenPosts).toHaveLength(4)
-      expect(tokenPosts.map((request) => request.body?.name)).not.toContain(
-        deployResult.name,
-      )
-
-      const secretFile = readFileSync(fixture.secretFile, 'utf8')
-      expect(secretFile).toContain(existingDeploySecret)
-      expect(
-        secretFile.match(/CLOUDFLARE_HONOWARDEN_DEPLOY_TOKEN/g),
-      ).toHaveLength(1)
-      for (const envVar of nonDeployTokenEnvVars) {
-        expect(secretFile).toContain(`export ${envVar}=`)
-      }
-    } finally {
-      rmSync(fixture.directory, { recursive: true, force: true })
-    }
-  })
+    },
+  )
 
   it('retains read-only verification for every token class', () => {
     const fixture = createCloudflareApiFixture()
@@ -402,11 +313,14 @@ function cloudflareTestEnv(
   }
 }
 
-function runApplyExecute(fixture: {
-  preloadPath: string
-  requestLog: string
-  secretFile: string
-}): ReturnType<typeof spawnSync> & { stderr: string; stdout: string } {
+function runApply(
+  fixture: {
+    preloadPath: string
+    requestLog: string
+    secretFile: string
+  },
+  applyArguments: string[],
+): ReturnType<typeof spawnSync> & { stderr: string; stdout: string } {
   return spawnSync(
     process.execPath,
     [
@@ -414,7 +328,7 @@ function runApplyExecute(fixture: {
       fixture.preloadPath,
       scriptPath,
       'apply',
-      '--execute',
+      ...applyArguments,
       '--auth',
       'token',
       '--secrets-out',

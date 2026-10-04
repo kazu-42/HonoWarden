@@ -1,10 +1,21 @@
 # Release Readiness Index
 
-Target: `v0.1.0-alpha`.
+Published release: `v0.1.0-alpha`, published as a prerelease on 2026-07-08.
 
-Last updated: 2026-08-09.
+Last updated: 2026-09-22.
 
-Use this index as the feature-freeze entry point:
+This index links historical release evidence and subsequent local work. It does
+not authorize retagging, republication, or deployment. At tag time only CLI
+`2026.6.0` had sealed `live_smoke` evidence; other tag-time rows were
+`fixture_only`. Later browser, desktop, Android, and additional CLI evidence
+must be read as post-tag records. Official metadata was refreshed on 2026-09-22:
+Browser 2026.9.1 and Desktop/Android/iOS 2026.9.0 remain `fixture_only`.
+The later [exact CLI 2026.9.0 local smoke](current-cli-2026-9-smoke.md) passed
+isolated synthetic login, populated sync, decryption, lock/unlock, logout, and
+repeat login. Only that CLI row is `live_smoke`; this does not establish broad
+client regression, staging/production acceptance, or execution authority.
+
+Release and operations references:
 
 - [Feature Freeze Checklist](feature-freeze-checklist.md)
 - [Fresh Deploy Guide](fresh-deploy-guide.md)
@@ -15,6 +26,7 @@ Use this index as the feature-freeze entry point:
 - [Alpha Tagging Runbook](tagging-runbook.md)
 - [Publication Gate](publication-gate.md)
 - [Live Client Evidence](live-client-evidence.md)
+- [Current CLI Local Mutation Acceptance](current-cli-2026-9-local-acceptance.md)
 - [Android Mobile Live Client Evidence](android-mobile-live-client-evidence.md)
 - [TOTP And Recent-Auth Live Evidence](totp-recent-auth-live-evidence.md)
 - [Account Password Change Local Evidence](account-password-change-local-evidence.md)
@@ -64,14 +76,19 @@ Packet limitations:
 - The registry verifies committed metadata and artifact markers; it does not rerun the recorded local lifecycle.
 - No claim in this registry proves staging or production activation.
 
-## Freeze Position
+## Historical Freeze Position
 
-The repository-local alpha gate is expected to be ready before tagging, while
-the project still carries pre-alpha safety warnings until the tag is created and
-reviewed. The feature-freeze materials exist so the final alpha cut can be
-reviewed without inventing release process under time pressure.
+The alpha tag already exists. The feature-freeze materials retain the original
+release review context. Pre-alpha safety limitations and current operational
+readiness must be assessed independently from that historical publication.
 
-## Required Evidence Before Tagging
+## Historical Release Criteria And Post-Tag Evidence
+
+The following checklist is retained as release-process history. Some linked
+client evidence was added after publication and is not part of the sealed
+tag-time snapshot. These entries are not current instructions to create or move
+the published tag. Current client metadata freshness is checked separately by
+the release gate; a historical archive pass cannot satisfy that check.
 
 - GitHub Actions CI passes on the release commit.
 - Package and runtime metadata report `0.1.0-alpha`.

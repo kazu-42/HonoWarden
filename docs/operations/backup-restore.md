@@ -432,11 +432,20 @@ secrets. The current local operator setup stores them in
 `~/.config/honowarden/cloudflare-scoped.env`, which is sourced by ignored
 `.envrc.local`.
 
-The scheduled job's encrypted artifact retention is `7` days. If a backup must
-be retained beyond that window, copy the encrypted artifact to an
-operator-owned restricted archive within `35` days. Do not store plaintext
-backup archives in GitHub Actions artifacts, Linear, GitHub comments, or the
-repository checkout.
+The scheduled job's encrypted artifact retention is `7` days. Copy any backup
+needed beyond that window to an operator-owned restricted archive before the
+GitHub artifact expires, preferably within `24` hours of a successful run.
+The restricted archive retention target is `35` days from backup creation;
+that window does not extend GitHub artifact availability or the download
+deadline. Confirm the copied encrypted artifact and its approved manifest
+identity before relying on the restricted archive for recovery. Do not store
+plaintext backup archives in GitHub Actions artifacts, Linear, GitHub comments,
+or the repository checkout.
+
+The download deadline corrects the earlier `35`-day copy deadline in the
+[July policy wording](../release/remote-backup-evidence.md). That dated record
+is preserved without changes. Follow the download and retention policy above;
+this correction does not prove staging or production activation.
 
 Generate public evidence from an executed backup with:
 
@@ -628,18 +637,21 @@ real credentials, and a run root outside one direct child of `test/.tmp`.
 
 ## Recovery And Rollback
 
-The safest rollback is to discard the restore target and recreate it from the
-same backup. Do not restore over the source resource during the alpha phase.
+Recovery requires a verified fresh target and the same approved backup. Do not
+restore over the source resource during the alpha phase or retry a partially
+restored target in place.
 
 If D1 restore succeeds and an R2 object upload fails:
 
-1. Keep the failed target isolated.
-2. Re-run the same restore command only if the target is disposable and the
-   missing object uploads are idempotent for the drill.
-3. Prefer deleting and recreating the target resources before re-running a
-   production-like restore drill.
-4. Record the failure, command output, manifest path, source commit, and target
-   resource names in the project update.
+1. Keep the failed target isolated and preserve diagnostic evidence.
+2. Create a distinct fresh target and verify its isolation and empty state.
+   Discard the failed target only after evidence preservation and any required
+   cleanup approval; do not reuse it for another restore attempt.
+3. Execute a new restore against the fresh target using the same approved
+   manifest identity and, for a generation-bound backup, both approval pins.
+   Idempotent R2 uploads do not prove that a partial D1/R2 target is safe to reuse.
+4. Record the original failure, recovery command, manifest path, source commit,
+   both target identities, and fresh-target verification in the project update.
 
 ## Verification Checklist
 

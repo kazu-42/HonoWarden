@@ -3,6 +3,7 @@ import {
   type AccountCredentialKdf,
 } from './account-credentials'
 import { classifyAccountKeyState } from './account-keys'
+import { isUserKeyId } from './user-key-id'
 import { parseUserKeyRotationCiphers } from './user-key-rotation-cipher'
 import {
   constantTimeEqual,
@@ -22,6 +23,7 @@ import {
   parseRequiredOpaqueField,
   readRequiredArray,
   readRequiredObject,
+  readAliasedValue,
   serializedLength,
 } from './user-key-rotation-input'
 import { userKeyRotationPolicy } from './user-key-rotation-policy'
@@ -47,6 +49,7 @@ export type {
 } from './user-key-rotation-types'
 
 const rootFields = [
+  'newUserKeyId',
   'oldMasterKeyAuthenticationHash',
   'accountUnlockData',
   'accountKeys',
@@ -116,6 +119,15 @@ export function parseUserKeyRotationBody(
     'oldMasterKeyAuthenticationHash',
     userKeyRotationPolicy.authenticationHashMaxLength,
   )
+  const newUserKeyId = readAliasedValue(body, 'newUserKeyId')
+  if (
+    !newUserKeyId.valid ||
+    (newUserKeyId.present &&
+      newUserKeyId.value !== null &&
+      !isUserKeyId(newUserKeyId.value))
+  ) {
+    return { ok: false }
+  }
   const unlockData = readRequiredObject(body, 'accountUnlockData')
   const accountKeys = readRequiredObject(body, 'accountKeys')
   const accountData = readRequiredObject(body, 'accountData')
@@ -137,6 +149,9 @@ export function parseUserKeyRotationBody(
 
   return {
     ok: true,
+    ...(newUserKeyId.present && isUserKeyId(newUserKeyId.value)
+      ? { newUserKeyId: newUserKeyId.value }
+      : {}),
     oldMasterKeyAuthenticationHash,
     ...parsedUnlockData.masterPassword,
     accountKeys: parsedAccountKeys,
@@ -161,6 +176,7 @@ export function matchesUserKeyRotationCredentialGeneration(
   }
 
   return (
+    (!request.newUserKeyId || request.newUserKeyId !== generation.userKeyId) &&
     request.credentialMetadata.salt === generation.emailNormalized &&
     equalKdf(request.credentialMetadata.kdf, storedKdf) &&
     constantTimeEqual(

@@ -12,7 +12,7 @@ export function resolveRuntimeEnvironment(
   value: string | undefined,
 ): RuntimeEnvironment | null {
   if (value === undefined || value === '') {
-    return 'development'
+    return null
   }
 
   if (runtimeEnvironmentSet.has(value)) {

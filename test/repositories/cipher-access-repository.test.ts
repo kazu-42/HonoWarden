@@ -22,6 +22,7 @@ describe('resolveCipherAccess', () => {
       canRead: true,
       canEdit: true,
       canDelete: true,
+      canViewPassword: true,
       organizationId: null,
     })
     await expect(
@@ -31,6 +32,7 @@ describe('resolveCipherAccess', () => {
       canRead: false,
       canEdit: false,
       canDelete: false,
+      canViewPassword: false,
       organizationId: null,
     })
     await expect(
@@ -40,6 +42,7 @@ describe('resolveCipherAccess', () => {
       canRead: false,
       canEdit: false,
       canDelete: false,
+      canViewPassword: false,
       organizationId: null,
     })
   })
@@ -100,6 +103,7 @@ describe('resolveCipherAccess', () => {
       canRead: true,
       canEdit: true,
       canDelete: true,
+      canViewPassword: true,
       organizationId: 'organization-id',
     })
 
@@ -111,6 +115,7 @@ describe('resolveCipherAccess', () => {
         canRead: false,
         canEdit: false,
         canDelete: false,
+        canViewPassword: false,
         organizationId: 'organization-id',
       })
     }

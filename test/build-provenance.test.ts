@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -12,7 +14,7 @@ const validMetadata: WorkerVersionMetadata = {
 }
 
 describe('build provenance', () => {
-  it('keeps the Git source revision separate from the Worker version id', () => {
+  it('keeps the config-bound claimed source SHA separate from the Worker version id', () => {
     expect(resolveBuildProvenance(validMetadata, 'staging')).toEqual({
       ok: true,
       build: {
@@ -21,6 +23,18 @@ describe('build provenance', () => {
         createdAt: validMetadata.timestamp,
       },
     })
+  })
+
+  it('documents the version-metadata tag as a claim rather than deployed-byte proof', () => {
+    const runbook = readFileSync(
+      'docs/operations/deploy-provenance-runbook.md',
+      'utf8',
+    )
+
+    expect(runbook).toContain('config-bound claimed source SHA')
+    expect(runbook).toMatch(/does not\s+cryptographically bind/u)
+    expect(runbook).toMatch(/external build\/deploy\s+record/u)
+    expect(runbook).toContain('independent version and traffic readback')
   })
 
   it.each<{

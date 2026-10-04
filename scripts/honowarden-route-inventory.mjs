@@ -7,6 +7,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { parse as parseJsonc } from 'jsonc-parser'
+import ts from 'typescript'
 
 import { officialClientPins } from './honowarden-official-client-harness.mjs'
 
@@ -121,6 +122,116 @@ export function extractAccountLifecyclePaths(source) {
   }
 
   return [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1])
+}
+
+export function observeMountedHonoRoutes(source, appPath) {
+  const parsed = ts.createSourceFile(
+    appPath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  )
+  const imports = new Map()
+  for (const statement of parsed.statements) {
+    if (!ts.isImportDeclaration(statement)) continue
+    const bindings = statement.importClause?.namedBindings
+    if (!bindings || !ts.isNamedImports(bindings)) continue
+    for (const binding of bindings.elements) {
+      const exportName = (binding.propertyName ?? binding.name).text
+      if (/^register.+Routes$/.test(exportName)) {
+        imports.set(binding.name.text, {
+          exportName,
+          moduleName: statement.moduleSpecifier.text,
+        })
+      }
+    }
+  }
+
+  const mounted = new Map()
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.arguments.length > 0 &&
+      ts.isIdentifier(node.arguments[0]) &&
+      node.arguments[0].text === 'app' &&
+      imports.has(node.expression.text)
+    ) {
+      const registration = imports.get(node.expression.text)
+      mounted.set(
+        `${registration.moduleName}:${registration.exportName}`,
+        registration,
+      )
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(parsed)
+
+  const routes = new Map()
+  for (const { exportName, moduleName } of mounted.values()) {
+    if (!moduleName.startsWith('./') && !moduleName.startsWith('../')) {
+      throw new Error(`mounted route module must be local: ${moduleName}`)
+    }
+    const basePath = resolve(dirname(appPath), moduleName)
+    const candidates = [basePath, `${basePath}.ts`, `${basePath}.js`]
+    const modulePath = candidates.find((candidate) => existsSync(candidate))
+    if (!modulePath) {
+      throw new Error(`mounted route module source missing: ${moduleName}`)
+    }
+    const moduleSource = readFileSync(modulePath, 'utf8')
+    const moduleTree = ts.createSourceFile(
+      modulePath,
+      moduleSource,
+      ts.ScriptTarget.Latest,
+      true,
+    )
+    const registration = moduleTree.statements.find(
+      (statement) =>
+        ts.isFunctionDeclaration(statement) &&
+        statement.name?.text === exportName &&
+        statement.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+        ),
+    )
+    if (
+      !registration?.body ||
+      !registration.parameters[0] ||
+      !ts.isIdentifier(registration.parameters[0].name) ||
+      registration.parameters[0].name.text !== 'app'
+    ) {
+      throw new Error(
+        `mounted route module must export ${exportName}(app, ...): ${moduleName}`,
+      )
+    }
+    const collectRoutes = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        node.expression.expression.text === 'app'
+      ) {
+        const method = node.expression.name.text
+        if (method === 'on' || method === 'route') {
+          throw new Error(
+            `mounted route module requires direct method registrations: ${moduleName}`,
+          )
+        }
+        if (/^(get|post|put|delete|patch|all|head|options)$/.test(method)) {
+          const path = node.arguments[0]
+          if (!path || !ts.isStringLiteral(path)) {
+            throw new Error(
+              `mounted route module requires literal paths: ${moduleName}`,
+            )
+          }
+          const route = { method: method.toUpperCase(), path: path.text }
+          routes.set(`${route.method} ${route.path}`, route)
+        }
+      }
+      ts.forEachChild(node, collectRoutes)
+    }
+    collectRoutes(registration.body)
+  }
+  return [...routes.values()].sort(compareMethodPath)
 }
 
 export function extractTokenGrants(appSource, tokensSource) {
@@ -313,13 +424,20 @@ export function controllerMatches(controller, entry) {
 
 export function observeRepository(paths) {
   const appSource = readFileSync(paths.appPath, 'utf8')
+  const registeredModuleRoutes = observeMountedHonoRoutes(
+    appSource,
+    paths.appPath,
+  )
   const tokensSource = readFileSync(paths.tokensPath, 'utf8')
   const configSource = readFileSync(paths.configPath, 'utf8')
   const wranglerConfig = parseJsonc(readFileSync(paths.wranglerPath, 'utf8'))
   const roadmap = readFileSync(paths.roadmapPath, 'utf8')
 
   return {
-    routes: extractHonoRoutes(appSource),
+    routes: [...extractHonoRoutes(appSource), ...registeredModuleRoutes].sort(
+      compareMethodPath,
+    ),
+    registeredModuleRoutes,
     tokenGrants: extractTokenGrants(appSource, tokensSource),
     configFlags: extractConfigFeatureStates(configSource),
     syncFields: extractSyncFields(appSource),
@@ -429,7 +547,21 @@ export function reconcileRouteInventory({
   const enabledWithoutEvidence = []
 
   for (const route of observed.routes) {
-    if (!inventory.entries.some((entry) => routeCovered(route, entry))) {
+    const mountedRoute = (observed.registeredModuleRoutes ?? []).some(
+      (item) => item.method === route.method && item.path === route.path,
+    )
+    const explicitlyCovered = inventory.entries.some((entry) =>
+      (entry.covers ?? []).some(
+        (cover) =>
+          cover.method === route.method &&
+          !cover.path.includes('*') &&
+          pathMatches(cover.path, route.path),
+      ),
+    )
+    if (
+      !inventory.entries.some((entry) => routeCovered(route, entry)) ||
+      (mountedRoute && !explicitlyCovered)
+    ) {
       unclassified.push({
         kind: 'route',
         key: `${route.method} ${route.path}`,

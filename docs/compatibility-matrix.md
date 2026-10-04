@@ -1,6 +1,16 @@
 # Client Compatibility Matrix
 
-Last release metadata check: 2026-08-16T03:35:28Z.
+Last release metadata check: 2026-09-22T05:32:22Z.
+
+Metadata was refreshed from official stable release listings on 2026-09-22.
+Browser tracks 2026.9.1; Desktop, CLI, Android, and iOS track 2026.9.0.
+The CLI row now has exact-version local `live_smoke` evidence; four other rows
+remain `fixture_only`. Refreshed release metadata alone does not prove
+exact-version binary execution or broad compatibility. The 14-day required
+refresh is next due on 2026-10-06T05:32:22Z; the 21-day stale boundary is
+2026-10-13T05:32:22Z. This does not change the sealed tag-time alpha evidence.
+See the metadata-refresh follow-up in
+`.workflow/integration-2026-09-06/verification.md` for source readback.
 
 This matrix records the exact client versions currently tracked by HonoWarden.
 It is intentionally conservative: rows stay at `fixture_only` until the same
@@ -137,17 +147,27 @@ client evidence and do not change any verification level in the matrix.
 
 ## Current Matrix
 
-| Surface           | Version  | Build | Release Tag       | Release Published    | Verification | Current evidence boundary                                                                                                                        |
-| ----------------- | -------- | ----- | ----------------- | -------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| browser_extension | 2026.7.0 |       | browser-v2026.7.0 | 2026-07-23T16:49:59Z | fixture_only | No exact-version official binary live smoke. Browser 2026.6.1 evidence is historical and does not promote this row.                              |
-| desktop           | 2026.7.0 |       | desktop-v2026.7.0 | 2026-07-23T15:20:46Z | fixture_only | No exact-version official binary live smoke. Desktop 2026.6.1 evidence is historical and does not promote this row.                              |
-| mobile_android    | 2026.7.1 | 21803 | v2026.7.1-bwpm    | 2026-08-07T22:20:51Z | fixture_only | No exact-version/build official binary live smoke. Android 2026.6.1 build 21713 evidence is historical and does not promote this row.            |
-| mobile_ios        | 2026.7.1 | 3432  | v2026.7.1-bwpm    | 2026-08-07T22:12:38Z | fixture_only | No physical-device or simulator live smoke is recorded for this exact version/build.                                                             |
-| cli               | 2026.7.0 |       | cli-v2026.7.0     | 2026-07-23T21:16:13Z | fixture_only | No exact-version official binary live smoke. CLI 2026.6.0 login, sync, lifecycle, refresh, and TOTP evidence is historical and does not promote. |
+| Surface           | Version  | Build | Release Tag       | Release Published    | Verification | Current evidence boundary                                                                                                                           |
+| ----------------- | -------- | ----- | ----------------- | -------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| browser_extension | 2026.9.1 |       | browser-v2026.9.1 | 2026-09-21T21:57:20Z | fixture_only | No exact-version official binary live smoke. Browser 2026.6.1 evidence is historical and does not promote this row.                                 |
+| desktop           | 2026.9.0 |       | desktop-v2026.9.0 | 2026-09-17T13:52:45Z | fixture_only | No exact-version official binary live smoke. Desktop 2026.6.1 evidence is historical and does not promote this row.                                 |
+| mobile_android    | 2026.9.0 | 21909 | v2026.9.0-bwpm    | 2026-09-18T14:05:00Z | fixture_only | No exact-version/build official binary live smoke. Android 2026.6.1 build 21713 evidence is historical and does not promote this row.               |
+| mobile_ios        | 2026.9.0 | 3521  | v2026.9.0-bwpm    | 2026-09-18T13:26:07Z | fixture_only | No physical-device or simulator live smoke is recorded for this exact version/build.                                                                |
+| cli               | 2026.9.0 |       | cli-v2026.9.0     | 2026-09-17T13:28:40Z | live_smoke   | Local synthetic login, key-ID backfill, sync, five-field decryption, lock/unlock, logout, and repeat login passed. Broader flows remain unverified. |
+
+The [current CLI smoke evidence](release/current-cli-2026-9-smoke.md) preserves
+the initial missing-route failure, an intermediate response-projection failure,
+and the final passing run. It requires migration 0022 and a local registration
+flag; tracked writers remain default-off and no remote resources were changed.
+The connected authorized iPhone rejected the official IPA's Beta profile during
+normal installation (`0xe800801f`); iOS execution remains unverified pending
+App Store/authorized TestFlight installation.
 
 There is intentionally no Web Vault row. HonoWarden's alpha compatibility
 target is API-only protocol support for tracked clients, not a hosted or
-embedded vault UI. Adding a Web Vault row requires a new ADR, browser security
+embedded vault UI.
+
+Adding a Web Vault row requires a new ADR, browser security
 review, CSP/static-asset provenance rules, deployment and rollback boundaries,
 and live evidence.
 
@@ -193,7 +213,7 @@ pass.
 Attachment sync metadata has fixture coverage through `attachment_metadata`.
 HON-124 records historical issue-local official Desktop `2026.6.1` staging
 allocation, upload, download, and delete lifecycle evidence with cleanup. It is
-not Desktop `2026.7.0` evidence and does not promote the Desktop matrix row or
+not Desktop `2026.9.0` evidence and does not promote the Desktop matrix row or
 prove browser, mobile, production, or broad regression behavior.
 
 ## Verification Levels
@@ -285,7 +305,7 @@ published-alpha snapshot.
 
 The documents below were added after the alpha tag. They preserve
 version-bound historical observations, but are not part of the sealed tag-time
-manifest and do not promote any current 2026.7 row.
+manifest and do not promote any current 2026.9 row.
 
 - Desktop `2026.6.1` password-login, approval, and empty-vault evidence: [`docs/release/login-with-device-live-client-evidence.md`](release/login-with-device-live-client-evidence.md)
 - Desktop `2026.6.1` historical transport checkpoint: [`docs/release/desktop-notification-transport-evidence.md`](release/desktop-notification-transport-evidence.md)

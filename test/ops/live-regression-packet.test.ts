@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +12,13 @@ const packetScript = join(
   repoRoot,
   'scripts/honowarden-live-regression-packet.mjs',
 )
+const currentMatrix = JSON.parse(
+  readFileSync(join(repoRoot, 'compat/client-matrix.json'), 'utf8'),
+) as { checkedAt: string; entries: Array<{ surface: string; version: string }> }
+const currentCli = currentMatrix.entries.find(
+  (entry) => entry.surface === 'cli',
+)!
+const currentRunId = currentMatrix.checkedAt.replace(/[-:]/g, '')
 
 type LiveRegressionPacket = {
   schemaVersion: number
@@ -84,9 +92,9 @@ describe('live regression packet', () => {
       '--source-commit',
       '1234567890ab',
       '--run-id',
-      '20260724T220000Z',
+      currentRunId,
       '--generated-at',
-      '2026-07-24T22:00:00Z',
+      currentMatrix.checkedAt,
       ...completeFlows.flatMap((flow) => ['--flow', flow]),
     ])
     const report = JSON.parse(result.stdout) as LiveRegressionPacket
@@ -97,27 +105,27 @@ describe('live regression packet', () => {
     expect(report.targetVerificationLevel).toBe('live_regression')
     expect(report.matrix).toMatchObject({
       surface: 'cli',
-      currentVerificationLevel: 'fixture_only',
-      currentVersion: '2026.7.0',
+      currentVerificationLevel: 'live_smoke',
+      currentVersion: currentCli.version,
     })
     expect(report.client).toMatchObject({
       surface: 'cli',
-      version: '2026.7.0',
+      version: currentCli.version,
       build: null,
     })
     expect(report.environment).toMatchObject({
       kind: 'local',
       serverUrl: 'https://localhost:8791',
       sourceCommit: '1234567890ab',
-      runId: '20260724T220000Z',
-      evidenceDir: 'docs/release/live-regression-evidence/cli/20260724T220000Z',
+      runId: currentRunId,
+      evidenceDir: `docs/release/live-regression-evidence/cli/${currentRunId}`,
     })
     expect(
       report.flowCoverage.groups.every((group) => group.status === 'pass'),
     ).toBe(true)
     expect(statusById(report, 'synthetic_data_only')).toBe('pass')
     expect(report.evidenceTemplate.summaryPath).toBe(
-      'docs/release/live-regression-evidence/cli/20260724T220000Z/summary.md',
+      `docs/release/live-regression-evidence/cli/${currentRunId}/summary.md`,
     )
     expect(report.evidenceTemplate.prohibitedContent).toContain('passwords')
     expect(report.limitations).toContain(

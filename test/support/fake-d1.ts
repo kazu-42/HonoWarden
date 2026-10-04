@@ -199,6 +199,25 @@ export class FakeD1Database {
   ) {
     options.webauthnChallenges ??= []
     options.webauthnCredentials ??= []
+    // Default route fixtures model one concrete active session per seeded user.
+    // Explicit device arrays, including an empty array, always remain authoritative.
+    options.devices ??= (
+      options.authUsers ?? (options.authUser ? [options.authUser] : [])
+    ).map((user) => ({
+      id: `${String(user.id)}:fixture-device`,
+      userId: user.id,
+      identifier: 'fixture-device',
+      sessionId: 'synthetic-session-id',
+      name: 'Fixture device',
+      type: 8,
+      encryptedUserKey: null,
+      encryptedPublicKey: null,
+      encryptedPrivateKey: null,
+      lastSeenAt: null,
+      createdAt: '2026-07-11T00:00:00.000Z',
+      updatedAt: '2026-07-11T00:00:00.000Z',
+      revokedAt: null,
+    }))
   }
 
   get webauthnCredentials(): Record<string, unknown>[] {
@@ -259,8 +278,8 @@ export class FakeD1Database {
         if (
           query.includes('COUNT(DISTINCT collection.id) as count') &&
           query.includes('membership.status = 2') &&
-          query.includes('membership.type = 0') &&
-          query.includes('collection_user.manage = 1')
+          query.includes('membership.type IN (0, 1, 2)') &&
+          query.includes('collection_user.read_only = 0')
         ) {
           const row = {
             count: findManagedOrganizationCollectionIds(
@@ -268,6 +287,7 @@ export class FakeD1Database {
               String(boundValues[0] ?? ''),
               String(boundValues[1] ?? ''),
               boundValues.slice(2).map(String),
+              false,
             ).length,
           }
 
@@ -303,7 +323,6 @@ export class FakeD1Database {
         if (
           query.includes('FROM organization_users membership') &&
           query.includes('INNER JOIN collection_ciphers collection_cipher') &&
-          query.includes('collection_user.manage = 1') &&
           query.includes(
             'collection.organization_id = membership.organization_id',
           ) &&
@@ -424,6 +443,41 @@ export class FakeD1Database {
         }
 
         if (query.includes('FROM ciphers')) {
+          if (query.includes('1 as found')) {
+            const row =
+              options.cipher ??
+              options.ciphers?.find(
+                (candidate) =>
+                  candidate.id === boundValues[0] &&
+                  candidate.userId === boundValues[1],
+              )
+            return row &&
+              row.id === boundValues[0] &&
+              row.userId === boundValues[1] &&
+              row.organizationId == null &&
+              row.deletedAt == null
+              ? ({ found: 1 } as T)
+              : null
+          }
+          if (
+            /DELETE\s+FROM\s+ciphers/.test(query) &&
+            query.includes('RETURNING id')
+          ) {
+            if (options.cipher !== undefined && !options.ciphers) {
+              const row = options.cipher
+              const owned =
+                row &&
+                row.id === boundValues[0] &&
+                row.userId === boundValues[1] &&
+                row.organizationId == null &&
+                options.cipherPermanentDeleteChanges !== 0
+              if (!owned) return null
+              options.cipher = null
+              return { id: boundValues[0] } as T
+            }
+            const changes = mutateCipherRows(options, boundValues, query)
+            return changes === 1 ? ({ id: boundValues[0] } as T) : null
+          }
           if (options.cipher !== undefined) {
             return (options.cipher ?? null) as T | null
           }
@@ -472,6 +526,20 @@ export class FakeD1Database {
 
         if (query.includes('FROM webauthn_challenges')) {
           return findWebAuthnChallengeRow(options, boundValues) as T | null
+        }
+
+        if (query.includes('INNER JOIN devices auth_device')) {
+          const [identifier, sessionId, userId] = boundValues
+          const device = options.devices?.find(
+            (row) =>
+              row.userId === userId &&
+              row.identifier === identifier &&
+              row.sessionId === sessionId &&
+              row.revokedAt == null,
+          )
+          return device
+            ? (findAuthUser(options, query, [userId]) as T | null)
+            : null
         }
 
         if (query.includes('FROM users')) {
@@ -824,9 +892,14 @@ export class FakeD1Database {
         }
 
         if (query.includes('INSERT INTO cipher_attachments')) {
+          const actualChanges =
+            options.attachmentInsertChanges === 0
+              ? 0
+              : insertCipherAttachment(options, boundValues, query)
           const changes =
-            options.attachmentInsertChanges ??
-            insertCipherAttachment(options, boundValues, query)
+            actualChanges === 0
+              ? 0
+              : (options.attachmentInsertChanges ?? actualChanges)
 
           return {
             success: true,
@@ -1428,6 +1501,61 @@ export class FakeD1Database {
       ) as D1Result<T>[]
     }
 
+    if (
+      fakeStatements.length === 3 &&
+      fakeStatements[0]?.__fakeQuery.includes(
+        'INSERT OR IGNORE INTO devices',
+      ) &&
+      fakeStatements[1]?.__fakeQuery.includes('session_id = ?') &&
+      fakeStatements[2]?.__fakeQuery.includes('INSERT INTO refresh_tokens')
+    ) {
+      const values = fakeStatements[0].__fakeBoundValues
+      const user = findAuthUser(this.options, 'FROM users WHERE u.id = ?', [
+        values[6],
+      ])
+      const validGeneration =
+        user &&
+        user.disabledAt == null &&
+        user.masterPasswordHash === values[7] &&
+        user.securityStamp === values[8]
+      if (!validGeneration || this.options.deviceUpdateChanges === 0) {
+        return fakeStatements.map(() => fakeResult(0)) as D1Result<T>[]
+      }
+      this.options.devices ??= []
+      let device = this.options.devices.find((row) => row.id === values[0])
+      const inserted = device ? 0 : 1
+      if (!device) {
+        device = {
+          id: values[0],
+          userId: values[1],
+          identifier: values[2],
+          createdAt: values[5],
+        }
+        this.options.devices.push(device)
+      }
+      const updates = fakeStatements[1].__fakeBoundValues
+      Object.assign(device, {
+        name: updates[0],
+        type: updates[1],
+        lastSeenAt: updates[2],
+        updatedAt: updates[3],
+        sessionId: updates[4],
+        revokedAt: null,
+      })
+      const token = fakeStatements[2].__fakeBoundValues
+      this.options.refreshTokens ??= []
+      this.options.refreshTokens.push({
+        id: token[0],
+        userId: token[1],
+        deviceId: token[2],
+        tokenHash: token[3],
+        expiresAt: token[4],
+        sessionId: token[5],
+        revokedAt: null,
+      })
+      return [inserted, 1, 1].map(fakeResult) as D1Result<T>[]
+    }
+
     if (isPersonalApiKeyMutationBatch(fakeStatements)) {
       return applyPersonalApiKeyMutationBatch(
         this.options,
@@ -1435,6 +1563,35 @@ export class FakeD1Database {
         fakeStatements,
         this.auditEventInserts,
       ) as Promise<D1Result<T>[]>
+    }
+
+    if (
+      fakeStatements.length === 2 &&
+      /UPDATE\s+devices/.test(fakeStatements[0]?.__fakeQuery ?? '') &&
+      fakeStatements[1]?.__fakeQuery.includes('changes() = 1')
+    ) {
+      const values = fakeStatements[0]?.__fakeBoundValues ?? []
+      const device = this.options.devices?.find(
+        (row) =>
+          row.userId === values[2] &&
+          row.id === values[3] &&
+          row.revokedAt == null,
+      )
+      const changes = this.options.deviceRevokeChanges ?? (device ? 1 : 0)
+      if (changes === 1 && device) {
+        device.revokedAt = values[0]
+        device.updatedAt = values[1]
+        for (const token of this.options.refreshTokens ?? []) {
+          if (
+            token.userId === values[2] &&
+            token.deviceId === values[3] &&
+            token.revokedAt == null
+          ) {
+            token.revokedAt = values[0]
+          }
+        }
+      }
+      return [changes, changes].map(fakeResult) as D1Result<T>[]
     }
 
     if (isOrganizationFoundationBatch(fakeStatements)) {
@@ -1575,6 +1732,40 @@ export class FakeD1Database {
       )
       const changes = row ? 1 : 0
       if (row) {
+        const deviceValues = fakeStatements[0]?.__fakeBoundValues ?? []
+        const sessionValues = fakeStatements[1]?.__fakeBoundValues ?? []
+        const tokenValues = fakeStatements[2]?.__fakeBoundValues ?? []
+        this.options.devices ??= []
+        let device = this.options.devices.find(
+          (candidate) => candidate.id === deviceValues[0],
+        )
+        if (!device) {
+          device = {
+            id: deviceValues[0],
+            userId: deviceValues[1],
+            identifier: deviceValues[2],
+            createdAt: deviceValues[5],
+          }
+          this.options.devices.push(device)
+        }
+        Object.assign(device, {
+          name: sessionValues[0],
+          type: sessionValues[1],
+          lastSeenAt: sessionValues[2],
+          updatedAt: sessionValues[3],
+          sessionId: sessionValues[4],
+          revokedAt: null,
+        })
+        this.options.refreshTokens ??= []
+        this.options.refreshTokens.push({
+          id: tokenValues[0],
+          userId: tokenValues[1],
+          deviceId: tokenValues[2],
+          tokenHash: tokenValues[3],
+          expiresAt: tokenValues[4],
+          sessionId: tokenValues[5],
+          revokedAt: null,
+        })
         Object.assign(row, {
           status: 'consumed',
           consumedAt: values[0],
@@ -1646,8 +1837,27 @@ export class FakeD1Database {
       )
     ) {
       const results: D1Result<T>[] = []
-      for (const statement of statements) {
-        results.push(await statement.run<T>())
+      let previousChanges = 0
+      for (const [index, statement] of statements.entries()) {
+        const fakeStatement = fakeStatements[index]
+        if (!fakeStatement) {
+          throw new Error('Fake D1 batch statement mismatch.')
+        }
+        if (
+          fakeStatement.__fakeQuery.includes('WHERE changes() = 1') &&
+          previousChanges !== 1
+        ) {
+          results.push({
+            success: true,
+            results: [],
+            meta: { ...fakeMeta, changes: 0 },
+          })
+          previousChanges = 0
+          continue
+        }
+        const result = await statement.run<T>()
+        results.push(result)
+        previousChanges = result.meta.changes
       }
       return results
     }
@@ -2461,7 +2671,7 @@ function applyOrganizationCollectionDeleteBatch(
     return hasSelectedMapping && !hasSurvivingMapping
   })
   const canDelete =
-    Boolean(organization) &&
+    Boolean(organization && Number(organization.enabled ?? 1) === 1) &&
     collectionIds.length > 0 &&
     selectedIds.size === collectionIds.length &&
     managedCollectionIds.length === collectionIds.length &&
@@ -2492,9 +2702,12 @@ function applyOrganizationCollectionDeleteBatch(
       throw new Error('Organization collection deletion was incomplete')
     }
 
-    return [1, deleted].map((changes) => ({
+    return [1, deleted].map((changes, index) => ({
       success: true,
-      results: [],
+      results:
+        index === 1 && statements[1]?.__fakeQuery.includes('RETURNING id')
+          ? collectionIds.map((id) => ({ id }))
+          : [],
       meta: { ...fakeMeta, changes },
     }))
   } catch (error) {
@@ -2582,6 +2795,7 @@ function applyOrganizationCipherMutation(
     guardUserId,
     guardOrganizationId,
     requestedCollectionIds,
+    false,
   )
 
   if (
@@ -2675,6 +2889,7 @@ function applyOrganizationCipherMappings(
     userId,
     organizationId,
     requestedCollectionIds,
+    false,
   )
   const cipher = options.ciphers?.find(
     (row) =>
@@ -2920,7 +3135,11 @@ function findConfirmedOrganizationRow(
     return null
   }
 
-  return options.organizations?.find((row) => row.id === organizationId) ?? null
+  return (
+    options.organizations?.find(
+      (row) => row.id === organizationId && Number(row.enabled ?? 1) === 1,
+    ) ?? null
+  )
 }
 
 function findConfirmedOrganizationOwnerRow(
@@ -2936,7 +3155,10 @@ function findConfirmedOrganizationOwnerRow(
       Number(row.type) === 0,
   )
 
-  return membership
+  const enabled = options.organizations?.some(
+    (row) => row.id === organizationId && Number(row.enabled ?? 1) === 1,
+  )
+  return membership && enabled
     ? {
         organizationUserId: membership.id,
         organizationId: membership.organizationId,
@@ -2959,7 +3181,7 @@ function listConfirmedOrganizationRows(
     const organization = options.organizations?.find(
       (row) => row.id === membership.organizationId,
     )
-    if (organization) {
+    if (organization && Number(organization.enabled ?? 1) === 1) {
       rows.push({
         ...organization,
         organizationUserId: membership.id,
@@ -3252,6 +3474,7 @@ function findManagedOrganizationCollectionIds(
   userId: string,
   organizationId: string,
   requestedCollectionIds: readonly string[],
+  requireAdministration = true,
 ): string[] {
   const requested = new Set(requestedCollectionIds)
   const managed = new Set<string>()
@@ -3261,7 +3484,9 @@ function findManagedOrganizationCollectionIds(
       membership.userId !== userId ||
       membership.organizationId !== organizationId ||
       Number(membership.status) !== 2 ||
-      Number(membership.type) !== 0
+      (requireAdministration
+        ? Number(membership.type) !== 0
+        : ![0, 1, 2].includes(Number(membership.type ?? 2)))
     ) {
       continue
     }
@@ -3269,7 +3494,8 @@ function findManagedOrganizationCollectionIds(
     for (const collectionUser of options.collectionUsers ?? []) {
       if (
         collectionUser.organizationUserId !== membership.id ||
-        Number(collectionUser.manage) !== 1
+        (requireAdministration && Number(collectionUser.manage) !== 1) ||
+        Number(collectionUser.readOnly ?? 0) !== 0
       ) {
         continue
       }
@@ -3316,19 +3542,23 @@ function findManagedOrganizationCipherAccess(
     return null
   }
 
+  const organization = options.organizations?.find(
+    (row) => row.id === membershipOrganizationId,
+  )
+  if (organization && Number(organization.enabled ?? 1) !== 1) return null
+  const grants: Record<string, unknown>[] = []
+
   for (const membership of options.organizationUsers ?? []) {
     if (
       membership.userId !== userId ||
       membership.organizationId !== membershipOrganizationId ||
-      Number(membership.status) !== 2
+      Number(membership.status) !== 2 ||
+      ![0, 1, 2].includes(Number(membership.type ?? 2))
     ) {
       continue
     }
     for (const collectionUser of options.collectionUsers ?? []) {
-      if (
-        collectionUser.organizationUserId !== membership.id ||
-        Number(collectionUser.manage) !== 1
-      ) {
+      if (collectionUser.organizationUserId !== membership.id) {
         continue
       }
       const collection = options.collections?.find(
@@ -3341,12 +3571,24 @@ function findManagedOrganizationCipherAccess(
           row.collectionId === collection?.id && row.cipherId === cipherId,
       )
       if (collection && collectionCipher) {
-        return { hasManageAccess: 1 }
+        grants.push({
+          hasManageAccess: 1,
+          readOnly: Number(collectionUser.readOnly ?? 0),
+          hidePasswords: Number(collectionUser.hidePasswords ?? 0),
+        })
       }
     }
   }
 
-  return null
+  return grants.length > 0
+    ? {
+        hasManageAccess: grants.length,
+        readOnly: Math.min(...grants.map((grant) => Number(grant.readOnly))),
+        hidePasswords: Math.min(
+          ...grants.map((grant) => Number(grant.hidePasswords)),
+        ),
+      }
+    : null
 }
 
 function mutateCipherRows(
@@ -3389,7 +3631,11 @@ function mutateCipherRows(
 
     const [id, userId] = boundValues
     const index = options.ciphers.findIndex(
-      (row) => row.id === id && row.userId === userId,
+      (row) =>
+        row.id === id &&
+        row.userId === userId &&
+        (!query.includes('organization_id IS NULL') ||
+          row.organizationId == null),
     )
     if (index < 0) {
       return 0
@@ -4059,14 +4305,40 @@ function findLatestRevisionDate(
 function findConfirmedCollectionAccess(
   options: FakeD1DatabaseOptions,
   userId: string,
-): Map<string, { organizationId: string; manage: boolean }> {
+): Map<
+  string,
+  {
+    organizationId: string
+    manage: boolean
+    canEdit: boolean
+    canViewPassword: boolean
+  }
+> {
   const collectionAccess = new Map<
     string,
-    { organizationId: string; manage: boolean }
+    {
+      organizationId: string
+      manage: boolean
+      canEdit: boolean
+      canViewPassword: boolean
+    }
   >()
 
   for (const membership of options.organizationUsers ?? []) {
-    if (membership.userId !== userId || Number(membership.status) !== 2) {
+    if (
+      membership.userId !== userId ||
+      Number(membership.status) !== 2 ||
+      ![0, 1, 2].includes(Number(membership.type ?? 2))
+    ) {
+      continue
+    }
+    if (
+      !options.organizations?.some(
+        (row) =>
+          row.id === membership.organizationId &&
+          Number(row.enabled ?? 1) === 1,
+      )
+    ) {
       continue
     }
 
@@ -4089,6 +4361,12 @@ function findConfirmedCollectionAccess(
         organizationId: String(collection.organizationId),
         manage:
           existing?.manage === true || Number(collectionUser.manage) === 1,
+        canEdit:
+          existing?.canEdit === true ||
+          Number(collectionUser.readOnly ?? 0) === 0,
+        canViewPassword:
+          existing?.canViewPassword === true ||
+          Number(collectionUser.hidePasswords ?? 0) === 0,
       })
     }
   }
@@ -4123,6 +4401,8 @@ function listAccessibleCipherRows(
           organizationId: null,
           cipherKey: null,
           collectionIdsJson: '[]',
+          canEdit: 1,
+          canViewPassword: 1,
         })
       }
       continue
@@ -4135,9 +4415,7 @@ function listAccessibleCipherRows(
             (mapping) =>
               mapping.cipherId === row.id &&
               accessibleCollections.get(String(mapping.collectionId))
-                ?.organizationId === organizationId &&
-              accessibleCollections.get(String(mapping.collectionId))
-                ?.manage === true,
+                ?.organizationId === organizationId,
           )
           .map((mapping) => String(mapping.collectionId)),
       ),
@@ -4149,6 +4427,14 @@ function listAccessibleCipherRows(
         organizationId,
         cipherKey: row.cipherKey ?? null,
         collectionIdsJson: JSON.stringify(collectionIds),
+        canEdit: Number(
+          collectionIds.some((id) => accessibleCollections.get(id)?.canEdit),
+        ),
+        canViewPassword: Number(
+          collectionIds.some(
+            (id) => accessibleCollections.get(id)?.canViewPassword,
+          ),
+        ),
       })
     }
   }
@@ -4360,6 +4646,23 @@ function insertCipherAttachment(
   boundValues: unknown[],
   query: string,
 ): number {
+  if (query.includes('WHERE EXISTS') && query.includes('FROM ciphers')) {
+    const row =
+      options.cipher ??
+      options.ciphers?.find(
+        (candidate) =>
+          candidate.id === boundValues[11] &&
+          candidate.userId === boundValues[12],
+      )
+    if (
+      !row ||
+      row.id !== boundValues[11] ||
+      row.userId !== boundValues[12] ||
+      row.organizationId != null ||
+      row.deletedAt != null
+    )
+      return 0
+  }
   if (!options.attachments) {
     return 1
   }
@@ -4369,11 +4672,11 @@ function insertCipherAttachment(
     return 0
   }
 
-  if (query.includes('SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?')) {
-    const requestedSize = Number(boundValues[11])
-    const userId = String(boundValues[12])
-    const expiredBefore = String(boundValues[13])
-    const maxStorageBytes = Number(boundValues[14])
+  if (query.includes('SELECT SUM(size)')) {
+    const requestedSize = Number(boundValues[13])
+    const userId = String(boundValues[14])
+    const expiredBefore = String(boundValues[15])
+    const maxStorageBytes = Number(boundValues[16])
     const reservedStorage = calculateAttachmentStorageBytes(
       options.attachments,
       [userId, expiredBefore],

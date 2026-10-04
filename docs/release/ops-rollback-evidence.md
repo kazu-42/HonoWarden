@@ -39,8 +39,8 @@ were completed after the alpha GitHub Release was published and verified.
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target
 - Historical recovery proposal: redeploy the reviewed release-target commit.
-  This proposal did not confer current authority and was not an executable
-  procedure.
+  This was an approved executable recovery choice at the time, but was not
+  executed. That approval has expired and confers no current authority.
 
 ### Production API Worker
 
@@ -51,8 +51,8 @@ were completed after the alpha GitHub Release was published and verified.
 - Candidate status: pre-correction `main` deployment, not verified as the safe
   rollback target
 - Historical recovery proposal: redeploy the reviewed release-target commit.
-  This proposal did not confer current authority and was not an executable
-  procedure.
+  This was an approved executable recovery choice at the time, but was not
+  executed. That approval has expired and confers no current authority.
 
 The candidate previous versions were known deployable Worker versions, but they
 were the pre-correction deployments from `main`

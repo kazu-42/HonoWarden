@@ -1,6 +1,20 @@
 {
   "title": "HON-184 encrypted text Send lifecycle",
   "slug": "hon-184-text-send",
+  "historicalCheckpoint": true,
+  "metadataRefreshFollowUp": {
+    "checkedAt": "2026-09-22T05:32:22Z",
+    "status": "repository_evidence_ready_execution_not_admitted",
+    "evidence": ".workflow/integration-2026-09-06/verification.md",
+    "notes": "Supersedes only the stale-metadata block below: official stable metadata now tracks Browser 2026.9.1 and Desktop/CLI/Android/iOS 2026.9.0. All rows remain fixture_only. The strict repository-evidence gate passed 12 checks with zero blocks; exact-version live runs and execution admission remain separate. No publication, deployment, remote resource, or secret operation was performed."
+  },
+  "integrationFollowUp": {
+    "status": "local_verified_release_blocked",
+    "baseCommit": "2846198beb18c085771b6d91a6a7ed28ac51d27e",
+    "landedCandidateCommit": "744097a4f3e31b7511f17e50d6b83356ac63fdd9",
+    "evidence": ".workflow/integration-2026-09-06/verification.md",
+    "notes": "The original status and verification below describe the dated candidate checkpoint. The user-approved HON-210 replay repair and four-candidate integration pass local verification: full 147 files / 2639 tests, focused 18 files / 264 tests, compatibility 8 files / 973 tests, static checks, and independent re-review. Release remains blocked by stale current client metadata; no commit, publication, deployment, remote resource, or secret operation was performed."
+  },
   "created_at": "2026-08-08T20:21:00Z",
   "updated_at": "2026-08-16T06:27:43Z",
   "status": "local_verified_commit_ready",

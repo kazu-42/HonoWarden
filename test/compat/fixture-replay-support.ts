@@ -199,6 +199,7 @@ export async function runCompatFixture(
     sub: subjectUser.id,
     email: subjectUser.emailNormalized,
     device: options.tokenDeviceIdentifier ?? 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: subjectUser.securityStamp,
     iat: options.tokenIssuedAt ?? 1,
     exp: options.tokenExpiresAt ?? 4_102_444_800,
@@ -214,7 +215,7 @@ export async function runCompatFixture(
     databaseSeed.schemaVersion ?? null,
     [...(databaseSeed.tables ?? requiredTables)],
     {
-      ...databaseSeed,
+      ...structuredClone(databaseSeed),
       webauthnCredentials: [...databaseSeed.webauthnCredentials],
       webauthnChallenges: [...databaseSeed.webauthnChallenges],
     },
@@ -235,6 +236,7 @@ export async function runCompatFixture(
   const response = await app.request(request.path, requestInit, {
     DB: database,
     CF_VERSION_METADATA: syntheticVersionMetadata,
+    HONOWARDEN_ENV: 'development',
     HONOWARDEN_TOKEN_SECRET: tokenSecret,
     HONOWARDEN_TOTP_SECRET: options.totpSecret ?? tokenSecret,
     HONOWARDEN_ALLOWED_EMAILS: options.allowedEmails ?? 'person@example.test',
@@ -384,7 +386,15 @@ function buildDatabaseSeed(
     folders: seed.folders ?? [],
     folderDeleteChanges: seed.folderDeleteChanges ?? 1,
     folderUpdateChanges: seed.folderUpdateChanges ?? 1,
-    devices: seed.devices ?? [],
+    devices:
+      seed.devices ??
+      authUsers.map((user) => ({
+        id: `${user.id}:fixture-device`,
+        userId: user.id,
+        identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
+        revokedAt: null,
+      })),
     deviceUpdateChanges: seed.deviceUpdateChanges ?? 1,
     deviceRevokeChanges: seed.deviceRevokeChanges ?? 1,
     refreshSession: seed.refreshSession ?? null,

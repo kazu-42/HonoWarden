@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { releaseClockEnv } from '../support/release-clock'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const readinessPacketScript = join(
@@ -114,24 +116,23 @@ describe('ops readiness packet', () => {
 
     expect(report.schemaVersion).toBe(2)
     expect(report.status).toBe('not_ready')
-    expect(report.blockingReason).toBe('release_publication_approval_required')
+    expect(report.blockingReason).toBe('release_publication_not_ready')
     expect(report.release).toMatchObject({
       completion: 'incomplete',
-      blockingReason: 'release_publication_approval_required',
-      statusPhase: 'draft_ready_for_publication',
+      blockingReason: 'release_publication_not_ready',
+      statusPhase: 'not_ready_for_publication',
       targetCommit,
     })
     expect(report.release.publicationGate).toMatchObject({
-      approvalRequired: true,
-      nextActionId: 'request_publication_approval',
-      approvalText: `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
-      publishCommand:
-        'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
+      approvalRequired: false,
+      nextActionId: 'resolve_publication_blockers',
+      approvalText: null,
+      publishCommand: null,
       verifyPublishedCommand:
         'pnpm release:published:packet -- --strict --tag-workflow-run-id 54321 --tag-workflow-url https://example.invalid/actions/runs/54321',
       viewReleaseCommand:
         'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
-      postPublicationPendingChecks: ['release_state'],
+      postPublicationPendingChecks: [],
     })
     expect(statusById(report, 'release_published_verified')).toBe('fail')
     expect(statusById(report, 'cloudflare_resources_recorded')).toBe('pass')
@@ -149,9 +150,7 @@ describe('ops readiness packet', () => {
     expect(report.commands.publishedVerification).toBe(
       'pnpm release:published:packet -- --strict --tag-workflow-run-id 54321 --tag-workflow-url https://example.invalid/actions/runs/54321',
     )
-    expect(report.commands.publishRelease).toBe(
-      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
-    )
+    expect(report.commands.publishRelease).toBeNull()
     expect(report.commands.viewRelease).toBe(
       'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
     )
@@ -211,14 +210,13 @@ describe('ops readiness packet', () => {
     })
     const report = JSON.parse(result.stdout) as OpsReadinessPacket
 
-    expect(report.blockingReason).toBe('release_publication_approval_required')
-    expect(report.release.statusPhase).toBe('draft_ready_for_publication')
+    expect(report.blockingReason).toBe('release_publication_not_ready')
+    expect(report.release.statusPhase).toBe('not_ready_for_publication')
     expect(report.release.publicationGate).toMatchObject({
-      approvalRequired: true,
-      nextActionId: 'request_publication_approval',
-      approvalText: `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
-      publishCommand:
-        'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
+      approvalRequired: false,
+      nextActionId: 'resolve_publication_blockers',
+      approvalText: null,
+      publishCommand: null,
     })
     expect(report.commands.publishedVerification).toBe(
       'pnpm release:published:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935',
@@ -862,7 +860,7 @@ function fakeEnv(fakeBin: {
   tagWorkflowUrl: string
 }) {
   return {
-    ...process.env,
+    ...releaseClockEnv('stale'),
     CLOUDFLARE_API_KEY: '',
     CLOUDFLARE_API_TOKEN: '',
     CLOUDFLARE_GLOBAL_API_KEY: '',

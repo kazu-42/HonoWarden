@@ -62,7 +62,15 @@ describe('HON-210 WebAuthn enrollment', () => {
       })
     }
 
-    const config = await app.request('/api/config', {}, env)
+    const config = await app.request(
+      '/api/config',
+      {},
+      {
+        ...env,
+        HONOWARDEN_ENV: 'development',
+      },
+    )
+    expect(config.status).toBe(200)
     const body = (await config.json()) as {
       featureStates: Record<string, boolean>
     }
@@ -222,6 +230,8 @@ describe('HON-210 WebAuthn enrollment', () => {
   })
 
   it('rejects replayed, foreign, and malformed registration responses without partial writes', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-22T04:45:00.000Z'))
     const user = authUserRecord()
     const env = requestEnv(user)
     const options = await issueOptions(env, user)
@@ -572,6 +582,7 @@ async function accessTokenFor(user: ReturnType<typeof authUserRecord>) {
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: issuedAt,
     exp: issuedAt + 3600,
@@ -591,6 +602,7 @@ async function refreshAccessTokenFor(user: ReturnType<typeof authUserRecord>) {
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: issuedAt,
     exp: issuedAt + 3600,

@@ -73,6 +73,12 @@ capture.
 
 ### Token Or Secret Exposure
 
+HonoWarden runtime secret/config changes are currently stopped. Steps below
+describe incident decisions and required outcomes, not an executable rotation
+procedure. Before any Worker secret change, enter the separately reviewed
+[deployment and recovery protocol](../operations/deploy-provenance-runbook.md).
+Source-system credential containment remains an incident-owner decision.
+
 1. Stop new deploys and disable any automation using the exposed credential.
 2. Revoke or rotate the exposed credential in its source system.
 3. For access-token signing key exposure
@@ -154,8 +160,9 @@ References:
    API tokens, global keys, recent Worker deployments, DNS/MX records, D1/R2
    resources, and routes.
 4. Rotate affected Cloudflare credentials and remove unknown tokens or members.
-5. Redeploy the reviewed Worker versions or roll back website metadata only
-   after account control is restored.
+5. After account control is restored, prepare reviewed Worker recovery through
+   the admitted deployment protocol. Account recovery alone does not authorize
+   Worker redeployment. Website metadata recovery has its own service boundary.
 
 References:
 
@@ -201,7 +208,8 @@ Recovery must prove both service health and control-plane correctness.
 
 For Worker/API incidents:
 
-- redeploy the reviewed release target or a verified safe commit
+- establish the separately reviewed Worker recovery protocol before any
+  redeployment; current Worker mutation status remains STOP
 - verify `/health`, `/healthz`, `/health/db`, `/api/config`, and a synthetic
   auth denial or approved client smoke
 - confirm no unexpected migration drift

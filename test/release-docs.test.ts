@@ -204,7 +204,10 @@ describe('release feature-freeze docs', () => {
       /At tag time, only CLI\s+`2026\.6\.0` was `live_smoke`/,
     )
     expect(releaseNotes).toMatch(
-      /all\s+five current 2026\.7 rows remain `fixture_only`/,
+      /Official CLI 2026\.9\.0 then passed narrow synthetic local/,
+    )
+    expect(releaseNotes).toMatch(
+      /four other current rows\s+remain `fixture_only`/,
     )
     expect(compatibilityMatrix).toContain(
       'sealed tag-time evidence consists only of the CLI `2026.6.0`',

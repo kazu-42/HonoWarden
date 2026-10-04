@@ -1,11 +1,21 @@
 import { execFile } from 'node:child_process'
-import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  chmod,
+  mkdtemp,
+  readFile,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+
+import { createReleaseFixture } from '../support/release-fixture'
+
+import { releaseClockEnv } from '../support/release-clock'
 
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
@@ -17,6 +27,7 @@ const publishedPacketScript = join(
 type ReleasePublishedPacketReport = {
   schemaVersion: number
   status: 'ready' | 'not_ready'
+  currentReleaseReady: boolean
   targetTag: string
   targetVersion: string
   targetCommit: string
@@ -40,6 +51,86 @@ type ReleasePublishedPacketReport = {
 }
 
 describe('release published packet', () => {
+  it('accepts a fresh complete current matrix in an isolated release fixture', async () => {
+    const root = await createReleaseFixture()
+    const matrixPath = join(root, 'compat/client-matrix.json')
+    const matrix = JSON.parse(await readFile(matrixPath, 'utf8'))
+    matrix.checkedAt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+    await writeFile(matrixPath, JSON.stringify(matrix))
+
+    const result = await execFileAsync('node', [
+      join(root, 'scripts/honowarden-release-gate.mjs'),
+      '--strict',
+    ])
+    const report = JSON.parse(result.stdout)
+    expect(report.overall).toBe('ready')
+    expect(report.historicalEvidenceStatus).toBe('consistent')
+    expect(
+      report.checks.find(
+        (check: { id: string }) => check.id === 'current_client_matrix',
+      ),
+    ).toMatchObject({
+      status: 'pass',
+      details: { freshness: { status: 'fresh', releaseReady: true } },
+    })
+  })
+
+  it('blocks historical verification when isolated archive bytes are corrupted', async () => {
+    const root = await createReleaseFixture()
+    await appendFile(
+      join(root, 'docs/release/snapshots/v0.1.0-alpha/live-client-evidence.md'),
+      '\nSynthetic archive corruption.\n',
+    )
+    const gate = JSON.parse(
+      (
+        await execFileAsync('node', [
+          join(root, 'scripts/honowarden-release-gate.mjs'),
+        ])
+      ).stdout,
+    )
+    expect(gate.historicalEvidenceStatus).toBe('inconsistent')
+    expect(gate.layers.publishedAlphaArchive.status).toBe('inconsistent')
+
+    const targetCommit = '1234567890abcdef1234567890abcdef12345678'
+    const fakeBin = await createFakePublishedBin({
+      isDraft: false,
+      isPrerelease: true,
+      targetCommit,
+      tagWorkflowUrl: 'https://example.invalid/actions/runs/54321',
+    })
+    const args = [
+      '--expected-commit',
+      targetCommit,
+      '--tag-workflow-run-id',
+      '54321',
+    ]
+    const result = await execFileAsync(
+      'node',
+      [join(root, 'scripts/honowarden-release-published-packet.mjs'), ...args],
+      { env: fakeEnv(fakeBin) },
+    )
+    const report = JSON.parse(result.stdout) as ReleasePublishedPacketReport
+    expect(report.status).toBe('not_ready')
+    expect(statusById(report, 'release_gate_ready')).toBe('fail')
+    expect(statusById(report, 'release_state')).toBe('pass')
+    expect(statusById(report, 'tag_workflow_ci')).toBe('pass')
+    expect(report.publishedVerificationText).toBeNull()
+    const completion = JSON.parse(
+      (
+        await execFileAsync(
+          'node',
+          [
+            join(root, 'scripts/honowarden-alpha-completion-audit.mjs'),
+            ...args,
+          ],
+          { env: fakeEnv(fakeBin) },
+        )
+      ).stdout,
+    )
+    expect(completion.completion).toBe('incomplete')
+    expect(completion.blockingReason).toBe('release_gate_not_ready')
+  })
+
   it('verifies a published prerelease without mutating release state', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
@@ -70,6 +161,7 @@ describe('release published packet', () => {
 
     expect(report.schemaVersion).toBe(1)
     expect(report.status).toBe('ready')
+    expect(report.currentReleaseReady).toBe(false)
     expect(report.targetTag).toBe('v0.1.0-alpha')
     expect(report.targetVersion).toBe('0.1.0-alpha')
     expect(report.targetCommit).toBe(targetCommit)
@@ -265,7 +357,7 @@ function fakeEnv(fakeBin: {
   tagWorkflowUrl: string
 }) {
   return {
-    ...process.env,
+    ...releaseClockEnv('stale'),
     HONOWARDEN_TEST_HEAD_COMMIT: fakeBin.headCommit,
     HONOWARDEN_TEST_RELEASE_DRAFT: fakeBin.isDraft ? '1' : '0',
     HONOWARDEN_TEST_RELEASE_PRERELEASE: fakeBin.isPrerelease ? '1' : '0',

@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest'
 
 import { writePreTagGit } from '../support/release-git'
 
+import { releaseClockEnv } from '../support/release-clock'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const evidenceBundleScript = join(
@@ -54,7 +56,7 @@ type ReleaseEvidenceBundleReport = {
 }
 
 describe('release evidence bundle', () => {
-  it('bundles pre-tag release evidence without mutating external systems', async () => {
+  it('preserves pre-tag evidence but blocks approval for stale client metadata', async () => {
     const remote = await mkdtemp(join(tmpdir(), 'honowarden-bundle-remote-'))
     const fakeBin = await mkdtemp(join(tmpdir(), 'honowarden-bundle-gh-'))
     const ciUrl = 'https://example.invalid/actions/runs/12345'
@@ -84,18 +86,18 @@ describe('release evidence bundle', () => {
     const report = JSON.parse(result.stdout) as ReleaseEvidenceBundleReport
 
     expect(report.schemaVersion).toBe(1)
-    expect(report.status).toBe('ready')
+    expect(report.status).toBe('not_ready')
     expect(report.phase).toBe('pre_tag')
     expect(report.targetTag).toBe('v0.1.0-alpha')
     expect(report.targetVersion).toBe('0.1.0-alpha')
     expect(report.targetCommit).toBe(headSha)
-    expect(statusById(report, 'release_gate_ready')).toBe('pass')
-    expect(statusById(report, 'tag_preflight_ready')).toBe('pass')
-    expect(statusById(report, 'approval_packet_ready')).toBe('pass')
+    expect(statusById(report, 'release_gate_ready')).toBe('fail')
+    expect(statusById(report, 'tag_preflight_ready')).toBe('fail')
+    expect(statusById(report, 'approval_packet_ready')).toBe('fail')
     expect(statusById(report, 'post_tag_preview_ready')).toBe('pass')
     expect(statusById(report, 'brand_scan_clean')).toBe('pass')
     expect(statusById(report, 'commit_alignment')).toBe('pass')
-    expect(report.evidence.approvalPacket.status).toBe('ready')
+    expect(report.evidence.approvalPacket.status).toBe('not_ready')
     expect(report.evidence.postTagPreview.status).toBe('ready')
     expect(report.evidence.postTagPreview.draftApprovalText).toBeNull()
     expect(report.evidence.brandScan).toMatchObject({
@@ -111,9 +113,7 @@ describe('release evidence bundle', () => {
     expect(report.commands.createDraftAfterTagVerification).toContain(
       '--repo kazu-42/HonoWarden',
     )
-    expect(report.approvalText).toBe(
-      `${headSha} に v0.1.0-alpha を作成して push してよい`,
-    )
+    expect(report.approvalText).toBeNull()
     expect(report.limitations).toContain(
       'This bundle does not create, move, delete, or push a Git tag.',
     )
@@ -157,7 +157,7 @@ describe('release evidence bundle', () => {
       await readFile(outputPath, 'utf8'),
     ) as ReleaseEvidenceBundleReport
 
-    expect(fileReport.status).toBe('ready')
+    expect(fileReport.status).toBe('not_ready')
     expect(fileReport.targetCommit).toBe(stdoutReport.targetCommit)
     expect(fileReport.approvalText).toBe(stdoutReport.approvalText)
   }, 20000)
@@ -272,7 +272,7 @@ process.exit(1)
 
 function fakeEnv(fakeBin: string, options: { ciUrl: string; headSha: string }) {
   return {
-    ...process.env,
+    ...releaseClockEnv('stale'),
     HONOWARDEN_TEST_CI_URL: options.ciUrl,
     HONOWARDEN_TEST_HEAD_SHA: options.headSha,
     PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,

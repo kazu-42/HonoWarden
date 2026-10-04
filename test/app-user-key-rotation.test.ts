@@ -704,6 +704,7 @@ async function accessTokenFor(user: RouteUser) {
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: 1,
     exp: 4_102_444_800,

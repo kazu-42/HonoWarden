@@ -2,17 +2,16 @@
 /* global fetch, setTimeout */
 
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import process from 'node:process'
 
 const cloudflareApiBase = 'https://api.cloudflare.com/client/v4'
 const defaultSecretFile = '~/.config/honowarden/cloudflare-scoped.env'
 const oneDayMs = 24 * 60 * 60 * 1000
-const deployTokenClassId = 'deploy'
-const deployTokenMutationStop =
-  'STOP: automated deploy-token creation and replacement are disabled; existing deploy tokens remain verify-only.'
+const tokenMutationStop =
+  'STOP: automated Cloudflare token creation and replacement are disabled; existing scoped tokens remain verify-only.'
 
 const tokenSpecs = [
   {
@@ -144,10 +143,6 @@ const tokenSpecs = [
     ],
   },
 ]
-const nonDeployTokenSpecs = tokenSpecs.filter(
-  (spec) => spec.id !== deployTokenClassId,
-)
-
 async function main(argv = process.argv.slice(2), env = process.env) {
   const normalizedArgv = argv[0] === '--' ? argv.slice(1) : argv
   const [command = 'plan', ...rest] = normalizedArgv
@@ -159,7 +154,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   }
 
   if (command === 'apply') {
-    writeJson(await applyTokenPlan(env, options))
+    writeJson(buildStaticApplyStop(options))
+    process.exitCode = 1
     return
   }
 
@@ -253,158 +249,32 @@ function buildStaticPlan(env, options) {
     status: checks.every((entry) => entry.status === 'pass')
       ? 'ready'
       : 'not_ready',
-    executeRequiredForMutation: true,
+    executeRequiredForMutation: false,
     expiresOn: options.expiresOn,
     secretsOut: redactHomePath(options.secretsOut),
     tokenClasses: tokenSpecs.map(publicTokenSpec),
     checks,
     safetyBoundaries: [
       'Token values are never printed.',
-      'apply without --execute performs live readback only and does not create tokens.',
-      'apply --execute writes one-time values for non-deploy token classes only to the configured home-directory env file.',
-      deployTokenMutationStop,
+      tokenMutationStop,
+      'apply is a static stop before environment, credential, network, or secret-file access.',
+      'verify is the only live mode and performs read-only probes with existing scoped tokens.',
       'Account-level 2FA enforcement is intentionally not mutated by this script.',
     ],
   }
 }
 
-async function applyTokenPlan(env, options) {
-  const config = requireCloudflareConfig(env)
-  const auth = resolveAuthMode(env, options.auth)
-  const client = new CloudflareClient(env, auth)
-  const permissionGroups = await client.getPermissionGroups()
-  const groupByName = new Map(
-    permissionGroups.map((group) => [group.name, group]),
-  )
-  const missingPermissionGroups = missingGroups(
-    groupByName,
-    nonDeployTokenSpecs,
-  )
-  if (missingPermissionGroups.length > 0) {
-    throw new Error(
-      `Missing Cloudflare permission groups: ${missingPermissionGroups.join(', ')}`,
-    )
-  }
-
-  const existingTokens = await client.listAccountTokens(config.accountId)
-  const existingByName = new Map(
-    existingTokens.map((token) => [token.name, token]),
-  )
-  const createdSecrets = new Map()
-  const deploySpec = tokenSpecs.find((spec) => spec.id === deployTokenClassId)
-  if (!deploySpec) {
-    throw new Error('Deploy token specification missing')
-  }
-  const existingDeployToken = existingByName.get(deploySpec.name)
-  const results = [
-    {
-      id: deploySpec.id,
-      name: deploySpec.name,
-      envVar: deploySpec.envVar,
-      action: 'stopped',
-      status: 'not_ready',
-      detail: deployTokenMutationStop,
-      existingTokenDetected: Boolean(existingDeployToken),
-      ...(existingDeployToken
-        ? { tokenTag: hashTag(existingDeployToken.id) }
-        : {}),
-      expiresOn: existingDeployToken?.expires_on ?? null,
-      verification: [],
-    },
-  ]
-
-  for (const spec of nonDeployTokenSpecs) {
-    const existing = existingByName.get(spec.name)
-    const tokenPayload = buildTokenPayload(spec, groupByName, config, options)
-
-    if (existing) {
-      results.push({
-        id: spec.id,
-        name: spec.name,
-        envVar: spec.envVar,
-        action: 'kept_existing',
-        tokenTag: hashTag(existing.id),
-        status: existing.status ?? 'unknown',
-        expiresOn: existing.expires_on ?? null,
-        verification: [],
-      })
-      continue
-    }
-
-    if (!options.execute) {
-      results.push({
-        id: spec.id,
-        name: spec.name,
-        envVar: spec.envVar,
-        action: 'would_create',
-        expiresOn: options.expiresOn,
-        policyCount: tokenPayload.policies.length,
-        verification: [],
-      })
-      continue
-    }
-
-    const created = await client.createAccountToken(
-      config.accountId,
-      tokenPayload,
-    )
-    const secretValue = created.value
-    if (typeof secretValue !== 'string' || secretValue.length === 0) {
-      throw new Error(
-        `Cloudflare did not return a one-time value for ${spec.name}`,
-      )
-    }
-
-    createdSecrets.set(spec.envVar, secretValue)
-    const verification = await verifySpecWithToken(spec, secretValue, config)
-    results.push({
-      id: spec.id,
-      name: spec.name,
-      envVar: spec.envVar,
-      action: 'created',
-      tokenTag: hashTag(created.id),
-      status: created.status ?? 'active',
-      expiresOn: created.expires_on ?? options.expiresOn,
-      verification,
-    })
-  }
-
-  let secretFile = null
-  if (createdSecrets.size > 0) {
-    secretFile = await writeSecretFile(options.secretsOut, createdSecrets)
-  }
-
-  const report = {
+function buildStaticApplyStop(options) {
+  return {
     schemaVersion: 1,
     action: 'cloudflare_token_remediation_apply',
     generatedAt: new Date().toISOString(),
-    executed: options.execute,
-    authMode: auth.mode,
-    status: results.every(
-      (result) =>
-        result.action !== 'stopped' &&
-        result.verification.every((entry) => entry.status === 'pass'),
-    )
-      ? 'ready'
-      : 'not_ready',
-    expiresOn: options.expiresOn,
-    secretFile: secretFile ? redactHomePath(secretFile) : null,
-    tokenResults: results,
-    remainingOperatorActions: [
-      'Enable 2FA on every Cloudflare operator account before enforcing account-level 2FA.',
-      'Retire or explicitly re-accept older broad/no-expiry user tokens after owner review.',
-      'Rotate the global key break-glass path during HON-60 after scoped-token adoption is confirmed.',
-    ],
+    executed: false,
+    requestedExecute: options.execute,
+    status: 'not_ready',
+    mutationPolicy: 'stopped',
+    detail: tokenMutationStop,
   }
-
-  if (
-    results.some((result) => result.action === 'stopped') ||
-    (options.strict && report.status !== 'ready')
-  ) {
-    process.exitCode = 1
-  }
-
-  return report
 }
 
 async function verifyScopedTokens(env, options) {
@@ -454,68 +324,6 @@ async function verifyScopedTokens(env, options) {
   }
 
   return report
-}
-
-function buildTokenPayload(spec, groupByName, config, options) {
-  if (spec.id === deployTokenClassId) {
-    throw new Error(deployTokenMutationStop)
-  }
-
-  const policies = []
-
-  if (spec.accountPermissions.length > 0) {
-    policies.push({
-      effect: 'allow',
-      resources: {
-        [`com.cloudflare.api.account.${config.accountId}`]: '*',
-      },
-      permission_groups: spec.accountPermissions.map((name) =>
-        permissionGroup(groupByName, name),
-      ),
-    })
-  }
-
-  if (spec.zonePermissions.length > 0) {
-    policies.push({
-      effect: 'allow',
-      resources: {
-        [`com.cloudflare.api.account.zone.${config.zoneId}`]: '*',
-      },
-      permission_groups: spec.zonePermissions.map((name) =>
-        permissionGroup(groupByName, name),
-      ),
-    })
-  }
-
-  return {
-    name: spec.name,
-    policies,
-    not_before: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
-    expires_on: options.expiresOn,
-  }
-}
-
-function permissionGroup(groupByName, name) {
-  const group = groupByName.get(name)
-  if (!group) {
-    throw new Error(`Missing permission group: ${name}`)
-  }
-
-  return {
-    id: group.id,
-    name: group.name,
-  }
-}
-
-function missingGroups(groupByName, specs) {
-  return [
-    ...new Set(
-      specs.flatMap((spec) => [
-        ...spec.accountPermissions,
-        ...spec.zonePermissions,
-      ]),
-    ),
-  ].filter((name) => !groupByName.has(name))
 }
 
 async function verifySpecWithToken(spec, tokenValue, config) {
@@ -581,24 +389,6 @@ class CloudflareClient {
     this.auth = typeof auth === 'string' ? { mode: auth } : auth
   }
 
-  async getPermissionGroups() {
-    const response = await this.request('/user/tokens/permission_groups')
-    return response.json.result
-  }
-
-  async listAccountTokens(accountId) {
-    const response = await this.request(`/accounts/${accountId}/tokens`)
-    return response.json.result
-  }
-
-  async createAccountToken(accountId, payload) {
-    const response = await this.request(`/accounts/${accountId}/tokens`, {
-      method: 'POST',
-      body: payload,
-    })
-    return response.json.result
-  }
-
   async request(path, options = {}) {
     const response = await fetch(`${cloudflareApiBase}${path}`, {
       method: options.method ?? 'GET',
@@ -653,41 +443,6 @@ class CloudflareClient {
   }
 }
 
-async function writeSecretFile(path, values) {
-  const resolved = expandHome(path)
-  const existing = await readOptionalFile(resolved)
-  const managedVars = new Set(values.keys())
-  const retainedLines = existing
-    .split(/\r?\n/)
-    .filter((line) => {
-      const match = line.match(/^(?:export\s+)?([A-Z0-9_]+)=/)
-      return !match || !managedVars.has(match[1])
-    })
-    .filter(
-      (line, index, lines) =>
-        line.trim() !== '' || lines[index + 1]?.trim() !== '',
-    )
-
-  const generated = [
-    '',
-    '# HonoWarden scoped Cloudflare account tokens.',
-    '# Generated by scripts/honowarden-cloudflare-token-remediation.mjs.',
-    '# Do not commit or paste these values.',
-    ...[...values.entries()].map(
-      ([name, value]) => `export ${name}=${shellQuote(value)}`,
-    ),
-    '',
-  ]
-
-  await mkdir(dirname(resolved), { recursive: true, mode: 0o700 })
-  await writeFile(resolved, [...retainedLines, ...generated].join('\n'), {
-    mode: 0o600,
-  })
-  await chmod(resolved, 0o600)
-
-  return resolved
-}
-
 async function readEnvFileValues(path) {
   const contents = await readOptionalFile(expandHome(path))
   const values = new Map()
@@ -714,10 +469,6 @@ async function readOptionalFile(path) {
 
     throw error
   }
-}
-
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`
 }
 
 function unquoteShellValue(value) {
@@ -751,8 +502,8 @@ function requireCloudflareConfig(env) {
   return config
 }
 
-// Global-key auth is intentionally confined to this remediation tool so it can
-// bootstrap scoped routine tokens; it is never a routine workflow fallback.
+// Global-key auth is inspected only by the static plan. Apply is unavailable,
+// and verify uses existing scoped tokens rather than this bootstrap identity.
 function resolveAuthMode(env, requested, options = {}) {
   if (requested === 'token') {
     if (stringValue(env.CLOUDFLARE_API_TOKEN)) {
@@ -809,8 +560,7 @@ function publicTokenSpec(spec) {
     accountPermissions: spec.accountPermissions,
     zonePermissions: spec.zonePermissions,
     verifyChecks: spec.verify.map((probe) => probe.id),
-    mutationPolicy:
-      spec.id === deployTokenClassId ? 'stopped' : 'execute_required',
+    mutationPolicy: 'stopped',
   }
 }
 

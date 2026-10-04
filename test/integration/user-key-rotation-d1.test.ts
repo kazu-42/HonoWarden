@@ -30,6 +30,45 @@ afterEach(async () => {
 })
 
 describe('user key rotation on real local D1', () => {
+  it('rejects reuse of the current key ID without changing the generation', async () => {
+    const database = await createDatabase()
+    const fixture = rotationFixture('reused-id-stamp', 'reused-id-audit')
+    fixture.request.newUserKeyId = 'a'.repeat(32)
+    await seedRotationState(database, fixture, false, true)
+    await database
+      .prepare('UPDATE users SET user_key_id = ? WHERE id = ?')
+      .bind(fixture.request.newUserKeyId, userId)
+      .run()
+    const before = await readRotationState(database)
+    expect(
+      await rotateUserKeyGeneration(database, fixture.input),
+    ).toMatchObject({ status: 'conflict' })
+    expect(await readRotationState(database)).toEqual(before)
+  })
+
+  it.each([undefined, 'f'.repeat(32)])(
+    'replaces or clears the old key ID with the rotated generation (%s)',
+    async (newUserKeyId) => {
+      const database = await createDatabase()
+      const fixture = rotationFixture('id-next-stamp', 'id-audit')
+      if (newUserKeyId) fixture.request.newUserKeyId = newUserKeyId
+      await seedRotationState(database, fixture, false, true)
+      await database
+        .prepare('UPDATE users SET user_key_id = ? WHERE id = ?')
+        .bind('a'.repeat(32), userId)
+        .run()
+      expect(
+        await rotateUserKeyGeneration(database, fixture.input),
+      ).toMatchObject({ status: 'rotated' })
+      expect(
+        await database
+          .prepare('SELECT user_key_id FROM users WHERE id = ?')
+          .bind(userId)
+          .first(),
+      ).toEqual({ user_key_id: newUserKeyId ?? null })
+    },
+  )
+
   it('rotates an empty personal vault with zero-row JSON manifests', async () => {
     const database = await createDatabase()
     const fixture = rotationFixture('empty-next-stamp', 'empty-audit-id')
@@ -1209,6 +1248,7 @@ const testSchemaStatements = [
     kdf_parallelism INTEGER,
     master_password_hash TEXT NOT NULL,
     user_key TEXT,
+    user_key_id TEXT,
     public_key TEXT,
     private_key TEXT,
     security_stamp TEXT NOT NULL,
@@ -1262,6 +1302,7 @@ const testSchemaStatements = [
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     identifier TEXT NOT NULL,
+    session_id TEXT,
     name TEXT,
     type INTEGER,
     revoked_at TEXT,
@@ -1277,6 +1318,7 @@ const testSchemaStatements = [
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     device_id TEXT NOT NULL,
+    session_id TEXT,
     token_hash TEXT NOT NULL UNIQUE,
     expires_at TEXT NOT NULL,
     revoked_at TEXT,

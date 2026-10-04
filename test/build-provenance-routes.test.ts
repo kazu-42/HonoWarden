@@ -79,9 +79,10 @@ describe('build provenance routes', () => {
   )
 
   it('keeps local development usable while marking provenance unavailable', async () => {
+    const env = { HONOWARDEN_ENV: 'development' }
     const [health, config] = await Promise.all([
-      app.request('/health'),
-      app.request('/api/config'),
+      app.request('/health', {}, env),
+      app.request('/api/config', {}, env),
     ])
 
     expect(health.status).toBe(200)
@@ -96,6 +97,45 @@ describe('build provenance routes', () => {
       gitHash: 'development',
     })
   })
+
+  it.each([
+    { name: 'missing', env: {} },
+    { name: 'empty', env: { HONOWARDEN_ENV: '' } },
+  ] as const)(
+    'fails closed on every provenance route when HONOWARDEN_ENV is $name',
+    async ({ env }) => {
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined)
+
+      for (const path of ['/health', '/healthz', '/api/config', '/config']) {
+        const response = await app.request(
+          path,
+          { headers: { 'X-Request-Id': 'missing-environment-request' } },
+          env,
+        )
+
+        expect(response.status).toBe(503)
+        await expect(response.json()).resolves.toEqual({
+          error: {
+            code: 'runtime_environment_invalid',
+            message: 'Runtime environment is invalid.',
+          },
+          requestId: 'missing-environment-request',
+        })
+      }
+
+      expect(consoleError).toHaveBeenCalledTimes(4)
+      expect(consoleError).toHaveBeenCalledWith(
+        JSON.stringify({
+          kind: 'build_provenance_unavailable',
+          environment: 'invalid',
+          reason: 'runtime_environment_invalid',
+          requestId: 'missing-environment-request',
+        }),
+      )
+    },
+  )
 
   it.each(['/health', '/healthz', '/api/config', '/config'])(
     'fails closed on %s without logging an unknown environment value',

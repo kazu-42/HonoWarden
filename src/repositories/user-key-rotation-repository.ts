@@ -106,6 +106,7 @@ type SnapshotSummaryRow = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string | null
+  userKeyId?: string | null
   publicKey: string | null
   privateKey: string | null
   securityStamp: string
@@ -785,6 +786,7 @@ function buildMutationStatements(
         input.nextSecurityStamp,
         input.nextRevisionDate,
         input.nextRevisionDate,
+        input.request.newUserKeyId ?? null,
         input.userId,
         input.request.oldMasterKeyAuthenticationHash,
         summary.emailNormalized,

@@ -98,12 +98,10 @@ pnpm cf:typegen
 
 ## Cloudflare Resources
 
-The repository includes placeholder D1 and R2 bindings in `wrangler.jsonc`. Before deploying, create real resources and replace the placeholder IDs/names:
-
-```sh
-pnpm wrangler d1 create honowarden
-pnpm wrangler r2 bucket create honowarden-vault-objects
-```
+The top-level `wrangler.jsonc` bindings identify local resources. Remote
+bootstrap and deployment are currently stopped. Resource creation, migration,
+and runtime configuration require the separately reviewed execution protocol
+described in [Deploy Provenance](docs/operations/deploy-provenance-runbook.md).
 
 Local development uses Wrangler's local D1 store. After applying migrations, `GET /health/db` reports the active schema version and required table set.
 

@@ -82,7 +82,7 @@
     "@microsoft/signalr": "^10.0.0",
     "@microsoft/signalr-protocol-msgpack": "^10.0.0",
     "@simplewebauthn/server": "13.3.3",
-    "hono": "~4.12.34"
+    "hono": "~4.13.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -98,7 +98,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.64.0",
     "unified": "^11.0.5",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "wrangler": "^4.112.0"
   }
 }

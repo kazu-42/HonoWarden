@@ -19,6 +19,9 @@ The command is read-only. It checks repository evidence and prints JSON with:
 - `scope: "repository_release_evidence"`: the report audits repository
   evidence and is not a deployment decision
 - `evidenceStatus`: `consistent` or `inconsistent`
+- `historicalEvidenceStatus`: the existing repository/archive checks excluding
+  current-client freshness; used only to verify an already-published release.
+  It cannot authorize a new publication or deployment.
 - `executionStatus: "not_admitted"`: Worker writes remain unavailable
 - `layers.currentTree`: checks evaluated against mutable current `HEAD`,
   including current migrations, lockfile, documents, and recorded evidence
@@ -39,6 +42,15 @@ pnpm release:gate -- --strict
 ```
 
 Strict mode exits non-zero while any blocking check remains.
+
+The current client check evaluates `checkedAt` and `metadataRefresh` against
+the observation time. It rejects future/invalid metadata, stale metadata, and
+an overdue required refresh. The stale 2026-08-16 snapshot was replaced by an
+official-source readback at 2026-09-22T05:32:22Z, tracking Browser 2026.9.1 and
+Desktop/CLI/Android/iOS 2026.9.0. All current rows remain `fixture_only`.
+The next required refresh is due at 2026-10-06T05:32:22Z. Refresh requires
+actual official-source readback; changing the timestamp alone is not evidence.
+Passing this metadata check does not admit execution or prove live compatibility.
 
 ## Historical Tag Procedure
 
@@ -101,7 +113,7 @@ item-mutation behavior through real clients. Those remain compatibility limits
 until separate evidence is recorded.
 
 The historical gate does not include post-tag Browser, Desktop, Android, or CLI
-TOTP/recent-auth evidence, and it does not promote any current 2026.7 row.
+TOTP/recent-auth evidence, and it does not promote any current 2026.9 row.
 
 The remote backup evidence proves a manual live remote backup drill and a
 scheduled workflow contract. It does not prove that the post-merge scheduled

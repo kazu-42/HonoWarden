@@ -15,6 +15,30 @@ const deviceId = '55555555-5555-4555-8555-555555555555'
 const revisionDate = '2026-07-20T00:00:00.000Z'
 
 describe('user-key rotation domain', () => {
+  it('accepts a new key ID without requiring one from legacy clients', () => {
+    const newUserKeyId = '0123456789abcdef0123456789abcdef'
+    expect(
+      parseUserKeyRotationBody({ ...rotationBody(), newUserKeyId }),
+    ).toMatchObject({
+      ok: true,
+      newUserKeyId,
+    })
+    expect(
+      parseUserKeyRotationBody({
+        ...rotationBody(),
+        NewUserKeyId: newUserKeyId,
+      }),
+    ).toMatchObject({
+      ok: true,
+      newUserKeyId,
+    })
+    for (const invalid of ['', 'f'.repeat(31), 'F'.repeat(32), 12]) {
+      expect(
+        parseUserKeyRotationBody({ ...rotationBody(), newUserKeyId: invalid }),
+      ).toEqual({ ok: false })
+    }
+  })
+
   it('keeps user-key rotation disabled unless the rollout flag is exact true', () => {
     expect(isUserKeyRotationEnabled(undefined)).toBe(false)
     expect(isUserKeyRotationEnabled('')).toBe(false)

@@ -1,5 +1,10 @@
 # Website Live Evidence
 
+> HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.
+> This is a July 2026 snapshot of the separate website repository. Its earlier
+> approval and rollback handle do not authorize any current deployment,
+> rollback, or other remote write.
+
 Target: `v0.1.0-alpha`.
 
 Status: passed.
@@ -160,8 +165,8 @@ Rollback command:
 pnpm exec wrangler rollback eef4ab71-d6e8-401f-93c3-27e7bd2bcd91 --name honowarden-website --yes
 ```
 
-Rollback was not executed because post-deploy smoke passed. If rollback is
-needed later because the security contact route stops delivering, run the
-command above to remove the public metadata, then re-run the apex and `www`
-homepage, `/.well-known/security.txt`, `/security.txt`, and `/health` checks and
-record the resulting deployment ID.
+Rollback was not executed because post-deploy smoke passed. The command above
+was the proposed recovery at that checkpoint, not a current instruction.
+Any future rollback requires a fresh source/version/traffic readback, an
+independently reviewed recovery plan, and explicit approval in the website
+repository before mutation. The old handle must not be reused as authority.

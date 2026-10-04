@@ -815,6 +815,7 @@ describe('auth repository', () => {
     await expect(
       rotateRefreshToken(database, {
         currentTokenId: 'current-refresh-token-id',
+        expectedSessionId: 'synthetic-session-id',
         userId: 'user-id',
         deviceId: 'device-id',
         expectedSecurityStamp: 'security-stamp',
@@ -853,6 +854,7 @@ describe('auth repository', () => {
     await expect(
       rotateRefreshToken(database, {
         currentTokenId: 'current-refresh-token-id',
+        expectedSessionId: 'synthetic-session-id',
         userId: 'user-id',
         deviceId: 'device-id',
         expectedSecurityStamp: 'stale-security-stamp',
@@ -997,6 +999,7 @@ describe('auth repository', () => {
     await expect(
       rotateRefreshToken(database, {
         currentTokenId: session?.tokenId ?? '',
+        expectedSessionId: session?.sessionId ?? 'synthetic-session-id',
         userId: session?.userId ?? '',
         deviceId: session?.deviceId ?? '',
         expectedSecurityStamp: session?.user.securityStamp ?? '',
@@ -1189,7 +1192,16 @@ describe('auth repository', () => {
   })
 
   it('revokes an active owner-scoped device session', async () => {
-    const database = new RecordingAuthD1Database(null, null, 1, 1)
+    const database = new RecordingAuthD1Database(
+      null,
+      null,
+      1,
+      1,
+      0,
+      null,
+      [],
+      [1, 1],
+    )
 
     await expect(
       revokeDeviceSession(database, {
@@ -1208,10 +1220,21 @@ describe('auth repository', () => {
     expect(database.queries.join('\n')).toContain('UPDATE devices')
     expect(database.queries.join('\n')).toContain('revoked_at = ?')
     expect(database.queries.join('\n')).toContain('UPDATE refresh_tokens')
+    expect(database.queries.join('\n')).toContain('changes() = 1')
+    expect(database.batchStatementCalls).toHaveLength(1)
   })
 
   it('returns not found when revoking a missing, cross-user, or already revoked device', async () => {
-    const database = new RecordingAuthD1Database(null, null, 1, 0)
+    const database = new RecordingAuthD1Database(
+      null,
+      null,
+      1,
+      0,
+      0,
+      null,
+      [],
+      [0, 0],
+    )
 
     await expect(
       revokeDeviceSession(database, {
@@ -1224,7 +1247,9 @@ describe('auth repository', () => {
     })
 
     expect(database.queries.join('\n')).toContain('UPDATE devices')
-    expect(database.queries.join('\n')).not.toContain('UPDATE refresh_tokens')
+    expect(database.queries.join('\n')).toContain('UPDATE refresh_tokens')
+    expect(database.queries.join('\n')).toContain('changes() = 1')
+    expect(database.batchStatementCalls).toHaveLength(1)
   })
 
   it('revokes every other device session while preserving the current device', async () => {

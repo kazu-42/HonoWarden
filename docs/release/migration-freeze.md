@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-09-04.
+Last updated: 2026-10-03.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -35,6 +35,27 @@ changes and update this document in the same change.
 | `migrations/0019_send_files.sql`                        | `d59ba11466f324a6664e03f775f37c100d2147cbfacee51a366b4367dc749ec9` |
 | `migrations/0020_personal_api_keys.sql`                 | `7b70b5c2284509990bc223991e5f5fcd09868027f0a5fae6ed17464d2618eb14` |
 | `migrations/0021_emergency_access.sql`                  | `7fc2730ee3c2ff63c99bc27f27dcedfc16482813a66e6852fef38540848853d5` |
+| `migrations/0022_user_key_id.sql`                       | `608dfed8ec4c1e845a4704f0a0f0bf60390eae92bdf8812f897834058f984597` |
+| `migrations/0023_device_session_binding.sql`            | `cbfeb4757dbc657ad60c275993eac56c1819637e641a8c4bc4e1330ba36cf55d` |
+| `migrations/0024_organization_invitations.sql`          | `a80018a1ad21d0155b65f158239281b57cebdea69b473412f6d02fa8e6d02c77` |
+
+Migration 0022 is a post-release, local-only source addition for nullable user-key
+ID metadata and old-writer invalidation. It has not been applied remotely. The
+column must precede new application code and be retained on application rollback;
+see [user-key ID operations](../operations/user-key-id.md).
+
+Migration 0023 is a post-release, local-only source addition that binds device
+access and refresh tokens to an immutable login session. It has not been applied
+remotely. Apply its additive columns before the session-aware application; legacy
+sessions require a fresh login. Keep the columns on rollback and preserve the
+revocation check in any recovery build. See [device session operations](../operations/device-sessions.md).
+
+Migration 0024 is a post-release, local-only source addition for hashed,
+recipient-bound organization invitations and expiry. It has not been applied
+remotely. Membership routes stay default-off in tracked configuration and need
+a separately configured invitation delivery service and private signing secret.
+Keep its additive columns on application rollback. See [organization membership
+operations](../operations/organization-membership.md).
 
 ## Required Tables At Freeze
 

@@ -7,6 +7,11 @@ volume. Credential-generation routes are the exception: their required,
 secret-safe D1 audit row commits in the same transaction as the mutation even
 when optional audit emission is disabled.
 
+User-key ID registration follows the same mandatory-transaction rule. Its
+`account.user_key_id.register` event has no key ID or key material in context;
+rejected/replayed registrations cannot produce a success row. See
+[user-key ID registration](user-key-id.md) for rollout and rollback constraints.
+
 Audit events are designed to be secret-safe. Event builders drop context fields
 whose keys contain sensitive fragments such as `password`, `token`, `secret`,
 `hash`, `key`, `encrypted`, `payload`, or `body`.
@@ -122,6 +127,10 @@ Fields:
 - `folder.create`: successful folder creation
 - `folder.delete`: successful folder soft deletion
 - `folder.update`: successful folder update
+- `send.text.create`: required Text Send creation audit row, with target type
+  `send`, committed atomically with the encrypted Send row. This source-only
+  foundation is unmounted; it does not enable Send routes. Capability tokens,
+  envelope roots, and encrypted payloads are excluded from audit context.
 - `session.revoke_all`: successful revoke-all-other-sessions attempts
 - `totp.change`: TOTP change start and verify outcomes
 - `totp.disable`: successful and not-enabled TOTP disable attempts

@@ -46,10 +46,19 @@ Confirm:
 
 ## Staging Loop
 
-1. Deploy staging only after tests pass.
-2. Apply migrations to staging D1.
-3. Set staging secrets and allowlist exactly one operator email.
-4. Bootstrap the operator account.
+Current status: **REAL WORKER/VERSION/TRAFFIC WRITE STOP**. This is a future
+scenario, not an executable staging procedure. Deployment, remote migration,
+secret installation, and account bootstrap require a complete, separately
+reviewed execution and recovery protocol. Passing local tests or receiving
+general operator approval does not admit those steps. See
+[Deploy Provenance](operations/deploy-provenance-runbook.md).
+
+After such a protocol is admitted and its prerequisites are verified:
+
+1. Verify the approved staging Worker version and runtime configuration.
+2. Verify staging D1 migrations and resource identity.
+3. Verify the approved synthetic-account allowlist.
+4. Verify the synthetic operator account prepared by that protocol.
 5. Login from one browser-extension or desktop client.
 6. Confirm empty sync completes.
 7. Create one synthetic folder and one synthetic login item.
@@ -60,7 +69,8 @@ Confirm:
 
 ## Production Promotion Gate
 
-Promote only when all are true:
+Promotion remains stopped pending the deployment protocol above. Future
+acceptance additionally requires all of the following:
 
 - staging dogfood ran without daily breakage for the intended window
 - no compatibility regression is open
@@ -70,7 +80,8 @@ Promote only when all are true:
 
 ## Abort Conditions
 
-Abort dogfood and rotate affected secrets if any of these occur:
+Abort dogfood and enter the incident-response process if any of these occur.
+Runtime secret changes require the admitted recovery protocol:
 
 - real secret material is entered into the vault
 - logs contain access tokens, refresh tokens, passwords, or decrypted vault contents
