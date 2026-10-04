@@ -545,6 +545,96 @@ function totp(secret, step) {
   )
 }
 
+export async function refreshWorkspaceFromUi(page) {
+  const refresh = page.getByRole('button', { name: '再取得', exact: true })
+  await refresh.click()
+  await waitFor(
+    async () =>
+      (await refresh.isEnabled()) &&
+      (await page
+        .getByRole('status')
+        .filter({ hasText: '最新の状態を取得しています' })
+        .count()) === 0,
+    'ui_refresh_timeout',
+  )
+}
+
+export function nativeCommandAction(args) {
+  if (args[0] === '--version') return 'version'
+  if (args[0] === 'config' && args[1] === 'server') return 'configure_server'
+  if (args[0] === 'sync' && args[1] === '--force') return 'forced_sync'
+  if (args[0] === 'list' && args[1] === 'items') return 'list_items'
+  if (args[0] === 'login') return 'login'
+  if (args[0] === 'logout') return 'logout'
+  return 'unsupported'
+}
+
+export function classifyNativeStderr(stderr, dataFile, initialVersion) {
+  if (stderr.length === 0) return 'empty'
+  const bootstrap = Buffer.from(
+    'Could not find data file, "' + dataFile + '"; creating it instead.\n',
+  )
+  return initialVersion && stderr.equals(bootstrap)
+    ? 'official_cli_first_profile_bootstrap'
+    : 'unexpected_stderr'
+}
+
+export async function verifyNativeBootstrapFile(dataFile) {
+  const stat = await lstat(dataFile)
+  invariant(
+    stat.isFile() &&
+      !stat.isSymbolicLink() &&
+      stat.uid === process.getuid() &&
+      (stat.mode & 0o777) === 0o600,
+    'native_bootstrap_file_not_private',
+  )
+}
+
+export async function closeOwnedBrowserServer(browserServer, options = {}) {
+  if (!browserServer) return { graceful: true, processGroupAbsent: true }
+  const child = browserServer.process()
+  invariant(
+    Number.isSafeInteger(child?.pid) && child.pid > 0,
+    'browser_pid_invalid',
+  )
+  let graceful = false
+  let publicKillCompleted = false
+  try {
+    await beforeDeadline(
+      browserServer.close(),
+      options.gracefulMs ?? 5000,
+      'browser_graceful_close_deadline',
+    )
+    graceful = true
+  } catch {
+    try {
+      await beforeDeadline(
+        browserServer.kill(),
+        options.forceMs ?? 2000,
+        'browser_force_close_deadline',
+      )
+      publicKillCompleted = true
+    } catch {
+      // Owned process-group termination below remains mandatory.
+    }
+  }
+  const processKill =
+    options.processKill ?? ((pid, signal) => process.kill(pid, signal))
+  await stopDetachedProcessTree(child, {
+    processKill,
+    gracefulTimeoutMilliseconds: 250,
+    forceTimeoutMilliseconds: 1000,
+  })
+  let processGroupAbsent = false
+  try {
+    processKill(-child.pid, 0)
+  } catch (error) {
+    processGroupAbsent = error?.code === 'ESRCH'
+  }
+  invariant(processGroupAbsent, 'browser_owned_process_still_present')
+  return { graceful, publicKillCompleted, processGroupAbsent }
+}
+
 async function waitFor(condition, code, timeout = 20000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
@@ -564,6 +654,7 @@ async function boundedCommand(executable, args, environment, timeout = 30000) {
   activeProcesses.add(child)
   process.send?.({ type: 'owned_process', pid: child.pid })
   const stdout = []
+  const stderr = []
   let stdoutBytes = 0
   let stderrBytes = 0
   let overflow = false
@@ -575,6 +666,7 @@ async function boundedCommand(executable, args, environment, timeout = 30000) {
   child.stderr.on('data', (chunk) => {
     stderrBytes += chunk.length
     if (stdoutBytes + stderrBytes >= 2 * 1024 * 1024) overflow = true
+    if (!overflow) stderr.push(chunk)
   })
   let timer
   try {
@@ -589,8 +681,12 @@ async function boundedCommand(executable, args, environment, timeout = 30000) {
     ])
     invariant(outcome === 'passed', 'local_command_' + outcome)
     invariant(!overflow, 'local_command_output_limit')
+    const stderrBuffer = Buffer.concat(stderr)
+    for (const chunk of stderr) chunk.fill(0)
+    stderr.length = 0
     return {
       stdout: Buffer.concat(stdout).toString(),
+      stderr: stderrBuffer,
       stderrBytes,
     }
   } finally {
@@ -717,8 +813,26 @@ async function execute(options, packet) {
   const cleanupStep = (stage, action) => async () => {
     report.cleanup.activeStage = stage
     await persistReport()
-    await action()
-    await persistReport()
+    const deadlines = {
+      owned_children: 4500,
+      browser: 9000,
+      proxy: 1500,
+      worker: 3000,
+      private_ram: 1000,
+    }
+    try {
+      await beforeDeadline(
+        action(),
+        deadlines[stage],
+        'cleanup_step_' + stage + '_deadline',
+      )
+    } catch (error) {
+      report.cleanup.stepFailures ??= []
+      report.cleanup.stepFailures.push(stage)
+      throw error
+    } finally {
+      await persistReport()
+    }
   }
   const cleanup = createIdempotentCleanup(async () => {
     await runCleanupSteps([
@@ -728,12 +842,16 @@ async function execute(options, packet) {
       }),
       cleanupStep('browser', async () => {
         const browserPid = browserServer?.process()?.pid
-        if (browserServer) await browserServer.close()
+        const closed = await closeOwnedBrowserServer(browserServer)
+        report.cleanup.browserCloseGraceful = closed.graceful
+        report.cleanup.browserPublicKillCompleted = closed.publicKillCompleted
+        report.cleanup.browserProcessGroupAbsent = closed.processGroupAbsent
         process.send?.({
           type: 'owned_process_done',
           pid: browserPid,
         })
         report.cleanup.browserClosed = true
+        if (!closed.graceful) throw new SmokeFailure('browser_close_escalated')
       }),
       cleanupStep('proxy', async () => {
         if (server) {
@@ -866,18 +984,7 @@ async function execute(options, packet) {
       'dialog_not_closed',
     )
   }
-  const refreshPage = async (page) => {
-    await page.getByRole('button', { name: '再取得', exact: true }).click()
-    await waitFor(
-      () =>
-        page
-          .getByRole('status')
-          .filter({ hasText: '最新の状態を取得しています' })
-          .count()
-          .then((count) => count === 0),
-      'ui_refresh_timeout',
-    )
-  }
+  const refreshPage = refreshWorkspaceFromUi
   const enroll = async (account) => {
     const page = account.page
     await page
@@ -956,6 +1063,19 @@ async function execute(options, packet) {
     await chmod(join(root, name + '.masked.png'), 0o600)
   }
   const native = async (args, environment = {}) => {
+    const action = nativeCommandAction(args)
+    invariant(action !== 'unsupported', 'native_action_unsupported')
+    report.native.lastCommand = { action, status: 'running' }
+    const dataFile = join(root, 'native/profile/data.json')
+    let dataFileAbsent = false
+    if (action === 'version') {
+      try {
+        await lstat(dataFile)
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error
+        dataFileAbsent = true
+      }
+    }
     const result = await boundedCommand(
       options.nativeCli,
       args,
@@ -965,8 +1085,32 @@ async function execute(options, packet) {
       },
       45000,
     )
-    invariant(result.stderrBytes === 0, 'native_stderr')
-    return result.stdout.trim()
+    try {
+      const classification = classifyNativeStderr(
+        result.stderr,
+        dataFile,
+        action === 'version' && dataFileAbsent,
+      )
+      report.native.lastCommand = {
+        action,
+        status: 'validating',
+        exit: 'passed',
+        stderrBytes: result.stderrBytes,
+        stderrClassification: classification,
+      }
+      invariant(classification !== 'unexpected_stderr', 'native_stderr')
+      if (classification === 'official_cli_first_profile_bootstrap')
+        await verifyNativeBootstrapFile(dataFile)
+      report.native.lastCommand.status = 'completed'
+      return result.stdout.trim()
+    } catch (error) {
+      report.native.lastCommand.status = 'failed'
+      throw error
+    } finally {
+      report.native.commandObservations ??= []
+      report.native.commandObservations.push({ ...report.native.lastCommand })
+      result.stderr.fill(0)
+    }
   }
   const nativeReadback = async (account, shared, personal, expectShared) => {
     await native(['sync', '--force'], { BW_SESSION: nativeSession })
@@ -1430,9 +1574,18 @@ async function execute(options, packet) {
       report.cleanupFailed = true
     }
     disposeSignalCleanup()
-    report.sourceAfter = await sourceFingerprint()
-    report.sourceUnchanged =
-      report.sourceBefore.sha256 === report.sourceAfter.sha256
+    try {
+      report.sourceAfter = await beforeDeadline(
+        sourceFingerprint(),
+        5000,
+        'source_readback_deadline',
+      )
+      report.sourceUnchanged =
+        report.sourceBefore.sha256 === report.sourceAfter.sha256
+    } catch {
+      report.sourceUnchanged = false
+      report.sourceReadbackFailure = 'source_readback_failed'
+    }
     if (!report.sourceUnchanged) report.status = 'failed'
     if (report.status === 'flow_passed_cleanup_pending')
       report.status = 'passed'
@@ -1737,7 +1890,13 @@ async function companyFlow(context) {
     async () => {
       personal = cipherFixture(recipient.userKey, 'personal-canary')
       personal.id = (
-        await api('/api/ciphers', 'POST', personal.payload, recipient.token)
+        await api(
+          '/api/ciphers',
+          'POST',
+          personal.payload,
+          recipient.token,
+          201,
+        )
       ).id
       shared = cipherFixture(organizationKey, 'shared-canary', orgId)
       currentCipher = await api(

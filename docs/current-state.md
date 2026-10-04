@@ -4,67 +4,94 @@ Last updated: 2026-10-04
 
 ## 2026-10-04 Company Administration Source
 
-The company-readiness source is published as Draft PR
+The current company-admin candidate has not passed local aggregate or complete
+UI/native acceptance. The final pinned Node 22.22.0 whole-suite run covered
+185 files and 3,598 tests: 3,581 passed and 17 failed, exit 1. Seven failures
+reported connection resets, seven reached their existing timeouts, two document
+tests asserted stale current dates, and one local Worker did not become healthy.
+These categories describe observed failures, not a proven shared cause or a
+waived result. Three current-date expectations across the two failing document
+tests were subsequently corrected; their two files passed all 534 tests.
+A separately authorized focused execution then passed
+all 15 selected remaining cases across 14 files: 417 collected, 402 name-filtered
+skipped, exit 0 in 42.62 seconds. The selected test files, application/D1 source,
+and existing timeouts were unchanged. Reviewed harness repairs and the three
+date-expectation corrections across two files are separate intervening changes.
+The focused execution's
+before/after source manifests match with zero changed paths, and process readback
+found no remaining workerd or Vitest.
+Neither focused result turns the retained complete run green; final committed
+exact-head hosted whole-suite CI remains pending.
+
+The earlier 183-file / 3,581-test run remains a separate failed checkpoint:
+3,575 passed and six failed. Its matching TOTP and membership fixture repairs
+and corrected exact-version CLI expectation passed focused verification. Those
+repairs and the final run's failure record are both retained.
+
+The earlier company-readiness source checkpoint was published as Draft PR
 [#149](https://github.com/kazu-42/HonoWarden/pull/149), commit
 `681cfcc63c2ebc367a82b245fa54cbfbc421ee6a`, tree
-`fbfb937d722e4a476f7c53bea79009eb1d40c005`. Its exact-head GitHub CI passed.
-The protected September integration checkout and original root WIP remain
-preserved. This follow-up uses the dedicated `company-admin-2026-10-04` checkout.
+`fbfb937d722e4a476f7c53bea79009eb1d40c005`. Exact-head GitHub CI passed for
+that checkpoint. It does not cover the separately developing
+`company-admin-2026-10-04` follow-up or the email-verification checkout. The
+protected September integration checkout and original root WIP remain preserved.
 
-The follow-up adds an original Japanese administration browser at `/admin/`,
-organization creation, invitations and encrypted key confirmation, member roles
-and direct collection assignments, groups with revision-checked replacement,
-required-TOTP policy, and bounded management audit queries and CSV. Its private
-crypto Worker owns decrypted vault and organization keys; bearer tokens remain in
-memory. Invitation fragments are consumed and removed before asynchronous work.
-PBKDF2 and Argon2id are supported, with independent cryptographic vectors.
-
-Shared SQL combines direct and group collection grants within the same
-organization, rechecks active accounts and exact device families, and evaluates
-persisted MFA policies even when management flags are disabled. Enrollment alone
-does not establish a session's MFA proof. Factor replacement invalidates that
-proof, API-key and auth-request families begin without it, and same-family
-refresh preserves only existing proof. Offboarding removes effective assignments;
-the last enrolled Owner of a protected organization cannot be removed or deleted.
-Membership writes and their required audit records commit atomically, including
-when a database trigger ignores a write.
-
-Migrations 0025 through 0030 are required for this source even with management
-flags disabled. All tracked company, administration, and credential writer flags
-remain default-off. The browser assets must pass through the Worker and its MIME,
-CSP, and route allowlists. See [ADR 0016](adr/0016-company-administration.md),
+The company follow-up implements an original Japanese administration browser at
+`/admin/`, encrypted organization and collection creation, invitations and key
+confirmation, supported member roles, direct and group collection grants,
+required-TOTP policy, and bounded administration audit query/export. Its private
+crypto Worker holds decrypted keys; bearer credentials stay in memory. SQL
+rechecks active accounts, exact session families, current grants, and persisted
+MFA policy at protected operations. Enrollment alone is not session assurance.
+Membership and required audit writes commit atomically, including ignored-write
+failure paths. These are source contracts under
+[ADR 0016](adr/0016-company-administration.md),
 [company operations](operations/company-administration.md), and
 [audit scope](operations/organization-audit.md).
 
-The first Node 22.22.0 aggregate run passed 3,575 of 3,581 tests across 183 files.
-Six failures in compatibility and audit fixtures and a stale current-CLI
-expectation are retained as the initial failure record. Focused repair and a new
-aggregate are pending at this checkpoint. The authenticated browser/Worker/D1
-acceptance is also pending; unit success and unauthenticated screenshots do not
-prove that flow. Source publication for this follow-up is recorded separately
-after verification.
+All tracked company, administration, and credential writer flags remain
+default-off. Migrations 0025 through 0030 are required for this source even when
+management flags are disabled, because authentication, shared access, sync, and
+lifecycle statements independently reference their schema. Under an enabled
+protected TOTP policy, the last enrolled Owner cannot be removed or deleted.
+These source rollout and authorization invariants do not establish deployed
+configuration or remote migration state.
+
+Core UI attempt 06 completed six initial actual UI/API legs through writable
+group-only access, then failed at the native CLI first-profile stderr gate and
+browser cleanup. No native decrypt checks completed; normal cleanup and the
+actual run's final source readback were incomplete. The attempt remains FAILED.
+The narrowly scoped diagnostic and bounded cleanup fixes have independent static
+review and 16 passing focused harness tests, but no successful core 07 result is
+recorded. Private current-Browser preparation is also separate from execution
+acceptance and still requires its final byte-integrity and complete-flow gates.
+
+The separate EVP checkout passed all 18 actual local D1 persistence cases.
+A separate real Chromium 153 DOM run passed 17 checks with explicit synthetic
+authentication, provider, API, and crypto adapters and unchanged source
+fingerprints. That run proves the form and attempt lifecycle under those adapters;
+it does not prove native browser EVP issuance or Worker/D1 acceptance. The strict
+individual Internet-Draft draft02 RP profile verifies only the current account's
+email and grants no authentication, MFA, organization, or key authority. Actual
+Microsoft issuer compatibility and real provider/browser interoperability remain
+unresolved; private company-domain/provider observations stay outside public
+source.
 
 Official release metadata was refreshed on 2026-10-04: Browser 2026.9.3,
 Desktop/CLI 2026.9.1, Android 2026.9.0 build 21909, and iOS 2026.9.1 build 3533.
-Current rows remain `fixture_only` until their exact-version evidence is admitted.
-Browser, Desktop, and native CLI archive sizes and SHA-256 digests have been
-verified; downloading an asset does not establish functional compatibility.
-Desktop secure-store isolation and TLS remain prerequisites for a native run.
+All current rows remain `fixture_only`; verified archive digests and earlier
+client runs do not establish these exact versions' company flows. Earlier
+read-only runtime characterization recorded a missing source provenance tag;
+reviewed artifact and repair preparation does not establish a deployed repair.
 
-Read-only staging characterization found that the serving version's module bytes
-are retrievable but have no source provenance tag. The observed Durable Object
-migration tag is `v1`; it is distinct from the missing source tag. A custom-domain
-parser failure was diagnosed separately and does not prove a domain outage.
-Reviewed immutable artifact construction and the runtime repair execution boundary
-remain separate work. No remote Worker upload, traffic change, migration, secret
-rotation, or real email was performed at this checkpoint.
-
-Company readiness still requires target schema and runtime acceptance, real
-invitation delivery, exact Browser/Desktop flows, current restore evidence, and
-an independent security assessment before real-secret admission. SSO/SCIM,
-custom roles, passkey login, full personal Web Vault, emergency-access recovery,
-and device/IdP administration remain outside this delivered company slice.
-Historical checkpoints below retain their original claims and limitations.
+These local source and verification records do not establish remote schema,
+deployment, flag activation, real invitation delivery, or real-secret admission.
+Company readiness still requires resolved aggregate failures, complete
+source-bound UI/native acceptance with cleanup, target runtime/schema evidence,
+current restore evidence, and independent security assessment. SSO/SCIM, custom
+roles, passkey login, full personal Web Vault, emergency-access recovery, and
+device/IdP administration remain outside this company slice. Historical sections
+below retain their original evidence and limitations.
 
 ## 2026-10-03 Company Readiness Continuation
 
