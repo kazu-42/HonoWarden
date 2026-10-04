@@ -378,5 +378,30 @@ class PolicyTests(unittest.TestCase):
         sleep.assert_called_once_with(0.125)
 
 
+class WorkflowBootstrapTests(unittest.TestCase):
+    def workflow(self):
+        local = p.HERE / "hosted-macos-native.yml"
+        published = p.HERE.parents[1] / ".github/workflows/hosted-macos-native.yml"
+        return (local if local.is_file() else published).read_text()
+
+    def test_signature_capable_bootstrap_precedes_exact_manager_and_locked_install(self):
+        workflow = self.workflow()
+        ordered = [
+            "npm install --global corepack@0.34.0 --ignore-scripts --no-audit --no-fund",
+            "corepack enable",
+            'test "$(corepack --version)" = "0.34.0"',
+            'test "$(pnpm --version)" = "11.8.0"',
+            "pnpm install --frozen-lockfile --ignore-scripts",
+        ]
+        positions = [workflow.index(value) for value in ordered]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_bootstrap_preserves_signature_verification_and_node_pin(self):
+        workflow = self.workflow()
+        self.assertIn("node-version: 22.13.0", workflow)
+        self.assertNotIn("COREPACK_INTEGRITY_KEYS", workflow)
+        self.assertNotIn("COREPACK_ENABLE_PROJECT_SPEC: 0", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
