@@ -101,6 +101,92 @@ function invariant(condition, code) {
   if (!condition) throw new SmokeFailure(code)
 }
 
+export async function verifyEnrollmentAssurance(page, readAssurance) {
+  invariant(
+    (await page.locator('.setup-secret').count()) === 0,
+    'setup_seed_dom_retained',
+  )
+  const assurance = await readAssurance()
+  invariant(assurance.verified === true, 'enrollment_family_not_assured')
+  return { enrollmentAssured: true, explicitStepUp: false }
+}
+
+export function assertDistinctBrowserFamilies(firstToken, secondToken) {
+  // Compare only run-observed Worker tokens; this does not authenticate tokens.
+  const claims = (token) => {
+    try {
+      invariant(
+        typeof token === 'string' && token.length <= 16384,
+        'browser_family_claims_invalid',
+      )
+      const parts = token.split('.')
+      invariant(parts.length === 3, 'browser_family_claims_invalid')
+      const value = JSON.parse(Buffer.from(parts[1], 'base64url').toString())
+      invariant(
+        ['sub', 'device', 'sessionId'].every(
+          (key) => typeof value[key] === 'string' && value[key].length > 0,
+        ),
+        'browser_family_claims_invalid',
+      )
+      return value
+    } catch {
+      throw new SmokeFailure('browser_family_claims_invalid')
+    }
+  }
+  const first = claims(firstToken)
+  const second = claims(secondToken)
+  invariant(first.sub === second.sub, 'browser_family_account_mismatch')
+  invariant(
+    first.device !== second.device && first.sessionId !== second.sessionId,
+    'browser_families_not_distinct',
+  )
+  return true
+}
+
+export async function completeDistinctFamilyStepUpUi({
+  page,
+  refreshPage,
+  readProfile,
+  readAssurance,
+  getFreshCode,
+  closeDialog,
+}) {
+  await refreshPage(page)
+  const profile = await readProfile()
+  invariant(profile.TwoFactorEnabled === true, 'stepup_family_not_enrolled')
+  const before = await readAssurance()
+  invariant(before.verified === false, 'stepup_family_was_already_assured')
+  await page
+    .getByRole('button', { name: 'アカウントのセキュリティ', exact: true })
+    .click()
+  const accountDialog = page.getByRole('dialog', {
+    name: 'アカウントのセキュリティ',
+    exact: true,
+  })
+  await accountDialog
+    .getByRole('button', { name: '認証コードで本人確認', exact: true })
+    .click()
+  const dialog = page.getByRole('dialog', {
+    name: '現在のセッションを本人確認',
+    exact: true,
+  })
+  await dialog
+    .getByLabel('認証アプリの6桁コード', { exact: true })
+    .fill(await getFreshCode())
+  await dialog
+    .getByRole('button', { name: '本人確認する', exact: true })
+    .click()
+  await closeDialog(page)
+  const after = await readAssurance()
+  invariant(after.verified === true, 'stepup_family_not_assured')
+  return {
+    enrolled: true,
+    unassuredBefore: true,
+    explicitStepUp: true,
+    verifiedAfter: true,
+  }
+}
+
 export function safeErrorClassification(error) {
   const message = typeof error?.message === 'string' ? error.message : ''
   const operations = [
@@ -764,6 +850,7 @@ async function execute(options, packet) {
     downloads: false,
     checks: [],
     http: [],
+    mfa: { observations: [] },
     browser: {
       consoleErrorCount: 0,
       pageErrorCount: 0,
@@ -803,6 +890,7 @@ async function execute(options, packet) {
   let origin
   let database
   let nativeSession
+  let ownerStepUp
   const deliveries = []
   const pendingResponses = new Set()
   const lastOtpSteps = new Map()
@@ -987,6 +1075,10 @@ async function execute(options, packet) {
   const refreshPage = refreshWorkspaceFromUi
   const enroll = async (account) => {
     const page = account.page
+    report.browser.lastAction = {
+      actor: account.label,
+      action: 'open_enrollment_security',
+    }
     await page
       .getByRole('button', { name: 'アカウントのセキュリティ', exact: true })
       .click()
@@ -997,6 +1089,7 @@ async function execute(options, packet) {
       name: '認証アプリを登録',
       exact: true,
     })
+    report.browser.lastAction.action = 'start_totp_setup'
     await dialog
       .getByRole('button', { name: 'セットアップを開始', exact: true })
       .click()
@@ -1011,39 +1104,21 @@ async function execute(options, packet) {
     await dialog
       .getByLabel('新しい認証アプリの6桁コード', { exact: true })
       .fill(await freshOtp(account))
+    report.browser.lastAction.action = 'verify_totp_setup'
     await dialog
       .getByRole('button', { name: '認証アプリを確認して保存', exact: true })
       .click()
     await closeDialog(page)
-    invariant(
-      (await page.locator('.setup-secret').count()) === 0,
-      'setup_seed_dom_retained',
+    report.browser.lastAction.action = 'assert_enrollment_family_assurance'
+    const observation = await verifyEnrollmentAssurance(page, () =>
+      api('/identity/accounts/totp/assurance', 'GET', undefined, account.token),
     )
-    await page
-      .getByRole('button', { name: 'アカウントのセキュリティ', exact: true })
-      .click()
-    await page
-      .getByRole('button', { name: '認証コードで本人確認', exact: true })
-      .last()
-      .click()
-    const stepUp = page.getByRole('dialog', {
-      name: '現在のセッションを本人確認',
-      exact: true,
+    report.mfa.observations.push({
+      actor: account.label,
+      flow: 'ui_enrollment_assures_current_family',
+      ...observation,
+      passed: true,
     })
-    await stepUp
-      .getByLabel('認証アプリの6桁コード', { exact: true })
-      .fill(await freshOtp(account))
-    await stepUp
-      .getByRole('button', { name: '本人確認する', exact: true })
-      .click()
-    await closeDialog(page)
-    const assurance = await api(
-      '/identity/accounts/totp/assurance',
-      'GET',
-      undefined,
-      account.token,
-    )
-    invariant(assurance.verified === true, 'browser_session_not_assured')
   }
   const safeScreenshot = async (page, name) => {
     invariant(
@@ -1364,6 +1439,13 @@ async function execute(options, packet) {
       invariant(response.status === 201, 'bootstrap_failed')
       account.id = (await response.json()).id
     }
+    ownerStepUp = {
+      ...owner,
+      label: 'owner_stepup',
+      userKey: Buffer.from(owner.userKey),
+      privateKey: Buffer.from(owner.privateKey),
+    }
+    accounts.push(ownerStepUp)
     const { chromium } = await import(
       pathToFileURL(options.playwrightModule).href
     )
@@ -1396,7 +1478,7 @@ async function execute(options, packet) {
         'utf8',
       ),
     ).version
-    for (const account of [owner, recipient]) {
+    for (const account of [owner, recipient, ownerStepUp]) {
       const context = await browser.newContext({
         ignoreHTTPSErrors: true,
         acceptDownloads: true,
@@ -1472,6 +1554,7 @@ async function execute(options, packet) {
     }
     await companyFlow({
       owner,
+      ownerStepUp,
       recipient,
       outsider,
       api,
@@ -1533,7 +1616,9 @@ async function execute(options, packet) {
       await beforeDeadline(
         (async () => {
           report.browser.failureDom = []
-          for (const account of [owner, recipient]) {
+          for (const account of [owner, recipient, ownerStepUp].filter(
+            Boolean,
+          )) {
             if (!account.page) continue
             report.browser.failureDom.push({
               actor: account.label,
@@ -1602,6 +1687,7 @@ async function execute(options, packet) {
 async function companyFlow(context) {
   const {
     owner,
+    ownerStepUp,
     recipient,
     outsider,
     api,
@@ -1679,6 +1765,20 @@ async function companyFlow(context) {
     await login(owner)
     const initial = await sync(owner)
     invariant(organizationRows(initial).length === 0, 'organization_was_seeded')
+    await login(ownerStepUp)
+    report.mfa.distinctOwnerFamilies = assertDistinctBrowserFamilies(
+      owner.token,
+      ownerStepUp.token,
+    )
+    for (const account of [owner, ownerStepUp]) {
+      const assurance = await api(
+        '/identity/accounts/totp/assurance',
+        'GET',
+        undefined,
+        account.token,
+      )
+      invariant(assurance.verified === false, 'pre_enrollment_family_assured')
+    }
   })
   await check(
     'browser_creates_organization_and_encrypted_collection',
@@ -2041,6 +2141,41 @@ async function companyFlow(context) {
     'owner_ui_totp_enrollment_stepup_and_required_policy',
     async () => {
       await enroll(owner)
+      report.browser.lastAction = {
+        actor: 'owner_stepup',
+        action: 'perform_distinct_family_ui_stepup',
+      }
+      const observation = await completeDistinctFamilyStepUpUi({
+        page: ownerStepUp.page,
+        refreshPage,
+        readProfile: () =>
+          api('/api/accounts/profile', 'GET', undefined, ownerStepUp.token),
+        readAssurance: () =>
+          api(
+            '/identity/accounts/totp/assurance',
+            'GET',
+            undefined,
+            ownerStepUp.token,
+          ),
+        getFreshCode: () => freshOtp(owner),
+        closeDialog,
+      })
+      invariant(
+        report.http.some(
+          (entry) =>
+            entry.surface === 'owner_stepup_admin_browser' &&
+            entry.method === 'POST' &&
+            entry.path === '/identity/accounts/totp/step-up' &&
+            entry.status === 200,
+        ),
+        'owner_stepup_http_not_observed',
+      )
+      report.mfa.observations.push({
+        actor: 'owner_stepup',
+        flow: 'ui_stepup_assures_distinct_owner_family',
+        ...observation,
+        passed: true,
+      })
       await navigateView(ownerPage, 'セキュリティ')
       await ownerPage
         .getByRole('button', { name: '認証アプリを必須にする', exact: true })
@@ -2388,6 +2523,15 @@ async function companyFlow(context) {
       .getByRole('heading', { name: '組織管理にサインイン', exact: true })
       .waitFor()
     await api('/api/accounts/profile', 'GET', undefined, previous, 401)
+    const previousStepUp = ownerStepUp.token
+    await ownerStepUp.page
+      .getByRole('button', { name: 'サインアウト', exact: true })
+      .click()
+    await ownerStepUp.page
+      .getByRole('heading', { name: '組織管理にサインイン', exact: true })
+      .waitFor()
+    await api('/api/accounts/profile', 'GET', undefined, previousStepUp, 401)
+    report.mfa.ownerStepUpFamilyLoggedOut = true
     if (options.nativeCli) {
       await native(['logout'])
       report.native.status = 'passed'

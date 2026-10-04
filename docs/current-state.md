@@ -20,8 +20,10 @@ date-expectation corrections across two files are separate intervening changes.
 The focused execution's
 before/after source manifests match with zero changed paths, and process readback
 found no remaining workerd or Vitest.
-Neither focused result turns the retained complete run green; final committed
-exact-head hosted whole-suite CI remains pending.
+Neither focused result turns the retained complete run green. The subsequent
+exact-head hosted CI for commit `431e189ffb29635440f37479e71a4ba9fa217fbc`
+passed every job step. Later acceptance-harness changes require their own
+exact-head CI; that earlier pass is not attributed to a later source tree.
 
 The earlier 183-file / 3,581-test run remains a separate failed checkpoint:
 3,575 passed and six failed. Its matching TOTP and membership fixture repairs
@@ -62,8 +64,15 @@ group-only access, then failed at the native CLI first-profile stderr gate and
 browser cleanup. No native decrypt checks completed; normal cleanup and the
 actual run's final source readback were incomplete. The attempt remains FAILED.
 The narrowly scoped diagnostic and bounded cleanup fixes have independent static
-review and 16 passing focused harness tests, but no successful core 07 result is
-recorded. Private current-Browser preparation is also separate from execution
+review and 16 passing focused harness tests. Core attempt 07 then passed seven
+phases, including current CLI 2026.9.1 shared and personal five-field decryption,
+with normal cleanup, graceful browser close, matching actual source before/after,
+and a complete owned supervisor witness. It remains FAILED because the harness
+then expected an additional step-up button after successful enrollment had
+already established proof for that exact family. The reviewed correction asserts
+enrollment assurance and uses a separately retained pre-enrollment family for
+explicit UI step-up; its next complete acceptance run is pending.
+Private current-Browser preparation is also separate from execution
 acceptance and still requires its final byte-integrity and complete-flow gates.
 
 The separate EVP checkout passed all 18 actual local D1 persistence cases.
@@ -75,7 +84,8 @@ individual Internet-Draft draft02 RP profile verifies only the current account's
 email and grants no authentication, MFA, organization, or key authority. Actual
 Microsoft issuer compatibility and real provider/browser interoperability remain
 unresolved; private company-domain/provider observations stay outside public
-source.
+source. A separate final static review found and closed one DNS cache-TTL P2,
+with two RED-to-GREEN expiry regressions and all 79 backend pure cases passing.
 
 Official release metadata was refreshed on 2026-10-04: Browser 2026.9.3,
 Desktop/CLI 2026.9.1, Android 2026.9.0 build 21909, and iOS 2026.9.1 build 3533.

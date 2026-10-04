@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import {
+  assertDistinctBrowserFamilies,
+  completeDistinctFamilyStepUpUi,
+  verifyEnrollmentAssurance,
   childEnvironment,
   classifyNativeStderr,
   closeOwnedBrowserServer,
@@ -391,5 +394,220 @@ describe('company administration acceptance execution boundary', () => {
         'CREATE TRIGGER guard BEFORE INSERT ON example\nBEGIN\nSELECT 1;',
       ),
     ).toThrow('incomplete_migration')
+  })
+
+  it('successful enrollment already assures its exact family without requiring an absent step-up control', async () => {
+    let roleLookups = 0
+    const result = await verifyEnrollmentAssurance(
+      {
+        locator: () => ({ count: async () => 0 }),
+        getByRole: () => {
+          roleLookups++
+          throw new Error(
+            'step-up control is correctly absent after enrollment',
+          )
+        },
+      },
+      async () => ({ verified: true }),
+    )
+    assert.deepEqual(result, { enrollmentAssured: true, explicitStepUp: false })
+    assert.equal(roleLookups, 0)
+  })
+
+  it('enrollment fails if a secret remains or canonical assurance is false; it cannot heal by step-up', async () => {
+    let reads = 0
+    await assert.rejects(
+      verifyEnrollmentAssurance(
+        { locator: () => ({ count: async () => 1 }) },
+        async () => {
+          reads++
+          return { verified: true }
+        },
+      ),
+      /setup_seed_dom_retained/,
+    )
+    assert.equal(reads, 0)
+    await assert.rejects(
+      verifyEnrollmentAssurance(
+        { locator: () => ({ count: async () => 0 }) },
+        async () => ({ verified: false }),
+      ),
+      /enrollment_family_not_assured/,
+    )
+  })
+
+  const token = (claims) =>
+    'header.' +
+    Buffer.from(JSON.stringify(claims)).toString('base64url') +
+    '.signature'
+
+  it('step-up family requires the same account and distinct immutable session and device identifiers', () => {
+    const first = token({
+      sub: 'same-user',
+      device: 'first-device',
+      sessionId: 'first-session',
+    })
+    const second = token({
+      sub: 'same-user',
+      device: 'second-device',
+      sessionId: 'second-session',
+    })
+    assert.equal(assertDistinctBrowserFamilies(first, second), true)
+    assert.throws(
+      () => assertDistinctBrowserFamilies(first, first),
+      /browser_families_not_distinct/,
+    )
+    assert.throws(
+      () =>
+        assertDistinctBrowserFamilies(
+          first,
+          token({
+            sub: 'same-user',
+            device: 'second-device',
+            sessionId: 'first-session',
+          }),
+        ),
+      /browser_families_not_distinct/,
+    )
+    assert.throws(
+      () =>
+        assertDistinctBrowserFamilies(
+          first,
+          token({
+            sub: 'other-user',
+            device: 'second-device',
+            sessionId: 'second-session',
+          }),
+        ),
+      /browser_family_account_mismatch/,
+    )
+    assert.throws(
+      () => assertDistinctBrowserFamilies('private-canary-secret', second),
+      (error) =>
+        error.code === 'browser_family_claims_invalid' &&
+        error.message === 'browser_family_claims_invalid',
+    )
+  })
+
+  function familyUi({ enrolled = true, before = false, after = true } = {}) {
+    const events = []
+    const clicks = (name) => ({
+      click: async () => {
+        events.push(name)
+      },
+    })
+    const accountDialog = {
+      getByRole: (role, options) => {
+        assert.equal(role, 'button')
+        assert.equal(options.name, '認証コードで本人確認')
+        return clicks('open_stepup_dialog')
+      },
+    }
+    const stepUpDialog = {
+      getByLabel: (name) => {
+        assert.equal(name, '認証アプリの6桁コード')
+        return {
+          fill: async (code) => {
+            assert.equal(code, '654321')
+            events.push('fill_fresh_code')
+          },
+        }
+      },
+      getByRole: (role, options) => {
+        assert.equal(role, 'button')
+        assert.equal(options.name, '本人確認する')
+        return clicks('submit_stepup')
+      },
+    }
+    let reads = 0
+    return {
+      events,
+      arguments: {
+        page: {
+          getByRole: (role, options) => {
+            if (role === 'button') {
+              assert.equal(options.name, 'アカウントのセキュリティ')
+              return clicks('open_account_dialog')
+            }
+            assert.equal(role, 'dialog')
+            if (options.name === 'アカウントのセキュリティ')
+              return accountDialog
+            assert.equal(options.name, '現在のセッションを本人確認')
+            return stepUpDialog
+          },
+        },
+        refreshPage: async () => {
+          events.push('refresh_completed')
+        },
+        readProfile: async () => {
+          events.push('canonical_profile')
+          return { TwoFactorEnabled: enrolled }
+        },
+        readAssurance: async () => {
+          events.push(reads === 0 ? 'canonical_unassured' : 'canonical_assured')
+          return { verified: reads++ === 0 ? before : after }
+        },
+        getFreshCode: async () => {
+          events.push('next_user_totp_step')
+          return '654321'
+        },
+        closeDialog: async () => {
+          events.push('dialog_closed')
+        },
+      },
+    }
+  }
+
+  it('distinct-family step-up refreshes first, starts unassured, submits via scoped UI, and rereads proof', async () => {
+    const fixture = familyUi()
+    assert.deepEqual(await completeDistinctFamilyStepUpUi(fixture.arguments), {
+      enrolled: true,
+      unassuredBefore: true,
+      explicitStepUp: true,
+      verifiedAfter: true,
+    })
+    assert.deepEqual(fixture.events, [
+      'refresh_completed',
+      'canonical_profile',
+      'canonical_unassured',
+      'open_account_dialog',
+      'open_stepup_dialog',
+      'next_user_totp_step',
+      'fill_fresh_code',
+      'submit_stepup',
+      'dialog_closed',
+      'canonical_assured',
+    ])
+  })
+
+  it('a secondary family already assured by another family fails before any UI step-up', async () => {
+    const fixture = familyUi({ before: true })
+    await assert.rejects(
+      completeDistinctFamilyStepUpUi(fixture.arguments),
+      /stepup_family_was_already_assured/,
+    )
+    assert.deepEqual(fixture.events, [
+      'refresh_completed',
+      'canonical_profile',
+      'canonical_unassured',
+    ])
+  })
+
+  it('unenrolled profile and an unverified post-step-up readback cannot pass', async () => {
+    const unenrolled = familyUi({ enrolled: false })
+    await assert.rejects(
+      completeDistinctFamilyStepUpUi(unenrolled.arguments),
+      /stepup_family_not_enrolled/,
+    )
+    assert.deepEqual(unenrolled.events, [
+      'refresh_completed',
+      'canonical_profile',
+    ])
+    const unverified = familyUi({ after: false })
+    await assert.rejects(
+      completeDistinctFamilyStepUpUi(unverified.arguments),
+      /stepup_family_not_assured/,
+    )
+    assert.ok(unverified.events.includes('submit_stepup'))
   })
 })
