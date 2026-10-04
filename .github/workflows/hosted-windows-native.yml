@@ -1,0 +1,71 @@
+name: Hosted Windows native pre-auth capability
+on:
+  pull_request:
+    paths:
+      - .github/workflows/hosted-windows-native.yml
+      - scripts/hosted-windows-native-preflight/**
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Enter hosted-windows-preauth
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: hosted-windows-native-preflight
+  cancel-in-progress: false
+jobs:
+  preauth:
+    if: github.repository == 'kazu-42/HonoWarden' && github.event.repository.private == false && ((github.event_name == 'workflow_dispatch' && inputs.confirmation == 'hosted-windows-preauth') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'task/windows-hosted-native-preflight-')))
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    env:
+      PACKET: scripts/hosted-windows-native-preflight
+    steps:
+      - name: Check out the exact reviewed probe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Check out the exact public company source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 2deeee0cf159da92babc86e09de44c12eea2aa93
+          path: company
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up pinned Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22.22.0
+      - name: Prepare only locked public dependencies
+        working-directory: company
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference='Stop'
+          npm install --global corepack@0.34.0 --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'corepack_bootstrap_failed' }
+          corepack enable
+          if ($LASTEXITCODE -ne 0 -or (corepack --version) -ne '0.34.0') { throw 'corepack_pin_failed' }
+          if ((pnpm --version) -ne '11.8.0') { throw 'pnpm_pin_failed' }
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'locked_dependency_preparation_failed' }
+      - name: Check source policy tests
+        run: node --test "$env:PACKET/preflight.test.mjs"
+      - name: Probe finite hosted Server pre-auth capabilities
+        timeout-minutes: 5
+        run: |
+          & "$env:PACKET/preflight.ps1" -Execute -Company "$env:GITHUB_WORKSPACE/company"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Independently finish exact owned cleanup
+        if: always()
+        timeout-minutes: 2
+        run: |
+          & "$env:PACKET/preflight.ps1" -Finish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # No raw artifacts, profiles, screenshots, stdio or credential output are uploaded.
