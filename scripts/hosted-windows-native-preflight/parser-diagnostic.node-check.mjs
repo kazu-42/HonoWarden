@@ -14,6 +14,9 @@ const phases = [
   'ENTRY',
   'VERSION_OK',
   'PATH_BEGIN',
+  'PATH_JOINED',
+  'EXISTS_BEGIN',
+  'EXISTS_RETURNED',
   'PATH_READY',
   'PARSER_BEGIN',
   'PARSER_RETURNED',
@@ -28,8 +31,79 @@ const input = {
   root: "C:\\reviewed space\\O'Brien\\日本語😀",
 }
 
+test('SOURCE11 nine prefixes separate joined and existence regions without ambiguous shortcuts', () => {
+  for (let count = 0; count <= phases.length; count++) {
+    assert.deepEqual(decodeDiagnosticPrefix(stream(count)), {
+      valid: true,
+      phase: count === 0 ? 'NONE' : phases[count - 1],
+      completed: count === phases.length,
+    })
+  }
+  for (const text of [
+    stream(3) + 'PATH_READY\n',
+    stream(3) + 'EXISTS_BEGIN\nPATH_JOINED\n',
+    stream(4) + 'EXISTS_RETURNED\n',
+    stream(5) + 'EXISTS_RETURN',
+    stream(5) + 'EXISTS_BEGIN\n',
+    stream(6) + 'EXISTS_RETURNED\n',
+    stream(phases.length) + 'PATH_JOINED\n',
+  ]) {
+    assert.deepEqual(decodeDiagnosticPrefix(text), {
+      valid: false,
+      phase: 'NONE',
+      completed: false,
+    })
+  }
+})
+
+test('SOURCE11 brackets exactly unchanged joining and one existence call and preserves all other source10 bytes', async () => {
+  const command = Buffer.from(
+    buildDiagnosticInvocation(input).args[4],
+    'base64',
+  ).toString('utf16le')
+  const statements = [
+    "[Console]::Out.Write('PATH_BEGIN'+[char]10); [Console]::Out.Flush()",
+    "$path=Join-Path $root 'preflight.ps1'",
+    "[Console]::Out.Write('PATH_JOINED'+[char]10); [Console]::Out.Flush()",
+    "[Console]::Out.Write('EXISTS_BEGIN'+[char]10); [Console]::Out.Flush()",
+    '$exists=[IO.File]::Exists($path)',
+    "[Console]::Out.Write('EXISTS_RETURNED'+[char]10); [Console]::Out.Flush()",
+    'if (-not $exists) { exit 1 }',
+    "[Console]::Out.Write('PATH_READY'+[char]10); [Console]::Out.Flush()",
+  ]
+  let previous = -1
+  for (const statement of statements) {
+    const position = command.indexOf(statement)
+    assert.ok(position > previous)
+    assert.equal(command.split(statement).length - 1, 1)
+    previous = position
+  }
+  assert.equal(command.split('Join-Path').length - 1, 1)
+  assert.equal(command.split('[IO.File]::Exists').length - 1, 1)
+  const source = await readFile(
+    new URL('./parser-diagnostic.mjs', import.meta.url),
+    'utf8',
+  )
+  let inverse = source
+  for (const phase of ['PATH_JOINED', 'EXISTS_BEGIN', 'EXISTS_RETURNED']) {
+    inverse = inverse.replace(`  '${phase}',\n`, '')
+    inverse = inverse.replace(
+      `  [Console]::Out.Write('${phase}'+[char]10); [Console]::Out.Flush()\n`,
+      '',
+    )
+  }
+  inverse = inverse.replace(
+    '  $exists=[IO.File]::Exists($path)\n  if (-not $exists) { exit 1 }',
+    '  if (-not [IO.File]::Exists($path)) { exit 1 }',
+  )
+  assert.equal(
+    createHash('sha256').update(inverse).digest('hex'),
+    '83b476eb26d4ed7c8d3edb9bdfd950de8e9848550ac6adc5304bd7d2adc08d53',
+  )
+})
+
 test('complete canonical diagnostic sequence proves only the diagnostic completed', () => {
-  assert.deepEqual(decodeDiagnosticPrefix(stream(6)), {
+  assert.deepEqual(decodeDiagnosticPrefix(stream(phases.length)), {
     valid: true,
     phase: 'PARSER_RETURNED',
     completed: true,
@@ -136,21 +210,21 @@ test('prefix decoder rejects duplicate skipped reordered unknown and trailing fr
     'ENTRY\nENTRY\n',
     'ENTRY\nPATH_BEGIN\n',
     'VERSION_OK\nENTRY\n',
-    stream(6) + 'UNKNOWN\n',
-    stream(6) + '\n',
-    stream(6) + 'x',
-    stream(6) + stream(6),
+    stream(phases.length) + 'UNKNOWN\n',
+    stream(phases.length) + '\n',
+    stream(phases.length) + 'x',
+    stream(phases.length) + stream(phases.length),
     stream(3) + 'PATH_RE',
     'ENTRY\r\n',
     ' entry\n',
     'ENTRY',
     ' '.repeat(4097),
-    Buffer.from(stream(6)),
+    Buffer.from(stream(phases.length)),
     null,
     undefined,
     false,
     0,
-    { value: stream(6) },
+    { value: stream(phases.length) },
     {
       toString() {
         throw Error('must_not_coerce')
@@ -181,7 +255,7 @@ test('one synchronous owned child reports only its own complete fixed frame', ()
   const report = runDiagnostic(input, (file, args, options) => {
     calls++
     assert.deepEqual({ file, args, options }, buildDiagnosticInvocation(input))
-    return stream(6)
+    return stream(phases.length)
   })
   assert.equal(calls, 1)
   assert.equal(report.classification, 'diagnostic_completed')
@@ -195,7 +269,7 @@ test('timeout preserves a closed prefix without changing failure or running anot
   const error = Object.assign(Error('private-marker'), {
     code: 'ETIMEDOUT',
     status: null,
-    stdout: stream(5),
+    stdout: stream(phases.indexOf('PARSER_BEGIN') + 1),
     stderr: 'private-marker',
     cmd: 'private-marker',
     cause: { value: 'private-marker' },
@@ -215,8 +289,8 @@ test('timeout preserves a closed prefix without changing failure or running anot
 
 test('even a complete frame cannot turn a timed out or nonzero child into completion', () => {
   for (const error of [
-    { code: 'ETIMEDOUT', status: null, stdout: stream(6) },
-    { code: 'OTHER', status: 1, stdout: stream(6) },
+    { code: 'ETIMEDOUT', status: null, stdout: stream(phases.length) },
+    { code: 'OTHER', status: 1, stdout: stream(phases.length) },
   ]) {
     const report = runDiagnostic(input, () => {
       throw error
@@ -269,7 +343,11 @@ test('accessor and inherited metadata are rejected without executing getters', (
         throw Error('private-marker')
       },
     },
-    Object.create({ stdout: stream(6), code: 'ETIMEDOUT', status: null }),
+    Object.create({
+      stdout: stream(phases.length),
+      code: 'ETIMEDOUT',
+      status: null,
+    }),
     new Proxy(
       {},
       {
@@ -290,7 +368,7 @@ test('accessor and inherited metadata are rejected without executing getters', (
 })
 
 test('Buffer output is counted but rejected and overbound output is not accepted', () => {
-  for (const stdout of [Buffer.from(stream(6)), 'x'.repeat(4097)]) {
+  for (const stdout of [Buffer.from(stream(phases.length)), 'x'.repeat(4097)]) {
     const report = runDiagnostic(input, () => {
       throw { stdout, status: 1 }
     })

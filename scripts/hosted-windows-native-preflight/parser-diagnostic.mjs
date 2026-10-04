@@ -8,6 +8,9 @@ const PHASES = Object.freeze([
   'ENTRY',
   'VERSION_OK',
   'PATH_BEGIN',
+  'PATH_JOINED',
+  'EXISTS_BEGIN',
+  'EXISTS_RETURNED',
   'PATH_READY',
   'PARSER_BEGIN',
   'PARSER_RETURNED',
@@ -68,7 +71,11 @@ try {
   $root='${root}'
   [Console]::Out.Write('PATH_BEGIN'+[char]10); [Console]::Out.Flush()
   $path=Join-Path $root 'preflight.ps1'
-  if (-not [IO.File]::Exists($path)) { exit 1 }
+  [Console]::Out.Write('PATH_JOINED'+[char]10); [Console]::Out.Flush()
+  [Console]::Out.Write('EXISTS_BEGIN'+[char]10); [Console]::Out.Flush()
+  $exists=[IO.File]::Exists($path)
+  [Console]::Out.Write('EXISTS_RETURNED'+[char]10); [Console]::Out.Flush()
+  if (-not $exists) { exit 1 }
   [Console]::Out.Write('PATH_READY'+[char]10); [Console]::Out.Flush()
   $tokens=$null; $parseErrors=$null
   [Console]::Out.Write('PARSER_BEGIN'+[char]10); [Console]::Out.Flush()

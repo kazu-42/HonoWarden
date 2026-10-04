@@ -64,13 +64,13 @@
     },
     {
       "path": "parser-diagnostic.mjs",
-      "bytes": 6894,
-      "sha256": "83b476eb26d4ed7c8d3edb9bdfd950de8e9848550ac6adc5304bd7d2adc08d53"
+      "bytes": 7186,
+      "sha256": "3efefc6c97ba8256ff61b0c6bd5ed68630240bfe60f56c5e164018a999faa93b"
     },
     {
       "path": "parser-diagnostic.node-check.mjs",
-      "bytes": 13181,
-      "sha256": "8baa86268bdd0569c946646a2691879bc755138c9cace7c817bf5b046835132f"
+      "bytes": 16054,
+      "sha256": "f87015d58a2c07adbce31326a34732c39015111bec039bf2a2c61eb41207963b"
     }
   ]
 }
