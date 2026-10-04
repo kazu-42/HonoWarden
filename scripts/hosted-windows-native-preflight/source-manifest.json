@@ -61,6 +61,16 @@
       "path": "company-source-manifest.json",
       "bytes": 24136,
       "sha256": "1a380f6818bed69e8e15b1f4091225a7d2b45ae7cd90868528c4f5d25c0cab3d"
+    },
+    {
+      "path": "parser-diagnostic.mjs",
+      "bytes": 6894,
+      "sha256": "83b476eb26d4ed7c8d3edb9bdfd950de8e9848550ac6adc5304bd7d2adc08d53"
+    },
+    {
+      "path": "parser-diagnostic.node-check.mjs",
+      "bytes": 13181,
+      "sha256": "8baa86268bdd0569c946646a2691879bc755138c9cace7c817bf5b046835132f"
     }
   ]
 }

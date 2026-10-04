@@ -74,7 +74,15 @@ jobs:
             if (Test-Path -LiteralPath $bootstrap) { throw 'bootstrap_cleanup_unproved' }
           }
       - name: Check source policy tests
+        id: source_policy_tests
         run: node --test "$env:PACKET/preflight.node-check.mjs"
+      - name: Check independent diagnostic policy tests
+        id: diagnostic_policy_tests
+        if: success() || (failure() && steps.source_policy_tests.outcome == 'failure')
+        run: node --test "$env:PACKET/parser-diagnostic.node-check.mjs"
+      - name: Diagnose only the failed public parser child
+        if: failure() && steps.source_policy_tests.outcome == 'failure' && steps.diagnostic_policy_tests.outcome == 'success'
+        run: node "$env:PACKET/parser-diagnostic.mjs"
       - name: Probe finite hosted Server pre-auth capabilities
         timeout-minutes: 5
         run: |
