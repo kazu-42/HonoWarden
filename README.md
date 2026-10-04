@@ -83,6 +83,21 @@ TOTP setup and login require `HONOWARDEN_TOTP_SECRET` to wrap authenticator secr
 
 Audit JSON lines are opt-in through `HONOWARDEN_AUDIT_LOGS=true`. See [docs/operations/audit-events.md](docs/operations/audit-events.md) for the event contract and secret-safety rules.
 
+Optional browser-assisted email verification is implemented as a strict
+relying-party subset of the individual Internet-Draft
+`draft-hardt-email-verification-02`, not an RFC. An already authenticated account
+can request a challenge and submit an issuer and holder proof for its current
+email. Proof is bound to the current session family, device, security stamp,
+origin, and expiring nonce; verification metadata and required audit commit
+atomically. It does not grant login, MFA assurance, organization privileges,
+account recovery, or vault-key authority. Tracked configuration keeps
+`HONOWARDEN_EMAIL_VERIFICATION_ENABLED=false`, RP origin empty, and the reviewed
+issuer registry empty. Local source and synthetic tests do not prove real
+browser/issuer interoperability or deployment. See the
+[compatibility boundary](docs/compatibility-inventory.md#email-verification-source-boundary),
+[ADR 0017](docs/adr/0017-email-verification-protocol.md), and the
+[operator contract](docs/operations/email-verification.md).
+
 Transient auth-defense cleanup runs in bounded slices on password-grant traffic.
 See [docs/operations/retention-cleanup.md](docs/operations/retention-cleanup.md)
 for retention rules and remaining scheduler work.
@@ -115,8 +130,10 @@ described in [Deploy Provenance](docs/operations/deploy-provenance-runbook.md).
 Local development uses Wrangler's local D1 store. After applying migrations,
 `GET /health/db` reports the latest recorded migration and required tables.
 It does not verify columns, indexes, triggers, or an exact migration manifest;
-the company source requires all migrations through 0030 even when management
+this source requires all tracked migrations through 0031 even when management
 flags are off.
+The default-off email-verification route guard performs no challenge-table work;
+it does not replace the complete schema-first rollout contract.
 
 ## Compatibility
 

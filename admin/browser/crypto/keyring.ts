@@ -1,4 +1,4 @@
-import { AdminError } from '../contracts'
+import { AdminError } from '../errors'
 import { decodeBase64, encodeBase64, equalBytes } from './encoding'
 import { decryptType2, encryptType2, unwrapRsa, wrapRsa } from './enc-string'
 import type { PasswordMaterial } from './kdf'

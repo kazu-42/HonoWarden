@@ -6,6 +6,7 @@ import {
   type AuditPage,
   type CollectionGrant,
   type CollectionView,
+  type EmailVerificationAttempt,
   type GroupView,
   type MemberStatus,
   type MemberView,
@@ -100,6 +101,67 @@ export async function runMfaVerification<T>(input: {
   } catch (error) {
     if (!input.isCurrent()) return { kind: 'stale' }
     return { kind: 'unknown', error: failed ? failure : error }
+  }
+}
+
+export type EmailVerificationUiOutcome =
+  | { kind: 'verified' }
+  | { kind: 'proofUnavailable' }
+  | { kind: 'stale' }
+  | { kind: 'rejected'; error: unknown }
+  | {
+      kind: 'unknown'
+      error: unknown
+      canonicalVerified?: boolean
+    }
+
+export async function runEmailVerificationSubmission(input: {
+  submit: EmailVerificationAttempt['submit']
+  dispose: () => void
+  isCurrent: () => boolean
+  currentVerification: () => boolean | undefined
+  readback: () => Promise<boolean | undefined>
+}): Promise<EmailVerificationUiOutcome> {
+  if (!input.isCurrent()) {
+    input.dispose()
+    return { kind: 'stale' }
+  }
+  let failure: unknown
+  try {
+    const result = await input.submit()
+    if (!input.isCurrent()) {
+      input.dispose()
+      return { kind: 'stale' }
+    }
+    if (result.status === 'proofUnavailable') {
+      input.dispose()
+      return { kind: 'proofUnavailable' }
+    }
+    input.dispose()
+    if (input.currentVerification() === true) return { kind: 'verified' }
+    failure = new AdminError(
+      'unavailable',
+      'email_verification_readback_failed',
+    )
+  } catch (error) {
+    input.dispose()
+    if (!input.isCurrent()) return { kind: 'stale' }
+    if (
+      error instanceof AdminError &&
+      !['transport', 'unavailable'].includes(error.kind)
+    )
+      return { kind: 'rejected', error }
+    failure = error
+  }
+  try {
+    const canonicalVerified = await input.readback()
+    if (!input.isCurrent()) return { kind: 'stale' }
+    return canonicalVerified === undefined
+      ? { kind: 'unknown', error: failure }
+      : { kind: 'unknown', error: failure, canonicalVerified }
+  } catch {
+    if (!input.isCurrent()) return { kind: 'stale' }
+    return { kind: 'unknown', error: failure }
   }
 }
 
@@ -627,6 +689,7 @@ export function mountAdminApp(
     submit: (form: HTMLFormElement, errorArea: HTMLElement) => Promise<void>,
     danger = false,
     cleanup?: () => void,
+    canSubmit?: () => boolean,
   ): void {
     closeDialog()
     const trigger =
@@ -655,6 +718,7 @@ export function mountAdminApp(
       submitLabel,
     )
     save.type = 'submit'
+    save.disabled = canSubmit ? !canSubmit() : false
     form.append(element('div', 'dialog-footer', cancel, save))
     dialog.append(element('div', 'dialog-header', heading, dismiss), form)
     document.body.append(dialog)
@@ -679,7 +743,7 @@ export function mountAdminApp(
             errorArea.replaceChildren(noticeNode(formatUiError(error)))
         })
         .finally(() => {
-          save.disabled = false
+          save.disabled = canSubmit ? !canSubmit() : false
           form.removeAttribute('aria-busy')
         })
     })
@@ -772,6 +836,7 @@ export function mountAdminApp(
     render()
   }
   function selectView(next: View): void {
+    if (loading && !selectedOrganizationId) return
     invalidate()
     view = next
     focusMainAfterLoad = true
@@ -1965,7 +2030,7 @@ export function mountAdminApp(
           : null,
       ),
     )
-    result.append(assurance, accountSecurityPanel())
+    result.append(assurance, emailVerificationPanel(), accountSecurityPanel())
     if (!snapshot.policy) return result
     const action = button(
       snapshot.policy.required ? '必須設定を解除' : '認証アプリを必須にする',
@@ -2090,12 +2155,254 @@ export function mountAdminApp(
   function accountSecurityDialog(): void {
     showDialog(
       'アカウントのセキュリティ',
-      accountSecurityPanel(),
+      element('div', '', emailVerificationPanel(), accountSecurityPanel()),
       '閉じる',
       async () => {
         closeDialog()
       },
     )
+  }
+  function emailVerificationPanel(): HTMLElement {
+    const action = button(
+      'ブラウザでメールを確認',
+      () => emailVerificationDialog(),
+      session.emailVerified === false ? 'primary' : '',
+    )
+    action.disabled = !session.email
+    return element(
+      'div',
+      'panel',
+      element(
+        'div',
+        'panel-header',
+        element('h2', '', 'メールアドレスの確認'),
+        element(
+          'span',
+          `status ${session.emailVerified === true ? '' : 'revoked'}`,
+          session.emailVerified === undefined
+            ? '状態を確認できません'
+            : session.emailVerified
+              ? '確認済み'
+              : '未確認',
+        ),
+      ),
+      element(
+        'div',
+        'panel-body',
+        element(
+          'dl',
+          'detail-list',
+          element('dt', '', 'アカウントのメール'),
+          element('dd', '', session.email ?? '状態を確認できません'),
+        ),
+        element(
+          'p',
+          'note',
+          'サインイン中のメールアドレスの所有を確認します。ブラウザとメールサービスに依存する実験的な機能です。',
+        ),
+        element('div', 'inline-actions', action),
+      ),
+    )
+  }
+  function emailVerificationDialog(): void {
+    const capturedEpoch = epoch
+    const orgId = selectedOrganizationId
+    const accountEmail = session.email
+    if (!accountEmail || session.phase !== 'unlocked') return
+    const email = field(
+      'email-verification-email',
+      '確認するメールアドレス',
+      'email',
+      accountEmail,
+    )
+    email.input.name = 'email'
+    email.input.autocomplete = 'email'
+    email.input.required = true
+    email.input.disabled = true
+    const proof = element('input')
+    proof.type = 'hidden'
+    proof.name = 'token'
+    proof.setAttribute('autocomplete', 'email-verification-token')
+    const stateArea = element('div', 'email-verification-state')
+    stateArea.setAttribute('role', 'status')
+    let attempt: EmailVerificationAttempt | null = null
+    let preparing = false
+    let sending = false
+    let revision = 0
+    let dialog: HTMLDialogElement | null = null
+    let form: HTMLFormElement | null = null
+    const owns = (): boolean =>
+      current(capturedEpoch, orgId) &&
+      session.email === accountEmail &&
+      activeDialog === dialog &&
+      Boolean(dialog?.isConnected && form?.isConnected)
+    const retire = (): void => {
+      attempt?.dispose()
+      attempt = null
+      proof.value = ''
+      proof.removeAttribute('nonce')
+    }
+    const prepareButton = button('新しい確認を準備', () => {
+      void prepare()
+    })
+    const content = element(
+      'div',
+      '',
+      element(
+        'p',
+        'dialog-note',
+        'このアカウントのメールアドレスを選択または入力し、ブラウザの案内に従ってください。同じブラウザでメールサービスへのサインインが必要です。',
+      ),
+      email.root,
+      proof,
+      stateArea,
+      element('div', 'inline-actions', prepareButton),
+      element(
+        'p',
+        'note',
+        '確認情報を取得できない場合、この画面には通常の確認メールを受け取って完了する経路がありません。メール確認の利用準備については管理者にご確認ください。',
+      ),
+    )
+    showDialog(
+      'ブラウザでメールを確認',
+      content,
+      '確認結果を送信',
+      async (_form, errorArea) => {
+        if (!owns() || !attempt || preparing || sending) return
+        const submittedAttempt = attempt
+        sending = true
+        prepareButton.disabled = true
+        stateArea.replaceChildren(
+          element('p', 'note', '確認結果を送信しています'),
+        )
+        const result = await runEmailVerificationSubmission({
+          submit: () => submittedAttempt.submit(),
+          dispose: () => {
+            submittedAttempt.dispose()
+            if (attempt === submittedAttempt) attempt = null
+          },
+          isCurrent: owns,
+          currentVerification: () => client.getSession().emailVerified,
+          readback: async () => {
+            await client.sync()
+            return client.getSession().emailVerified
+          },
+        })
+        sending = false
+        if (!owns() || result.kind === 'stale') return
+        prepareButton.disabled = false
+        if (result.kind === 'verified') {
+          closeDialog()
+          outcomeNotice = {
+            title: 'メールアドレスの所有を確認しました',
+            message: '最新のアカウントの確認状態を取得しました。',
+            tone: 'success',
+          }
+          render()
+          return
+        }
+        if (result.kind === 'proofUnavailable') {
+          stateArea.replaceChildren(
+            noticeNode({
+              title: 'ブラウザから確認情報を取得できませんでした',
+              message:
+                'ブラウザとメールサービスの対応、サインイン状態、許可と確認の完了をご確認ください。取得できなかった原因はこの画面から判別できません。「新しい確認を準備」からやり直せます。',
+              tone: 'warning',
+            }),
+          )
+          return
+        }
+        if (result.kind === 'rejected') {
+          const failure = formatUiError(result.error)
+          errorArea.replaceChildren(
+            noticeNode({
+              ...failure,
+              title: '確認情報を利用できませんでした',
+              message:
+                '新しい確認を準備して、サインイン中のメールアドレスでお試しください。',
+            }),
+          )
+          stateArea.replaceChildren()
+          return
+        }
+        closeDialog()
+        outcomeNotice = {
+          ...formatUiError(result.error),
+          title: '確認結果を確定できません',
+          message:
+            result.canonicalVerified === undefined
+              ? '確認操作が保存されている可能性があります。最新の状態も取得できませんでした。一度サインアウトしてサインインし直してください。'
+              : `確認操作が保存されている可能性があります。現在のアカウントのメール確認状態は「${result.canonicalVerified ? '確認済み' : '未確認'}」です。操作は再送していません。`,
+          tone: 'warning',
+        }
+        render()
+      },
+      false,
+      () => {
+        revision++
+        retire()
+        email.input.value = ''
+      },
+      () => owns() && attempt !== null && !preparing && !sending,
+    )
+    dialog = activeDialog
+    form = dialog?.querySelector('form') ?? null
+    if (!form) {
+      closeDialog()
+      return
+    }
+    form.dataset.emailVerification = 'true'
+    email.input.addEventListener('input', () => {
+      proof.value = ''
+    })
+    email.input.addEventListener('change', () => {
+      proof.value = ''
+    })
+    async function prepare(): Promise<void> {
+      if (!owns() || !form || preparing || sending) return
+      retire()
+      const intendedRevision = ++revision
+      preparing = true
+      prepareButton.disabled = true
+      email.input.disabled = true
+      const submit = form.querySelector<HTMLButtonElement>(
+        'button[type="submit"]',
+      )
+      if (submit) submit.disabled = true
+      form.querySelector('.dialog-errors')?.replaceChildren()
+      stateArea.replaceChildren(element('p', 'note', '確認の準備をしています'))
+      try {
+        const prepared = await client.prepareEmailVerification({
+          form,
+          emailInput: email.input,
+          proofInput: proof,
+        })
+        if (!owns() || revision !== intendedRevision) {
+          prepared.dispose()
+          return
+        }
+        attempt = prepared
+        email.input.disabled = false
+        if (submit) submit.disabled = false
+        stateArea.replaceChildren(
+          element(
+            'p',
+            'note',
+            'メールアドレスを選択または入力し、ブラウザの確認が終わってから送信してください。',
+          ),
+        )
+        email.input.focus()
+      } catch (error) {
+        if (owns() && revision === intendedRevision)
+          stateArea.replaceChildren(noticeNode(formatUiError(error)))
+      } finally {
+        if (owns() && revision === intendedRevision) {
+          preparing = false
+          prepareButton.disabled = false
+        }
+      }
+    }
+    void prepare()
   }
   async function finishMfaSubmission(
     result: MutationOutcome<ReturnType<AdminClient['getSession']>>,
@@ -2624,6 +2931,7 @@ export function mountAdminApp(
       symbol.setAttribute('aria-hidden', 'true')
       const item = button(viewLabels[next], () => selectView(next))
       item.className = 'nav-button'
+      item.disabled = loading && !selectedOrganizationId
       item.prepend(symbol)
       if (view === next) item.setAttribute('aria-current', 'page')
       nav.append(item)
@@ -2743,15 +3051,7 @@ export function mountAdminApp(
         ),
       )
     for (const error of snapshot.errors) main.append(noticeNode(error))
-    if (!selectedOrganizationId)
-      main.append(
-        emptyState(
-          '組織のワークスペースを始める',
-          '組織を作成するか、会社からの招待を承諾してください。',
-          button('組織を作成', () => createOrganizationDialog(), 'primary'),
-        ),
-      )
-    else if (loading) {
+    if (loading) {
       const pending = element(
         'div',
         'loading-state',
@@ -2759,7 +3059,15 @@ export function mountAdminApp(
       )
       pending.setAttribute('role', 'status')
       main.append(pending)
-    } else {
+    } else if (!selectedOrganizationId)
+      main.append(
+        emptyState(
+          '組織のワークスペースを始める',
+          '組織を作成するか、会社からの招待を承諾してください。',
+          button('組織を作成', () => createOrganizationDialog(), 'primary'),
+        ),
+      )
+    else {
       const renderers: Record<View, () => HTMLElement> = {
         overview: overviewView,
         members: membersView,

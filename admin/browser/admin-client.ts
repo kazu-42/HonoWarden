@@ -27,6 +27,7 @@ import { createCryptoPort, type CryptoPort } from './crypto-client'
 import { validateKdf, type KdfSettings } from './crypto/kdf'
 import type { WrappedAccount, WrappedOrganization } from './crypto/keyring'
 import { consumeInvitation, type PendingInvitation } from './invitation'
+import { prepareEmailVerification } from './email-verification'
 
 export type AdminClientOptions = {
   fetch?: FetchPort
@@ -118,6 +119,12 @@ export function createAdminClient(
   const aborts = new Set<AbortController>()
   let epoch = 0
   let syncSequence = 0
+  let emailVerificationReadVersion = 0
+  const emailVerificationAttempts = new Set<() => void>()
+  const retireEmailVerification = () => {
+    for (const dispose of emailVerificationAttempts) dispose()
+    emailVerificationAttempts.clear()
+  }
   let port: CryptoPort | undefined
   let tokens: { access: string; refresh: string; expiresAt: number } | undefined
   let refresh: Promise<void> | undefined
@@ -161,6 +168,7 @@ export function createAdminClient(
   }
   const cancel = () => {
     epoch++
+    retireEmailVerification()
     for (const controller of aborts) controller.abort()
     aborts.clear()
     stopCrypto()
@@ -333,6 +341,8 @@ export function createAdminClient(
     const result = record((await authorized('/api/accounts/profile')).value)
     id(result.Id)
     string(result.Email, 254)
+    if (typeof result.EmailVerified !== 'boolean')
+      throw new AdminError('unavailable', 'response_invalid')
     return result
   }
   const assurance = async (): Promise<boolean> => {
@@ -376,6 +386,7 @@ export function createAdminClient(
       organizations: organizations(current).views,
       mfaVerified: verified,
       totpEnabled: current.TwoFactorEnabled === true,
+      emailVerified: current.EmailVerified === true,
     })
     touch()
   }
@@ -397,6 +408,7 @@ export function createAdminClient(
     unlocked()
     const expectedEpoch = epoch
     const expectedSync = ++syncSequence
+    const verificationVersion = emailVerificationReadVersion
     const current = await fetchProfile()
     assertEpoch(expectedEpoch)
     if (expectedSync !== syncSequence) return
@@ -414,6 +426,14 @@ export function createAdminClient(
     }
     assertEpoch(expectedEpoch)
     if (expectedSync !== syncSequence) return
+    if (profile?.Id !== current.Id || profile?.Email !== current.Email)
+      retireEmailVerification()
+    if (
+      verificationVersion !== emailVerificationReadVersion &&
+      profile?.Id === current.Id &&
+      profile?.Email === current.Email
+    )
+      current.EmailVerified = state.emailVerified
     profile = current
     publish({
       ...state,
@@ -422,6 +442,7 @@ export function createAdminClient(
       mfaVerified: verified,
       mfaRequired: verified ? false : (state.mfaRequired ?? false),
       totpEnabled: current.TwoFactorEnabled === true,
+      emailVerified: current.EmailVerified === true,
     })
   }
   const mutationReadback = async <T>(read: () => Promise<T>): Promise<T> => {
@@ -716,6 +737,74 @@ export function createAdminClient(
         throw new AdminError('unavailable', 'response_invalid')
       await mutationReadback(sync)
     },
+    async prepareEmailVerification(input) {
+      unlocked()
+      retireEmailVerification()
+      const expected = epoch
+      const accountId = id(profile?.Id)
+      const email = string(profile?.Email, 254)
+      const assertCurrent = () => {
+        assertEpoch(expected)
+        if (
+          state.phase !== 'unlocked' ||
+          profile?.Id !== accountId ||
+          profile?.Email !== email
+        )
+          throw new AdminError('cancelled', 'operation_cancelled')
+      }
+      return prepareEmailVerification(input, {
+        email,
+        now,
+        assertCurrent,
+        register(dispose) {
+          emailVerificationAttempts.add(dispose)
+          return () => emailVerificationAttempts.delete(dispose)
+        },
+        async createChallenge() {
+          return (
+            await authorized(
+              '/identity/accounts/email-verification/challenge',
+              { method: 'POST', body: {} },
+            )
+          ).value
+        },
+        async verifyAndReadback(challengeId, token) {
+          assertCurrent()
+          const result = record(
+            (
+              await authorized('/identity/accounts/email-verification/verify', {
+                method: 'POST',
+                body: { challengeId, token },
+              })
+            ).value,
+          )
+          if (
+            result.object !== 'emailVerification' ||
+            result.verified !== true ||
+            result.method !== 'evp'
+          )
+            throw new AdminError('unavailable', 'response_invalid')
+          try {
+            await mutationReadback(async () => {
+              const current = await fetchProfile()
+              assertCurrent()
+              if (
+                current.Id !== accountId ||
+                current.Email !== email ||
+                current.EmailVerified !== true
+              )
+                throw new AdminError('unavailable', 'response_invalid')
+              emailVerificationReadVersion++
+              profile = { ...profile, EmailVerified: true }
+              publish({ ...state, emailVerified: true })
+            })
+          } catch (error) {
+            assertCurrent()
+            throw error
+          }
+        },
+      })
+    },
     async unlock(password) {
       if (state.phase !== 'locked' || !profile)
         throw new AdminError('authentication', 'session_required')
@@ -748,6 +837,7 @@ export function createAdminClient(
           organizations: organizations(current).views,
           mfaVerified: verified,
           totpEnabled: current.TwoFactorEnabled === true,
+          emailVerified: current.EmailVerified === true,
         })
         touch()
       } catch (error) {

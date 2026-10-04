@@ -1,4 +1,5 @@
 import type { Context, Hono, Env } from 'hono'
+import { isCanonicalHttpsOrigin } from './domain/email-verification'
 
 const contentSecurityPolicy = [
   "default-src 'none'",
@@ -18,8 +19,12 @@ export type AdminRouteDependencies<E extends Env> = {
   runtime: (context: Context<E>) => {
     enabled: boolean
     assets?: Fetcher | undefined
+    emailVerificationTrial?: { origin: string; token: string } | undefined
   }
-  reportFailure: (context: Context<E>) => void | Promise<void>
+  reportFailure: (
+    context: Context<E>,
+    reason?: 'assets' | 'email_verification_trial_configuration',
+  ) => void | Promise<void>
 }
 
 export function registerAdminRoutes<E extends Env>(
@@ -51,6 +56,24 @@ export function registerAdminRoutes<E extends Env>(
         c.req.path,
       )
     if (!isIndex && !assetMatch) return c.text('Not found', 404)
+    let trialToken: string | undefined
+    if (isIndex && runtime.emailVerificationTrial !== undefined) {
+      const trial = runtime.emailVerificationTrial
+      if (
+        !isCanonicalHttpsOrigin(trial.origin, false) ||
+        !isValidOriginTrialToken(trial.token)
+      ) {
+        await dependencies.reportFailure(
+          c,
+          'email_verification_trial_configuration',
+        )
+        return c.text(
+          'Email verification browser trial configuration unavailable',
+          503,
+        )
+      }
+      if (new URL(c.req.url).origin === trial.origin) trialToken = trial.token
+    }
     if (!runtime.assets) {
       await dependencies.reportFailure(c)
       return c.text('Organization administration assets unavailable', 503)
@@ -92,6 +115,7 @@ export function registerAdminRoutes<E extends Env>(
           'Referrer-Policy': 'no-referrer',
           'X-Content-Type-Options': 'nosniff',
           'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+          ...(trialToken ? { 'Origin-Trial': trialToken } : {}),
         },
       })
     } catch {
@@ -101,4 +125,20 @@ export function registerAdminRoutes<E extends Env>(
   }
   app.all('/admin', handler)
   app.all('/admin/*', handler)
+}
+
+function isValidOriginTrialToken(token: string): boolean {
+  if (
+    token.length === 0 ||
+    token.length > 8192 ||
+    token.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(token)
+  )
+    return false
+  try {
+    // Chrome validates the signed trial and origin; this only bounds one header value.
+    return btoa(atob(token)) === token
+  } catch {
+    return false
+  }
 }

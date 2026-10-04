@@ -6892,6 +6892,69 @@ describe('HonoWarden app', () => {
     await expect(response.json()).resolves.toBe('2026-07-06T00:09:00.000Z')
   })
 
+  it.each(['challenge', 'verify'])(
+    'gates default-off EVP %s before authentication and database quota',
+    async (operation) => {
+      const response = await app.request(
+        `/identity/accounts/email-verification/${operation}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+        {
+          DB: {
+            prepare() {
+              throw new Error('Disabled EVP must not query D1.')
+            },
+          } as unknown as D1Database,
+          HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
+          HONOWARDEN_EMAIL_VERIFICATION_ENABLED: 'false',
+        },
+      )
+
+      expect(response.status).toBe(501)
+      expect(response.headers.get('Cache-Control')).toBe('no-store')
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'unsupported_feature' },
+      })
+    },
+  )
+
+  it.each([null, '2026-07-06T00:00:00.000Z'])(
+    'keeps profile verification aliases and sync consistent with persisted state %s',
+    async (emailVerifiedAt) => {
+      const user = { ...authUserRecord(), emailVerifiedAt }
+      const accessToken = await accessTokenFor(user)
+      const environment = {
+        DB: new FakeD1Database(null, [], { authUser: user }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      }
+      const headers = { Authorization: `Bearer ${accessToken}` }
+      const profileResponse = await app.request(
+        '/api/accounts/profile',
+        { headers },
+        environment,
+      )
+      const syncResponse = await app.request(
+        '/api/sync',
+        { headers },
+        environment,
+      )
+
+      expect(profileResponse.status).toBe(200)
+      expect(syncResponse.status).toBe(200)
+      const verified = emailVerifiedAt !== null
+      await expect(profileResponse.json()).resolves.toMatchObject({
+        emailVerified: verified,
+        EmailVerified: verified,
+      })
+      await expect(syncResponse.json()).resolves.toMatchObject({
+        profile: { emailVerified: verified },
+      })
+    },
+  )
+
   it('returns account profile metadata for a valid access token', async () => {
     const user = {
       ...authUserRecord(),

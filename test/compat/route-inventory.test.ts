@@ -377,7 +377,7 @@ describe('route inventory closeout', () => {
         entry.id === 'organizations.membership_administration',
     )
 
-    expect(observed.registeredModuleRoutes).toHaveLength(33)
+    expect(observed.registeredModuleRoutes).toHaveLength(35)
     expect(observed.registeredModuleRoutes).toContainEqual({
       method: 'POST',
       path: '/api/organizations/:id/users/:memberId/reinvite',
@@ -417,8 +417,48 @@ describe('route inventory closeout', () => {
         '0028_organization_audit_scope_index.sql',
         '0029_organization_membership_mutation_marker.sql',
         '0030_organization_policy_mutation_marker.sql',
+        '0031_email_verification.sql',
       ]),
     )
+  })
+
+  it('classifies EVP as a local optional integration without upstream client support', () => {
+    const observed = observeRepository(defaultRouteInventoryPaths(repoRoot))
+    const evp = inventory.entries.find(
+      (entry: { id: string }) =>
+        entry.id === 'email_verification.evp_relying_party',
+    )
+    const routes = observed.registeredModuleRoutes.filter(
+      ({ path }: { path: string }) =>
+        path.startsWith('/identity/accounts/email-verification/'),
+    )
+
+    expect(routes).toEqual([
+      {
+        method: 'POST',
+        path: '/identity/accounts/email-verification/challenge',
+      },
+      {
+        method: 'POST',
+        path: '/identity/accounts/email-verification/verify',
+      },
+    ])
+    expect(evp).toMatchObject({
+      classification: 'implemented',
+      requirementKind: 'optional_integration',
+      evidenceLevel: 'local_api',
+      supportClaim: false,
+      runtimeFlags: ['HONOWARDEN_EMAIL_VERIFICATION_ENABLED'],
+      migrations: ['0031_email_verification.sql'],
+      covers: routes,
+    })
+    expect(evp?.sourcePin).toBeUndefined()
+    expect(evp?.officialIds).toBeUndefined()
+    expect(
+      inventory.entries.find(
+        (entry: { id: string }) => entry.id === 'config.email-verification',
+      ),
+    ).toMatchObject({ honowardenValue: false, supportClaim: false })
   })
 
   it('classifies company routes separately from deferred aliases and native Events', () => {

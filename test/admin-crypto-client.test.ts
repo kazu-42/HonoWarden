@@ -23,6 +23,7 @@ const token = {
 const profile = {
   Id: 'person',
   Email: 'person@example.test',
+  EmailVerified: false,
   Key: 'public-wrapped-user-key',
   PrivateKey: 'public-wrapped-private-key',
   AccountKeys: { publicKeyEncryptionKeyPair: { publicKey: 'public-spki' } },

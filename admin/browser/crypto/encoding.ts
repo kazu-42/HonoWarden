@@ -1,4 +1,4 @@
-import { AdminError } from '../contracts'
+import { AdminError } from '../errors'
 
 export function encodeBase64(bytes: Uint8Array): string {
   let value = ''

@@ -11,6 +11,8 @@ import { createOrganizationMembershipMailerDelivery } from './organization-membe
 import { registerOrganizationGroupsRoutes } from './organization-groups-routes'
 import { registerOrganizationPolicyRoutes } from './organization-policy-routes'
 import { registerOrganizationAuditRoutes } from './organization-audit-routes'
+import { registerEmailVerificationRoutes } from './email-verification-routes'
+import { resolveEmailVerificationRuntimePolicy } from './domain/email-verification'
 import { projectOrganizationPolicy } from './domain/organization-policy'
 import type { OrganizationPolicyRecord } from './domain/organization-policy'
 import type { OrganizationPolicyActor } from './repositories/organization-policy-sql'
@@ -634,6 +636,13 @@ function isRequestQuotaBypass(c: AppContext): boolean {
 
   const pathname = new URL(c.req.url).pathname
   if (pathname === '/admin' || pathname.startsWith('/admin/')) return true
+  if (
+    c.req.method === 'POST' &&
+    (pathname === '/identity/accounts/email-verification/challenge' ||
+      pathname === '/identity/accounts/email-verification/verify') &&
+    c.env?.HONOWARDEN_EMAIL_VERIFICATION_ENABLED !== 'true'
+  )
+    return true
   const companyFeature =
     /^\/api\/organizations\/[^/]+\/(groups|policies|audit-events)(?:\/|$)/.exec(
       pathname,
@@ -1983,6 +1992,40 @@ registerOrganizationAuditRoutes(app, {
         ? { cursorSecret: tokenRuntime.refreshTokenSecret }
         : {}),
     }
+  },
+})
+
+registerEmailVerificationRoutes(app, {
+  authenticate: async (c) => {
+    const auth = await authenticateVaultRequest(c)
+    return auth.ok
+      ? {
+          ok: true as const,
+          actor: {
+            userId: auth.user.id,
+            sessionId: auth.sessionId,
+            deviceIdentifier: auth.deviceIdentifier,
+            emailNormalized: auth.user.emailNormalized,
+            securityStamp: auth.user.securityStamp,
+          },
+        }
+      : auth
+  },
+  runtime: (c) => ({
+    database: c.env.DB,
+    policy: resolveEmailVerificationRuntimePolicy(c.env),
+  }),
+  requestId: (c) => c.get('requestId'),
+  reportFailure: (c, failure) => {
+    console.error(
+      JSON.stringify({
+        event: 'email_verification_failed',
+        requestId: c.get('requestId'),
+        code: failure.code,
+        operation: failure.operation,
+        reason: failure.reason,
+      }),
+    )
   },
 })
 
@@ -7908,15 +7951,23 @@ async function permanentlyDeleteCipherById(c: AppContext) {
 }
 
 registerAdminRoutes(app, {
-  runtime: (c) => ({
-    enabled: c.env?.HONOWARDEN_ADMIN_ENABLED === 'true',
-    assets: c.env?.ADMIN_ASSETS,
-  }),
-  reportFailure: (c) => {
+  runtime: (c) => {
+    const policy = resolveEmailVerificationRuntimePolicy(c.env)
+    const token = c.env?.HONOWARDEN_EMAIL_VERIFICATION_ORIGIN_TRIAL_TOKEN
+    return {
+      enabled: c.env?.HONOWARDEN_ADMIN_ENABLED === 'true',
+      assets: c.env?.ADMIN_ASSETS,
+      ...(policy.status === 'ready' && token
+        ? { emailVerificationTrial: { origin: policy.audience, token } }
+        : {}),
+    }
+  },
+  reportFailure: (c, reason) => {
     console.error(
       JSON.stringify({
         event: 'admin_assets_unavailable',
         requestId: c.get('requestId'),
+        ...(reason ? { reason } : {}),
       }),
     )
   },
@@ -8996,7 +9047,7 @@ function buildProfileResponse(
     Id: user.id,
     Name: name,
     Email: user.emailNormalized,
-    EmailVerified: true,
+    EmailVerified: user.emailVerifiedAt !== null,
     Premium: premiumFeaturesEnabled,
     PremiumFromOrganization: false,
     Culture: 'en-US',

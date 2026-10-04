@@ -1,4 +1,4 @@
-import { AdminError } from '../contracts'
+import { AdminError } from '../errors'
 import { concat, encodeBase64 } from './encoding'
 
 export type KdfSettings = {

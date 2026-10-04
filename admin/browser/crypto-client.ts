@@ -1,4 +1,4 @@
-import { AdminError } from './contracts'
+import { AdminError } from './errors'
 import type { KdfSettings } from './crypto/kdf'
 import type { WrappedAccount, WrappedOrganization } from './crypto/keyring'
 
