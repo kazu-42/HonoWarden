@@ -2,31 +2,38 @@
 
 HonoWarden aims for the smallest useful upstream-compatible API surface for personal and small-team vault sync.
 
-## Initial Scope
+## Current Source Scope
 
-- API-only server for official upstream clients
-- no browser-delivered vault UI
+- protocol API for official upstream clients
+- limited original company administration source at `/admin`, default-off;
+  no upstream Web Vault compatibility claim
 - self-hosted endpoint configuration
 - account login and token refresh flows required by official clients
 - personal vault sync for encrypted ciphers, folders, collections needed by small-team use, and attachments where required
 - D1-backed metadata and encrypted vault records
 - R2-backed larger encrypted objects
 
-## Explicitly Out of Scope Initially
+The local company follow-up extends the initial API-only alpha source boundary.
+Its administration UI, groups, Type 0 TOTP policy, and audit-query APIs are recorded
+as local source capabilities with synthetic tests. This does not establish
+Browser/Desktop compatibility, remote activation, or permission to use real secrets.
+[ADR 0016](adr/0016-company-administration.md) defines the bounded administration
+and current-session MFA implementation contract.
 
-- Web Vault
-- hosted web app static assets
-- browser session or cookie-authenticated vault UI
+## Remaining Unsupported Or Unverified Scope
+
+- upstream Web Vault and a general browser-delivered personal vault
+- cookie-authenticated vault sessions
 - public registration
-- Organizations administration
+- complete upstream Organizations administration parity
 - Send
 - Emergency Access
-- SSO
 - hosted billing, paid subscriptions, and seat commerce
 - commercial licensing and provider/reseller portals
 - organization sponsorships
 - multi-tenant hosted operation
-- enterprise policy management
+- enterprise policy types other than the local Type 0 TOTP slice
+- SSO, SCIM, directory integration, and enterprise account recovery
 
 ## Compatibility Rules
 
@@ -61,10 +68,15 @@ Packet limitations:
 ## Web Vault Boundary
 
 HonoWarden does not expose a Web Vault compatibility surface in the alpha
-release. The compatibility matrix tracks protocol clients only. A future Web
-Vault would require a new ADR, a dedicated compatibility row, browser security
-review, CSP and static-asset provenance rules, deployment/rollback separation,
-and live evidence before any support claim.
+release. The local source now includes a limited original company administration
+UI for organization creation, invitations, membership and collection grants,
+groups, Type 0 policy, and audit history. It uses the authenticated API and bounded
+same-origin asset serving; it is separate from an upstream Web Vault implementation.
+The admin feature flag remains false in tracked root/staging/production config.
+HTTP asset, crypto-client, and UI-state tests do not prove actual browser acceptance.
+A general Web Vault still requires a new ADR, a separate compatibility row,
+browser security review, CSP and asset provenance, deployment/rollback evidence,
+and exact client acceptance.
 
 ## Organizations And Shared Vault Product Line
 
@@ -76,29 +88,63 @@ and profile responses. Owner-administered organization collection CRUD is also
 implemented with existence-obscuring authorization failures and bounded access
 selection.
 
-These source slices are not a broad compatibility claim. Membership and role
-lifecycle, invitations, organization cipher sharing and assignment, policy
-enforcement, complete cross-user isolation evidence, audit, export/rollback,
-and official-client verification advance only through their own bounded slices.
-Routes outside the merged slices remain explicit typed unsupported responses.
+The local integration source extends that merged foundation with invitation,
+recipient acceptance and key confirmation, Owner/Admin/User administration,
+direct and group collection grants, revocation/removal, and group CRUD. Organization
+cipher create/share and single-item update/trash/restore/permanent-delete enforce
+current membership, grants, and applicable TOTP policy. Cross-user isolation and
+mutation-time authorization have local API and D1 tests; source presence is not
+broad official-client compatibility.
+
+Custom roles, automatic organization-key rotation, organization attachments,
+bulk organization cipher lifecycle, and post-share `/collections_v2` reassignment
+remain unsupported. Offboarding prevents later authorized server access; it cannot
+recall already learned plaintext, keys, or exports. Company client acceptance,
+invitation delivery, migration, rollback/restore, deployed activation, and independent
+security acceptance remain distinct gates. See the current local classifications
+in [the surface inventory](compatibility-inventory.md).
 
 ## Policy Management Boundary
 
-HonoWarden exposes authenticated empty policy metadata reads only. It does not
-implement policy mutation or organization policy enforcement in the current
-team-vault slices. [ADR 0006](adr/0006-policy-management-scope.md)
-defines the no-policy default behavior and the schema, enforcement, audit,
-rollback, and compatibility gates required before future policy support.
+[ADR 0006](adr/0006-policy-management-scope.md) records the historical alpha
+no-policy scope. Historical personal-vault fixtures retain empty policy metadata reads.
+[ADR 0016](adr/0016-company-administration.md) extends that restriction for the
+local company slice, which implements Type 0 required-TOTP policy list/read,
+impact review, and Owner update with current-family assurance, mandatory atomic
+audit, and revision advancement. Other policy types and data-bearing configurations
+remain explicit `501` responses; there is no broad enterprise-policy claim.
+
+Management remains default-off. Persisted enabled policies continue to govern
+organization access even with management disabled; the flag is not an enforcement
+bypass. Authenticated `/api/policies`, `/api/policies/new`, and sync policy fields
+project persisted metadata for remediation. Missing/disabled policy imposes no
+organization MFA requirement. Authenticated assurance, replay-protected TOTP step-up,
+and logout bind proof to the current immutable session family; they are separate
+from the management flag and from historical official-client TOTP smoke.
 
 ## Collection Mutation Boundary
 
-Current main implements confirmed-member organization collection reads and
+The source implements confirmed-member organization collection reads and
 owner-administered organization collection CRUD, including bounded create,
 update, single/bulk delete, details, and owner-only access-selection reads.
 [ADR 0010](adr/0010-organizations-team-vault-product-line.md) supersedes ADR 0007's original
-empty collection boundary for those merged routes. Organization cipher
-assignment, non-owner membership selection, membership lifecycle, audit, and
-broad official-client compatibility remain unimplemented or unverified.
+empty collection boundary for those merged routes. The local company source now
+assigns direct member and group grants through their dedicated APIs. The collection
+CRUD request's user selection is still limited to the supported Owner selection;
+it is not a general multi-user grants editor. Organization cipher collections are
+assigned at creation/share; later `/collections_v2` reassignment remains `501`.
+General official-client collection-management acceptance is not established.
+
+## Organization Audit Boundary
+
+Local authenticated `/api/organizations/:id/audit-events` query and CSV export
+provide partial committed membership, group, and policy administration history.
+The selecting SQL rechecks current organization authorization and applicable TOTP
+assurance; signed cursors preserve pagination bounds. CSV exports refuse more than
+1,000 rows rather than truncating. This HonoWarden-specific API is not upstream
+Events ingestion or full vault activity reporting, and `UseEvents` remains false.
+The audit-management flag is default-off; missing cursor-signing configuration
+fails with an observable `503`. See [organization audit operations](operations/organization-audit.md).
 
 ## Send And Public Sharing Boundary
 
@@ -198,8 +244,9 @@ Response shape:
 }
 ```
 
-Other typed alpha-scope guards, including unimplemented organization cipher and
-membership routes, keep the same HTTP status and structural code but may omit
-the top-level client compatibility message.
+Other typed guards, including unsupported group bulk/POST aliases, policy types,
+organization attachment/bulk cipher operations, and disabled company management
+APIs, keep the same HTTP status and structural code but may omit the top-level
+client compatibility message. Disabled `/admin` assets use `404` instead.
 
 This project is independent and not affiliated with, sponsored by, or endorsed by any upstream client or hosted-vault provider.

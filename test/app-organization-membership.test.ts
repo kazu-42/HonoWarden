@@ -764,7 +764,7 @@ describe('organization membership API on real local D1', () => {
     ).toBe(501)
     expect(
       (await request(app, 'owner', 'GET', '?includeGroups=true')).status,
-    ).toBe(501)
+    ).toBe(200)
     expect(
       (await request(app, 'owner', 'GET', '?includeCollections=unexpected'))
         .status,

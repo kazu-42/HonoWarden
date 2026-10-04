@@ -1,6 +1,6 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-10-03 (fresh registry audit, exit 0).
+Last scanned: 2026-10-04 (fresh registry audit, exit 0).
 
 This is a point-in-time dependency audit snapshot for the company-readiness
 candidate lockfile. Earlier dated sections preserve the Week 24 security review
@@ -20,8 +20,14 @@ No known vulnerabilities found
 ```
 
 The JSON audit result contains an empty `advisories` object and zero low,
-moderate, high, and critical findings across 360 dependencies. The successful
+moderate, high, and critical findings across 361 dependencies. The successful
 scan used pnpm 11.8.0 and corresponds to the lockfile digest recorded below.
+
+The company administration change adds pinned `hash-wasm@4.12.0` for browser
+Argon2id and explicitly pins the existing Vite tooling at `8.1.3`. The fresh
+scan ran under Node 22.22.0 with an empty credential-free environment and did
+not install dependencies. Registry advisory absence is separate from the
+crypto, browser, and source security review.
 
 ## Sharp Advisory Remediation
 
@@ -172,7 +178,7 @@ change.
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `2b3273b6dfe5d7b811236122f92d96378f439f71bb9f45fe07cdf0e930d2d569`
+  `0ce57cc2113cd768158d8827b9c2c71f24e29a1dcac9e0f5cf5518e9d6d1b920`
 
 ## Scope
 

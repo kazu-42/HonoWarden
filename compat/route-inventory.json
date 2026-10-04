@@ -680,10 +680,14 @@
       ]
     },
     {
-      "lastReviewedAt": "2026-09-04",
+      "lastReviewedAt": "2026-10-04",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app.test.ts"],
-      "supportClaim": true,
+      "evidence": [
+        "test/app.test.ts",
+        "test/integration/organization-cipher-routes-d1.test.ts",
+        "test/integration/organization-shared-access-d1.test.ts"
+      ],
+      "supportClaim": false,
       "id": "ciphers.organization_create_share",
       "kind": "route",
       "classification": "implemented",
@@ -705,7 +709,7 @@
           "path": "/api/ciphers/:id/share"
         }
       ],
-      "honowardenBehavior": "owner-authenticated organization create and single-share atomic transitions",
+      "honowardenBehavior": "Organization create and single personal-to-organization share require confirmed current-family authorization, same-organization writable collection grants, and applicable persisted policy. Atomic source behavior has local API evidence; no broad official-client organization claim.",
       "roadmapAnchors": ["Collections sharing", "Organizations"],
       "adrs": ["0010-organizations-team-vault-product-line.md"]
     },
@@ -932,9 +936,13 @@
       "roadmapAnchors": ["Organizations"]
     },
     {
-      "lastReviewedAt": "2026-10-03",
+      "lastReviewedAt": "2026-10-04",
       "evidenceLevel": "local_api",
-      "evidence": ["test/app-organization-membership.test.ts"],
+      "evidence": [
+        "test/app-organization-membership.test.ts",
+        "test/organization-membership-policy-routes.test.ts",
+        "test/integration/organization-membership-policy-d1.test.ts"
+      ],
       "supportClaim": false,
       "id": "organizations.membership_administration",
       "kind": "route",
@@ -970,7 +978,201 @@
         { "method": "DELETE", "path": "/api/organizations/:id/users/:memberId" }
       ],
       "runtimeFlags": ["HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED"],
-      "honowardenBehavior": "Owner-only invite, key lookup, confirmation, permission update, revocation, and removal; recipient-bound acceptance. HTTP 501 while runtime flag is off. No role expansion or official-client support claim."
+      "adrs": ["0016-company-administration.md"],
+      "honowardenBehavior": "Confirmed Owner administration and supported Admin-to-User administration; recipient-bound acceptance. Persisted policy and current-family assurance govern protected operations. HTTP 501 while membership management is off. No custom-role or official-client support claim."
+    },
+    {
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/organization-groups-routes.test.ts",
+        "test/integration/organization-groups-d1.test.ts",
+        "test/integration/organization-shared-access-d1.test.ts",
+        "test/app-company-http.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "organizations.groups_administration",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "rationale": "Local group metadata, membership and collection grants with current authorization and bounded replacements; no official-client management or remote activation claim.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/GroupsController.cs"
+      },
+      "covers": [
+        { "method": "GET", "path": "/api/organizations/:id/groups" },
+        { "method": "GET", "path": "/api/organizations/:id/groups/details" },
+        { "method": "GET", "path": "/api/organizations/:id/groups/:groupId" },
+        {
+          "method": "GET",
+          "path": "/api/organizations/:id/groups/:groupId/details"
+        },
+        {
+          "method": "GET",
+          "path": "/api/organizations/:id/groups/:groupId/users"
+        },
+        { "method": "POST", "path": "/api/organizations/:id/groups" },
+        { "method": "PUT", "path": "/api/organizations/:id/groups/:groupId" },
+        {
+          "method": "DELETE",
+          "path": "/api/organizations/:id/groups/:groupId"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/organizations/:id/groups/:groupId/user/:membershipId"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_ORGANIZATION_GROUPS_ENABLED"],
+      "migrations": ["0025_organization_groups.sql"],
+      "adrs": [
+        "0010-organizations-team-vault-product-line.md",
+        "0016-company-administration.md"
+      ],
+      "honowardenBehavior": "Group CRUD, details, user list and single membership removal. Optional If-Match protects supported mutations. HTTP 501 before authentication while management is off."
+    },
+    {
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/organization-groups-routes.test.ts"],
+      "supportClaim": false,
+      "id": "organizations.groups_deferred_aliases",
+      "kind": "route",
+      "classification": "rejected",
+      "requirementKind": "protocol",
+      "rationale": "Bulk deletion and alternative POST mutation aliases are explicitly deferred even when group management is enabled.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/GroupsController.cs"
+      },
+      "covers": [
+        { "method": "DELETE", "path": "/api/organizations/:id/groups" },
+        { "method": "POST", "path": "/api/organizations/:id/groups/delete" },
+        {
+          "method": "POST",
+          "path": "/api/organizations/:id/groups/:groupId/delete"
+        },
+        {
+          "method": "POST",
+          "path": "/api/organizations/:id/groups/:groupId/delete-user/:membershipId"
+        },
+        { "method": "POST", "path": "/api/organizations/:id/groups/:groupId" }
+      ],
+      "honowardenBehavior": "501 unsupported_feature before authentication or database access, including when the group feature flag is true."
+    },
+    {
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app-organization-policy.test.ts",
+        "test/integration/organization-policy-d1.test.ts",
+        "test/app-company-http.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "organizations.policy_administration",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "rationale": "Local Type 0 organization TOTP policy only. Other policy types and data-bearing configuration remain explicitly unsupported; no broad enterprise-policy or official-client claim.",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "tag": "v2026.6.1",
+        "commit": "a09c7edb03ae6d4fdece784f1250c67be73d5fe0",
+        "path": "src/Api/AdminConsole/Controllers/PoliciesController.cs"
+      },
+      "covers": [
+        { "method": "GET", "path": "/api/organizations/:id/policies" },
+        { "method": "GET", "path": "/api/organizations/:id/policies/:type" },
+        {
+          "method": "GET",
+          "path": "/api/organizations/:id/policies/:type/impact"
+        },
+        { "method": "PUT", "path": "/api/organizations/:id/policies/:type" }
+      ],
+      "runtimeFlags": ["HONOWARDEN_ORGANIZATION_POLICIES_ENABLED"],
+      "adrs": ["0016-company-administration.md"],
+      "migrations": [
+        "0026_organization_policies.sql",
+        "0027_session_mfa_assurance.sql",
+        "0030_organization_policy_mutation_marker.sql"
+      ],
+      "honowardenBehavior": "List, read, impact and Owner update for Type 0; unsupported types return 501. Management defaults off and returns 501; persisted enabled policy enforcement remains effective with management off."
+    },
+    {
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/organization-audit-routes.test.ts",
+        "test/integration/organization-audit-d1.test.ts",
+        "test/app-company-http.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "organizations.audit_history",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "rationale": "HonoWarden-specific scoped audit query and bounded CSV export. Partial committed organization-administration history is not upstream native Events ingestion or full vault activity coverage.",
+      "covers": [
+        { "method": "GET", "path": "/api/organizations/:id/audit-events" },
+        {
+          "method": "GET",
+          "path": "/api/organizations/:id/audit-events/export"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_ORGANIZATION_AUDIT_ENABLED"],
+      "adrs": ["0016-company-administration.md"],
+      "migrations": ["0028_organization_audit_scope_index.sql"],
+      "honowardenBehavior": "Authorized scoped pagination with signed cursors and complete CSV export capped at 1,000 rows; oversized export returns 413. HTTP 501 while off; missing cursor signing configuration returns observable 503. UseEvents remains false."
+    },
+    {
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app-admin-assets.test.ts",
+        "test/admin-ui-state.test.ts",
+        "test/admin-crypto-client.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "administration.assets",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "rationale": "Original HonoWarden administration assets, distinct from upstream Web Vault and hosted Admin. HTTP and UI state tests do not establish browser end-to-end acceptance or official client compatibility.",
+      "covers": [
+        { "method": "ALL", "path": "/admin" },
+        { "method": "ALL", "path": "/admin/*" }
+      ],
+      "runtimeFlags": ["HONOWARDEN_ADMIN_ENABLED"],
+      "adrs": ["0016-company-administration.md"],
+      "honowardenBehavior": "Default-off returns 404. Enabled GET/HEAD serves only allowlisted index, invitation navigation and JS/CSS/WASM assets from ADMIN_ASSETS with security headers. Other methods return 405; unavailable binding returns observable 503."
+    },
+    {
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app-company-http.test.ts",
+        "test/integration/mfa-session-d1.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "totp.session_assurance",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "rationale": "Authenticated HonoWarden session helpers bind current TOTP credential generation to the verified immutable refresh family. They are separate from historical official-client TOTP smoke evidence.",
+      "covers": [
+        { "method": "GET", "path": "/identity/accounts/totp/assurance" },
+        { "method": "POST", "path": "/identity/accounts/totp/step-up" },
+        { "method": "POST", "path": "/identity/accounts/logout" }
+      ],
+      "migrations": ["0027_session_mfa_assurance.sql"],
+      "adrs": ["0016-company-administration.md"],
+      "honowardenBehavior": "Current-family assurance read, bounded TOTP replay-protected step-up and exact-family logout. Authentication is required; organization-management feature flags do not disable these session helpers."
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -1142,10 +1344,14 @@
       ]
     },
     {
-      "lastReviewedAt": "2026-09-02",
-      "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/metadata/policies-list-success.json"],
-      "supportClaim": true,
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app-company-http.test.ts",
+        "test/integration/organization-policy-d1.test.ts",
+        "compat/fixtures/metadata/policies-list-success.json"
+      ],
+      "supportClaim": false,
       "id": "policies.read",
       "kind": "route",
       "classification": "implemented",
@@ -1168,7 +1374,8 @@
         }
       ],
       "roadmapAnchors": ["enterprise policies"],
-      "adrs": ["0006-policy-management-scope.md"]
+      "adrs": ["0006-policy-management-scope.md"],
+      "honowardenBehavior": "Authenticated persisted Type 0 policy projection for remediation, including when policy management is off; empty for accounts with no applicable policy. Historical empty personal-vault fixtures do not prove current official-client enterprise-policy compatibility."
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -1582,16 +1789,20 @@
       }
     },
     {
-      "lastReviewedAt": "2026-09-02",
-      "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
-      "supportClaim": true,
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app-company-http.test.ts",
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
+      "supportClaim": false,
       "id": "sync.policies",
       "kind": "sync_field",
       "field": "policies",
       "classification": "implemented",
       "requirementKind": "protocol",
       "ownerIssue": "HON-201",
+      "honowardenBehavior": "Persisted Type 0 policy metadata is projected independently of the policy-management flag. Local API evidence only; no official-client enterprise-policy support claim.",
       "sourcePin": {
         "repository": "github:46755185",
         "tag": "v2026.6.1",
@@ -1600,16 +1811,20 @@
       }
     },
     {
-      "lastReviewedAt": "2026-09-02",
-      "evidenceLevel": "fixture",
-      "evidence": ["compat/fixtures/sync/empty-personal-vault.json"],
-      "supportClaim": true,
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/app-company-http.test.ts",
+        "compat/fixtures/sync/empty-personal-vault.json"
+      ],
+      "supportClaim": false,
       "id": "sync.policiesNew",
       "kind": "sync_field",
       "field": "policiesNew",
       "classification": "implemented",
       "requirementKind": "protocol",
       "ownerIssue": "HON-201",
+      "honowardenBehavior": "Current sync alias projects the same persisted Type 0 policy metadata as policies, even with administration off. Local API evidence only.",
       "sourcePin": {
         "repository": "github:46755185",
         "tag": "v2026.6.1",
@@ -1820,7 +2035,7 @@
           "pathPrefix": "src/Admin/"
         }
       ],
-      "rationale": "Admin console UI is upstream hosted operations, not the API-only Worker.",
+      "rationale": "Upstream Admin console remains outside this Worker. Original HonoWarden administration assets are separately recorded under administration.assets; that local source does not establish upstream Web Vault compatibility.",
       "roadmapAnchors": ["Web Vault"]
     },
     {
@@ -1839,7 +2054,7 @@
           "pathPrefix": "src/Api/AdminConsole/"
         }
       ],
-      "rationale": "Organization administration beyond owner collection CRUD remains planned.",
+      "rationale": "Full upstream organization-administration parity remains planned. Local default-off membership, group and Type 0 policy slices have separate explicit route entries and no broad official-client claim.",
       "sourcePin": {
         "repository": "github:46755185",
         "tag": "v2026.6.1",
@@ -2433,7 +2648,7 @@
           "pathPrefix": "src/Events/"
         }
       ],
-      "rationale": "Organization event collection is not an alpha personal-vault claim.",
+      "rationale": "Native organization Events ingestion and full vault activity collection remain planned. HonoWarden custom audit history is a separate operator API with partial administration coverage; UseEvents remains false.",
       "sourcePin": {
         "repository": "github:46755185",
         "tag": "v2026.6.1",
@@ -2747,7 +2962,7 @@
       "honowardenBehavior": "recent-auth create/rotate; secret shown once; HONOWARDEN_PERSONAL_API_KEYS_ENABLED default-off"
     },
     {
-      "lastReviewedAt": "2026-09-02",
+      "lastReviewedAt": "2026-10-04",
       "evidenceLevel": "local_api",
       "evidence": ["test/migrations.test.ts"],
       "supportClaim": true,
@@ -2783,11 +2998,17 @@
         "0021_emergency_access.sql",
         "0022_user_key_id.sql",
         "0023_device_session_binding.sql",
-        "0024_organization_invitations.sql"
+        "0024_organization_invitations.sql",
+        "0025_organization_groups.sql",
+        "0026_organization_policies.sql",
+        "0027_session_mfa_assurance.sql",
+        "0028_organization_audit_scope_index.sql",
+        "0029_organization_membership_mutation_marker.sql",
+        "0030_organization_policy_mutation_marker.sql"
       ]
     },
     {
-      "lastReviewedAt": "2026-09-02",
+      "lastReviewedAt": "2026-10-04",
       "evidenceLevel": "fixture",
       "evidence": ["docs/adr/0001-project-scope.md"],
       "supportClaim": true,
@@ -2796,7 +3017,7 @@
       "classification": "implemented",
       "requirementKind": "operator",
       "ownerIssue": "HON-201",
-      "rationale": "Scope ADRs currently observed on main.",
+      "rationale": "Scope ADRs currently present in the local source candidate; presence does not establish publication or deployed activation.",
       "adrs": [
         "0001-project-scope.md",
         "0002-cloudflare-hono-d1-r2.md",
@@ -2812,7 +3033,8 @@
         "0012-webauthn-passkey-contract.md",
         "0013-emergency-access-product-line.md",
         "0014-hosted-billing-licensing-tenancy.md",
-        "0015-hibp-reports-integrations-scope.md"
+        "0015-hibp-reports-integrations-scope.md",
+        "0016-company-administration.md"
       ]
     }
   ]

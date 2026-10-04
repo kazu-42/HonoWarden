@@ -1291,6 +1291,13 @@ const schemaStatements = [
     updated_at TEXT NOT NULL
   )`,
   `CREATE TABLE organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL)`,
+  `CREATE TABLE organization_policies (
+    id TEXT PRIMARY KEY, organization_id TEXT NOT NULL,
+    type INTEGER NOT NULL CHECK(type = 0), enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0, 1)),
+    revision_date TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    UNIQUE(organization_id, type),
+    FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+  )`,
   `CREATE TABLE organization_users (
     id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT,
     email TEXT NOT NULL, org_key TEXT, status INTEGER NOT NULL, type INTEGER NOT NULL,
@@ -1303,6 +1310,10 @@ const schemaStatements = [
     session_id TEXT,
     revoked_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id)
+  )`,
+  `CREATE TABLE organization_group_users (
+    group_id TEXT NOT NULL, organization_id TEXT NOT NULL, organization_user_id TEXT NOT NULL,
+    PRIMARY KEY(group_id, organization_user_id)
   )`,
   `CREATE TABLE refresh_tokens (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, device_id TEXT NOT NULL,
@@ -1318,7 +1329,7 @@ const schemaStatements = [
   )`,
   `CREATE TABLE user_totp (
     user_id TEXT PRIMARY KEY, encrypted_secret TEXT, enabled INTEGER NOT NULL DEFAULT 0,
-    last_accepted_step INTEGER,
+    verified_at TEXT, last_accepted_step INTEGER, credential_generation TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`,
   `CREATE TABLE totp_challenges (

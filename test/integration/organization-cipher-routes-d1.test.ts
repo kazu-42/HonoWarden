@@ -280,7 +280,7 @@ describe('organization cipher routes on real D1', () => {
       const guardedDb = {
         prepare(sql: string) {
           const statement = db.prepare(sql)
-          if (!/^\s*UPDATE\s+ciphers\b/iu.test(sql)) return statement
+          if (!/(?:^|\n)\s*UPDATE\s+ciphers\b/iu.test(sql)) return statement
           let bound = statement
           const wrapper = {
             bind(...values: unknown[]) {

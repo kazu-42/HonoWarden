@@ -50,14 +50,19 @@ describe('cipher repository', () => {
     expect(database.queries.join('\n')).toContain(
       'membership.type IN (0, 1, 2)',
     )
+    expect(database.queries.join('\n')).toContain('access.readOnly = 0')
     expect(database.queries.join('\n')).toContain(
-      'collection_user.read_only = 0',
-    )
-    expect(database.queries.join('\n')).toContain(
-      'membership.organization_id = collection.organization_id',
+      'access.organizationId = collection.organization_id',
     )
     expect(database.boundValueSets).toEqual([
-      ['user-id', 'organization-id', 'collection-one', 'collection-two'],
+      [
+        'user-id',
+        null,
+        null,
+        0,
+        'organization-id',
+        '["collection-one","collection-two"]',
+      ],
     ])
   })
 
@@ -93,8 +98,7 @@ describe('cipher repository', () => {
         'organization-cipher-id',
         'user-id',
         'organization-id',
-        'collection-one',
-        'collection-two',
+        '["collection-one","collection-two"]',
         '2.opaque-cipher-key',
       ]),
     )
@@ -259,9 +263,11 @@ describe('cipher repository', () => {
         canViewPassword: true,
       },
     ])
-    expect(database.boundValueSets).toEqual([['user-id', 'user-id']])
+    expect(database.boundValueSets).toEqual([
+      ['user-id', null, null, 0, 'user-id'],
+    ])
     expect(database.queries.join('\n')).toContain(
-      'WITH accessible_organization_collections AS',
+      'accessible_organization_collections AS',
     )
     expect(database.queries.join('\n')).toContain('membership.status = 2')
     expect(database.queries.join('\n')).not.toContain(
@@ -323,6 +329,9 @@ describe('cipher repository', () => {
     expect(pageDatabase.boundValueSets).toEqual([
       [
         'user-id',
+        null,
+        null,
+        0,
         'user-id',
         '2026-07-06T00:05:00.000Z',
         '2026-07-06T00:05:00.000Z',
@@ -357,7 +366,7 @@ describe('cipher repository', () => {
       canViewPassword: false,
     })
     expect(findDatabase.boundValueSets).toEqual([
-      ['user-id', 'organization-cipher-id', 'user-id'],
+      ['user-id', null, null, 0, 'organization-cipher-id', 'user-id'],
     ])
     expect(findDatabase.queries.join('\n')).toContain('cipher.id = ?')
   })

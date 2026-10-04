@@ -160,6 +160,7 @@ describe('totp repository', () => {
     expect(database.boundValues).toEqual([
       '2026-07-06T00:02:00.000Z',
       59440321,
+      expect.stringMatching(/^[a-f0-9-]{36}$/),
       '2026-07-06T00:02:00.000Z',
       'user-id',
     ])

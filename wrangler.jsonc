@@ -5,6 +5,13 @@
   "compatibility_date": "2026-07-06",
   "preview_urls": false,
   "workers_dev": false,
+  "assets": {
+    "directory": "./dist/admin",
+    "binding": "ADMIN_ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "none",
+    "html_handling": "none",
+  },
   "triggers": {
     "crons": ["0 * * * *"],
   },
@@ -17,6 +24,7 @@
     "binding": "CF_VERSION_METADATA",
   },
   "vars": {
+    "HONOWARDEN_ADMIN_ENABLED": "false",
     "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
     "HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED": "false",
     "HONOWARDEN_ALLOWED_EMAILS": "",
@@ -33,6 +41,9 @@
     "HONOWARDEN_USER_KEY_ROTATION_ENABLED": "false",
     "HONOWARDEN_USER_KEY_ID_ENABLED": "false",
     "HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED": "false",
+    "HONOWARDEN_ORGANIZATION_GROUPS_ENABLED": "false",
+    "HONOWARDEN_ORGANIZATION_POLICIES_ENABLED": "false",
+    "HONOWARDEN_ORGANIZATION_AUDIT_ENABLED": "false",
     "HONOWARDEN_PREMIUM_FEATURES_ENABLED": "false",
     "HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED": "false",
     "HONOWARDEN_WEBAUTHN_ENABLED": "false",
@@ -67,6 +78,13 @@
   "env": {
     "staging": {
       "name": "honowarden-staging",
+      "assets": {
+        "directory": "./dist/admin",
+        "binding": "ADMIN_ASSETS",
+        "run_worker_first": true,
+        "not_found_handling": "none",
+        "html_handling": "none",
+      },
       "preview_urls": false,
       "workers_dev": false,
       "routes": [
@@ -87,6 +105,7 @@
         "binding": "CF_VERSION_METADATA",
       },
       "vars": {
+        "HONOWARDEN_ADMIN_ENABLED": "false",
         "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
         "HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED": "false",
         "HONOWARDEN_ALLOWED_EMAILS": "",
@@ -103,6 +122,9 @@
         "HONOWARDEN_USER_KEY_ROTATION_ENABLED": "false",
         "HONOWARDEN_USER_KEY_ID_ENABLED": "false",
         "HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_GROUPS_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_POLICIES_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_AUDIT_ENABLED": "false",
         "HONOWARDEN_PREMIUM_FEATURES_ENABLED": "true",
         "HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED": "true",
         "HONOWARDEN_WEBAUTHN_ENABLED": "false",
@@ -136,6 +158,13 @@
     },
     "production": {
       "name": "honowarden",
+      "assets": {
+        "directory": "./dist/admin",
+        "binding": "ADMIN_ASSETS",
+        "run_worker_first": true,
+        "not_found_handling": "none",
+        "html_handling": "none",
+      },
       "preview_urls": false,
       "workers_dev": false,
       "routes": [
@@ -156,6 +185,7 @@
         "binding": "CF_VERSION_METADATA",
       },
       "vars": {
+        "HONOWARDEN_ADMIN_ENABLED": "false",
         "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
         "HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED": "false",
         "HONOWARDEN_ALLOWED_EMAILS": "",
@@ -172,6 +202,9 @@
         "HONOWARDEN_USER_KEY_ROTATION_ENABLED": "false",
         "HONOWARDEN_USER_KEY_ID_ENABLED": "false",
         "HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_GROUPS_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_POLICIES_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_AUDIT_ENABLED": "false",
         "HONOWARDEN_PREMIUM_FEATURES_ENABLED": "false",
         "HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED": "false",
         "HONOWARDEN_WEBAUTHN_ENABLED": "false",

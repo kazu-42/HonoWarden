@@ -277,8 +277,8 @@ describe('client compatibility matrix', () => {
     }
   })
 
-  it('pins the 2026-09-22 official latest releases conservatively', () => {
-    expect(matrix.checkedAt).toMatch(/^2026-09-22T/)
+  it('pins the 2026-10-04 official latest releases conservatively', () => {
+    expect(matrix.checkedAt).toMatch(/^2026-10-04T/)
     expect(
       Object.fromEntries(
         matrix.entries.map((entry) => [
@@ -294,17 +294,17 @@ describe('client compatibility matrix', () => {
       ),
     ).toEqual({
       browser_extension: {
-        version: '2026.9.1',
+        version: '2026.9.3',
         build: undefined,
-        releaseTag: 'browser-v2026.9.1',
-        releasePublishedAt: '2026-09-21T21:57:20Z',
+        releaseTag: 'browser-v2026.9.3',
+        releasePublishedAt: '2026-10-01T18:08:55Z',
         verificationLevel: 'fixture_only',
       },
       desktop: {
-        version: '2026.9.0',
+        version: '2026.9.1',
         build: undefined,
-        releaseTag: 'desktop-v2026.9.0',
-        releasePublishedAt: '2026-09-17T13:52:45Z',
+        releaseTag: 'desktop-v2026.9.1',
+        releasePublishedAt: '2026-10-01T19:35:06Z',
         verificationLevel: 'fixture_only',
       },
       mobile_android: {
@@ -315,31 +315,23 @@ describe('client compatibility matrix', () => {
         verificationLevel: 'fixture_only',
       },
       mobile_ios: {
-        version: '2026.9.0',
-        build: '3521',
-        releaseTag: 'v2026.9.0-bwpm',
-        releasePublishedAt: '2026-09-18T13:26:07Z',
+        version: '2026.9.1',
+        build: '3533',
+        releaseTag: 'v2026.9.1-bwpm',
+        releasePublishedAt: '2026-10-02T17:06:25Z',
         verificationLevel: 'fixture_only',
       },
       cli: {
-        version: '2026.9.0',
+        version: '2026.9.1',
         build: undefined,
-        releaseTag: 'cli-v2026.9.0',
-        releasePublishedAt: '2026-09-17T13:28:40Z',
-        verificationLevel: 'live_smoke',
+        releaseTag: 'cli-v2026.9.1',
+        releasePublishedAt: '2026-10-01T19:23:43Z',
+        verificationLevel: 'fixture_only',
       },
     })
 
     for (const entry of matrix.entries) {
-      if (entry.surface === 'cli') {
-        expect(entry.liveEvidence).toMatchObject({
-          status: 'passed',
-          clientVersion: '2026.9.0',
-          path: 'docs/release/current-cli-2026-9-smoke.md',
-        })
-      } else {
-        expect(entry.liveEvidence).toBeUndefined()
-      }
+      expect(entry.liveEvidence).toBeUndefined()
     }
   })
 
@@ -901,12 +893,10 @@ describe('client compatibility matrix', () => {
     )
   })
 
-  it('promotes only the current CLI with exact-version local smoke evidence', () => {
+  it('requires new exact-version evidence after the current release refresh', () => {
     for (const entry of matrix.entries) {
-      expect(entry.verificationLevel).toBe(
-        entry.surface === 'cli' ? 'live_smoke' : 'fixture_only',
-      )
-      if (entry.surface !== 'cli') expect(entry.liveEvidence).toBeUndefined()
+      expect(entry.verificationLevel).toBe('fixture_only')
+      expect(entry.liveEvidence).toBeUndefined()
     }
 
     const compatibilityMatrixDoc = readFileSync(

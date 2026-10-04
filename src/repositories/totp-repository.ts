@@ -1,9 +1,12 @@
+import { generateTotpCredentialGeneration } from '../domain/mfa-session'
+
 export type TotpSetupRecord = {
   userId: string
   encryptedSecret: string
   enabled: boolean
   verifiedAt: string | null
   lastAcceptedStep: number | null
+  credentialGeneration?: string | null
   pendingEncryptedSecret: string | null
   pendingCreatedAt: string | null
   createdAt: string
@@ -19,28 +22,34 @@ export type PendingTotpSetupInput = {
 export type EnableTotpSetupInput = {
   userId: string
   verifiedAt: string
+  expectedEncryptedSecret?: string
 }
 
 export type DisableTotpSetupInput = {
   userId: string
+  expectedCredentialGeneration?: string
 }
 
 export type PendingTotpChangeInput = {
   userId: string
   encryptedSecret: string
   now: string
+  expectedCredentialGeneration?: string
 }
 
 export type PromoteTotpChangeInput = {
   userId: string
   acceptedStep: number
   verifiedAt: string
+  expectedCredentialGeneration?: string
+  expectedPendingEncryptedSecret?: string
 }
 
 export type AcceptTotpStepInput = {
   userId: string
   acceptedStep: number
   now: string
+  expectedCredentialGeneration?: string
 }
 
 export type TotpChallengeRecord = {
@@ -84,6 +93,7 @@ type TotpSetupRow = {
   enabled: number
   verifiedAt: string | null
   lastAcceptedStep: number | null
+  credentialGeneration?: string | null
   pendingEncryptedSecret: string | null
   pendingCreatedAt: string | null
   createdAt: string
@@ -122,7 +132,11 @@ export async function upsertPendingTotpSetup(
           enabled = 0,
           verified_at = NULL,
           last_accepted_step = NULL,
+          credential_generation = NULL,
+          pending_encrypted_secret = NULL,
+          pending_created_at = NULL,
           updated_at = excluded.updated_at
+        WHERE user_totp.enabled = 0
       `,
     )
     .bind(input.userId, input.encryptedSecret, input.now, input.now)
@@ -142,6 +156,7 @@ export async function findTotpSetupByUserId(
           enabled,
           verified_at as verifiedAt,
           last_accepted_step as lastAcceptedStep,
+          credential_generation as credentialGeneration,
           pending_encrypted_secret as pendingEncryptedSecret,
           pending_created_at as pendingCreatedAt,
           created_at as createdAt,
@@ -168,14 +183,24 @@ export async function enableTotpSetup(
         SET
           enabled = 1,
           verified_at = ?,
-          updated_at = ?
-        WHERE user_id = ?
+          updated_at = ?,
+          credential_generation = ?
+        WHERE user_id = ? AND enabled = 0
+          ${input.expectedEncryptedSecret === undefined ? '' : 'AND encrypted_secret = ?'}
       `,
     )
-    .bind(input.verifiedAt, input.verifiedAt, input.userId)
+    .bind(
+      input.verifiedAt,
+      input.verifiedAt,
+      generateTotpCredentialGeneration(),
+      input.userId,
+      ...(input.expectedEncryptedSecret === undefined
+        ? []
+        : [input.expectedEncryptedSecret]),
+    )
     .run()
 
-  return result.meta.changes === 1
+  return result.meta.changes >= 1
 }
 
 export async function disableTotpSetup(
@@ -188,12 +213,19 @@ export async function disableTotpSetup(
         DELETE FROM user_totp
         WHERE user_id = ?
           AND enabled = 1
+          ${input.expectedCredentialGeneration === undefined ? '' : 'AND credential_generation = ?'}
+          AND ${lastEnrolledOwnerCanRemoveTotpSql}
       `,
     )
-    .bind(input.userId)
+    .bind(
+      input.userId,
+      ...(input.expectedCredentialGeneration === undefined
+        ? []
+        : [input.expectedCredentialGeneration]),
+    )
     .run()
 
-  return result.meta.changes === 1
+  return result.meta.changes >= 1
 }
 
 export async function startPendingTotpChange(
@@ -210,9 +242,18 @@ export async function startPendingTotpChange(
           updated_at = ?
         WHERE user_id = ?
           AND enabled = 1
+          ${input.expectedCredentialGeneration === undefined ? '' : 'AND credential_generation = ?'}
       `,
     )
-    .bind(input.encryptedSecret, input.now, input.now, input.userId)
+    .bind(
+      input.encryptedSecret,
+      input.now,
+      input.now,
+      input.userId,
+      ...(input.expectedCredentialGeneration === undefined
+        ? []
+        : [input.expectedCredentialGeneration]),
+    )
     .run()
 
   return result.meta.changes === 1
@@ -230,18 +271,33 @@ export async function promotePendingTotpChange(
           encrypted_secret = pending_encrypted_secret,
           verified_at = ?,
           last_accepted_step = ?,
+          credential_generation = ?,
           pending_encrypted_secret = NULL,
           pending_created_at = NULL,
           updated_at = ?
         WHERE user_id = ?
           AND enabled = 1
           AND pending_encrypted_secret IS NOT NULL
+          ${input.expectedCredentialGeneration === undefined ? '' : 'AND credential_generation = ?'}
+          ${input.expectedPendingEncryptedSecret === undefined ? '' : 'AND pending_encrypted_secret = ?'}
       `,
     )
-    .bind(input.verifiedAt, input.acceptedStep, input.verifiedAt, input.userId)
+    .bind(
+      input.verifiedAt,
+      input.acceptedStep,
+      generateTotpCredentialGeneration(),
+      input.verifiedAt,
+      input.userId,
+      ...(input.expectedCredentialGeneration === undefined
+        ? []
+        : [input.expectedCredentialGeneration]),
+      ...(input.expectedPendingEncryptedSecret === undefined
+        ? []
+        : [input.expectedPendingEncryptedSecret]),
+    )
     .run()
 
-  return result.meta.changes === 1
+  return result.meta.changes >= 1
 }
 
 export async function recordAcceptedTotpStep(
@@ -257,9 +313,18 @@ export async function recordAcceptedTotpStep(
           updated_at = ?
         WHERE user_id = ?
           AND (last_accepted_step IS NULL OR ? > last_accepted_step)
+          ${input.expectedCredentialGeneration === undefined ? '' : 'AND enabled = 1 AND verified_at IS NOT NULL AND credential_generation = ?'}
       `,
     )
-    .bind(input.acceptedStep, input.now, input.userId, input.acceptedStep)
+    .bind(
+      input.acceptedStep,
+      input.now,
+      input.userId,
+      input.acceptedStep,
+      ...(input.expectedCredentialGeneration === undefined
+        ? []
+        : [input.expectedCredentialGeneration]),
+    )
     .run()
 
   return result.meta.changes === 1
@@ -375,12 +440,39 @@ function totpSetupFromRow(row: TotpSetupRow): TotpSetupRecord {
     enabled: row.enabled === 1,
     verifiedAt: row.verifiedAt,
     lastAcceptedStep: row.lastAcceptedStep ?? null,
+    ...(row.credentialGeneration === undefined
+      ? {}
+      : { credentialGeneration: row.credentialGeneration }),
     pendingEncryptedSecret: row.pendingEncryptedSecret ?? null,
     pendingCreatedAt: row.pendingCreatedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
 }
+
+// Count enrollment, not online sessions: a surviving enrolled Owner can log in
+// or step up again. Every enabled policy must retain such an active Owner.
+export const lastEnrolledOwnerCanRemoveTotpSql = `
+  NOT EXISTS (
+    SELECT 1 FROM organization_users current_owner
+    INNER JOIN organizations o ON o.id = current_owner.organization_id
+    INNER JOIN organization_policies p ON p.organization_id = o.id
+      AND p.type = 0 AND p.enabled = 1
+    WHERE current_owner.user_id = user_totp.user_id
+      AND current_owner.status = 2 AND current_owner.type = 0 AND o.enabled = 1
+      AND NOT EXISTS (
+        SELECT 1 FROM organization_users survivor
+        INNER JOIN users active_user ON active_user.id = survivor.user_id
+          AND active_user.disabled_at IS NULL
+        INNER JOIN user_totp factor ON factor.user_id = survivor.user_id
+          AND factor.enabled = 1 AND factor.verified_at IS NOT NULL
+          AND factor.credential_generation IS NOT NULL
+        WHERE survivor.organization_id = current_owner.organization_id
+          AND survivor.status = 2 AND survivor.type = 0
+          AND survivor.user_id <> current_owner.user_id
+      )
+  )
+`
 
 function totpChallengeFromRow(row: TotpChallengeRow): TotpChallengeRecord {
   return {

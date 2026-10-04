@@ -1,6 +1,70 @@
 # Current State
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
+
+## 2026-10-04 Company Administration Source
+
+The company-readiness source is published as Draft PR
+[#149](https://github.com/kazu-42/HonoWarden/pull/149), commit
+`681cfcc63c2ebc367a82b245fa54cbfbc421ee6a`, tree
+`fbfb937d722e4a476f7c53bea79009eb1d40c005`. Its exact-head GitHub CI passed.
+The protected September integration checkout and original root WIP remain
+preserved. This follow-up uses the dedicated `company-admin-2026-10-04` checkout.
+
+The follow-up adds an original Japanese administration browser at `/admin/`,
+organization creation, invitations and encrypted key confirmation, member roles
+and direct collection assignments, groups with revision-checked replacement,
+required-TOTP policy, and bounded management audit queries and CSV. Its private
+crypto Worker owns decrypted vault and organization keys; bearer tokens remain in
+memory. Invitation fragments are consumed and removed before asynchronous work.
+PBKDF2 and Argon2id are supported, with independent cryptographic vectors.
+
+Shared SQL combines direct and group collection grants within the same
+organization, rechecks active accounts and exact device families, and evaluates
+persisted MFA policies even when management flags are disabled. Enrollment alone
+does not establish a session's MFA proof. Factor replacement invalidates that
+proof, API-key and auth-request families begin without it, and same-family
+refresh preserves only existing proof. Offboarding removes effective assignments;
+the last enrolled Owner of a protected organization cannot be removed or deleted.
+Membership writes and their required audit records commit atomically, including
+when a database trigger ignores a write.
+
+Migrations 0025 through 0030 are required for this source even with management
+flags disabled. All tracked company, administration, and credential writer flags
+remain default-off. The browser assets must pass through the Worker and its MIME,
+CSP, and route allowlists. See [ADR 0016](adr/0016-company-administration.md),
+[company operations](operations/company-administration.md), and
+[audit scope](operations/organization-audit.md).
+
+The first Node 22.22.0 aggregate run passed 3,575 of 3,581 tests across 183 files.
+Six failures in compatibility and audit fixtures and a stale current-CLI
+expectation are retained as the initial failure record. Focused repair and a new
+aggregate are pending at this checkpoint. The authenticated browser/Worker/D1
+acceptance is also pending; unit success and unauthenticated screenshots do not
+prove that flow. Source publication for this follow-up is recorded separately
+after verification.
+
+Official release metadata was refreshed on 2026-10-04: Browser 2026.9.3,
+Desktop/CLI 2026.9.1, Android 2026.9.0 build 21909, and iOS 2026.9.1 build 3533.
+Current rows remain `fixture_only` until their exact-version evidence is admitted.
+Browser, Desktop, and native CLI archive sizes and SHA-256 digests have been
+verified; downloading an asset does not establish functional compatibility.
+Desktop secure-store isolation and TLS remain prerequisites for a native run.
+
+Read-only staging characterization found that the serving version's module bytes
+are retrievable but have no source provenance tag. The observed Durable Object
+migration tag is `v1`; it is distinct from the missing source tag. A custom-domain
+parser failure was diagnosed separately and does not prove a domain outage.
+Reviewed immutable artifact construction and the runtime repair execution boundary
+remain separate work. No remote Worker upload, traffic change, migration, secret
+rotation, or real email was performed at this checkpoint.
+
+Company readiness still requires target schema and runtime acceptance, real
+invitation delivery, exact Browser/Desktop flows, current restore evidence, and
+an independent security assessment before real-secret admission. SSO/SCIM,
+custom roles, passkey login, full personal Web Vault, emergency-access recovery,
+and device/IdP administration remain outside this delivered company slice.
+Historical checkpoints below retain their original claims and limitations.
 
 ## 2026-10-03 Company Readiness Continuation
 

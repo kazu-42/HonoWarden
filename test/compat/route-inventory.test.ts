@@ -255,6 +255,48 @@ describe('route inventory closeout', () => {
     ).toThrow(/mounted route module.*missing/i)
   })
 
+  it('observes direct mounted routes built from a local constant base without executing source', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'honowarden-routes-'))
+    writeFileSync(
+      join(fixtureRoot, 'groups.ts'),
+      'export function registerGroupRoutes(app) {\n' +
+        "  const base = '/api/organizations/:id/groups'\n" +
+        '  app.get(base, handler)\n' +
+        '  app.put(`${base}/:groupId`, handler)\n' +
+        '  app.post(`${base}/delete`, unsupported)\n' +
+        "}\nthrow new Error('scanner must not execute this module')",
+    )
+
+    expect(
+      observeMountedHonoRoutes(
+        "import { registerGroupRoutes } from './groups'\nregisterGroupRoutes(app)",
+        join(fixtureRoot, 'app.ts'),
+      ),
+    ).toEqual([
+      { method: 'GET', path: '/api/organizations/:id/groups' },
+      { method: 'PUT', path: '/api/organizations/:id/groups/:groupId' },
+      { method: 'POST', path: '/api/organizations/:id/groups/delete' },
+    ])
+  })
+
+  it.each([
+    "let base = '/api/organizations/:id/groups'; app.get(base, handler)",
+    'const base = getBase(); app.get(`${base}/details`, handler)',
+    "const base = '/api/organizations/:id/groups'; function nested(base) { app.get(base, handler) }",
+  ])('rejects dynamic or shadowed mounted route bases: %s', (body) => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'honowarden-routes-'))
+    writeFileSync(
+      join(fixtureRoot, 'groups.ts'),
+      `export function registerGroupRoutes(app) { ${body} }`,
+    )
+    expect(() =>
+      observeMountedHonoRoutes(
+        "import { registerGroupRoutes } from './groups'\nregisterGroupRoutes(app)",
+        join(fixtureRoot, 'app.ts'),
+      ),
+    ).toThrow(/mounted route module requires literal paths/)
+  })
+
   it('does not let rejected catch-alls hide a newly mounted concrete route', () => {
     const observed = observeRepository(defaultRouteInventoryPaths(repoRoot))
     const added = {
@@ -294,6 +336,40 @@ describe('route inventory closeout', () => {
     ).toThrow(/mounted route module requires literal paths/)
   })
 
+  it('requires the exact mounted wildcard registration while preserving concrete-route classification', () => {
+    const observed = observeRepository(defaultRouteInventoryPaths(repoRoot))
+    const added = { method: 'ALL', path: '/custom-admin/*' }
+    const report = reconcileRouteInventory({
+      observed: {
+        ...observed,
+        routes: [...observed.routes, added],
+        registeredModuleRoutes: [...observed.registeredModuleRoutes, added],
+      },
+      inventory: {
+        ...inventory,
+        entries: [
+          ...inventory.entries,
+          {
+            id: 'custom-admin.assets',
+            kind: 'route',
+            classification: 'implemented',
+            requirementKind: 'operator',
+            evidenceLevel: 'local_api',
+            lastReviewedAt: '2026-10-04',
+            covers: [added],
+            rationale: 'Explicit fixture wildcard registration',
+            supportClaim: false,
+          },
+        ],
+      },
+      catalog,
+    })
+    expect(report.unclassified).not.toContainEqual({
+      kind: 'route',
+      key: 'ALL /custom-admin/*',
+    })
+  })
+
   it('records mounted membership actions without promoting client support', () => {
     const observed = observeRepository(defaultRouteInventoryPaths(repoRoot))
     const membership = inventory.entries.find(
@@ -301,7 +377,7 @@ describe('route inventory closeout', () => {
         entry.id === 'organizations.membership_administration',
     )
 
-    expect(observed.registeredModuleRoutes).toHaveLength(11)
+    expect(observed.registeredModuleRoutes).toHaveLength(33)
     expect(observed.registeredModuleRoutes).toContainEqual({
       method: 'POST',
       path: '/api/organizations/:id/users/:memberId/reinvite',
@@ -323,14 +399,70 @@ describe('route inventory closeout', () => {
     })
     expect(membership.covers).toHaveLength(11)
     expect(membership.covers).toEqual(
-      expect.arrayContaining(observed.registeredModuleRoutes),
+      expect.arrayContaining(
+        observed.registeredModuleRoutes.filter(
+          ({ path }: { path: string }) =>
+            path.startsWith('/api/organizations/:id/users') ||
+            path === '/api/users/:userId/public-key',
+        ),
+      ),
     )
     expect(observed.migrations).toEqual(
       expect.arrayContaining([
         '0023_device_session_binding.sql',
         '0024_organization_invitations.sql',
+        '0025_organization_groups.sql',
+        '0026_organization_policies.sql',
+        '0027_session_mfa_assurance.sql',
+        '0028_organization_audit_scope_index.sql',
+        '0029_organization_membership_mutation_marker.sql',
+        '0030_organization_policy_mutation_marker.sql',
       ]),
     )
+  })
+
+  it('classifies company routes separately from deferred aliases and native Events', () => {
+    const observed = observeRepository(defaultRouteInventoryPaths(repoRoot))
+    const entries = new Map<string, Record<string, unknown>>(
+      inventory.entries.map(
+        (entry: Record<string, unknown> & { id: string }) => [entry.id, entry],
+      ),
+    )
+    for (const id of [
+      'organizations.groups_administration',
+      'organizations.policy_administration',
+      'organizations.audit_history',
+      'administration.assets',
+      'totp.session_assurance',
+    ]) {
+      expect(entries.get(id)).toMatchObject({
+        classification: 'implemented',
+        evidenceLevel: 'local_api',
+        supportClaim: false,
+      })
+    }
+    expect(entries.get('organizations.groups_deferred_aliases')).toMatchObject({
+      classification: 'rejected',
+      supportClaim: false,
+      covers: expect.arrayContaining([
+        { method: 'DELETE', path: '/api/organizations/:id/groups' },
+        {
+          method: 'POST',
+          path: '/api/organizations/:id/groups/:groupId/delete',
+        },
+      ]),
+    })
+    expect(entries.get('official.events')).toMatchObject({
+      classification: 'planned',
+      supportClaim: false,
+    })
+    expect(
+      entries.get('organizations.audit_history')?.officialIds,
+    ).toBeUndefined()
+    expect(observed.registeredModuleRoutes).toContainEqual({
+      method: 'ALL',
+      path: '/admin/*',
+    })
   })
 
   it('verifies the checked-in inventory against current main', () => {

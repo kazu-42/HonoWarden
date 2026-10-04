@@ -2,18 +2,22 @@
 
 Published release: `v0.1.0-alpha`, published as a prerelease on 2026-07-08.
 
-Last updated: 2026-09-22.
+Last updated: 2026-10-04.
 
 This index links historical release evidence and subsequent local work. It does
 not authorize retagging, republication, or deployment. At tag time only CLI
 `2026.6.0` had sealed `live_smoke` evidence; other tag-time rows were
 `fixture_only`. Later browser, desktop, Android, and additional CLI evidence
-must be read as post-tag records. Official metadata was refreshed on 2026-09-22:
-Browser 2026.9.1 and Desktop/Android/iOS 2026.9.0 remain `fixture_only`.
-The later [exact CLI 2026.9.0 local smoke](current-cli-2026-9-smoke.md) passed
+must be read as post-tag records. Official metadata was refreshed on 2026-10-04:
+Browser 2026.9.3, Desktop/CLI 2026.9.1, Android 2026.9.0 build 21909, and iOS
+2026.9.1 build 3533 all remain `fixture_only`.
+The earlier [exact CLI 2026.9.0 local smoke](current-cli-2026-9-smoke.md) passed
 isolated synthetic login, populated sync, decryption, lock/unlock, logout, and
-repeat login. Only that CLI row is `live_smoke`; this does not establish broad
-client regression, staging/production acceptance, or execution authority.
+repeat login. Its [expanded local acceptance](current-cli-2026-9-local-acceptance.md)
+also records personal CRUD and organization evidence. Those exact-version
+historical records remain unchanged and do not promote the current CLI 2026.9.1
+row or establish broad client regression, staging/production acceptance, or
+execution authority.
 
 Release and operations references:
 

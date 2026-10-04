@@ -20,6 +20,7 @@ type FakeD1DatabaseOptions = {
   preloginKdfLookupThrows?: boolean
   authRequests?: Record<string, unknown>[]
   userTotp?: Record<string, unknown> | null
+  userTotps?: Record<string, unknown>[]
   totpChallenge?: Record<string, unknown> | null
   cipher?: Record<string, unknown> | null
   attachment?: Record<string, unknown> | null
@@ -79,6 +80,10 @@ type FakeD1DatabaseOptions = {
   collections?: Record<string, unknown>[]
   collectionUsers?: Record<string, unknown>[]
   collectionCiphers?: Record<string, unknown>[]
+  organizationGroups?: Record<string, unknown>[]
+  organizationGroupUsers?: Record<string, unknown>[]
+  collectionGroups?: Record<string, unknown>[]
+  organizationPolicies?: Record<string, unknown>[]
   organizationCipherBatchFailureAt?: 'cipher' | 'mappings'
 }
 
@@ -253,6 +258,28 @@ export class FakeD1Database {
         return statement
       },
       async first<T = unknown>(column?: string): Promise<T | null> {
+        if (isSharedOrganizationAccessQuery(query)) {
+          const row =
+            readSharedOrganizationAccessRows(options, boundValues, query)[0] ??
+            null
+          return (column && row ? row[column] : row) as T | null
+        }
+
+        if (
+          query.includes('SELECT 1 AS assured') &&
+          query.includes('mfa_totp_credential_generation')
+        ) {
+          const [userId, deviceIdentifier, sessionId] = boundValues
+          return hasFakeSessionTotpAssurance(
+            options,
+            String(userId),
+            sessionId,
+            deviceIdentifier,
+          )
+            ? ({ assured: 1 } as T)
+            : null
+        }
+
         if (query.includes('WITH accessible_organization_collections AS')) {
           return findAccessibleCipherRow(
             options,
@@ -505,7 +532,9 @@ export class FakeD1Database {
         }
 
         if (query.includes('FROM user_totp')) {
-          return (options.userTotp ?? null) as T | null
+          return (fakeTotpRows(options).find(
+            (factor) => factor.userId === boundValues[0],
+          ) ?? null) as T | null
         }
 
         if (query.includes('FROM totp_challenges')) {
@@ -562,6 +591,62 @@ export class FakeD1Database {
         return null
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
+        if (
+          query.includes('INSERT INTO user_totp') &&
+          query.includes('RETURNING user_id')
+        ) {
+          return applyFakePendingTotpSetup(options, boundValues) as D1Result<T>
+        }
+        if (query.includes('FROM organization_policies policy')) {
+          const [actorUserId, sessionId, deviceIdentifier, userId] = boundValues
+          const active =
+            actorUserId === userId &&
+            options.devices?.some(
+              (device) =>
+                device.userId === actorUserId &&
+                device.sessionId === sessionId &&
+                device.identifier === deviceIdentifier &&
+                device.revokedAt == null,
+            )
+          const users =
+            options.authUsers ?? (options.authUser ? [options.authUser] : [])
+          const rows =
+            active &&
+            users.some(
+              (user) => user.id === actorUserId && user.disabledAt == null,
+            )
+              ? (options.organizationPolicies ?? []).filter(
+                  (policy) =>
+                    Number(policy.type) === 0 &&
+                    options.organizations?.some(
+                      (organization) =>
+                        organization.id === policy.organizationId &&
+                        Number(organization.enabled ?? 1) === 1,
+                    ) &&
+                    options.organizationUsers?.some(
+                      (membership) =>
+                        membership.userId === userId &&
+                        membership.organizationId === policy.organizationId &&
+                        [1, 2].includes(Number(membership.status)) &&
+                        [0, 1, 2].includes(Number(membership.type)),
+                    ),
+                )
+              : []
+          return { success: true, results: rows as T[], meta: fakeMeta }
+        }
+
+        if (isSharedOrganizationAccessQuery(query)) {
+          return {
+            success: true,
+            results: readSharedOrganizationAccessRows(
+              options,
+              boundValues,
+              query,
+            ) as T[],
+            meta: fakeMeta,
+          }
+        }
+
         if (query.includes('WITH accessible_organization_collections AS')) {
           return {
             success: true,
@@ -941,6 +1026,9 @@ export class FakeD1Database {
         }
 
         if (query.includes('INSERT INTO user_totp')) {
+          if (query.includes('RETURNING user_id')) {
+            return applyFakePendingTotpSetup(options, boundValues)
+          }
           return {
             success: true,
             results: [],
@@ -1502,6 +1590,34 @@ export class FakeD1Database {
     }
 
     if (
+      fakeStatements[0]?.__fakeQuery.includes('UPDATE user_totp') &&
+      (fakeStatements[1]?.__fakeQuery.includes(
+        'mfa_totp_credential_generation',
+      ) ||
+        fakeStatements
+          .at(-1)
+          ?.__fakeQuery.includes('SET mfa_totp_credential_generation'))
+    ) {
+      return applyFakeTotpSessionBatch(
+        this.options,
+        fakeStatements,
+      ) as D1Result<T>[]
+    }
+
+    if (
+      fakeStatements.length === 3 &&
+      fakeStatements[0]?.__fakeQuery.includes('DELETE FROM user_totp') &&
+      fakeStatements[0].__fakeQuery.includes('credential_generation = ?') &&
+      fakeStatements[2]?.__fakeQuery.includes("'totp.disable'")
+    ) {
+      return applyFakeTotpDisableBatch(
+        this.options,
+        fakeStatements,
+        this.auditEventInserts,
+      ) as D1Result<T>[]
+    }
+
+    if (
       fakeStatements.length === 3 &&
       fakeStatements[0]?.__fakeQuery.includes(
         'INSERT OR IGNORE INTO devices',
@@ -1540,6 +1656,8 @@ export class FakeD1Database {
         lastSeenAt: updates[2],
         updatedAt: updates[3],
         sessionId: updates[4],
+        mfaTotpCredentialGeneration: null,
+        mfaVerifiedAt: null,
         revokedAt: null,
       })
       const token = fakeStatements[2].__fakeBoundValues
@@ -2543,7 +2661,8 @@ function isOrganizationCollectionUpdateBatch(
   return (
     statements.length === 2 &&
     /UPDATE\s+organizations/.test(revision) &&
-    revision.includes('FROM collections candidate') &&
+    (revision.includes('FROM collections candidate') ||
+      revision.includes('FROM accessible_organization_collections access')) &&
     /UPDATE\s+collections/.test(mutation) &&
     mutation.includes(
       'external_id = CASE WHEN ? = 1 THEN ? ELSE external_id END',
@@ -2556,12 +2675,21 @@ function applyOrganizationCollectionUpdateBatch(
   options: FakeD1DatabaseOptions,
   statements: FakePreparedStatement[],
 ): D1Result[] {
-  const revisionValues = statements[0]?.__fakeBoundValues ?? []
-  const mutationValues = statements[1]?.__fakeBoundValues ?? []
+  const revisionValues = organizationStatementValues(
+    statements[0] as FakePreparedStatement,
+  )
+  const mutationValues = organizationStatementValues(
+    statements[1] as FakePreparedStatement,
+  )
   const now = String(revisionValues[0] ?? '')
   const organizationId = String(revisionValues[2] ?? '')
   const collectionId = String(revisionValues[3] ?? '')
-  const userId = String(revisionValues[4] ?? '')
+  const actorValues = statements[0]?.__fakeBoundValues ?? []
+  const userId = String(
+    isSharedOrganizationAccessQuery(statements[0]?.__fakeQuery ?? '')
+      ? actorValues[0]
+      : (revisionValues[4] ?? ''),
+  )
   const organization = options.organizations?.find(
     (row) => row.id === organizationId,
   )
@@ -2573,9 +2701,20 @@ function applyOrganizationCollectionUpdateBatch(
     userId,
     organizationId,
     [collectionId],
+    true,
+    actorValues,
   )
 
-  if (!organization || !collection || managedCollectionIds.length !== 1) {
+  if (
+    !organization ||
+    !collection ||
+    managedCollectionIds.length !== 1 ||
+    !isActiveFakeOrganizationActor(
+      options,
+      actorValues,
+      statements[0]?.__fakeQuery ?? '',
+    )
+  ) {
     return [0, 0].map((changes) => ({
       success: true,
       results: [],
@@ -2618,7 +2757,8 @@ function isOrganizationCollectionDeleteBatch(
   return (
     statements.length === 2 &&
     /UPDATE\s+organizations/.test(revision) &&
-    revision.includes('COUNT(DISTINCT candidate.id)') &&
+    (revision.includes('COUNT(DISTINCT candidate.id)') ||
+      revision.includes('COUNT(DISTINCT access.collectionId)')) &&
     revision.includes('FROM collection_ciphers selected_mapping') &&
     /DELETE\s+FROM\s+collections/.test(deletion) &&
     deletion.includes('changes() = 1')
@@ -2629,12 +2769,23 @@ function applyOrganizationCollectionDeleteBatch(
   options: FakeD1DatabaseOptions,
   statements: FakePreparedStatement[],
 ): D1Result[] {
-  const revisionValues = statements[0]?.__fakeBoundValues ?? []
-  const deletionValues = statements[1]?.__fakeBoundValues ?? []
+  const revisionValues = organizationStatementValues(
+    statements[0] as FakePreparedStatement,
+  )
+  const deletionValues = organizationStatementValues(
+    statements[1] as FakePreparedStatement,
+  )
   const now = String(revisionValues[0] ?? '')
   const organizationId = String(deletionValues[0] ?? '')
-  const userId = String(revisionValues[3] ?? '')
-  const collectionIds = deletionValues.slice(1).map(String)
+  const actorValues = statements[0]?.__fakeBoundValues ?? []
+  const userId = String(
+    isSharedOrganizationAccessQuery(statements[0]?.__fakeQuery ?? '')
+      ? actorValues[0]
+      : (revisionValues[3] ?? ''),
+  )
+  const collectionIds = statements[1]?.__fakeQuery.includes('json_each(?)')
+    ? (JSON.parse(String(deletionValues[1])) as string[])
+    : deletionValues.slice(1).map(String)
   const organization = options.organizations?.find(
     (row) => row.id === organizationId,
   )
@@ -2643,6 +2794,8 @@ function applyOrganizationCollectionDeleteBatch(
     userId,
     organizationId,
     collectionIds,
+    true,
+    actorValues,
   )
   const selectedIds = new Set(collectionIds)
   const wouldOrphanCipher = (options.ciphers ?? []).some((cipher) => {
@@ -2675,6 +2828,11 @@ function applyOrganizationCollectionDeleteBatch(
     collectionIds.length > 0 &&
     selectedIds.size === collectionIds.length &&
     managedCollectionIds.length === collectionIds.length &&
+    isActiveFakeOrganizationActor(
+      options,
+      actorValues,
+      statements[0]?.__fakeQuery ?? '',
+    ) &&
     !wouldOrphanCipher
 
   if (!canDelete || !organization) {
@@ -2784,23 +2942,30 @@ function applyOrganizationCipherMutation(
   options: FakeD1DatabaseOptions,
   statement: FakePreparedStatement,
 ): number {
-  const values = statement.__fakeBoundValues
+  const values = organizationStatementValues(statement)
   const query = statement.__fakeQuery
-  const requestedCollectionIds = values.slice(12, -1).map(String)
+  const shared = isSharedOrganizationAccessQuery(query)
+  const requestedCollectionIds = query.includes('json_each(?)')
+    ? (JSON.parse(String(values[11])) as string[])
+    : values.slice(12, -1).map(String)
   const expectedCollectionCount = Number(values.at(-1))
-  const guardUserId = String(values[10] ?? '')
-  const guardOrganizationId = String(values[11] ?? '')
+  const guardUserId = String(
+    shared ? statement.__fakeBoundValues[0] : (values[10] ?? ''),
+  )
+  const guardOrganizationId = String(values[shared ? 10 : 11] ?? '')
   const managedCollectionIds = findManagedOrganizationCollectionIds(
     options,
     guardUserId,
     guardOrganizationId,
     requestedCollectionIds,
     false,
+    statement.__fakeBoundValues,
   )
 
   if (
     requestedCollectionIds.length !== expectedCollectionCount ||
-    managedCollectionIds.length !== expectedCollectionCount
+    managedCollectionIds.length !== expectedCollectionCount ||
+    !isActiveFakeOrganizationActor(options, statement.__fakeBoundValues, query)
   ) {
     return 0
   }
@@ -2875,11 +3040,16 @@ function applyOrganizationCipherMappings(
   options: FakeD1DatabaseOptions,
   statement: FakePreparedStatement,
 ): number {
-  const values = statement.__fakeBoundValues
+  const values = organizationStatementValues(statement)
   const cipherId = String(values[0] ?? '')
-  const userId = String(values[1] ?? '')
-  const organizationId = String(values[2] ?? '')
-  const requestedCollectionIds = values.slice(3, -5).map(String)
+  const shared = isSharedOrganizationAccessQuery(statement.__fakeQuery)
+  const userId = String(
+    shared ? statement.__fakeBoundValues[0] : (values[1] ?? ''),
+  )
+  const organizationId = String(values[shared ? 1 : 2] ?? '')
+  const requestedCollectionIds = statement.__fakeQuery.includes('json_each(?)')
+    ? (JSON.parse(String(values[2])) as string[])
+    : values.slice(3, -5).map(String)
   const [transitionedCipherId, transitionedUserId, transitionedOrganizationId] =
     values.slice(-5, -2).map(String)
   const revisionDate = String(values.at(-2) ?? '')
@@ -2890,6 +3060,7 @@ function applyOrganizationCipherMappings(
     organizationId,
     requestedCollectionIds,
     false,
+    statement.__fakeBoundValues,
   )
   const cipher = options.ciphers?.find(
     (row) =>
@@ -2948,11 +3119,18 @@ function applyOrganizationCollectionBatch(
   const revisionStatement = statements.find((statement) =>
     /UPDATE\s+organizations/.test(statement.__fakeQuery),
   )
-  const revisionValues = revisionStatement?.__fakeBoundValues ?? []
+  const revisionValues = revisionStatement
+    ? organizationStatementValues(revisionStatement)
+    : []
   const now = String(revisionValues[0] ?? '')
   const organizationId = String(revisionValues[2] ?? '')
   const organizationUserId = String(revisionValues[3] ?? '')
-  const userId = String(revisionValues[4] ?? '')
+  const userId = String(
+    revisionStatement &&
+      isSharedOrganizationAccessQuery(revisionStatement.__fakeQuery)
+      ? revisionStatement.__fakeBoundValues[0]
+      : (revisionValues[4] ?? ''),
+  )
   const organization = options.organizations?.find(
     (row) => row.id === organizationId,
   )
@@ -2965,7 +3143,22 @@ function applyOrganizationCollectionBatch(
       Number(row.type) === 0,
   )
 
-  if (!organization || !owner) {
+  if (
+    !organization ||
+    Number(organization.enabled ?? 1) !== 1 ||
+    !owner ||
+    !fakeOrganizationPolicyAllows(
+      options,
+      organizationId,
+      userId,
+      revisionStatement?.__fakeBoundValues,
+    ) ||
+    !isActiveFakeOrganizationActor(
+      options,
+      revisionStatement?.__fakeBoundValues ?? [],
+      revisionStatement?.__fakeQuery ?? '',
+    )
+  ) {
     return statements.map(() => ({
       success: true,
       results: [],
@@ -3004,6 +3197,18 @@ function applyOrganizationFoundationBatch(
   options: FakeD1DatabaseOptions,
   statements: FakePreparedStatement[],
 ): D1Result[] {
+  if (
+    statements.some(
+      (statement) =>
+        !isActiveFakeOrganizationActor(
+          options,
+          statement.__fakeBoundValues,
+          statement.__fakeQuery,
+        ),
+    )
+  ) {
+    return statements.map(() => fakeResult(0))
+  }
   const statefulTables = [
     options.organizations,
     options.organizationUsers,
@@ -3037,7 +3242,7 @@ function applyOrganizationFoundationStatement(
   options: FakeD1DatabaseOptions,
   statement: FakePreparedStatement,
 ): void {
-  const values = statement.__fakeBoundValues
+  const values = organizationStatementValues(statement)
   const query = statement.__fakeQuery
 
   if (query.includes('INSERT INTO organizations')) {
@@ -3074,25 +3279,27 @@ function applyOrganizationFoundationStatement(
   }
 
   if (query.includes('INSERT INTO collections')) {
+    const fixedType = query.includes('SELECT ?, ?, ?, ?, 0, ?, ?')
     pushUniqueFakeRow(options.collections, 'id', {
       id: String(values[0]),
       organizationId: String(values[1]),
       encryptedName: String(values[2]),
       externalId: values[3] === null ? null : String(values[3]),
-      type: Number(values[4]),
-      revisionDate: String(values[5]),
-      createdAt: String(values[6]),
+      type: fixedType ? 0 : Number(values[4]),
+      revisionDate: String(values[fixedType ? 4 : 5]),
+      createdAt: String(values[fixedType ? 5 : 6]),
     })
     return
   }
 
   if (query.includes('INSERT INTO collection_users')) {
+    const fixedGrant = query.includes('SELECT ?, ?, 0, 0, 1')
     const row = {
       collectionId: String(values[0]),
       organizationUserId: String(values[1]),
-      readOnly: Number(values[2]),
-      hidePasswords: Number(values[3]),
-      manage: Number(values[4]),
+      readOnly: fixedGrant ? 0 : Number(values[2]),
+      hidePasswords: fixedGrant ? 0 : Number(values[3]),
+      manage: fixedGrant ? 1 : Number(values[4]),
     }
     const duplicate = options.collectionUsers?.some(
       (candidate) =>
@@ -3475,43 +3682,35 @@ function findManagedOrganizationCollectionIds(
   organizationId: string,
   requestedCollectionIds: readonly string[],
   requireAdministration = true,
+  actorValues: unknown[] = [],
 ): string[] {
-  const requested = new Set(requestedCollectionIds)
-  const managed = new Set<string>()
-
-  for (const membership of options.organizationUsers ?? []) {
-    if (
-      membership.userId !== userId ||
-      membership.organizationId !== organizationId ||
-      Number(membership.status) !== 2 ||
-      (requireAdministration
-        ? Number(membership.type) !== 0
-        : ![0, 1, 2].includes(Number(membership.type ?? 2)))
-    ) {
-      continue
-    }
-
-    for (const collectionUser of options.collectionUsers ?? []) {
-      if (
-        collectionUser.organizationUserId !== membership.id ||
-        (requireAdministration && Number(collectionUser.manage) !== 1) ||
-        Number(collectionUser.readOnly ?? 0) !== 0
-      ) {
-        continue
-      }
-      const collection = options.collections?.find(
-        (row) =>
-          requested.has(String(row.id)) &&
-          row.id === collectionUser.collectionId &&
-          row.organizationId === organizationId,
+  const access = findConfirmedCollectionAccess(options, userId, actorValues)
+  if (!requireAdministration)
+    return requestedCollectionIds
+      .filter(
+        (id) =>
+          access.get(id)?.organizationId === organizationId &&
+          access.get(id)?.canEdit,
       )
-      if (collection) {
-        managed.add(String(collection.id))
-      }
-    }
-  }
-
-  return [...managed].sort()
+      .sort()
+  const owner = options.organizationUsers?.some(
+    (membership) =>
+      membership.userId === userId &&
+      membership.organizationId === organizationId &&
+      Number(membership.status) === 2 &&
+      Number(membership.type) === 0,
+  )
+  if (!owner) return []
+  return requestedCollectionIds
+    .filter((id) => {
+      const grant = access.get(id)
+      return (
+        grant?.organizationId === organizationId &&
+        grant.manage &&
+        grant.canEdit
+      )
+    })
+    .sort()
 }
 
 function findCipherAccessRow(
@@ -4246,12 +4445,19 @@ function findKnownDeviceRow(
 function findLatestRevisionDate(
   options: FakeD1DatabaseOptions,
   boundValues: unknown[],
+  query = '',
 ): string | null {
   const userId = String(boundValues[0] ?? '')
   const revisions: string[] = []
   const users =
     options.authUsers ?? (options.authUser ? [options.authUser] : [])
-  const collectionAccess = findConfirmedCollectionAccess(options, userId)
+  const collectionAccess = isActiveFakeOrganizationActor(
+    options,
+    boundValues,
+    query,
+  )
+    ? findConfirmedCollectionAccess(options, userId, boundValues)
+    : new Map()
 
   for (const user of users) {
     if (user.id === userId && typeof user.revisionDate === 'string') {
@@ -4276,7 +4482,7 @@ function findLatestRevisionDate(
           return false
         }
         const access = collectionAccess.get(String(mapping.collectionId))
-        return access?.organizationId === organizationId && access.manage
+        return access?.organizationId === organizationId
       })
 
     if (
@@ -4288,13 +4494,21 @@ function findLatestRevisionDate(
   }
 
   for (const membership of options.organizationUsers ?? []) {
-    if (membership.userId !== userId || Number(membership.status) !== 2) {
+    if (
+      membership.userId !== userId ||
+      Number(membership.status) !== 2 ||
+      ![0, 1, 2].includes(Number(membership.type ?? 2))
+    ) {
       continue
     }
     const organization = options.organizations?.find(
       (row) => row.id === membership.organizationId,
     )
-    if (organization && typeof organization.revisionDate === 'string') {
+    if (
+      organization &&
+      Number(organization.enabled ?? 1) === 1 &&
+      typeof organization.revisionDate === 'string'
+    ) {
       revisions.push(organization.revisionDate)
     }
   }
@@ -4302,9 +4516,597 @@ function findLatestRevisionDate(
   return revisions.sort().at(-1) ?? null
 }
 
+function applyFakePendingTotpSetup(
+  options: FakeD1DatabaseOptions,
+  values: unknown[],
+): D1Result {
+  const userId = values[0]
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  const active =
+    userId === values[4] &&
+    users.some((user) => user.id === userId && user.disabledAt == null) &&
+    options.devices?.some(
+      (device) =>
+        device.userId === userId &&
+        device.identifier === values[5] &&
+        device.sessionId === values[6] &&
+        device.revokedAt == null,
+    )
+  const factor = fakeTotpRows(options).find((row) => row.userId === userId)
+  if (
+    !active ||
+    options.userTotpInsertChanges === 0 ||
+    (factor && Number(factor.enabled) !== 0)
+  )
+    return fakeResult(0)
+  const pending = factor ?? { userId, createdAt: values[2] }
+  Object.assign(pending, {
+    encryptedSecret: values[1],
+    enabled: 0,
+    verifiedAt: null,
+    lastAcceptedStep: null,
+    credentialGeneration: null,
+    pendingEncryptedSecret: null,
+    pendingCreatedAt: null,
+    updatedAt: values[3],
+  })
+  if (!factor) {
+    if (options.userTotps) options.userTotps.push(pending)
+    else options.userTotp = pending
+  }
+  invalidateFakeTotpAssurance(options, userId)
+  return { ...fakeResult(1), results: [{ user_id: userId }] }
+}
+
+function applyFakeTotpDisableBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+  auditEvents: FakeAuditEventInsert[],
+): D1Result[] {
+  const values = statements[0]?.__fakeBoundValues ?? []
+  const factor = fakeTotpRows(options).find((row) => row.userId === values[0])
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  const user = users.find(
+    (row) => row.id === values[0] && row.disabledAt == null,
+  )
+  const activeDevice = options.devices?.some(
+    (device) =>
+      device.userId === values[0] &&
+      device.identifier === values[2] &&
+      device.sessionId === values[3] &&
+      device.revokedAt == null,
+  )
+  const wouldRemoveLastOwner = (options.organizationUsers ?? []).some(
+    (membership) => {
+      if (
+        membership.userId !== values[0] ||
+        Number(membership.status) !== 2 ||
+        Number(membership.type) !== 0 ||
+        !options.organizations?.some(
+          (organization) =>
+            organization.id === membership.organizationId &&
+            Number(organization.enabled ?? 1) === 1,
+        ) ||
+        !options.organizationPolicies?.some(
+          (policy) =>
+            policy.organizationId === membership.organizationId &&
+            Number(policy.type) === 0 &&
+            Number(policy.enabled) === 1,
+        )
+      )
+        return false
+      return !options.organizationUsers?.some(
+        (survivor) =>
+          survivor.organizationId === membership.organizationId &&
+          survivor.userId !== values[0] &&
+          Number(survivor.status) === 2 &&
+          Number(survivor.type) === 0 &&
+          users.some(
+            (account) =>
+              account.id === survivor.userId && account.disabledAt == null,
+          ) &&
+          fakeTotpRows(options).some(
+            (enrollment) =>
+              enrollment.userId === survivor.userId &&
+              Number(enrollment.enabled) === 1 &&
+              enrollment.verifiedAt != null &&
+              enrollment.credentialGeneration != null,
+          ),
+      )
+    },
+  )
+  if (
+    !factor ||
+    !user ||
+    !activeDevice ||
+    Number(factor.enabled) !== 1 ||
+    factor.credentialGeneration !== values[1] ||
+    options.userTotpDeleteChanges === 0 ||
+    wouldRemoveLastOwner
+  ) {
+    return statements.map(() => fakeResult(0))
+  }
+  if (options.auditEventInsertThrows)
+    throw new Error('audit event insert failed')
+  if (options.userTotp === factor) options.userTotp = null
+  if (options.userTotps)
+    options.userTotps.splice(options.userTotps.indexOf(factor), 1)
+  invalidateFakeTotpAssurance(options, values[0])
+  const revision = statements[1]?.__fakeBoundValues ?? []
+  user.revisionDate = revision[0]
+  user.updatedAt = revision[1]
+  const audit = statements[2]?.__fakeBoundValues ?? []
+  auditEvents.push({
+    id: String(audit[0]),
+    schemaVersion: 1,
+    name: 'totp.disable',
+    outcome: 'success',
+    requestId: String(audit[1]),
+    occurredAt: String(audit[2]),
+    actorUserId: String(audit[3]),
+    actorDeviceIdentifier: String(audit[4]),
+    targetType: 'account',
+    targetId: String(audit[5]),
+    contextJson: String(audit[6]),
+  })
+  const result = fakeResult(1)
+  return [
+    { ...result, results: [{ user_id: values[0] }] },
+    fakeResult(1),
+    fakeResult(1),
+  ]
+}
+
+function invalidateFakeTotpAssurance(
+  options: FakeD1DatabaseOptions,
+  userId: unknown,
+): void {
+  for (const device of options.devices ?? []) {
+    if (device.userId === userId) {
+      device.mfaTotpCredentialGeneration = null
+      device.mfaVerifiedAt = null
+    }
+  }
+}
+
+function applyFakeTotpSessionBatch(
+  options: FakeD1DatabaseOptions,
+  statements: FakePreparedStatement[],
+): D1Result[] {
+  const first = statements[0] as FakePreparedStatement
+  const pendingChange =
+    statements[1]?.__fakeQuery.includes('SET pending_encrypted_secret = ?') ??
+    false
+  const proof = (
+    pendingChange ? statements[2] : statements[1]
+  ) as FakePreparedStatement
+  const values = first.__fakeBoundValues
+  const query = first.__fakeQuery
+  const passwordLogin = proof.__fakeQuery.includes('INSERT INTO devices')
+  const enrollment = query.includes('SET enabled = 1')
+  const promotion = query.includes(
+    'encrypted_secret = pending_encrypted_secret',
+  )
+  const userId = enrollment || promotion ? values[4] : values[2]
+  const factor = fakeTotpRows(options).find((row) => row.userId === userId)
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  const user = users.find((row) => row.id === userId && row.disabledAt == null)
+  const proofValues = proof.__fakeBoundValues
+  const device = passwordLogin
+    ? options.devices?.find((row) => row.id === proofValues[0])
+    : options.devices?.find(
+        (row) =>
+          row.userId === userId &&
+          row.identifier === proofValues[3] &&
+          row.sessionId === proofValues[4] &&
+          row.revokedAt == null,
+      )
+  const lastStep = factor?.lastAcceptedStep
+  let allowed = Boolean(factor && user && options.userTotpUpdateChanges !== 0)
+  if (passwordLogin) {
+    allowed &&=
+      Number(factor?.enabled) === 1 &&
+      factor?.verifiedAt != null &&
+      factor?.credentialGeneration === values[3] &&
+      (lastStep == null || Number(values[0]) > Number(lastStep)) &&
+      user?.masterPasswordHash === values[5] &&
+      user?.securityStamp === values[6]
+  } else if (enrollment) {
+    allowed &&=
+      Boolean(device) &&
+      Number(factor?.enabled) === 0 &&
+      factor?.encryptedSecret === values[5] &&
+      (lastStep == null || Number(values[1]) > Number(lastStep))
+  } else if (promotion) {
+    allowed &&=
+      Boolean(device) &&
+      Number(factor?.enabled) === 1 &&
+      factor?.verifiedAt != null &&
+      factor?.credentialGeneration === values[5] &&
+      factor?.pendingEncryptedSecret === values[6]
+  } else {
+    allowed &&=
+      Boolean(device) &&
+      Number(factor?.enabled) === 1 &&
+      factor?.verifiedAt != null &&
+      factor?.credentialGeneration === values[3] &&
+      (lastStep == null || Number(values[0]) > Number(lastStep))
+  }
+  if (!passwordLogin) {
+    const scopeOffset = enrollment || promotion ? 7 : 5
+    allowed &&=
+      values[scopeOffset] === device?.identifier &&
+      values[scopeOffset + 1] === device?.sessionId
+  }
+  if (!allowed || !factor) return statements.map(() => fakeResult(0))
+  const restoreFactors = snapshotFakeRows(fakeTotpRows(options))
+  const restoreDevices = snapshotFakeRows(options.devices)
+  const restoreRefreshTokens = snapshotFakeRows(options.refreshTokens)
+  try {
+    if (enrollment || promotion) {
+      invalidateFakeTotpAssurance(options, userId)
+      Object.assign(factor, {
+        enabled: 1,
+        verifiedAt: values[0],
+        lastAcceptedStep: values[1],
+        credentialGeneration: values[2],
+        updatedAt: values[3],
+      })
+      if (promotion)
+        Object.assign(factor, {
+          encryptedSecret: factor.pendingEncryptedSecret,
+          pendingEncryptedSecret: null,
+          pendingCreatedAt: null,
+        })
+    } else {
+      factor.lastAcceptedStep = values[0]
+      factor.updatedAt = values[1]
+    }
+    if (pendingChange) {
+      const pending = statements[1]?.__fakeBoundValues ?? []
+      if (
+        pending[3] !== userId ||
+        pending[4] !== factor.credentialGeneration ||
+        pending[5] !== device?.identifier ||
+        pending[6] !== device?.sessionId
+      ) {
+        return [1, 0, 0].map(fakeResult)
+      }
+      factor.pendingEncryptedSecret = pending[0]
+      factor.pendingCreatedAt = pending[1]
+      factor.updatedAt = pending[2]
+    }
+    if (options.deviceUpdateChanges === 0)
+      return statements.map((_, index) => fakeResult(index === 0 ? 1 : 0))
+    if (passwordLogin) {
+      if (
+        device &&
+        (device.userId !== userId || device.identifier !== proofValues[2])
+      ) {
+        return [1, 0, 0].map(fakeResult)
+      }
+      options.devices ??= []
+      const nextDevice = device ?? {
+        id: proofValues[0],
+        userId,
+        identifier: proofValues[2],
+        createdAt: proofValues[5],
+      }
+      if (!device) options.devices.push(nextDevice)
+      Object.assign(nextDevice, {
+        name: proofValues[3],
+        type: proofValues[4],
+        lastSeenAt: proofValues[5],
+        updatedAt: proofValues[6],
+        sessionId: proofValues[7],
+        mfaTotpCredentialGeneration: proofValues[8],
+        mfaVerifiedAt: proofValues[9],
+        revokedAt: null,
+      })
+      const token = statements[2]?.__fakeBoundValues ?? []
+      if (
+        nextDevice.id !== token[6] ||
+        nextDevice.userId !== token[7] ||
+        nextDevice.identifier !== token[8] ||
+        nextDevice.sessionId !== token[9] ||
+        nextDevice.mfaTotpCredentialGeneration !== token[10] ||
+        token[1] !== userId ||
+        token[2] !== nextDevice.id ||
+        token[5] !== nextDevice.sessionId
+      ) {
+        return [1, 1, 0].map(fakeResult)
+      }
+      options.refreshTokens ??= []
+      options.refreshTokens.push({
+        id: token[0],
+        userId: token[1],
+        deviceId: token[2],
+        tokenHash: token[3],
+        expiresAt: token[4],
+        sessionId: token[5],
+        revokedAt: null,
+      })
+      return [1, 1, 1].map(fakeResult)
+    }
+    if (
+      !device ||
+      proofValues[0] !== factor.credentialGeneration ||
+      proofValues[5] !== factor.credentialGeneration
+    ) {
+      return [1, 0].map(fakeResult)
+    }
+    Object.assign(device, {
+      mfaTotpCredentialGeneration: proofValues[0],
+      mfaVerifiedAt: proofValues[1],
+    })
+    return statements.map(() => fakeResult(1))
+  } catch (error) {
+    restoreFactors()
+    restoreDevices()
+    restoreRefreshTokens()
+    throw error
+  }
+}
+
+function isSharedOrganizationAccessQuery(query: string): boolean {
+  return (
+    query.includes('requested_actor AS') &&
+    query.includes('accessible_organization_collections AS')
+  )
+}
+
+function organizationStatementValues(
+  statement: FakePreparedStatement,
+): unknown[] {
+  return statement.__fakeQuery.includes('requested_actor AS')
+    ? statement.__fakeBoundValues.slice(
+        organizationActorValueCount(statement.__fakeQuery),
+      )
+    : statement.__fakeBoundValues
+}
+
+function organizationActorValueCount(query: string): number {
+  return query.includes('actor_provided') ? 4 : 3
+}
+
+function isActiveFakeOrganizationActor(
+  options: FakeD1DatabaseOptions,
+  values: unknown[],
+  query: string,
+): boolean {
+  if (!query.includes('active_organization_actor')) return true
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  if (!users.some((user) => user.id === values[0] && user.disabledAt == null))
+    return false
+  return (
+    values[3] === 0 ||
+    Boolean(
+      options.devices?.some(
+        (device) =>
+          device.userId === values[0] &&
+          device.sessionId === values[1] &&
+          device.identifier === values[2] &&
+          device.revokedAt == null,
+      ),
+    )
+  )
+}
+
+function fakeTotpRows(
+  options: FakeD1DatabaseOptions,
+): Record<string, unknown>[] {
+  return options.userTotps ?? (options.userTotp ? [options.userTotp] : [])
+}
+
+function hasFakeSessionTotpAssurance(
+  options: FakeD1DatabaseOptions,
+  userId: string,
+  sessionId: unknown,
+  deviceIdentifier: unknown,
+): boolean {
+  const users =
+    options.authUsers ?? (options.authUser ? [options.authUser] : [])
+  if (!users.some((user) => user.id === userId && user.disabledAt == null))
+    return false
+  if (typeof sessionId !== 'string' || typeof deviceIdentifier !== 'string')
+    return false
+  return fakeTotpRows(options).some(
+    (factor) =>
+      factor.userId === userId &&
+      Number(factor.enabled) === 1 &&
+      factor.verifiedAt != null &&
+      typeof factor.credentialGeneration === 'string' &&
+      options.devices?.some(
+        (device) =>
+          device.userId === userId &&
+          device.sessionId === sessionId &&
+          device.identifier === deviceIdentifier &&
+          device.revokedAt == null &&
+          device.mfaTotpCredentialGeneration === factor.credentialGeneration &&
+          device.mfaVerifiedAt != null,
+      ),
+  )
+}
+
+function fakeOrganizationPolicyAllows(
+  options: FakeD1DatabaseOptions,
+  organizationId: unknown,
+  userId: string,
+  actorValues: unknown[] = [],
+): boolean {
+  const requiresTotp = options.organizationPolicies?.some(
+    (policy) =>
+      policy.organizationId === organizationId &&
+      Number(policy.type) === 0 &&
+      Number(policy.enabled) === 1,
+  )
+  return (
+    !requiresTotp ||
+    hasFakeSessionTotpAssurance(options, userId, actorValues[1], actorValues[2])
+  )
+}
+
+function readSharedOrganizationAccessRows(
+  options: FakeD1DatabaseOptions,
+  boundValues: unknown[],
+  query: string,
+): Record<string, unknown>[] {
+  const userId = String(boundValues[0] ?? '')
+  const values = boundValues.slice(organizationActorValueCount(query))
+  const activeActor = isActiveFakeOrganizationActor(options, boundValues, query)
+  const accessOptions = {
+    ...options,
+    organizationUsers: activeActor ? (options.organizationUsers ?? []) : [],
+  }
+  const access = findConfirmedCollectionAccess(
+    accessOptions,
+    userId,
+    boundValues,
+  )
+  const memberships = (options.organizationUsers ?? []).filter(
+    (membership) =>
+      activeActor &&
+      membership.userId === userId &&
+      Number(membership.status) === 2 &&
+      [0, 1, 2].includes(Number(membership.type ?? 2)) &&
+      options.organizations?.some(
+        (organization) =>
+          organization.id === membership.organizationId &&
+          Number(organization.enabled ?? 1) === 1,
+      ) &&
+      fakeOrganizationPolicyAllows(
+        options,
+        membership.organizationId,
+        userId,
+        boundValues,
+      ),
+  )
+  const scopedOptions = { ...options, organizationUsers: memberships }
+  // Inspect the final statement, so tables inside the shared CTE cannot select
+  // an unrelated fake handler (for example the TOTP or device lookup).
+  const statementSql =
+    query
+      .split(/accessible_organization_collections AS \([\s\S]*?\n\s*\)/u)
+      .at(-1) ?? query
+
+  if (statementSql.includes('MAX(revision_date) as revisionDate')) {
+    return [
+      { revisionDate: findLatestRevisionDate(options, boundValues, query) },
+    ]
+  }
+  if (statementSql.includes('FROM ciphers cipher')) {
+    return listAccessibleCipherRows(accessOptions, boundValues, query)
+  }
+  if (statementSql.includes('COUNT(DISTINCT collection.id) as count')) {
+    const requestedIds = new Set(
+      query.includes('json_each(?)')
+        ? (JSON.parse(String(values[1])) as string[])
+        : values.slice(1).map(String),
+    )
+    return [
+      {
+        count: [...access].filter(
+          ([collectionId, grant]) =>
+            grant.organizationId === values[0] &&
+            grant.canEdit &&
+            requestedIds.has(collectionId),
+        ).length,
+      },
+    ]
+  }
+  if (statementSql.includes('AS hasManageAccess')) {
+    const grants = [...access]
+      .filter(
+        ([collectionId, grant]) =>
+          grant.organizationId === values[0] &&
+          options.collectionCiphers?.some(
+            (mapping) =>
+              mapping.collectionId === collectionId &&
+              mapping.cipherId === values[1],
+          ),
+      )
+      .map(([, grant]) => grant)
+    return [
+      {
+        hasManageAccess: grants.length,
+        readOnly: grants.length
+          ? Number(!grants.some((grant) => grant.canEdit))
+          : null,
+        hidePasswords: grants.length
+          ? Number(!grants.some((grant) => grant.canViewPassword))
+          : null,
+      },
+    ]
+  }
+  if (statementSql.includes('FROM confirmed_memberships membership')) {
+    const owner = findConfirmedOrganizationOwnerRow(scopedOptions, [
+      values[0],
+      userId,
+    ])
+    return owner ? [owner] : []
+  }
+  if (statementSql.includes('FROM organizations organization')) {
+    const rows = listConfirmedOrganizationRows(scopedOptions, [userId])
+    return statementSql.includes('WHERE organization.id = ?')
+      ? rows.filter((organization) => organization.id === values[0])
+      : rows
+  }
+  if (statementSql.includes('FROM collections collection')) {
+    if (statementSql.includes('assigned_membership.id AS organizationUserId')) {
+      if (
+        !findConfirmedOrganizationOwnerRow(scopedOptions, [values[0], userId])
+      )
+        return []
+      return listOrganizationCollectionUserRowsForOwner(options, [
+        values[0],
+        values[1],
+        userId,
+      ])
+    }
+    const ownerOnly = statementSql.includes('membership.type = 0')
+    return (options.collections ?? [])
+      .flatMap<Record<string, unknown>>((collection) => {
+        const grant = access.get(String(collection.id))
+        if (
+          !grant ||
+          (values[0] !== undefined &&
+            collection.organizationId !== values[0]) ||
+          (values[1] !== undefined && collection.id !== values[1])
+        )
+          return []
+        if (
+          ownerOnly &&
+          (!grant.manage ||
+            !grant.canEdit ||
+            !memberships.some(
+              (membership) =>
+                membership.organizationId === collection.organizationId &&
+                Number(membership.type) === 0,
+            ))
+        )
+          return []
+        return [
+          {
+            ...collection,
+            readOnly: Number(!grant.canEdit),
+            hidePasswords: Number(!grant.canViewPassword),
+            manage: Number(grant.manage),
+          },
+        ]
+      })
+      .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+  }
+  throw new Error('Unsupported shared organization access fixture query')
+}
+
 function findConfirmedCollectionAccess(
   options: FakeD1DatabaseOptions,
   userId: string,
+  actorValues: unknown[] = [],
 ): Map<
   string,
   {
@@ -4333,6 +5135,15 @@ function findConfirmedCollectionAccess(
       continue
     }
     if (
+      !fakeOrganizationPolicyAllows(
+        options,
+        membership.organizationId,
+        userId,
+        actorValues,
+      )
+    )
+      continue
+    if (
       !options.organizations?.some(
         (row) =>
           row.id === membership.organizationId &&
@@ -4342,10 +5153,32 @@ function findConfirmedCollectionAccess(
       continue
     }
 
-    for (const collectionUser of options.collectionUsers ?? []) {
-      if (collectionUser.organizationUserId !== membership.id) {
+    const grants = (options.collectionUsers ?? []).filter(
+      (grant) => grant.organizationUserId === membership.id,
+    )
+    for (const groupMember of options.organizationGroupUsers ?? []) {
+      if (
+        groupMember.organizationUserId !== membership.id ||
+        groupMember.organizationId !== membership.organizationId
+      )
         continue
-      }
+      if (
+        !options.organizationGroups?.some(
+          (group) =>
+            group.id === groupMember.groupId &&
+            group.organizationId === membership.organizationId,
+        )
+      )
+        continue
+      grants.push(
+        ...(options.collectionGroups ?? []).filter(
+          (grant) =>
+            grant.groupId === groupMember.groupId &&
+            grant.organizationId === membership.organizationId,
+        ),
+      )
+    }
+    for (const collectionUser of grants) {
       const collection = options.collections?.find(
         (row) =>
           row.id === collectionUser.collectionId &&
@@ -4388,7 +5221,11 @@ function listAccessibleCipherRows(
   query: string,
 ): Record<string, unknown>[] {
   const userId = String(boundValues[0] ?? '')
-  const accessibleCollections = findConfirmedCollectionAccess(options, userId)
+  const accessibleCollections = findConfirmedCollectionAccess(
+    options,
+    userId,
+    boundValues,
+  )
 
   let rows: Record<string, unknown>[] = []
   for (const row of options.ciphers ?? []) {
@@ -4440,7 +5277,13 @@ function listAccessibleCipherRows(
   }
 
   if (query.includes('WHERE cipher.id = ?')) {
-    const cipherId = String(boundValues[1] ?? '')
+    const cipherId = String(
+      boundValues[
+        isSharedOrganizationAccessQuery(query)
+          ? organizationActorValueCount(query)
+          : 1
+      ] ?? '',
+    )
     rows = rows.filter((row) => row.id === cipherId)
   }
 
@@ -4451,8 +5294,20 @@ function listAccessibleCipherRows(
       '(cipher.revision_date > ? OR (cipher.revision_date = ? AND cipher.id > ?))',
     )
   ) {
-    const cursorRevisionDate = String(boundValues[2] ?? '')
-    const cursorId = String(boundValues[4] ?? '')
+    const cursorRevisionDate = String(
+      boundValues[
+        isSharedOrganizationAccessQuery(query)
+          ? organizationActorValueCount(query) + 1
+          : 2
+      ] ?? '',
+    )
+    const cursorId = String(
+      boundValues[
+        isSharedOrganizationAccessQuery(query)
+          ? organizationActorValueCount(query) + 3
+          : 4
+      ] ?? '',
+    )
     rows = rows.filter((row) => {
       const revisionDate = String(row.revisionDate ?? '')
       const id = String(row.id ?? '')
@@ -5395,6 +6250,10 @@ export const requiredTables = [
   'totp_challenges',
   'organizations',
   'organization_users',
+  'organization_groups',
+  'organization_group_users',
+  'collection_groups',
+  'organization_policies',
   'collections',
   'collection_users',
   'collection_ciphers',

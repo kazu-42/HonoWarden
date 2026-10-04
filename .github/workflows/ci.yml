@@ -33,6 +33,9 @@ jobs:
       - name: Typecheck
         run: pnpm check
 
+      - name: Build organization administration UI
+        run: pnpm admin:build
+
       - name: Lint
         run: pnpm lint
 

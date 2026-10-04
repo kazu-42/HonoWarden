@@ -107,14 +107,15 @@ describe('getAccountRevisionDate', () => {
       getAccountRevisionDate(database, 'user-id'),
     ).resolves.toBeNull()
 
-    expect(database.query).toContain('WITH requested_user AS')
+    expect(database.query).toContain('requested_actor AS')
+    expect(database.query).toContain('requested_user AS')
     expect(database.query).toContain('membership.status = 2')
     expect(database.query).toContain(
       'collection.organization_id = membership.organizationId',
     )
     expect(database.query).toContain('organization.enabled = 1')
     expect(database.query).toContain('cipher.organization_id IS NULL')
-    expect(database.values).toEqual(['user-id'])
+    expect(database.values).toEqual(['user-id', null, null, 0])
   })
 })
 
