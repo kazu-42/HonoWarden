@@ -1,5 +1,6 @@
 """Pure policy/transport tests: no native app, command, keychain, network or Worker."""
 
+import ast
 import base64
 import hashlib
 import io
@@ -378,6 +379,257 @@ class PolicyTests(unittest.TestCase):
         sleep.assert_called_once_with(0.125)
 
 
+class FailureProjectionTests(unittest.TestCase):
+    def escaped_finalization(self, stage, report=None, written=None):
+        tree = ast.parse((p.HERE / "preflight.py").read_text())
+        execute = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "execute")
+        main_try = next(n for n in execute.body if isinstance(n, ast.Try) and n.finalbody)
+        fake_signal = MagicMock()
+        fake_cleanup = MagicMock(return_value=[])
+        fake_write = MagicMock()
+        if written is not None:
+            fake_write.side_effect = lambda _path, value: written.update(value)
+        fake_phase = MagicMock(return_value=900)
+        if stage in {"cleanup", "cleanup_and_restore"}:
+            fake_cleanup.side_effect = RuntimeError("private-cleanup-output")
+        if stage == "write":
+            fake_write.side_effect = p.Blocked("write_deadline_exhausted")
+        if stage in {"lease_restore", "cleanup_and_restore"}:
+            fake_signal.signal.side_effect = OSError("private-lease-info")
+        if stage == "phase":
+            fake_phase.side_effect = p.Blocked("phase_deadline_exhausted")
+        scope = {"report": report if report is not None else {
+                            "status": "pre_auth_blocked", "code": "worker_readiness_failed", "failureKind": "blocked",
+                            "nativeExecuted": False, "authenticated": False, "credentialAdmission": False},
+                 "absolute_end": 1000, "STEP_END": 800, "root": Path("/owned"), "temp": Path("/owned"),
+                 "marker": Path("/owned/marker.json"), "state": {}, "prior_term": None,
+                 "phase_deadline": fake_phase, "time_budget": lambda maximum: maximum,
+                 "signal": fake_signal, "cleanup": fake_cleanup, "write_private": fake_write,
+                 "public_report": p.public_report, "apply_cleanup_result": p.apply_cleanup_result,
+                 "FinalizationFailure": getattr(p, "FinalizationFailure", None),
+                 "finalization_projection": getattr(p, "finalization_projection", None)}
+        try:
+            exec(compile(ast.fix_missing_locations(ast.Module(body=main_try.finalbody, type_ignores=[])),
+                         "<pure-exact-finalization-control>", "exec"), scope)
+        except Exception as error:
+            return error
+        self.fail("injected finalization failure did not fail")
+
+    def test_escaped_cleanup_deadline_write_and_restore_keep_original_failure(self):
+        for stage in ["cleanup", "write", "lease_restore", "phase", "cleanup_and_restore"]:
+            with self.subTest(stage=stage):
+                error = self.escaped_finalization(stage)
+                self.assertIsInstance(error, p.FinalizationFailure)
+                projected = p.escaped_error_projection(error)
+                self.assertEqual(projected["code"], "worker_readiness_failed")
+                self.assertEqual(projected["failureKind"], "blocked")
+                self.assertEqual(projected["status"], "cleanup_failed")
+                self.assertFalse(projected["cleanupComplete"])
+                self.assertFalse(projected["authenticated"])
+                self.assertFalse(projected["credentialAdmission"])
+                self.assertEqual(len(projected["cleanupFailureCodes"]), 2 if stage == "cleanup_and_restore" else 1)
+                self.assertNotIn("private", json.dumps(projected))
+
+    def test_outer_error_projection_keeps_carried_cause_and_fixed_secondary_code(self):
+        report = {"code": "worker_readiness_failed", "failureKind": "blocked", "nativeExecuted": False}
+        error = p.FinalizationFailure(p.finalization_projection(report, PermissionError("private")))
+        result = p.escaped_error_projection(error)
+        self.assertEqual(result["code"], report["code"])
+        self.assertEqual(result["cleanupFailureCodes"], ["cleanup_finalization_permission_denied"])
+        self.assertEqual(result["status"], "cleanup_failed")
+        self.assertFalse(result["cleanupComplete"])
+
+    def test_escaped_cleanup_without_body_error_still_has_a_fixed_primary_failure(self):
+        result = p.finalization_projection({"nativeExecuted": False}, p.Blocked("write_deadline_exhausted"))
+        self.assertEqual(result["code"], "write_deadline_exhausted")
+        self.assertEqual(result["status"], "cleanup_failed")
+        self.assertFalse(result["credentialAdmission"])
+
+    def test_escaped_projection_refuses_raw_original_code(self):
+        with self.assertRaises(p.Blocked):
+            p.finalization_projection({"code": "/private/raw-exception", "failureKind": "blocked"}, OSError("private"))
+
+    def test_carried_exception_projection_has_only_typed_minimal_failure_fields(self):
+        base = p.finalization_projection({"code": "worker_readiness_failed", "failureKind": "blocked"}, OSError("private"))
+        for extra in [{"osVersion": "private"}, {"nativeExecuted": "private"}, {"schemaVersion": True},
+                      {"status": "pre_auth_capability_passed"}, {"cleanupComplete": True}]:
+            with self.subTest(extra=extra), self.assertRaises(p.Blocked):
+                p.FinalizationFailure({**base, **extra})
+
+    def test_carried_projection_views_cannot_mutate_retained_failure(self):
+        original = p.finalization_projection({"code": "worker_readiness_failed", "failureKind": "blocked"}, OSError("private"))
+        error = p.FinalizationFailure(original)
+        view = error.projection
+        view["osVersion"] = "private"
+        view["status"] = "pre_auth_capability_passed"
+        view["cleanupFailureCodes"].append("keychain_cleanup_failed")
+        self.assertEqual(p.escaped_error_projection(error), original)
+        with self.assertRaises(AttributeError):
+            error.projection = original
+
+    def test_returned_cleanup_codes_do_not_alias_carried_exception(self):
+        error = p.FinalizationFailure(p.finalization_projection({"code": "worker_readiness_failed"}, OSError("private")))
+        first = p.escaped_error_projection(error)
+        first["cleanupFailureCodes"].append("keychain_cleanup_failed")
+        second = p.escaped_error_projection(error)
+        self.assertEqual(second["cleanupFailureCodes"], ["cleanup_finalization_failed"])
+        self.assertIsNot(first["cleanupFailureCodes"], second["cleanupFailureCodes"])
+
+    def test_retained_failure_storage_is_immutable(self):
+        error = p.FinalizationFailure(p.finalization_projection({"code": "worker_readiness_failed"}, OSError("private")))
+        with self.assertRaises(TypeError):
+            error._projection["status"] = "pre_auth_capability_passed"
+        self.assertIs(type(error._projection["cleanupFailureCodes"]), tuple)
+
+    def test_every_carried_read_refuses_replaced_invalid_storage(self):
+        original = p.finalization_projection({"code": "worker_readiness_failed"}, OSError("private"))
+        for delta in [{"osVersion": "private"}, {"status": "pre_auth_capability_passed"},
+                      {"cleanupComplete": True}, {"cleanupFailureCodes": ("private",)}]:
+            with self.subTest(delta=delta):
+                error = p.FinalizationFailure(original)
+                error._projection = {**original, "cleanupFailureCodes": tuple(original["cleanupFailureCodes"]), **delta}
+                with self.assertRaises(p.Blocked):
+                    p.escaped_error_projection(error)
+
+    def test_successful_body_restore_failure_cannot_publish_stale_passed_checkpoint(self):
+        saved = {}
+        error = self.escaped_finalization("lease_restore", report={
+            "schemaVersion": 1, "status": "pre_auth_capability_passed", "nativeExecuted": True,
+            "authenticated": False, "credentialAdmission": False}, written=saved)
+        self.assertEqual(p.escaped_error_projection(error)["status"], "cleanup_failed")
+        self.assertEqual(saved["status"], "pre_auth_capability_passed")
+        with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
+            temp = Path(fixture)
+            root = temp / "hw-macos-preflight-fixture"
+            root.mkdir(mode=0o700)
+            marker = temp / "marker.json"
+            before = root.stat()
+            p.write_private(marker, {"root": str(root), "uid": p.os.getuid(), "dev": before.st_dev, "ino": before.st_ino,
+                                     "priorDefault": "/guest/original", "priorSearch": ["/guest/original"], "children": []})
+            p.write_private(temp / "marker-safe.json", saved)
+            output = io.StringIO()
+            with patch.object(p, "marker_path", return_value=marker), patch.object(p, "cleanup", return_value=[]), \
+                 patch.object(p, "command", return_value=(b"", 1)), patch.object(p.sys, "stdout", output), \
+                 patch.object(p.os, "environ", {"PREFLIGHT_EXECUTE_OUTCOME": "failure"}):
+                self.assertEqual(p.finish(temp), 1)
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["status"], "cleanup_failed")
+            self.assertEqual(result["code"], "execute_finalization_unproved")
+            self.assertTrue(result["cleanupComplete"])
+            self.assertTrue(result["nativeExecuted"])
+            self.assertFalse(result["credentialAdmission"])
+            self.assertFalse(root.exists())
+
+    def test_actual_execute_outcome_gate_never_promotes_failed_or_unknown_process(self):
+        for outcome in ["failure", "cancelled", "skipped", "unknown"]:
+            report = {"status": "pre_auth_capability_passed", "nativeExecuted": True,
+                      "authenticated": False, "credentialAdmission": False}
+            with self.subTest(outcome=outcome):
+                p.apply_execute_outcome(report, outcome)
+                self.assertEqual(report["status"], "cleanup_failed")
+                self.assertEqual(report["code"], "execute_finalization_unproved")
+                self.assertFalse(report["cleanupComplete"])
+        report = {"status": "pre_auth_capability_passed", "authenticated": False, "credentialAdmission": False}
+        p.apply_execute_outcome(report, "success")
+        self.assertEqual(report["status"], "pre_auth_capability_passed")
+        for invalid in ["private", True, [], None]:
+            with self.subTest(invalid=invalid), self.assertRaises(p.Blocked):
+                p.apply_execute_outcome(report, invalid)
+
+    def test_actual_execute_outcome_keeps_known_primary_failure(self):
+        report = {"status": "cleanup_failed", "code": "worker_readiness_failed", "failureKind": "blocked",
+                  "cleanupFailureCodes": ["process_cleanup_failed"], "authenticated": False, "credentialAdmission": False}
+        p.apply_execute_outcome(report, "failure")
+        self.assertEqual(report["code"], "worker_readiness_failed")
+        self.assertEqual(report["cleanupFailureCodes"], ["process_cleanup_failed"])
+
+    def test_outer_absolute_lease_failure_cannot_replace_carried_first_body_error(self):
+        @p.contextlib.contextmanager
+        def failed_restore(seconds):
+            try:
+                yield
+            finally:
+                raise OSError("private-outer-lease-info")
+        projection = p.finalization_projection({"code": "worker_readiness_failed", "failureKind": "blocked"},
+                                             p.Blocked("write_deadline_exhausted"))
+        with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
+            with patch.object(p.sys, "argv", ["preflight.py", "--execute", "--company", fixture]), \
+                 patch.object(p, "hosted_context", return_value=Path(fixture)), \
+                 patch.object(p, "absolute_step_lease", failed_restore), \
+                 patch.object(p, "execute", side_effect=p.FinalizationFailure(projection)):
+                with self.assertRaises(p.FinalizationFailure) as caught:
+                    p.main()
+        result = p.escaped_error_projection(caught.exception)
+        self.assertEqual(result["code"], "worker_readiness_failed")
+        self.assertEqual(len(result["cleanupFailureCodes"]), 2)
+        self.assertEqual(result["status"], "cleanup_failed")
+        self.assertFalse(result["cleanupComplete"])
+        self.assertNotIn("private", json.dumps(result))
+
+    def test_cleanup_failure_preserves_first_body_failure(self):
+        report = {"status": "pre_auth_blocked", "code": "worker_readiness_failed",
+                  "failureKind": "blocked", "authenticated": False, "credentialAdmission": False}
+        p.apply_cleanup_result(report, ["process_cleanup_failed"])
+        self.assertEqual(report["code"], "worker_readiness_failed")
+        self.assertEqual(report["status"], "cleanup_failed")
+        self.assertEqual(report["cleanupFailureCodes"], ["process_cleanup_failed"])
+        self.assertFalse(report["cleanupComplete"])
+        p.public_report(report)
+
+    def test_cleanup_only_failure_has_a_primary_code(self):
+        report = {"status": "pre_auth_capability_passed", "authenticated": False, "credentialAdmission": False}
+        p.apply_cleanup_result(report, ["owned_process_identity_changed"])
+        self.assertEqual(report["code"], "owned_process_identity_changed")
+        self.assertEqual(report["status"], "cleanup_failed")
+        self.assertFalse(report["cleanupComplete"])
+
+    def test_successful_cleanup_keeps_body_failure_and_admission_unchanged(self):
+        report = {"status": "pre_auth_blocked", "code": "worker_readiness_failed",
+                  "authenticated": False, "credentialAdmission": False}
+        p.apply_cleanup_result(report, [])
+        self.assertEqual(report["code"], "worker_readiness_failed")
+        self.assertEqual(report["status"], "pre_auth_blocked")
+        self.assertNotIn("cleanupFailureCodes", report)
+        self.assertFalse(report["cleanupComplete"])
+        self.assertFalse(report["credentialAdmission"])
+
+    def test_cleanup_projection_refuses_arbitrary_raw_values_and_unbounded_lists(self):
+        for values in [["/private/keychain"], ["process_cleanup_failed"] * 17, "process_cleanup_failed", [True]]:
+            with self.subTest(values=values), self.assertRaises(p.Blocked):
+                p.apply_cleanup_result({"status": "pre_auth_blocked"}, values)
+
+    def test_public_projection_accepts_only_closed_failure_kinds_and_cleanup_codes(self):
+        base = {"authenticated": False, "credentialAdmission": False}
+        p.public_report({**base, "failureKind": "attribute_error", "cleanupFailureCodes": ["process_cleanup_api_unavailable"]})
+        for extra in [{"failureKind": "raw-private-exception"}, {"failureKind": True}, {"failureKind": []},
+                      {"cleanupFailureCodes": ["/private/keychain"]},
+                      {"cleanupFailureCodes": ["process_cleanup_failed"] * 17}, {"cleanupFailureCodes": "private"}]:
+            with self.subTest(extra=extra), self.assertRaises(p.Blocked):
+                p.public_report({**base, **extra})
+
+    def test_exception_kinds_never_copy_exception_messages_or_arguments(self):
+        cases = [(p.Blocked("private"), "blocked"), (AttributeError("private"), "attribute_error"),
+                 (PermissionError("private"), "permission_error"), (TimeoutError("private"), "timeout"),
+                 (p.subprocess.TimeoutExpired(["private-argument"], 2, output=b"private-environment"), "subprocess_timeout"),
+                 (ValueError("private"), "value_error"), (OSError("private"), "os_error"),
+                 (RuntimeError("private"), "unknown_exception")]
+        for error, expected in cases:
+            with self.subTest(expected=expected):
+                value = p.failure_kind(error)
+                self.assertEqual(value, expected)
+                self.assertNotIn("private", value)
+
+    def test_process_cleanup_reason_is_fixed_and_unknown_blocked_text_is_discarded(self):
+        cases = [(p.Blocked("owned_group_without_live_leader"), "owned_group_without_live_leader"),
+                 (p.Blocked("private"), "process_cleanup_failed"),
+                 (AttributeError("private"), "process_cleanup_api_unavailable"),
+                 (PermissionError("private"), "process_cleanup_permission_denied"),
+                 (p.subprocess.TimeoutExpired(["private"], 2), "process_cleanup_timeout")]
+        for error, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(p.process_cleanup_code(error, "process_cleanup_failed"), expected)
+
+
 class WorkflowBootstrapTests(unittest.TestCase):
     def workflow(self):
         local = p.HERE / "hosted-macos-native.yml"
@@ -401,6 +653,14 @@ class WorkflowBootstrapTests(unittest.TestCase):
         self.assertIn("node-version: 22.13.0", workflow)
         self.assertNotIn("COREPACK_INTEGRITY_KEYS", workflow)
         self.assertNotIn("COREPACK_ENABLE_PROJECT_SPEC: 0", workflow)
+
+    def test_finisher_receives_actual_native_step_outcome(self):
+        workflow = self.workflow()
+        native = workflow[workflow.index("- name: Run the finite native preflight"):workflow.index("- name: Project only safe metadata")]
+        finish = workflow[workflow.index("- name: Project only safe metadata"):]
+        self.assertIn("id: native", native)
+        self.assertIn("if: always()", finish)
+        self.assertIn("PREFLIGHT_EXECUTE_OUTCOME: ${{ steps.native.outcome }}", finish)
 
 
 if __name__ == "__main__":

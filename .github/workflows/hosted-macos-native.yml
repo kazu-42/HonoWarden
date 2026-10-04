@@ -59,10 +59,13 @@ jobs:
       - name: Check pure preflight policy tests
         run: python3 -m unittest discover -s "$PACKET" -p 'test_*.py' -v
       - name: Run the finite native preflight in this disposable guest
+        id: native
         timeout-minutes: 5
         run: python3 "$PACKET/preflight.py" --execute --company "$GITHUB_WORKSPACE/company"
       - name: Project only safe metadata and finish exact owned cleanup
         if: always()
         timeout-minutes: 2
+        env:
+          PREFLIGHT_EXECUTE_OUTCOME: ${{ steps.native.outcome }}
         run: python3 "$PACKET/preflight.py" --finish
       # Raw artifacts, profiles, screenshots and runtime stdio are never uploaded.

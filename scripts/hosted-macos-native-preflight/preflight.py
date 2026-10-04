@@ -23,6 +23,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 
 COMPANY_SHA = "2deeee0cf159da92babc86e09de44c12eea2aa93"
 ASSET_SHA = "8cb6badb3a8af77cc3e4b060fa14858cd7fd74be7360b1b6e98dde1afed409d2"
@@ -40,6 +41,20 @@ CAP = 65536
 HERE = Path(__file__).resolve().parent
 PROCESSES = []
 STEP_END = None
+FAILURE_KINDS = {"blocked", "attribute_error", "permission_error", "timeout", "subprocess_timeout",
+                 "value_error", "os_error", "unknown_exception"}
+PROCESS_BLOCKED_CODES = {"owned_pid_invalid", "child_registry_invalid", "owned_process_projection_invalid",
+                         "owned_process_stop_unproved", "owned_group_without_live_leader",
+                         "owned_process_identity_changed", "owned_group_cleanup_unproved",
+                         "command_deadline", "command_output_limit", "command_failed", "absolute_step_deadline"}
+FINALIZATION_BLOCKED_CODES = PROCESS_BLOCKED_CODES | {"phase_deadline_exhausted", "write_deadline_exhausted",
+                                                      "cleanup_projection_invalid", "report_unknown_field", "failure_kind_invalid"}
+CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", "recorded_process_cleanup_failed",
+                                                "process_cleanup_permission_denied", "process_cleanup_timeout",
+                                                "process_cleanup_api_unavailable", "keychain_cleanup_failed",
+                                                "keychain_readback_failed", "cleanup_finalization_failed",
+                                                "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
+                                                "cleanup_finalization_api_unavailable"}
 
 
 def effective_client_identity():
@@ -52,9 +67,97 @@ class Blocked(Exception):
     pass
 
 
+class FinalizationFailure(Blocked):
+    def __init__(self, projection):
+        super().__init__("cleanup_finalization_failed")
+        checked = validate_finalization_projection(projection)
+        self._projection = MappingProxyType({**checked, "cleanupFailureCodes": tuple(checked["cleanupFailureCodes"])})
+
+    @property
+    def projection(self):
+        # Own both the retained nested sequence and every returned sequence.
+        value = {**self._projection, "cleanupFailureCodes": list(self._projection["cleanupFailureCodes"])}
+        return validate_finalization_projection(value)
+
+
+def validate_finalization_projection(projection):
+    keys = {"schemaVersion", "status", "code", "failureKind", "cleanupFailureCodes", "cleanupComplete",
+            "nativeExecuted", "authenticated", "credentialAdmission"}
+    require(type(projection) is dict and set(projection) == keys
+            and type(projection["schemaVersion"]) is int and projection["schemaVersion"] == 1
+            and projection["status"] == "cleanup_failed" and projection["cleanupComplete"] is False
+            and (type(projection["nativeExecuted"]) is bool or projection["nativeExecuted"] is None), "escaped_projection_invalid")
+    require(type(projection["code"]) is str and re.fullmatch(r"[a-z][a-z0-9_]{2,79}", projection["code"]) is not None,
+            "first_failure_projection_invalid")
+    checked = public_report(dict(projection))
+    return {**checked, "cleanupFailureCodes": list(checked["cleanupFailureCodes"])}
+
+
 def require(condition, code):
     if not condition:
         raise Blocked(code)
+
+
+def failure_kind(error):
+    # Classify without retaining exception messages, paths, arguments or output.
+    for kind, category in [("blocked", Blocked), ("attribute_error", AttributeError),
+                           ("permission_error", PermissionError), ("timeout", TimeoutError),
+                           ("subprocess_timeout", subprocess.TimeoutExpired), ("value_error", ValueError),
+                           ("os_error", OSError)]:
+        if isinstance(error, category):
+            return kind
+    return "unknown_exception"
+
+
+def process_cleanup_code(error, fallback):
+    require(fallback in {"process_cleanup_failed", "recorded_process_cleanup_failed"}, "cleanup_fallback_invalid")
+    if isinstance(error, Blocked) and str(error) in PROCESS_BLOCKED_CODES:
+        return str(error)
+    return {"attribute_error": "process_cleanup_api_unavailable",
+            "permission_error": "process_cleanup_permission_denied",
+            "timeout": "process_cleanup_timeout", "subprocess_timeout": "process_cleanup_timeout"}.get(failure_kind(error), fallback)
+
+
+def validate_cleanup_codes(values):
+    require(type(values) is list and len(values) <= 16 and
+            all(type(value) is str and value in CLEANUP_FAILURE_CODES for value in values), "cleanup_projection_invalid")
+
+
+def apply_cleanup_result(report, failures):
+    validate_cleanup_codes(failures)
+    # State deletion is proved by the separate always-step. Preserve the first body failure.
+    report["cleanupComplete"] = False
+    if failures:
+        report["status"] = "cleanup_failed"
+        report["cleanupFailureCodes"] = list(failures)
+        report.setdefault("code", failures[0])
+
+
+def finalization_projection(report, error):
+    # Carry only finite failure metadata when cleanup, its lease or its result write escapes.
+    if isinstance(error, Blocked) and str(error) in FINALIZATION_BLOCKED_CODES:
+        secondary = str(error)
+    else:
+        secondary = {"attribute_error": "cleanup_finalization_api_unavailable",
+                     "permission_error": "cleanup_finalization_permission_denied",
+                     "timeout": "cleanup_finalization_timeout", "subprocess_timeout": "cleanup_finalization_timeout"}.get(
+                         failure_kind(error), "cleanup_finalization_failed")
+    code = report.get("code", secondary)
+    require(type(code) is str and re.fullmatch(r"[a-z][a-z0-9_]{2,79}", code) is not None, "first_failure_projection_invalid")
+    kind = report.get("failureKind", "unknown_exception") if "code" in report else failure_kind(error)
+    previous = report.get("cleanupFailureCodes", [])
+    validate_cleanup_codes(previous)
+    projection = {"schemaVersion": 1, "status": "cleanup_failed", "code": code, "failureKind": kind,
+                  "cleanupFailureCodes": [*previous, secondary], "cleanupComplete": False,
+                  "nativeExecuted": report.get("nativeExecuted"), "authenticated": False, "credentialAdmission": False}
+    return public_report(projection)
+
+
+def escaped_error_projection(error):
+    if isinstance(error, FinalizationFailure):
+        return validate_finalization_projection(error.projection)
+    return {"status": "pre_auth_blocked", "code": str(error) if isinstance(error, Blocked) else "preflight_runtime_failure",
+            "failureKind": failure_kind(error), "authenticated": False, "credentialAdmission": False}
 
 
 def time_budget(maximum):
@@ -433,13 +536,13 @@ def cleanup(root, state):
     for proc in reversed(PROCESSES.copy()):
         try:
             stop_group(proc)
-        except Exception:
-            failures.append("process_cleanup_failed")
+        except Exception as error:
+            failures.append(process_cleanup_code(error, "process_cleanup_failed"))
     for row in reversed(state["children"]):
         try:
             stop_recorded(row)
-        except Exception:
-            failures.append("recorded_process_cleanup_failed")
+        except Exception as error:
+            failures.append(process_cleanup_code(error, "recorded_process_cleanup_failed"))
     actions = [["/usr/bin/security", "default-keychain", "-d", "user", "-s", state["priorDefault"]],
                ["/usr/bin/security", "list-keychains", "-d", "user", "-s", *state["priorSearch"]]]
     if (root / "owned.keychain-db").exists():
@@ -479,8 +582,12 @@ def public_report(report):
             "assetSha256", "companySha", "osVersion", "architecture", "nodeVersion", "freeBytes",
             "signatureVerified", "gatekeeperAccepted", "d1Ready", "r2Ready", "workerReady",
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
-            "gui", "cleanupComplete"}
+            "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes"}
     require(set(report) <= keys, "report_unknown_field")
+    if "failureKind" in report:
+        require(type(report["failureKind"]) is str and report["failureKind"] in FAILURE_KINDS, "failure_kind_invalid")
+    if "cleanupFailureCodes" in report:
+        validate_cleanup_codes(report["cleanupFailureCodes"])
     gui = report.get("gui")
     if gui is not None:
         require(set(gui) == {"onConsole", "appWindowCount", "accessibilityGranted", "screenCaptureGranted"}
@@ -488,6 +595,15 @@ def public_report(report):
                 and all(type(gui[k]) is bool for k in gui if k != "appWindowCount"), "gui_projection_invalid")
     require(report.get("authenticated") is False and report.get("credentialAdmission") is False, "credential_claim_refused")
     return report
+
+
+def apply_execute_outcome(report, outcome):
+    require(type(outcome) is str and outcome in {"success", "failure", "cancelled", "skipped", "unknown"}, "execute_outcome_invalid")
+    # A stored checkpoint precedes lease restoration; actual process success confirms it.
+    if report["status"] == "pre_auth_capability_passed" and outcome != "success":
+        report.update({"status": "cleanup_failed", "code": "execute_finalization_unproved",
+                       "failureKind": "unknown_exception", "cleanupComplete": False,
+                       "cleanupFailureCodes": ["cleanup_finalization_failed"]})
 
 
 def execute(temp, company):
@@ -642,21 +758,27 @@ def execute(temp, company):
         report["status"] = "pre_auth_capability_passed"
     except BaseException as error:
         report["code"] = str(error) if isinstance(error, Blocked) else "preflight_runtime_failure"
+        report["failureKind"] = failure_kind(error)
     finally:
         try:
-            STEP_END = phase_deadline(absolute_end, 25)
-            signal.setitimer(signal.ITIMER_REAL, time_budget(25))
-            failures = cleanup(root, state)
-            # Profile/archive deletion is proved only by the separate always-step.
-            report["cleanupComplete"] = False
-            if failures:
-                report["status"] = "cleanup_failed"
-                report["code"] = failures[0]
-            write_private(temp / (marker.stem + "-safe.json"), public_report(report))
-        finally:
-            STEP_END = absolute_end
-            signal.setitimer(signal.ITIMER_REAL, max(0.001, time_budget(270)))
-            signal.signal(signal.SIGTERM, prior_term)
+            try:
+                STEP_END = phase_deadline(absolute_end, 25)
+                signal.setitimer(signal.ITIMER_REAL, time_budget(25))
+                failures = cleanup(root, state)
+                apply_cleanup_result(report, failures)
+                write_private(temp / (marker.stem + "-safe.json"), public_report(report))
+            except BaseException as error:
+                projected = finalization_projection(report, error)
+                report.update(projected)
+                raise FinalizationFailure(projected) from None
+            finally:
+                STEP_END = absolute_end
+                signal.setitimer(signal.ITIMER_REAL, max(0.001, time_budget(270)))
+                signal.signal(signal.SIGTERM, prior_term)
+        except BaseException as error:
+            if isinstance(error, FinalizationFailure):
+                raise
+            raise FinalizationFailure(finalization_projection(report, error)) from None
     return 0 if report["status"] == "pre_auth_capability_passed" and not failures else 1
 
 
@@ -689,7 +811,8 @@ def finish(temp):
         # Abrupt termination has no observed capability outcome; never invent nativeExecuted:false.
         report = {"schemaVersion": 1, "status": "pre_auth_blocked", "code": "run_interrupted_before_safe_report",
                   "nativeExecuted": None, "authenticated": False, "credentialAdmission": False,
-                  "assetSha256": ASSET_SHA, "companySha": COMPANY_SHA, "cleanupComplete": False}
+                   "assetSha256": ASSET_SHA, "companySha": COMPANY_SHA, "cleanupComplete": False}
+    apply_execute_outcome(report, os.environ.get("PREFLIGHT_EXECUTE_OUTCOME", "unknown"))
     delete_owned_root(root)
     report["cleanupComplete"] = True
     safe.unlink(missing_ok=True)
@@ -726,8 +849,18 @@ def main():
         with absolute_step_lease(90):
             return finish(temp)
     require(args.company is not None, "company_path_missing")
-    with absolute_step_lease(270):
-        return execute(temp, args.company.resolve(strict=True))
+    carried = None
+    try:
+        with absolute_step_lease(270):
+            try:
+                return execute(temp, args.company.resolve(strict=True))
+            except FinalizationFailure as error:
+                carried = error.projection
+                raise
+    except BaseException as error:
+        if carried is not None and not isinstance(error, FinalizationFailure):
+            raise FinalizationFailure(finalization_projection(carried, error)) from None
+        raise
 
 
 if __name__ == "__main__":
@@ -735,6 +868,5 @@ if __name__ == "__main__":
         sys.exit(main())
     except Exception as error:
         # Never log exception text from commands/network/runtime/paths or full stack traces.
-        print(json.dumps({"status": "pre_auth_blocked", "code": str(error) if isinstance(error, Blocked) else "preflight_runtime_failure",
-                          "authenticated": False, "credentialAdmission": False}))
+        print(json.dumps(escaped_error_projection(error)))
         sys.exit(1)
