@@ -26,24 +26,26 @@ const allowedCodes = new Set([
   'tls_negative_control_failed',
   'guest_preflight_failed',
   'unexpected_controller_failure',
-]);
+])
 
 export class ControllerFailure extends Error {
   constructor(code) {
-    super(allowedCodes.has(code) ? code : 'unexpected_controller_failure');
-    this.code = this.message;
+    super(allowedCodes.has(code) ? code : 'unexpected_controller_failure')
+    this.code = this.message
   }
 }
 export function ensure(condition, code) {
-  if (!condition) throw new ControllerFailure(code);
+  if (!condition) throw new ControllerFailure(code)
 }
 export function safeFailure(error) {
-  return allowedCodes.has(error?.code) ? error.code : 'unexpected_controller_failure';
+  return allowedCodes.has(error?.code)
+    ? error.code
+    : 'unexpected_controller_failure'
 }
 
 export function requireLease(value, manifestDigest, now = Date.now()) {
-  const createdAtMs = Date.parse(value?.machineCreatedAt);
-  const expiresAtMs = Date.parse(value?.expiresAt);
+  const createdAtMs = Date.parse(value?.machineCreatedAt)
+  const expiresAtMs = Date.parse(value?.expiresAt)
   ensure(
     value?.authorized === true &&
       value.purpose === 'windows_vagon_synthetic_acceptance' &&
@@ -61,17 +63,26 @@ export function requireLease(value, manifestDigest, now = Date.now()) {
       expiresAtMs > now &&
       expiresAtMs - createdAtMs <= 3600000,
     'lease_invalid',
-  );
-  return { id: value.id, createdAtMs, expiresAtMs, manifestSha256: manifestDigest };
+  )
+  return {
+    id: value.id,
+    createdAtMs,
+    expiresAtMs,
+    manifestSha256: manifestDigest,
+  }
 }
 
 export function writableBudget(lease, now) {
-  ensure(Number.isFinite(now) && now >= lease.createdAtMs, 'controller_deadline');
+  ensure(
+    Number.isFinite(now) && now >= lease.createdAtMs,
+    'controller_deadline',
+  )
   return {
     writable: now < Math.min(lease.createdAtMs + 45 * 60000, lease.expiresAtMs),
-    cleanupRequired: now >= Math.min(lease.createdAtMs + 48 * 60000, lease.expiresAtMs),
+    cleanupRequired:
+      now >= Math.min(lease.createdAtMs + 48 * 60000, lease.expiresAtMs),
     expired: now >= lease.expiresAtMs,
-  };
+  }
 }
 
 export function requireRelativePath(value) {
@@ -79,10 +90,11 @@ export function requireRelativePath(value) {
     typeof value === 'string' &&
       value.length > 0 &&
       value.length <= 512 &&
-      !/[\\:<>"|?*\x00-\x1f\x7f]/.test(value),
+      !/[\\:<>"|?*]/.test(value) &&
+      !hasControlCharacter(value),
     'manifest_path_invalid',
-  );
-  const parts = value.split('/');
+  )
+  const parts = value.split('/')
   ensure(
     parts.every(
       (part) =>
@@ -93,17 +105,17 @@ export function requireRelativePath(value) {
         !/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(part),
     ),
     'manifest_path_invalid',
-  );
-  ensure(value === value.normalize('NFC'), 'manifest_path_invalid');
-  return value;
+  )
+  ensure(value === value.normalize('NFC'), 'manifest_path_invalid')
+  return value
 }
 
 export function requireLocalOrigin(value) {
-  let url;
+  let url
   try {
-    url = new URL(value);
+    url = new URL(value)
   } catch {
-    throw new ControllerFailure('local_origin_invalid');
+    throw new ControllerFailure('local_origin_invalid')
   }
   ensure(
     url.protocol === 'https:' &&
@@ -114,16 +126,16 @@ export function requireLocalOrigin(value) {
       Number(url.port) <= 65535 &&
       value === url.origin,
     'local_origin_invalid',
-  );
-  return url.origin;
+  )
+  return url.origin
 }
 
 export function requireCdpEndpoint(value, port) {
-  let url;
+  let url
   try {
-    url = new URL(value);
+    url = new URL(value)
   } catch {
-    throw new ControllerFailure('cdp_endpoint_invalid');
+    throw new ControllerFailure('cdp_endpoint_invalid')
   }
   ensure(
     Number.isSafeInteger(port) &&
@@ -139,8 +151,8 @@ export function requireCdpEndpoint(value, port) {
       /^\/devtools\/page\/[A-Za-z0-9._-]{1,100}$/.test(url.pathname) &&
       value === url.href,
     'cdp_endpoint_invalid',
-  );
-  return url;
+  )
+  return url
 }
 
 export function selectDesktopTarget(targets, expected, port) {
@@ -148,26 +160,34 @@ export function selectDesktopTarget(targets, expected, port) {
     Array.isArray(targets) &&
       targets.length <= 50 &&
       typeof expected === 'string' &&
-      /^file:\/\/\/[A-Za-z]:\/[^?#]+\/desktop\/resources\/app\.asar\/index\.html$/.test(expected),
+      /^file:\/\/\/[A-Za-z]:\/[^?#]+\/desktop\/resources\/app\.asar\/index\.html$/.test(
+        expected,
+      ),
     'desktop_target_not_unique',
-  );
+  )
   const candidates = targets.filter((t) => {
-    if (t?.type !== 'page' || typeof t.url !== 'string') return false;
+    if (t?.type !== 'page' || typeof t.url !== 'string') return false
     try {
-      const url = new URL(t.url);
-      const hash = url.hash;
-      url.hash = '';
+      const url = new URL(t.url)
+      const hash = url.hash
+      url.hash = ''
       return (
         url.href === expected &&
-        (hash === '' || (/^#\//.test(hash) && hash.length <= 2048 && !/[\x00-\x20\x7f]/.test(hash)))
-      );
+        (hash === '' ||
+          (/^#\//.test(hash) &&
+            hash.length <= 2048 &&
+            !hasControlCharacter(hash, true)))
+      )
     } catch {
-      return false;
+      return false
     }
-  });
-  ensure(candidates.length === 1 && typeof candidates[0].id === 'string', 'desktop_target_not_unique');
-  requireCdpEndpoint(candidates[0].webSocketDebuggerUrl, port);
-  return candidates[0];
+  })
+  ensure(
+    candidates.length === 1 && typeof candidates[0].id === 'string',
+    'desktop_target_not_unique',
+  )
+  requireCdpEndpoint(candidates[0].webSocketDebuggerUrl, port)
+  return candidates[0]
 }
 
 export function requireProcessProof(proof, desktopHash, desktopPid, createdAt) {
@@ -185,19 +205,24 @@ export function requireProcessProof(proof, desktopHash, desktopPid, createdAt) {
       proof.listenerProcessId === desktopPid &&
       proof.listenerOnlyLoopback === true,
     'process_identity_invalid',
-  );
-  return true;
+  )
+  return true
 }
 
 export function requireFiveFields(value) {
-  const expected = ['name', 'notes', 'username', 'password', 'uri'];
+  const expected = ['name', 'notes', 'username', 'password', 'uri']
   ensure(
     value &&
       Object.keys(value).length === expected.length &&
-      expected.every((k) => typeof value[k] === 'string' && value[k].length > 0 && value[k].length <= 5000),
+      expected.every(
+        (k) =>
+          typeof value[k] === 'string' &&
+          value[k].length > 0 &&
+          value[k].length <= 5000,
+      ),
     'five_fields_invalid',
-  );
-  return value;
+  )
+  return value
 }
 
 export function createHeldWrite(
@@ -210,51 +235,69 @@ export function createHeldWrite(
       timeoutMs > 0 &&
       timeoutMs <= 30000,
     'held_write_invalid',
-  );
+  )
   let phase = 'armed',
     timer,
     resolve,
-    reject;
+    reject
   const settle = (next, error) => {
-    ensure(phase === 'waiting', 'held_write_consumed');
-    phase = next;
-    clearTimer(timer);
-    if (error) reject(new ControllerFailure(error));
-    else resolve(true);
-  };
+    ensure(phase === 'waiting', 'held_write_consumed')
+    phase = next
+    clearTimer(timer)
+    if (error) reject(new ControllerFailure(error))
+    else resolve(true)
+  }
   return {
-    matches: (method, path) => phase === 'armed' && method === 'PUT' && path === `/api/ciphers/${cipherId}`,
+    matches: (method, path) =>
+      phase === 'armed' &&
+      method === 'PUT' &&
+      path === `/api/ciphers/${cipherId}`,
     wait() {
-      ensure(phase === 'armed', 'held_write_consumed');
-      phase = 'waiting';
+      ensure(phase === 'armed', 'held_write_consumed')
+      phase = 'waiting'
       return new Promise((yes, no) => {
-        resolve = yes;
-        reject = no;
-        timer = setTimer(() => settle('expired', 'held_write_expired'), timeoutMs);
-      });
+        resolve = yes
+        reject = no
+        timer = setTimer(
+          () => settle('expired', 'held_write_expired'),
+          timeoutMs,
+        )
+      })
     },
     release() {
-      settle('released');
+      settle('released')
     },
     dispose() {
-      if (phase === 'waiting') settle('cancelled', 'held_write_cancelled');
-      else if (phase === 'armed') phase = 'cancelled';
+      if (phase === 'waiting') settle('cancelled', 'held_write_cancelled')
+      else if (phase === 'armed') phase = 'cancelled'
     },
     get phase() {
-      return phase;
+      return phase
     },
-  };
+  }
 }
 
 export async function runCleanup(steps) {
-  const failures = [];
+  const failures = []
   for (const [name, operation] of steps) {
-    ensure(/^[a-z_]{1,30}$/.test(name) && typeof operation === 'function', 'unexpected_controller_failure');
+    ensure(
+      /^[a-z_]{1,30}$/.test(name) && typeof operation === 'function',
+      'unexpected_controller_failure',
+    )
     try {
-      await operation();
+      await operation()
     } catch {
-      failures.push(`cleanup_${name}_failed`);
+      failures.push(`cleanup_${name}_failed`)
     }
   }
-  return { ok: failures.length === 0, failures };
+  return { ok: failures.length === 0, failures }
+}
+import { URL } from 'node:url'
+import { setTimeout, clearTimeout } from 'node:timers'
+
+export function hasControlCharacter(value, includeSpace = false) {
+  return [...value].some((character) => {
+    const code = character.codePointAt(0)
+    return code <= (includeSpace ? 32 : 31) || code === 127
+  })
 }

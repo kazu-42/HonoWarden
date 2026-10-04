@@ -28,12 +28,20 @@ jobs:
     steps:
       - name: Check out the exact reviewed probe
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           fetch-depth: 1
       - name: Check out the exact public company source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
         with:
           ref: 2deeee0cf159da92babc86e09de44c12eea2aa93
           path: company
@@ -48,13 +56,23 @@ jobs:
         timeout-minutes: 5
         run: |
           $ErrorActionPreference='Stop'
-          npm install --global corepack@0.34.0 --ignore-scripts --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { throw 'corepack_bootstrap_failed' }
-          corepack enable
-          if ($LASTEXITCODE -ne 0 -or (corepack --version) -ne '0.34.0') { throw 'corepack_pin_failed' }
-          if ((pnpm --version) -ne '11.8.0') { throw 'pnpm_pin_failed' }
-          pnpm install --frozen-lockfile --ignore-scripts
-          if ($LASTEXITCODE -ne 0) { throw 'locked_dependency_preparation_failed' }
+          $bootstrap=Join-Path $env:RUNNER_TEMP ('HonoWardenCorepack-'+[Guid]::NewGuid().ToString())
+          if (Test-Path -LiteralPath $bootstrap) { throw 'bootstrap_existing_path_refused' }
+          New-Item -ItemType Directory -Path $bootstrap | Out-Null
+          try {
+            npm install --prefix $bootstrap --no-save --package-lock=false --bin-links=false corepack@0.34.0 --ignore-scripts --no-audit --no-fund *> $null
+            if ($LASTEXITCODE -ne 0) { throw 'corepack_bootstrap_failed' }
+            $corepack=Join-Path $bootstrap 'node_modules/corepack/dist/corepack.js'
+            $version=& node $corepack --version
+            if ($LASTEXITCODE -ne 0 -or $version -ne '0.34.0') { throw 'corepack_pin_failed' }
+            $version=& node $corepack pnpm --version
+            if ($LASTEXITCODE -ne 0 -or $version -ne '11.8.0') { throw 'pnpm_pin_failed' }
+            & node $corepack pnpm install --frozen-lockfile --ignore-scripts
+            if ($LASTEXITCODE -ne 0) { throw 'locked_dependency_preparation_failed' }
+          } finally {
+            Remove-Item -LiteralPath $bootstrap -Recurse -Force
+            if (Test-Path -LiteralPath $bootstrap) { throw 'bootstrap_cleanup_unproved' }
+          }
       - name: Check source policy tests
         run: node --test "$env:PACKET/preflight.test.mjs"
       - name: Probe finite hosted Server pre-auth capabilities

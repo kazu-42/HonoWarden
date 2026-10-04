@@ -6,7 +6,7 @@ $statePath=Join-Path $env:RUNNER_TEMP 'honowarden-windows-preauth-state.json'
 $failed=$false; $job=[IntPtr]::Zero; $processInfo=$null; $pipe=$null; $nullStream=$null; $state=$null
 $journalAuthenticated=$false
 $previousTemp=$env:TEMP; $previousTmp=$env:TMP
-$report=@{object='windowsHostedPreauth';status='blocked';worker=$false;gui=$false;dpapi=$false;credentialMarker=$false;cleanup=$false;authenticated=$false;windows11Acceptance=$false}
+$report=@{object='windowsHostedPreauth';status='blocked';phase='admission';failureCode=$null;worker=$false;gui=$false;dpapi=$false;credentialMarker=$false;cleanup=$false;authenticated=$false;windows11Acceptance=$false}
 function Assert-PlainPath([string]$Path) {
   $cursor=[IO.Path]::GetFullPath($Path)
   if ($cursor.StartsWith('\\')) { throw 'network_path' }
@@ -83,8 +83,10 @@ function Cleanup-Owned {
 try {
   if (-not $Execute -and -not $Finish) { throw 'explicit_mode_required' }
   if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:GITHUB_REPOSITORY -ne 'kazu-42/HonoWarden') { throw 'hosted_runner_required' }
+  $report.phase='source_integrity'
   Verify-Source
   if ($Finish) {
+    $report.phase='finish_state'
     if (-not (Test-Path -LiteralPath $statePath)) { $report.status='nothing_started'; $report.cleanup=$true; exit 0 }
     if ((Get-Item -LiteralPath $statePath).Length -gt 4096) { throw 'state_bound' }
     $state=Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
@@ -93,6 +95,7 @@ try {
     Add-Type -Path (Join-Path $root 'windows-native.cs')
     Add-Type -Path (Join-Path $root 'preauth-native.cs') -ReferencedAssemblies 'System.Security.dll','System.dll'
   } else {
+    $report.phase='guest_identity'
     $os=Get-CimInstance Win32_OperatingSystem
     if ($os.Caption -notmatch 'Windows Server 2025' -or $os.OSArchitecture -notmatch '64' -or $os.ProductType -eq 1) { throw 'server_identity' }
     if ((Get-Process -Id $PID).SessionId -eq 0) { throw 'interactive_session_unavailable' }
@@ -107,6 +110,7 @@ try {
     $node=(Get-Command node.exe).Source
     Verify-Executable $node 'bae898add4643fcf890a83ad8ae56e20dce7e781cab161a53991ceba70c99ffb'
     if ((& $node --version) -ne 'v22.22.0') { throw 'node_version' }
+    $report.phase='journal_create'
     $created=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); $nonce=[Guid]::NewGuid().ToString()
     if (Test-Path -LiteralPath $statePath) { throw 'preexisting_journal_retained' }
     $state=@{nonce=$nonce;attempt=(Join-Path $env:RUNNER_TEMP ('HonoWardenPreauth-'+$nonce));jobName=('Local\HonoWarden-'+$nonce);marker=('HonoWarden-HostedPreauth-'+$nonce);markerClaimed=$false;jobCreated=$false}
@@ -117,6 +121,7 @@ try {
     foreach ($name in @('tmp','user','appdata','localappdata','desktop')) { Private-Directory (Join-Path $state.attempt $name) }
     $env:TEMP=Join-Path $state.attempt 'tmp'; $env:TMP=$env:TEMP
     $archive=Join-Path $state.attempt 'desktop.7z'
+    $report.phase='asset_identity'
     $external=Read-ExternalPayload
     Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri $external.assetUrl -OutFile $archive
     if ((Get-Item -LiteralPath $archive).Length -ne 128340508 -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '75b2793dad87f8748c9f6190523819c315c412c432489807b5154513aa3a5811') { throw 'asset_identity' }
@@ -131,6 +136,7 @@ try {
     Verify-Executable $desktop '48232882cc5412f8c9e3ddb1b2b1dc50f7247f7f9444fde2bee5c5f010ffac8a'
     if ((Get-Item -LiteralPath $desktop).VersionInfo.ProductVersion -notmatch '^2026\.9\.1') { throw 'desktop_version' }
     if ($drive.AvailableFreeSpace -lt 1GB) { throw 'reserve_after_prepare' }
+    $report.phase='native_capability'
     Add-Type -Path (Join-Path $root 'windows-native.cs')
     Add-Type -Path (Join-Path $root 'preauth-native.cs') -ReferencedAssemblies 'System.Security.dll','System.dll'
     $job=[HonoWardenWindowsNative]::CreateOwnedJob($state.jobName)
@@ -152,6 +158,7 @@ try {
     $pipe.DisposeLocalCopyOfClientHandle()
     $input=@{companyCommit='2deeee0cf159da92babc86e09de44c12eea2aa93';company=$Company;createdAtMs=$created;expiresAtMs=($created+240000);freeBytes=$drive.AvailableFreeSpace;freshHostedGuest=$true;attempt=$state.attempt;jobName=$state.jobName}
     $bytes=[Text.Encoding]::UTF8.GetBytes(($input | ConvertTo-Json -Compress));try{$pipe.Write($bytes,0,$bytes.Length);$pipe.Flush()}finally{[Array]::Clear($bytes,0,$bytes.Length);$pipe.Dispose();$pipe=$null}
+    $report.phase='owned_node'
     $waitCode=258
     while (($waitCode=[HonoWardenWindowsNative]::WaitForSingleObject($processInfo.Process,200)) -eq 258) { if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $created+240000) { throw 'absolute_deadline' } }
     if ($waitCode -ne 0) { throw 'native_wait_failed' }
@@ -164,7 +171,12 @@ try {
     if (-not $report.worker -or -not $report.gui -or $result.cleanup -ne $true) { throw 'preauth_capability_unavailable' }
     $report.status='preauth_capabilities_observed'
   }
-} catch { $failed=$true; $report.status='blocked_or_incomplete_preauth' }
+} catch {
+  $failed=$true; $report.status='blocked_or_incomplete_preauth'
+  $allowedFailureCodes=@('explicit_mode_required','hosted_runner_required','source_path','source_hash','state_bound','state_identity','server_identity','interactive_session_unavailable','reserve_before_prepare','company_commit','company_source_changed','executable_digest','authenticode_unproved','pe_magic','pe_machine','node_version','preexisting_journal_retained','no_retry_or_existing_state','external_data_encoding','payload_encoding','payload_equivalence','asset_members','asset_url','asset_identity','asset_extract','asset_path','asset_member','asset_extra_members','asset_executable','desktop_version','reserve_after_prepare','preexisting_marker_refused','marker_probe','stdio','absolute_deadline','native_wait_failed','native_exit_failed','result_bound','preauth_capability_unavailable')
+  $code=$_.Exception.Message
+  $report.failureCode=if ($allowedFailureCodes -ccontains $code) { $code } else { 'unexpected_preauth_failure' }
+}
 finally {
   $report.cleanup=Cleanup-Owned
   if (-not $report.cleanup) { $failed=$true; $report.status='owned_cleanup_unproved' }
