@@ -4,8 +4,9 @@ Last updated: 2026-10-04
 
 ## 2026-10-04 Company Administration Source
 
-The current company-admin candidate has not passed local aggregate or complete
-UI/native acceptance. The final pinned Node 22.22.0 whole-suite run covered
+The company-admin candidate passed complete local administration UI/current CLI
+acceptance on 2026-10-04, while the retained local whole-suite run remains failed.
+That pinned Node 22.22.0 whole-suite run covered
 185 files and 3,598 tests: 3,581 passed and 17 failed, exit 1. Seven failures
 reported connection resets, seven reached their existing timeouts, two document
 tests asserted stale current dates, and one local Worker did not become healthy.
@@ -21,9 +22,10 @@ The focused execution's
 before/after source manifests match with zero changed paths, and process readback
 found no remaining workerd or Vitest.
 Neither focused result turns the retained complete run green. The subsequent
-exact-head hosted CI for commit `431e189ffb29635440f37479e71a4ba9fa217fbc`
-passed every job step. Later acceptance-harness changes require their own
-exact-head CI; that earlier pass is not attributed to a later source tree.
+exact-head hosted CI for commit `1988c16cc4c2de3f9fa2efa07a7054532bd29228`
+passed all 3,610 tests and 984 compatibility cases, with every job step successful.
+The later audit UI and acceptance-harness correction described below requires
+its own exact-head CI; that earlier pass is not attributed to a later source tree.
 
 The earlier 183-file / 3,581-test run remains a separate failed checkpoint:
 3,575 passed and six failed. Its matching TOTP and membership fixture repairs
@@ -59,21 +61,42 @@ protected TOTP policy, the last enrolled Owner cannot be removed or deleted.
 These source rollout and authorization invariants do not establish deployed
 configuration or remote migration state.
 
-Core UI attempt 06 completed six initial actual UI/API legs through writable
-group-only access, then failed at the native CLI first-profile stderr gate and
-browser cleanup. No native decrypt checks completed; normal cleanup and the
-actual run's final source readback were incomplete. The attempt remains FAILED.
-The narrowly scoped diagnostic and bounded cleanup fixes have independent static
-review and 16 passing focused harness tests. Core attempt 07 then passed seven
-phases, including current CLI 2026.9.1 shared and personal five-field decryption,
-with normal cleanup, graceful browser close, matching actual source before/after,
-and a complete owned supervisor witness. It remains FAILED because the harness
-then expected an additional step-up button after successful enrollment had
-already established proof for that exact family. The reviewed correction asserts
-enrollment assurance and uses a separately retained pre-enrollment family for
-explicit UI step-up; its next complete acceptance run is pending.
-Private current-Browser preparation is also separate from execution
-acceptance and still requires its final byte-integrity and complete-flow gates.
+Core administration attempt 09 passed all 14 required actual UI/API/current CLI
+phases against fresh private Worker/D1/R2 storage and all migrations through 0030.
+It completed in 83.298 seconds with 179 HTTP observations. The unmodified,
+checksum-pinned official CLI 2026.9.1 decrypted the independently wrapped shared
+key and all five personal fields, completed native TOTP login, and forced sync
+after UI offboarding removed shared data while preserving personal data.
+Owner enrollment assured only its own family; a separately retained Owner family
+remained unassured until explicit UI step-up. Old bearer, refresh, and API-key
+families could not satisfy the required policy. Audit UI search returned eight
+expected records across seven event types; actual CSV export included those
+events and excluded password, token, key, invitation, and TOTP canaries.
+Lock/unlock, actual logout POST success, and both Owner families' old bearer
+rejection completed. Normal cleanup passed, browser close was graceful, owned
+process groups were absent, and the actual 153-file source fingerprints matched:
+`aa8ff7133d83a90e85e6c41e52a7de3e6098f557fb9458e35f9b1e6a0f6fdde4`.
+The owned supervisor recorded completion within the 600-second run and 20-second
+cleanup limits. Invitation delivery used a private synthetic service binding;
+actual mailbox receipt and the production invitation template were not tested.
+
+Failed attempts 01 through 08 remain failed historical checkpoints. They led to
+a delayed-refresh UI fix, exact first-profile CLI diagnostic handling, bounded
+independent cleanup/readback, a distinct-family MFA assertion, and an audit
+window correction. The final audit UI uses a lazy exact-millisecond range,
+retains loaded bounds for pagination/CSV, preserves same-identity drafts, and
+invalidates prior organization/email ownership. Two independent P2 findings
+were closed with five additional RED-to-GREEN mounted-DOM regressions; all
+26 focused UI cases and 28 harness cases passed. Backend audit window and cursor
+authorization contracts were unchanged.
+
+Official Browser-extension acceptance remains separate and pending. The selected
+Desktop targets are macOS and Windows. A Linux-only helper readiness run proved
+its private isolation and helpers, but did not launch Desktop and does not
+establish either target OS's acceptance. Redirecting an official Desktop profile
+alone does not isolate OS credential storage, native-messaging registration, or
+startup/protocol settings. Target OS testing requires a reviewed isolated guest
+or equivalently demonstrated containment before application launch.
 
 The separate EVP checkout passed all 18 actual local D1 persistence cases.
 A separate real Chromium 153 DOM run passed 17 checks with explicit synthetic
@@ -96,8 +119,8 @@ reviewed artifact and repair preparation does not establish a deployed repair.
 
 These local source and verification records do not establish remote schema,
 deployment, flag activation, real invitation delivery, or real-secret admission.
-Company readiness still requires resolved aggregate failures, complete
-source-bound UI/native acceptance with cleanup, target runtime/schema evidence,
+Company readiness still requires final corrected-head aggregate CI, official
+Browser and macOS/Windows Desktop acceptance, target runtime/schema evidence,
 current restore evidence, and independent security assessment. SSO/SCIM, custom
 roles, passkey login, full personal Web Vault, emergency-access recovery, and
 device/IdP administration remain outside this company slice. Historical sections

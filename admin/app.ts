@@ -576,11 +576,8 @@ export function mountAdminApp(
   const dialogCleanups = new WeakMap<HTMLDialogElement, () => void>()
   let memberSearch = ''
   let memberStatus = 'all'
-  let auditFilter: AuditFilter = {
-    from: new Date(Date.now() - 7 * 86400000).toISOString(),
-    to: new Date().toISOString(),
-    limit: 50,
-  }
+  let auditFilter: AuditFilter | null = null
+  let auditDraft: { from: string; to: string; eventName: string } | null = null
 
   const organization = (): OrganizationView | undefined =>
     session.organizations?.find((item) => item.id === selectedOrganizationId)
@@ -592,6 +589,35 @@ export function mountAdminApp(
     session.phase === 'unlocked' &&
     epoch === capturedEpoch &&
     selectedOrganizationId === orgId
+
+  function currentAuditFilter(): AuditFilter {
+    if (!auditFilter) {
+      const now = Date.now()
+      auditFilter = {
+        from: new Date(now - 7 * 86400000).toISOString(),
+        to: new Date(now).toISOString(),
+        limit: 50,
+      }
+    }
+    return auditFilter
+  }
+  function loadedAuditFilter(page: AuditPage): AuditFilter {
+    return {
+      from: page.query.from,
+      to: page.query.to,
+      limit: page.query.limit,
+      ...(page.query.eventName ? { eventName: page.query.eventName } : {}),
+      ...(page.query.actorUserId
+        ? { actorUserId: page.query.actorUserId }
+        : {}),
+    }
+  }
+  function setSelectedOrganization(id: string | null): void {
+    if (selectedOrganizationId === id) return
+    selectedOrganizationId = id
+    auditFilter = null
+    auditDraft = null
+  }
 
   function closeDialog(): void {
     dialogGeneration++
@@ -746,7 +772,7 @@ export function mountAdminApp(
     if (targetView === 'audit' && manager())
       read(
         '監査',
-        () => client.listAudit(orgId, auditFilter),
+        () => client.listAudit(orgId, currentAuditFilter()),
         (data) => {
           result.audit = data
         },
@@ -767,6 +793,13 @@ export function mountAdminApp(
     const next = await fetchSnapshot(orgId, view)
     if (!current(capturedEpoch, orgId)) return
     snapshot = next
+    if (next.audit)
+      auditFilter = {
+        ...loadedAuditFilter(next.audit),
+        ...(auditFilter?.continuationToken
+          ? { continuationToken: auditFilter.continuationToken }
+          : {}),
+      }
     loading = false
     observedAt = new Date()
     render()
@@ -780,7 +813,7 @@ export function mountAdminApp(
   }
   function selectOrganization(id: string): void {
     invalidate()
-    selectedOrganizationId = id
+    setSelectedOrganization(id)
     view = 'overview'
     focusMainAfterLoad = true
     void loadView()
@@ -2366,24 +2399,29 @@ export function mountAdminApp(
       result.append(accessNotice())
       return result
     }
+    const filter = snapshot.audit
+      ? loadedAuditFilter(snapshot.audit)
+      : currentAuditFilter()
     const localDate = (value?: string): string => {
       const date = new Date(value ?? Date.now())
       return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
         .toISOString()
-        .slice(0, 16)
+        .slice(0, 23)
     }
     const from = field(
       'audit-from',
       '開始日時',
       'datetime-local',
-      localDate(auditFilter.from),
+      auditDraft?.from ?? localDate(filter.from),
     )
     const to = field(
       'audit-to',
       '終了日時（この時刻は含まない）',
       'datetime-local',
-      localDate(auditFilter.to),
+      auditDraft?.to ?? localDate(filter.to),
     )
+    from.input.step = '0.001'
+    to.input.step = '0.001'
     const event = selectField(
       'audit-event',
       '操作',
@@ -2393,14 +2431,27 @@ export function mountAdminApp(
           snapshot.audit?.availability.eventNames ?? Object.keys(eventLabels)
         ).map((name): [string, string] => [name, eventLabels[name] ?? name]),
       ],
-      auditFilter.eventName ?? '',
+      auditDraft?.eventName ?? filter.eventName ?? '',
     )
     const form = element('form', 'toolbar', from.root, to.root, event.root)
+    const rememberDraft = (): void => {
+      if (!form.isConnected) return
+      auditDraft = {
+        from: from.input.value,
+        to: to.input.value,
+        eventName: event.input.value,
+      }
+    }
+    for (const input of [from.input, to.input, event.input]) {
+      input.addEventListener('input', rememberDraft)
+      input.addEventListener('change', rememberDraft)
+    }
     const search = element('button', 'button primary', '検索')
     search.type = 'submit'
     form.append(search)
     form.addEventListener('submit', (submitEvent) => {
       submitEvent.preventDefault()
+      rememberDraft()
       const fromDate = new Date(from.input.value)
       const toDate = new Date(to.input.value)
       const span = toDate.getTime() - fromDate.getTime()
@@ -2417,6 +2468,7 @@ export function mountAdminApp(
         limit: 50,
         ...(event.input.value ? { eventName: event.input.value } : {}),
       }
+      auditDraft = null
       invalidate()
       void loadView()
     })
@@ -2455,7 +2507,7 @@ export function mountAdminApp(
       const next = page.continuationToken
         ? button('次の記録', () => {
             auditFilter = {
-              ...auditFilter,
+              ...loadedAuditFilter(page),
               continuationToken: page.continuationToken!,
             }
             invalidate()
@@ -2497,7 +2549,11 @@ export function mountAdminApp(
     const capturedEpoch = epoch
     if (!orgId) return
     try {
-      const query = { ...auditFilter }
+      const query = {
+        ...(snapshot.audit
+          ? loadedAuditFilter(snapshot.audit)
+          : currentAuditFilter()),
+      }
       delete query.continuationToken
       delete query.limit
       const file = await client.exportAudit(orgId, query)
@@ -2977,8 +3033,14 @@ export function mountAdminApp(
   }
   const unsubscribe = client.subscribe((next) => {
     const previousPhase = session.phase
+    const previousEmail = session.email
+    const identityChanged = previousEmail !== next.email
     session = next
-    if (previousPhase !== next.phase) invalidate()
+    if (previousPhase !== next.phase || identityChanged) {
+      auditFilter = null
+      auditDraft = null
+      invalidate()
+    }
     if (
       previousPhase !== next.phase &&
       ['signedOut', 'expired', 'locked', 'totpRequired'].includes(next.phase)
@@ -2986,25 +3048,27 @@ export function mountAdminApp(
       focusAuthAfterRender = true
     if (next.phase === 'unlocked') {
       if (previousPhase !== 'unlocked')
-        selectedOrganizationId = next.organizations?.[0]?.id ?? null
+        setSelectedOrganization(next.organizations?.[0]?.id ?? null)
       else if (
         selectedOrganizationId &&
         !next.organizations?.some((item) => item.id === selectedOrganizationId)
       ) {
         invalidate()
-        selectedOrganizationId = next.organizations?.[0]?.id ?? null
+        setSelectedOrganization(next.organizations?.[0]?.id ?? null)
         render()
         void loadView()
         return
       }
+      if (identityChanged && !selectedOrganizationId)
+        setSelectedOrganization(next.organizations?.[0]?.id ?? null)
       render()
-      if (previousPhase !== 'unlocked') void loadView()
+      if (previousPhase !== 'unlocked' || identityChanged) void loadView()
     } else render()
   })
   const pageHide = (): void => client.lock()
   window.addEventListener('pagehide', pageHide)
   if (session.phase === 'unlocked')
-    selectedOrganizationId = session.organizations?.[0]?.id ?? null
+    setSelectedOrganization(session.organizations?.[0]?.id ?? null)
   render()
   if (session.phase === 'unlocked') void loadView()
   return () => {
