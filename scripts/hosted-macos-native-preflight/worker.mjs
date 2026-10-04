@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 
 // This companion is started only by the hosted-guest supervisor. No account is seeded.
 let phase = 'module_setup'
+let miniflareCoreErrorClass
 async function startup() {
   const [company, root] = process.argv.slice(2).map((p) => resolve(p))
   const require = createRequire(join(company, 'package.json'))
@@ -22,9 +23,10 @@ async function startup() {
       }),
     ).href
   )
-  const { Miniflare, Log, LogLevel } = await import(
+  const { Miniflare, Log, LogLevel, MiniflareCoreError } = await import(
     pathToFileURL(require.resolve('miniflare')).href
   )
+  miniflareCoreErrorClass = MiniflareCoreError
   phase = 'state_prepare'
   await mkdir(join(root, 'state'), { mode: 0o700 })
   const scriptPath = join(root, 'worker.mjs')
@@ -80,6 +82,7 @@ async function startup() {
   process.on('SIGINT', () => void finish())
   phase = 'runtime_ready'
   const url = await runtime.ready
+  phase = 'runtime_loopback_validate'
   if (url.hostname !== '127.0.0.1') throw new Error('worker_not_loopback')
   phase = 'd1_migrate'
   const db = await runtime.getD1Database('DB')
@@ -125,6 +128,18 @@ async function startup() {
 }
 
 function failureKind(error) {
+  // Pinned SDK class and own data property only; never invoke or copy exception fields.
+  if (
+    typeof miniflareCoreErrorClass === 'function' &&
+    error instanceof miniflareCoreErrorClass
+  ) {
+    const code = Object.getOwnPropertyDescriptor(error, 'code')
+    if (code && 'value' in code) {
+      if (code.value === 'ERR_RUNTIME_FAILURE')
+        return 'miniflare_runtime_failure'
+      if (code.value === 'ERR_ADDRESS_IN_USE') return 'miniflare_address_in_use'
+    }
+  }
   if (error instanceof TypeError) return 'type_error'
   if (error instanceof RangeError) return 'range_error'
   if (error instanceof SyntaxError) return 'syntax_error'

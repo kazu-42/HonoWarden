@@ -629,6 +629,53 @@ class FailureProjectionTests(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertEqual(p.process_cleanup_code(error, "process_cleanup_failed"), expected)
 
+    def test_process_permission_boundary_keeps_only_a_closed_operation(self):
+        for operation in p.PROCESS_PERMISSION_CODES:
+            failure = MagicMock(side_effect=PermissionError("private-process-argument"))
+            with self.subTest(operation=operation), self.assertRaises(p.Blocked) as caught:
+                p.process_permission_call(operation, failure)
+            self.assertEqual(str(caught.exception), operation)
+            self.assertEqual(p.process_cleanup_code(caught.exception, "process_cleanup_failed"), operation)
+        call = MagicMock()
+        with self.assertRaises(p.Blocked):
+            p.process_permission_call("private-operation", call)
+        call.assert_not_called()
+
+    def test_process_permission_boundary_does_not_swallow_or_reclassify_other_errors(self):
+        for error in [ProcessLookupError("private"), TimeoutError("private"), p.Blocked("absolute_step_deadline")]:
+            with self.subTest(category=type(error).__name__), self.assertRaises(type(error)) as caught:
+                p.process_permission_call("process_group_probe_permission_denied", MagicMock(side_effect=error))
+            self.assertIs(caught.exception, error)
+
+    def test_group_cleanup_permission_code_identifies_term_or_kill(self):
+        for running, operation in [(True, "process_group_term_permission_denied"),
+                                   (False, "process_group_kill_permission_denied")]:
+            proc = MagicMock(pid=123)
+            proc.poll.return_value = None if running else 1
+            with self.subTest(running=running), patch.object(p.os, "killpg", side_effect=PermissionError("private")), \
+                 self.assertRaises(p.Blocked) as caught:
+                p.stop_group(proc)
+            self.assertEqual(str(caught.exception), operation)
+
+    def test_recorded_cleanup_permission_code_identifies_group_probe(self):
+        row = {"pid": 123, "role": "worker", "uid": p.os.getuid(), "pgid": 123, "session": 123,
+               "start": "public-start", "images": ["node"]}
+        with patch.object(p, "process_identity", return_value=None), \
+             patch.object(p.os, "killpg", side_effect=PermissionError("private")), self.assertRaises(p.Blocked) as caught:
+            p.stop_recorded(row)
+        self.assertEqual(str(caught.exception), "process_group_probe_permission_denied")
+
+    def test_process_permission_codes_remain_failed_closed_through_finalization(self):
+        for operation in p.PROCESS_PERMISSION_CODES:
+            report = {"code": "worker_readiness_failed", "failureKind": "blocked"}
+            p.apply_cleanup_result(report, [operation])
+            projected = p.escaped_error_projection(p.FinalizationFailure(p.finalization_projection(report, OSError("private"))))
+            self.assertEqual(projected["code"], "worker_readiness_failed")
+            self.assertEqual(projected["status"], "cleanup_failed")
+            self.assertFalse(projected["cleanupComplete"])
+            self.assertFalse(projected["credentialAdmission"])
+            self.assertEqual(projected["cleanupFailureCodes"][0], operation)
+
 
 class WorkerReadinessTests(unittest.TestCase):
     def test_exact_worker_producer_reports_mocked_startup_phase_without_error_bytes(self):
@@ -666,9 +713,25 @@ exports.build = async () => {
 const fail = (phase) => { if (process.env.FAKE_STAGE === phase) throw new TypeError('private'); };
 exports.Log = class {};
 exports.LogLevel = {NONE: 0};
+exports.MiniflareCoreError = class extends Error { constructor(code) { super('private'); this.code = code; } };
 exports.Miniflare = class {
   constructor() { fail('runtime_construct'); }
-  get ready() { fail('runtime_ready'); return Promise.resolve(new URL('http://127.0.0.1:8123/')); }
+  get ready() {
+    if (process.env.FAKE_STAGE === 'runtime_ready') {
+      const kind = process.env.FAKE_KIND;
+      if (kind === 'miniflare_runtime_failure') throw new exports.MiniflareCoreError('ERR_RUNTIME_FAILURE');
+      if (kind === 'miniflare_address_in_use') throw new exports.MiniflareCoreError('ERR_ADDRESS_IN_USE');
+      if (kind === 'sdk_unknown') throw new exports.MiniflareCoreError('private-code');
+      if (kind === 'foreign_known') { const error = new Error('private'); error.code = 'ERR_RUNTIME_FAILURE'; throw error; }
+      if (kind === 'sdk_getter') { const error = new exports.MiniflareCoreError('unused');
+        Object.defineProperty(error, 'code', {get() { throw new Error('private-getter-invoked'); }}); throw error; }
+      if (kind === 'sdk_inherited') { const error = new exports.MiniflareCoreError('unused');
+        delete error.code; Object.setPrototypeOf(error, new exports.MiniflareCoreError('ERR_RUNTIME_FAILURE')); throw error; }
+      fail('runtime_ready');
+    }
+    return Promise.resolve(new URL(process.env.FAKE_STAGE === 'runtime_loopback_validate'
+      ? 'http://localhost:8123/' : 'http://127.0.0.1:8123/'));
+  }
   async getD1Database() { return {prepare: () => ({
     run: async () => { fail('d1_migrate'); },
     all: async () => { fail('d1_probe'); return {results: [{version: 30}]}; }
@@ -683,6 +746,9 @@ exports.Miniflare = class {
             cases = [(phase, "type_error") for phase in ["module_setup", "dependency_import", "build", "runtime_construct",
                                                        "runtime_ready", "d1_migrate", "d1_probe", "r2_probe", "http_probe"]]
             cases += [("build", kind) for kind in ["range_error", "syntax_error", "reference_error", "error", "unknown_exception"]]
+            cases += [("runtime_ready", kind) for kind in ["miniflare_runtime_failure", "miniflare_address_in_use",
+                                                           "sdk_unknown", "foreign_known", "sdk_getter", "sdk_inherited"]]
+            cases += [("runtime_loopback_validate", "error")]
             for phase, kind in cases + [("success", None), ("state_prepare", "error")]:
                 with self.subTest(phase=phase, kind=kind):
                     if (owned / "state").is_dir():
@@ -703,7 +769,23 @@ exports.Miniflare = class {
                         self.assertEqual(frame, {"port": 8123, "d1": True, "r2": True, "worker": True})
                     else:
                         self.assertEqual(result.returncode, 1)
-                        self.assertEqual(frame, {"phase": phase, "kind": kind})
+                        expected_kind = "error" if kind in {"sdk_unknown", "foreign_known", "sdk_getter", "sdk_inherited"} else kind
+                        self.assertEqual(frame, {"phase": phase, "kind": expected_kind})
+
+    def test_sdk_runtime_kinds_and_loopback_phase_are_closed_and_preserved(self):
+        for phase, kind in [("runtime_ready", "miniflare_runtime_failure"),
+                            ("runtime_ready", "miniflare_address_in_use"), ("runtime_loopback_validate", "error")]:
+            frame = json.dumps({"phase": phase, "kind": kind}).encode() + b"\n"
+            value, report, code = self.read([frame, b""], exited=1)
+            self.assertIsNone(value)
+            self.assertEqual(code, "worker_readiness_failed")
+            self.assertEqual(report["workerFailurePhase"], phase)
+            self.assertEqual(report["workerFailureKind"], kind)
+            projected = p.escaped_error_projection(p.FinalizationFailure(p.finalization_projection(
+                {**report, "code": code, "failureKind": "blocked"}, PermissionError("private"))))
+            self.assertEqual(projected["workerFailurePhase"], phase)
+            self.assertEqual(projected["workerFailureKind"], kind)
+            self.assertFalse(projected["credentialAdmission"])
 
     def read(self, chunks, exited=None):
         worker = MagicMock()

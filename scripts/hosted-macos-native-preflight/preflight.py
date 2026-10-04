@@ -43,10 +43,14 @@ PROCESSES = []
 STEP_END = None
 FAILURE_KINDS = {"blocked", "attribute_error", "permission_error", "timeout", "subprocess_timeout",
                  "value_error", "os_error", "unknown_exception"}
+PROCESS_PERMISSION_CODES = {"process_group_term_permission_denied", "process_group_kill_permission_denied",
+                            "process_group_probe_permission_denied", "process_session_probe_permission_denied",
+                            "process_wait_permission_denied", "process_poll_permission_denied",
+                            "process_identity_command_permission_denied"}
 PROCESS_BLOCKED_CODES = {"owned_pid_invalid", "child_registry_invalid", "owned_process_projection_invalid",
                          "owned_process_stop_unproved", "owned_group_without_live_leader",
                          "owned_process_identity_changed", "owned_group_cleanup_unproved",
-                         "command_deadline", "command_output_limit", "command_failed", "absolute_step_deadline"}
+                         "command_deadline", "command_output_limit", "command_failed", "absolute_step_deadline"} | PROCESS_PERMISSION_CODES
 FINALIZATION_BLOCKED_CODES = PROCESS_BLOCKED_CODES | {"phase_deadline_exhausted", "write_deadline_exhausted",
                                                       "cleanup_projection_invalid", "report_unknown_field", "failure_kind_invalid"}
 CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", "recorded_process_cleanup_failed",
@@ -56,8 +60,9 @@ CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", 
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
                                                  "cleanup_finalization_api_unavailable"}
 WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "state_prepare", "build", "runtime_construct",
-                         "runtime_ready", "d1_migrate", "d1_probe", "r2_probe", "http_probe"}
-WORKER_FAILURE_KINDS = {"type_error", "range_error", "syntax_error", "reference_error", "error", "unknown_exception"}
+                         "runtime_ready", "runtime_loopback_validate", "d1_migrate", "d1_probe", "r2_probe", "http_probe"}
+WORKER_FAILURE_KINDS = {"type_error", "range_error", "syntax_error", "reference_error", "error", "unknown_exception",
+                       "miniflare_runtime_failure", "miniflare_address_in_use"}
 
 
 def effective_client_identity():
@@ -119,6 +124,15 @@ def process_cleanup_code(error, fallback):
     return {"attribute_error": "process_cleanup_api_unavailable",
             "permission_error": "process_cleanup_permission_denied",
             "timeout": "process_cleanup_timeout", "subprocess_timeout": "process_cleanup_timeout"}.get(failure_kind(error), fallback)
+
+
+def process_permission_call(code, call, *args, **kwargs):
+    # The call-site supplies a closed operation, never a process identity or exception field.
+    require(code in PROCESS_PERMISSION_CODES, "cleanup_permission_operation_invalid")
+    try:
+        return call(*args, **kwargs)
+    except PermissionError:
+        raise Blocked(code) from None
 
 
 def validate_cleanup_codes(values):
@@ -246,14 +260,15 @@ def update_private(path, value):
 
 def process_identity(pid):
     require(type(pid) is int and 1 < pid < 2**31, "owned_pid_invalid")
-    raw, code = command(["/bin/ps", "-p", str(pid), "-o", "uid=", "-o", "pgid=", "-o", "lstart=", "-o", "comm="],
-                        timeout=2, ok=(0, 1))
+    raw, code = process_permission_call("process_identity_command_permission_denied", command,
+                                      ["/bin/ps", "-p", str(pid), "-o", "uid=", "-o", "pgid=", "-o", "lstart=", "-o", "comm="],
+                                      timeout=2, ok=(0, 1))
     if code == 1 and not raw.strip():
         return None
     match = re.fullmatch(rb"\s*(\d+)\s+(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+([^\r\n]+)\s*", raw)
     require(match is not None, "owned_process_projection_invalid")
     try:
-        session = os.getsid(pid)
+        session = process_permission_call("process_session_probe_permission_denied", os.getsid, pid)
     except ProcessLookupError:
         return None
     return {"uid": int(match[1]), "pgid": int(match[2]), "session": session,
@@ -295,28 +310,28 @@ def stop_recorded(row):
     current = process_identity(row["pid"])
     if current is None:
         try:
-            os.killpg(row["pgid"], 0)
+            process_permission_call("process_group_probe_permission_denied", os.killpg, row["pgid"], 0)
         except ProcessLookupError:
             return
         raise Blocked("owned_group_without_live_leader")
     require(all(current[k] == row[k] for k in ["uid", "pgid", "session", "start"])
             and Path(current["image"]).name in row["images"], "owned_process_identity_changed")
-    os.killpg(row["pgid"], signal.SIGTERM)
+    process_permission_call("process_group_term_permission_denied", os.killpg, row["pgid"], signal.SIGTERM)
     end = time.monotonic() + time_budget(3)
     while time.monotonic() < end:
         try:
-            os.killpg(row["pgid"], 0)
+            process_permission_call("process_group_probe_permission_denied", os.killpg, row["pgid"], 0)
         except ProcessLookupError:
             return
         time.sleep(0.1)
     current = process_identity(row["pid"])
     require(current is not None and all(current[k] == row[k] for k in ["uid", "pgid", "session", "start"])
             and Path(current["image"]).name in row["images"], "owned_process_identity_changed")
-    os.killpg(row["pgid"], signal.SIGKILL)
+    process_permission_call("process_group_kill_permission_denied", os.killpg, row["pgid"], signal.SIGKILL)
     end = time.monotonic() + time_budget(2)
     while time.monotonic() < end:
         try:
-            os.killpg(row["pgid"], 0)
+            process_permission_call("process_group_probe_permission_denied", os.killpg, row["pgid"], 0)
         except ProcessLookupError:
             return
         time.sleep(0.1)
@@ -324,23 +339,23 @@ def stop_recorded(row):
 
 
 def stop_group(proc):
-    if proc.poll() is None:
+    if process_permission_call("process_poll_permission_denied", proc.poll) is None:
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
+            process_permission_call("process_group_term_permission_denied", os.killpg, proc.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
     try:
         if time_budget(2) > 0:
-            proc.wait(timeout=time_budget(2))
+            process_permission_call("process_wait_permission_denied", proc.wait, timeout=time_budget(2))
     except subprocess.TimeoutExpired:
         pass
     try:
-        os.killpg(proc.pid, signal.SIGKILL)
+        process_permission_call("process_group_kill_permission_denied", os.killpg, proc.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
     if time_budget(2) > 0:
-        proc.wait(timeout=time_budget(2))
-    require(proc.poll() is not None, "owned_process_stop_unproved")
+        process_permission_call("process_wait_permission_denied", proc.wait, timeout=time_budget(2))
+    require(process_permission_call("process_poll_permission_denied", proc.poll) is not None, "owned_process_stop_unproved")
 
 
 def command(args, timeout=15, env=None, ok=(0,)):
