@@ -74,7 +74,7 @@ jobs:
             if (Test-Path -LiteralPath $bootstrap) { throw 'bootstrap_cleanup_unproved' }
           }
       - name: Check source policy tests
-        run: node --test "$env:PACKET/preflight.test.mjs"
+        run: node --test "$env:PACKET/preflight.node-check.mjs"
       - name: Probe finite hosted Server pre-auth capabilities
         timeout-minutes: 5
         run: |

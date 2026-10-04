@@ -10,6 +10,44 @@ const PAYLOAD_SHA256 =
 const EXECUTABLE_SHA256 =
   '48232882cc5412f8c9e3ddb1b2b1dc50f7247f7f9444fde2bee5c5f010ffac8a'
 
+const PUBLIC_CONTROL_PHASE_CODES = {
+  version: ['powershell_version'],
+  parser: ['powershell_parse'],
+  functions: ['public_functions'],
+  legacy_array: ['legacy_array_control'],
+  direct_array: ['direct_array_control'],
+  single_array: ['single_array_control'],
+  object_array: ['object_array_control'],
+  manifest: [
+    'external_data_encoding',
+    'payload_encoding',
+    'payload_equivalence',
+    'asset_members',
+    'asset_url',
+    'public_manifest_control',
+  ],
+  members: ['public_member_control'],
+  executable: ['public_executable_control'],
+}
+
+export function publicControlFailureCode(value) {
+  const generic = 'powershell_public_payload_control_failed'
+  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > 4096)
+    return generic
+  const match = value.match(
+    /^\{"object":"windowsPayloadControlFailure","phase":"([a-z_]+)","code":"([a-z_]+)"\}$/,
+  )
+  if (
+    !match ||
+    match[0] !== value ||
+    !Object.hasOwn(PUBLIC_CONTROL_PHASE_CODES, match[1]) ||
+    (match[2] !== 'unexpected_public_control_failure' &&
+      !PUBLIC_CONTROL_PHASE_CODES[match[1]].includes(match[2]))
+  )
+    return generic
+  return generic + '_' + match[1] + '_' + match[2]
+}
+
 export function decodeExternalUtf8(value, maximum = 16384) {
   if (
     typeof value !== 'string' ||

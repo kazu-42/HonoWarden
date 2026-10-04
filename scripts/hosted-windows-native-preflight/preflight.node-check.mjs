@@ -14,6 +14,7 @@ import {
   decodeExternalUtf8,
   requirePayloadPath,
   decodeDesktopPayload,
+  publicControlFailureCode,
 } from './preflight-policy.mjs'
 import { migrationStatements } from './preflight.mjs'
 
@@ -86,6 +87,15 @@ test('workflow restricts public same-repo trusted PR paths and retains pinned to
   assert.match(source, /corepack@0.34.0/)
   assert.match(source, /--frozen-lockfile --ignore-scripts/)
   assert.match(source, /if: always\(\)/)
+  assert.match(source, /node --test "\$env:PACKET\/preflight\.node-check\.mjs"/)
+  assert.equal(
+    fileURLToPath(import.meta.url).endsWith('preflight.node-check.mjs'),
+    true,
+  )
+  await assert.rejects(
+    readFile(new URL('./preflight.test.mjs', import.meta.url)),
+    { code: 'ENOENT' },
+  )
   assert.doesNotMatch(
     source,
     /upload-artifact|secrets\.|COREPACK_INTEGRITY_KEYS|id-token: write|--no-sandbox/,
@@ -315,6 +325,63 @@ test('payload admission preserves the JSON root array and the strict reviewed 85
   assert.equal(/\$files=@\(\$text \| ConvertFrom-Json\)/.test(ps), false)
 })
 
+test('public parser failure frames bind exact finite phase/code pairs', () => {
+  const generic = 'powershell_public_payload_control_failed'
+  const frame = {
+    object: 'windowsPayloadControlFailure',
+    phase: 'parser',
+    code: 'powershell_parse',
+  }
+  assert.equal(
+    publicControlFailureCode(JSON.stringify(frame)),
+    generic + '_parser_powershell_parse',
+  )
+  assert.equal(
+    publicControlFailureCode(
+      JSON.stringify({ ...frame, code: 'unexpected_public_control_failure' }),
+    ),
+    generic + '_parser_unexpected_public_control_failure',
+  )
+  assert.equal(
+    publicControlFailureCode(
+      JSON.stringify({ ...frame, phase: 'manifest', code: 'asset_members' }),
+    ),
+    generic + '_manifest_asset_members',
+  )
+})
+
+test('public parser failure frames reject arbitrary fields, labels and raw string leaks', () => {
+  const generic = 'powershell_public_payload_control_failed'
+  const frame = {
+    object: 'windowsPayloadControlFailure',
+    phase: 'parser',
+    code: 'powershell_parse',
+  }
+  for (const value of [
+    false,
+    undefined,
+    {},
+    JSON.stringify({ ...frame, raw: 'private-test-marker' }),
+    JSON.stringify({ ...frame, phase: 'arbitrary' }),
+    JSON.stringify({ ...frame, code: 'private-test-marker' }),
+    JSON.stringify({ ...frame, code: 'public_member_control' }),
+    JSON.stringify({
+      phase: frame.phase,
+      object: frame.object,
+      code: frame.code,
+    }),
+    '{"object":"windowsPayloadControlFailure","phase":"parser","phase":"members","code":"powershell_parse"}',
+    JSON.stringify(frame) + '\n',
+    'private-test-marker' + JSON.stringify(frame),
+    'x'.repeat(4097),
+    Buffer.from([255]),
+  ]) {
+    const result = publicControlFailureCode(value)
+    assert.equal(result, generic)
+    assert.equal(result.includes('private-test-marker'), false)
+  }
+})
+
 test(
   'Windows PowerShell 5.1 parses the real controller and admits the exact public manifest before download',
   { skip: process.platform !== 'win32' },
@@ -333,32 +400,51 @@ test(
     const command = `
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+$controlPhase='version'
+try {
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'powershell_version' }
 $root='${root}'
 $tokens=$null; $parseErrors=$null
+$controlPhase='parser'
 $ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'preflight.ps1'),[ref]$tokens,[ref]$parseErrors)
 if ($null -ne $parseErrors -and $parseErrors.Length -ne 0) { throw 'powershell_parse' }
+$controlPhase='functions'
 $names=@('Decode-ExternalUtf8','Read-ExternalPayload')
 $functions=@($ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $_.Name })
 if ($functions.Count -ne 2 -or @($functions.Name | Select-Object -Unique).Count -ne 2) { throw 'public_functions' }
 $definition=[ScriptBlock]::Create(($functions | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine)
 . $definition
+$controlPhase='legacy_array'
 $legacy=@('[1,2]' | ConvertFrom-Json)
 if ($legacy.Count -ne 1 -or $legacy[0] -isnot [array] -or $legacy[0].Count -ne 2) { throw 'legacy_array_control' }
+$controlPhase='direct_array'
 $direct=ConvertFrom-Json -InputObject '[1,2]'
 if ($direct -isnot [array] -or $direct.Count -ne 2) { throw 'direct_array_control' }
+$controlPhase='single_array'
 $single=ConvertFrom-Json -InputObject '[1]'
 if ($single -isnot [array] -or $single.Count -ne 1) { throw 'single_array_control' }
+$controlPhase='object_array'
 $object=ConvertFrom-Json -InputObject '{"x":1}'
 if ($object -is [array]) { throw 'object_array_control' }
+$controlPhase='manifest'
 $payload=Read-ExternalPayload
 if ($payload.files -isnot [array] -or $payload.files.Count -ne 85) { throw 'public_manifest_control' }
+$controlPhase='members'
 foreach ($file in $payload.files) { if ($file -is [array] -or $file.path -isnot [string] -or $file.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $file.bytes -le 0) { throw 'public_member_control' } }
+$controlPhase='executable'
 $executables=@($payload.files | Where-Object { $_.sha256 -eq '48232882cc5412f8c9e3ddb1b2b1dc50f7247f7f9444fde2bee5c5f010ffac8a' })
 if ($executables.Count -ne 1) { throw 'public_executable_control' }
 [Console]::Out.Write('{"object":"windowsPayloadControl","legacyWrapperCount":1,"directCount":2,"members":85,"parserErrors":0}')
+} catch {
+  $allowedCodes=@('powershell_version','powershell_parse','public_functions','legacy_array_control','direct_array_control','single_array_control','object_array_control','external_data_encoding','payload_encoding','payload_equivalence','asset_members','asset_url','public_manifest_control','public_member_control','public_executable_control')
+  $message=$_.Exception.Message
+  $controlCode=if ($allowedCodes -ccontains $message) { $message } else { 'unexpected_public_control_failure' }
+  [Console]::Out.Write('{"object":"windowsPayloadControlFailure","phase":"'+$controlPhase+'","code":"'+$controlCode+'"}')
+  exit 1
+}
 `
     let output
+    let failureCode
     try {
       output = execFileSync(
         join(
@@ -395,10 +481,11 @@ if ($executables.Count -ne 1) { throw 'public_executable_control' }
           },
         },
       )
-    } catch {
-      // Never forward child errors, output, command text or environment values.
-      throw Error('powershell_public_payload_control_failed')
+    } catch (error) {
+      // Never forward raw child errors, output, command text or environment values.
+      failureCode = publicControlFailureCode(error?.stdout)
     }
+    if (failureCode) throw Error(failureCode)
     if (
       output.trim() !==
       '{"object":"windowsPayloadControl","legacyWrapperCount":1,"directCount":2,"members":85,"parserErrors":0}'
