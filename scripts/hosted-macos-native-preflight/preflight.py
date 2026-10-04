@@ -338,24 +338,41 @@ def stop_recorded(row):
     raise Blocked("owned_group_cleanup_unproved")
 
 
+def reaped_child_group_absent(proc):
+    # Fixed Popen/new-session handles reserve the original PID until reap; no concurrent waiter exists here.
+    status = process_permission_call("process_poll_permission_denied", proc.poll)
+    require(status is None or type(status) is int, "owned_process_projection_invalid")
+    if status is None:
+        return False
+    try:
+        process_permission_call("process_group_probe_permission_denied", os.killpg, proc.pid, 0)
+    except ProcessLookupError:
+        return True
+    # A remaining or reused group lacks the original leader; never signal it destructively.
+    raise Blocked("owned_group_without_live_leader")
+
+
 def stop_group(proc):
-    if process_permission_call("process_poll_permission_denied", proc.poll) is None:
-        try:
-            process_permission_call("process_group_term_permission_denied", os.killpg, proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+    if reaped_child_group_absent(proc):
+        return
+    try:
+        process_permission_call("process_group_term_permission_denied", os.killpg, proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
     try:
         if time_budget(2) > 0:
             process_permission_call("process_wait_permission_denied", proc.wait, timeout=time_budget(2))
     except subprocess.TimeoutExpired:
         pass
+    if reaped_child_group_absent(proc):
+        return
     try:
         process_permission_call("process_group_kill_permission_denied", os.killpg, proc.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
     if time_budget(2) > 0:
         process_permission_call("process_wait_permission_denied", proc.wait, timeout=time_budget(2))
-    require(process_permission_call("process_poll_permission_denied", proc.poll) is not None, "owned_process_stop_unproved")
+    require(reaped_child_group_absent(proc), "owned_process_stop_unproved")
 
 
 def command(args, timeout=15, env=None, ok=(0,)):

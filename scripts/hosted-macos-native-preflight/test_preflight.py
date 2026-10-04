@@ -323,12 +323,13 @@ class PolicyTests(unittest.TestCase):
         proc.poll.side_effect = [None, 0]
         proc.wait.side_effect = lambda timeout: clock.update(now=clock["now"] + timeout)
         with patch.object(p, "STEP_END", 100.25), patch.object(p.time, "monotonic", side_effect=lambda: clock["now"]), \
-             patch.object(p.os, "killpg") as kill:
+             patch.object(p.os, "killpg", side_effect=[None, ProcessLookupError("private")]) as kill:
             p.stop_group(proc)
         self.assertEqual(proc.wait.call_count, 1)
         self.assertEqual(proc.wait.call_args.kwargs["timeout"], 0.25)
         self.assertEqual(clock["now"], 100.25)
         self.assertEqual(kill.call_count, 2)
+        self.assertEqual(kill.call_args_list, [unittest.mock.call(42, p.signal.SIGTERM), unittest.mock.call(42, 0)])
 
     def test_expired_absolute_budget_refuses_new_command(self):
         with patch.object(p, "STEP_END", 99), patch.object(p.time, "monotonic", return_value=100), \
@@ -651,11 +652,86 @@ class FailureProjectionTests(unittest.TestCase):
         for running, operation in [(True, "process_group_term_permission_denied"),
                                    (False, "process_group_kill_permission_denied")]:
             proc = MagicMock(pid=123)
-            proc.poll.return_value = None if running else 1
+            proc.poll.return_value = None
             with self.subTest(running=running), patch.object(p.os, "killpg", side_effect=PermissionError("private")), \
                  self.assertRaises(p.Blocked) as caught:
-                p.stop_group(proc)
+                if running:
+                    p.stop_group(proc)
+                else:
+                    with patch.object(p.os, "killpg", side_effect=[None, PermissionError("private")]), \
+                         patch.object(proc, "wait", side_effect=p.subprocess.TimeoutExpired(["private"], 2)):
+                        p.stop_group(proc)
             self.assertEqual(str(caught.exception), operation)
+
+    def test_reaped_original_leader_absent_group_never_receives_destructive_signal(self):
+        proc = MagicMock(pid=123)
+        proc.poll.return_value = 1
+        with patch.object(p.os, "killpg", side_effect=ProcessLookupError("private")) as signals:
+            p.stop_group(proc)
+        signals.assert_called_once_with(123, 0)
+        proc.wait.assert_not_called()
+
+    def test_reaped_original_leader_live_group_blocks_without_term_or_kill(self):
+        proc = MagicMock(pid=123)
+        proc.poll.return_value = 1
+        with patch.object(p.os, "killpg") as signals, self.assertRaises(p.Blocked) as caught:
+            p.stop_group(proc)
+        self.assertEqual(str(caught.exception), "owned_group_without_live_leader")
+        signals.assert_called_once_with(123, 0)
+
+    def test_leader_reaped_during_term_wait_is_rechecked_before_kill(self):
+        for gone in [True, False]:
+            proc = MagicMock(pid=123)
+            proc.poll.side_effect = [None, 1]
+            calls = [None, ProcessLookupError("private") if gone else None]
+            with self.subTest(groupGone=gone), patch.object(p.os, "killpg", side_effect=calls) as signals:
+                if gone:
+                    p.stop_group(proc)
+                else:
+                    with self.assertRaises(p.Blocked) as caught:
+                        p.stop_group(proc)
+                    self.assertEqual(str(caught.exception), "owned_group_without_live_leader")
+            self.assertEqual(signals.call_args_list, [unittest.mock.call(123, p.signal.SIGTERM), unittest.mock.call(123, 0)])
+
+    def test_unreaped_original_child_can_escalate_with_existing_wait_bounds(self):
+        proc = MagicMock(pid=123)
+        proc.poll.side_effect = [None, None, 1]
+        proc.wait.side_effect = [p.subprocess.TimeoutExpired(["private"], 2), 1]
+        with patch.object(p.os, "killpg", side_effect=[None, None, ProcessLookupError("private")]) as signals, \
+             patch.object(p, "STEP_END", None):
+            p.stop_group(proc)
+        self.assertEqual(signals.call_args_list, [unittest.mock.call(123, p.signal.SIGTERM),
+                                                 unittest.mock.call(123, p.signal.SIGKILL), unittest.mock.call(123, 0)])
+        self.assertEqual(proc.wait.call_args_list, [unittest.mock.call(timeout=2), unittest.mock.call(timeout=2)])
+
+    def test_reaped_leader_group_permission_failure_never_counts_as_absence(self):
+        proc = MagicMock(pid=123)
+        proc.poll.return_value = 1
+        with patch.object(p.os, "killpg", side_effect=PermissionError("private")) as signals, \
+             self.assertRaises(p.Blocked) as caught:
+            p.stop_group(proc)
+        self.assertEqual(str(caught.exception), "process_group_probe_permission_denied")
+        signals.assert_called_once_with(123, 0)
+
+    def test_killed_leader_with_remaining_group_is_still_unproved(self):
+        proc = MagicMock(pid=123)
+        proc.poll.side_effect = [None, None, 1]
+        proc.wait.side_effect = [p.subprocess.TimeoutExpired(["private"], 2), 1]
+        with patch.object(p.os, "killpg") as signals, self.assertRaises(p.Blocked) as caught:
+            p.stop_group(proc)
+        self.assertEqual(str(caught.exception), "owned_group_without_live_leader")
+        self.assertEqual(signals.call_args_list, [unittest.mock.call(123, p.signal.SIGTERM),
+                                                 unittest.mock.call(123, p.signal.SIGKILL), unittest.mock.call(123, 0)])
+
+    def test_unknown_child_poll_state_never_admits_destructive_signal(self):
+        for result in [True, "private", object()]:
+            proc = MagicMock(pid=123)
+            proc.poll.return_value = result
+            with self.subTest(category=type(result).__name__), patch.object(p.os, "killpg") as signals, \
+                 self.assertRaises(p.Blocked) as caught:
+                p.stop_group(proc)
+            self.assertEqual(str(caught.exception), "owned_process_projection_invalid")
+            signals.assert_not_called()
 
     def test_recorded_cleanup_permission_code_identifies_group_probe(self):
         row = {"pid": 123, "role": "worker", "uid": p.os.getuid(), "pgid": 123, "session": 123,
