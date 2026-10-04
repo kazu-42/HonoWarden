@@ -1,0 +1,65 @@
+name: Hosted macOS native Desktop preflight
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/hosted-macos-native.yml
+      - scripts/hosted-macos-native-preflight/**
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Enter hosted-native-preflight
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-macos-native-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.repository == 'kazu-42/HonoWarden' && github.event.repository.private == false && ((github.event_name == 'workflow_dispatch' && inputs.confirmation == 'hosted-native-preflight') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'task/macos-hosted-native-preflight-')))
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      PACKET: scripts/hosted-macos-native-preflight
+    steps:
+      - name: Check out the reviewed preflight source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Check out the exact public company candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 2deeee0cf159da92babc86e09de44c12eea2aa93
+          path: company
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up the repository Node toolchain
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22.13.0
+          # No cache restore or save; each job keeps its own dependency tree.
+      - name: Check capacity before dependency preparation
+        run: python3 "$PACKET/preflight.py" --capacity-only
+      - name: Install only the exact locked public dependencies
+        working-directory: company
+        timeout-minutes: 5
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check pure preflight policy tests
+        run: python3 -m unittest discover -s "$PACKET" -p 'test_*.py' -v
+      - name: Run the finite native preflight in this disposable guest
+        timeout-minutes: 5
+        run: python3 "$PACKET/preflight.py" --execute --company "$GITHUB_WORKSPACE/company"
+      - name: Project only safe metadata and finish exact owned cleanup
+        if: always()
+        timeout-minutes: 2
+        run: python3 "$PACKET/preflight.py" --finish
+      # Raw artifacts, profiles, screenshots and runtime stdio are never uploaded.
