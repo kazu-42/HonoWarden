@@ -54,7 +54,10 @@ CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", 
                                                 "process_cleanup_api_unavailable", "keychain_cleanup_failed",
                                                 "keychain_readback_failed", "cleanup_finalization_failed",
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
-                                                "cleanup_finalization_api_unavailable"}
+                                                 "cleanup_finalization_api_unavailable"}
+WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "state_prepare", "build", "runtime_construct",
+                         "runtime_ready", "d1_migrate", "d1_probe", "r2_probe", "http_probe"}
+WORKER_FAILURE_KINDS = {"type_error", "range_error", "syntax_error", "reference_error", "error", "unknown_exception"}
 
 
 def effective_client_identity():
@@ -83,7 +86,7 @@ class FinalizationFailure(Blocked):
 def validate_finalization_projection(projection):
     keys = {"schemaVersion", "status", "code", "failureKind", "cleanupFailureCodes", "cleanupComplete",
             "nativeExecuted", "authenticated", "credentialAdmission"}
-    require(type(projection) is dict and set(projection) == keys
+    require(type(projection) is dict and set(projection) in (keys, keys | {"workerFailurePhase", "workerFailureKind"})
             and type(projection["schemaVersion"]) is int and projection["schemaVersion"] == 1
             and projection["status"] == "cleanup_failed" and projection["cleanupComplete"] is False
             and (type(projection["nativeExecuted"]) is bool or projection["nativeExecuted"] is None), "escaped_projection_invalid")
@@ -149,7 +152,9 @@ def finalization_projection(report, error):
     validate_cleanup_codes(previous)
     projection = {"schemaVersion": 1, "status": "cleanup_failed", "code": code, "failureKind": kind,
                   "cleanupFailureCodes": [*previous, secondary], "cleanupComplete": False,
-                  "nativeExecuted": report.get("nativeExecuted"), "authenticated": False, "credentialAdmission": False}
+                   "nativeExecuted": report.get("nativeExecuted"), "authenticated": False, "credentialAdmission": False}
+    if "workerFailurePhase" in report or "workerFailureKind" in report:
+        projection.update({key: report.get(key) for key in ["workerFailurePhase", "workerFailureKind"]})
     return public_report(projection)
 
 
@@ -582,12 +587,16 @@ def public_report(report):
             "assetSha256", "companySha", "osVersion", "architecture", "nodeVersion", "freeBytes",
             "signatureVerified", "gatekeeperAccepted", "d1Ready", "r2Ready", "workerReady",
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
-            "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes"}
+            "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes", "workerFailurePhase", "workerFailureKind"}
     require(set(report) <= keys, "report_unknown_field")
     if "failureKind" in report:
         require(type(report["failureKind"]) is str and report["failureKind"] in FAILURE_KINDS, "failure_kind_invalid")
     if "cleanupFailureCodes" in report:
         validate_cleanup_codes(report["cleanupFailureCodes"])
+    if "workerFailurePhase" in report or "workerFailureKind" in report:
+        require(type(report.get("workerFailurePhase")) is str and report["workerFailurePhase"] in WORKER_FAILURE_PHASES
+                and type(report.get("workerFailureKind")) is str and report["workerFailureKind"] in WORKER_FAILURE_KINDS,
+                "worker_failure_projection_invalid")
     gui = report.get("gui")
     if gui is not None:
         require(set(gui) == {"onConsole", "appWindowCount", "accessibilityGranted", "screenCaptureGranted"}
@@ -604,6 +613,62 @@ def apply_execute_outcome(report, outcome):
         report.update({"status": "cleanup_failed", "code": "execute_finalization_unproved",
                        "failureKind": "unknown_exception", "cleanupComplete": False,
                        "cleanupFailureCodes": ["cleanup_finalization_failed"]})
+
+
+def parse_worker_frame(raw):
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            require(key not in result, "worker_projection_invalid")
+            result[key] = value
+        return result
+    try:
+        frame = json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=unique_pairs)
+    except (ValueError, UnicodeError, Blocked):
+        raise Blocked("worker_projection_invalid") from None
+    require(type(frame) is dict, "worker_projection_invalid")
+    if set(frame) == {"phase", "kind"}:
+        require(type(frame["phase"]) is str and frame["phase"] in WORKER_FAILURE_PHASES
+                and type(frame["kind"]) is str and frame["kind"] in WORKER_FAILURE_KINDS, "worker_projection_invalid")
+        return frame
+    require(set(frame) == {"port", "d1", "r2", "worker"} and type(frame["port"]) is int
+            and 1024 <= frame["port"] <= 65535 and all(frame[key] is True for key in ["d1", "r2", "worker"]),
+            "worker_projection_invalid")
+    return frame
+
+
+def read_worker_readiness(worker, report):
+    line, end = bytearray(), time.monotonic() + 45
+    failed = None
+    while True:
+        require(time.monotonic() < end, "worker_readiness_deadline")
+        require(time_budget(0.1) > 0, "absolute_step_deadline")
+        # Buffered terminal diagnostics remain readable after the child has exited.
+        readable = select.select([worker.stdout], [], [], time_budget(0.1))[0]
+        if not readable and worker.poll() is not None:
+            require(time.monotonic() < end, "worker_readiness_deadline")
+            require(time_budget(0.1) > 0, "absolute_step_deadline")
+            # The child may have flushed and exited after the earlier empty snapshot.
+            readable = select.select([worker.stdout], [], [], 0)[0]
+            require(readable, "worker_exited_without_readiness")
+        if readable:
+            block = os.read(worker.stdout.fileno(), 1024)
+            if not block:
+                if failed is not None:
+                    report.update(workerFailurePhase=failed["phase"], workerFailureKind=failed["kind"])
+                    raise Blocked("worker_readiness_failed")
+                raise Blocked("worker_readiness_eof")
+            require(failed is None, "worker_projection_invalid")
+            line.extend(block)
+            require(len(line) <= 1024, "worker_projection_limit")
+            if b"\n" in line:
+                require(line.endswith(b"\n") and line.count(b"\n") == 1, "worker_projection_invalid")
+                frame = parse_worker_frame(bytes(line))
+                if set(frame) == {"phase", "kind"}:
+                    failed = frame
+                    continue
+                require(worker.poll() is None, "worker_success_child_exited")
+                return frame
 
 
 def execute(temp, company):
@@ -686,15 +751,7 @@ def execute(temp, company):
         report["keychainProbe"] = True
         worker = gated_launch([node, str(HERE / "worker.mjs"), str(company), str(root)],
                               "worker", env, state, marker, subprocess.PIPE)
-        line, end = bytearray(), time.monotonic() + 45
-        while not line.endswith(b"\n"):
-            require(time.monotonic() < end and worker.poll() is None, "worker_readiness_failed")
-            if select.select([worker.stdout], [], [], 0.1)[0]:
-                line.extend(os.read(worker.stdout.fileno(), 1024))
-                require(len(line) <= 1024, "worker_projection_limit")
-        readiness = json.loads(line)
-        require(set(readiness) == {"port", "d1", "r2", "worker"} and
-                readiness["d1"] is True and readiness["r2"] is True and readiness["worker"] is True, "worker_projection_invalid")
+        readiness = read_worker_readiness(worker, report)
         port = readiness["port"]
         report.update(d1Ready=True, r2Ready=True, workerReady=True)
         cdp_port = free_port()

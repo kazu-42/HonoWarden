@@ -630,6 +630,195 @@ class FailureProjectionTests(unittest.TestCase):
                 self.assertEqual(p.process_cleanup_code(error, "process_cleanup_failed"), expected)
 
 
+class WorkerReadinessTests(unittest.TestCase):
+    def test_exact_worker_producer_reports_mocked_startup_phase_without_error_bytes(self):
+        # Every SDK resolves inside this tiny fixture; no real runtime or socket is created.
+        with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
+            root = Path(fixture)
+            company, owned = root / "company", root / "owned"
+            company.mkdir(mode=0o700)
+            owned.mkdir(mode=0o700)
+            def write(relative, text):
+                path = company / relative
+                path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                path.write_text(text)
+                path.chmod(0o600)
+            write("package.json", '{}')
+            write("node_modules/wrangler/package.json", '{"name":"wrangler"}')
+            write("node_modules/esbuild/package.json", '{"name":"esbuild","main":"index.cjs"}')
+            write("node_modules/miniflare/package.json", '{"name":"miniflare","main":"index.cjs"}')
+            write("scripts/honowarden-company-admin-smoke.mjs", """
+if (process.env.FAKE_STAGE === 'dependency_import') throw new TypeError('private');
+export const migrationStatements = () => ['SELECT 1'];
+""")
+            write("migrations/0030_fixture.sql", 'SELECT 1;')
+            write("node_modules/esbuild/index.cjs", """
+exports.build = async () => {
+  if (process.env.FAKE_STAGE === 'build') {
+    const types = {type_error: TypeError, range_error: RangeError, syntax_error: SyntaxError,
+      reference_error: ReferenceError, error: Error};
+    if (process.env.FAKE_KIND === 'unknown_exception') throw 'private';
+    throw new (types[process.env.FAKE_KIND] || TypeError)('private');
+  }
+};
+""")
+            write("node_modules/miniflare/index.cjs", """
+const fail = (phase) => { if (process.env.FAKE_STAGE === phase) throw new TypeError('private'); };
+exports.Log = class {};
+exports.LogLevel = {NONE: 0};
+exports.Miniflare = class {
+  constructor() { fail('runtime_construct'); }
+  get ready() { fail('runtime_ready'); return Promise.resolve(new URL('http://127.0.0.1:8123/')); }
+  async getD1Database() { return {prepare: () => ({
+    run: async () => { fail('d1_migrate'); },
+    all: async () => { fail('d1_probe'); return {results: [{version: 30}]}; }
+  })}; }
+  async getR2Bucket() { fail('r2_probe'); return {
+    put: async () => {}, get: async () => ({text: async () => 'synthetic-public-probe'}), delete: async () => {}
+  }; }
+  async dispatchFetch() { fail('http_probe'); return {ok: true, json: async () => ({name: 'HonoWarden'})}; }
+  async dispose() {}
+};
+""")
+            cases = [(phase, "type_error") for phase in ["module_setup", "dependency_import", "build", "runtime_construct",
+                                                       "runtime_ready", "d1_migrate", "d1_probe", "r2_probe", "http_probe"]]
+            cases += [("build", kind) for kind in ["range_error", "syntax_error", "reference_error", "error", "unknown_exception"]]
+            for phase, kind in cases + [("success", None), ("state_prepare", "error")]:
+                with self.subTest(phase=phase, kind=kind):
+                    if (owned / "state").is_dir():
+                        p.shutil.rmtree(owned / "state")
+                    if phase == "state_prepare":
+                        (owned / "state").touch(mode=0o600)
+                    args = ["node", str(p.HERE / "worker.mjs")]
+                    if phase != "module_setup":
+                        args += [str(company), str(owned)]
+                    result = p.subprocess.run(args, env={"PATH": p.os.environ["PATH"], "FAKE_STAGE": phase,
+                                                        "FAKE_KIND": kind or "error"}, capture_output=True, timeout=5)
+                    self.assertLessEqual(len(result.stdout), 1024)
+                    self.assertEqual(result.stderr, b"")
+                    self.assertNotIn(b"private", result.stdout)
+                    frame = json.loads(result.stdout)
+                    if phase == "success":
+                        self.assertEqual(result.returncode, 0)
+                        self.assertEqual(frame, {"port": 8123, "d1": True, "r2": True, "worker": True})
+                    else:
+                        self.assertEqual(result.returncode, 1)
+                        self.assertEqual(frame, {"phase": phase, "kind": kind})
+
+    def read(self, chunks, exited=None):
+        worker = MagicMock()
+        worker.poll.return_value = exited
+        worker.stdout.fileno.return_value = 42
+        report = {"authenticated": False, "credentialAdmission": False}
+        with patch.object(p.time, "monotonic", return_value=100), patch.object(p, "STEP_END", 300), \
+             patch.object(p.select, "select", return_value=([worker.stdout], [], [])), \
+             patch.object(p.os, "read", side_effect=chunks):
+            try:
+                value = p.read_worker_readiness(worker, report)
+                return value, report, None
+            except p.Blocked as error:
+                return None, report, str(error)
+
+    def test_fragmented_success_requires_live_child_and_typed_loopback_port(self):
+        frame = b'{"port":8123,"d1":true,"r2":true,"worker":true}\n'
+        value, report, error = self.read([frame[:12], frame[12:]])
+        self.assertIsNone(error)
+        self.assertEqual(value["port"], 8123)
+        self.assertNotIn("workerFailurePhase", report)
+        _, report, error = self.read([frame], exited=0)
+        self.assertEqual(error, "worker_success_child_exited")
+        self.assertNotIn("workerFailurePhase", report)
+
+    def test_buffered_terminal_failure_is_drained_after_child_exit(self):
+        frame = b'{"phase":"dependency_import","kind":"type_error"}\n'
+        value, report, error = self.read([frame[:15], frame[15:], b""], exited=1)
+        self.assertIsNone(value)
+        self.assertEqual(error, "worker_readiness_failed")
+        self.assertEqual(report["workerFailurePhase"], "dependency_import")
+        self.assertEqual(report["workerFailureKind"], "type_error")
+        self.assertNotIn("workerReady", report)
+        self.assertFalse(report["credentialAdmission"])
+
+    def test_exit_after_empty_select_rechecks_newly_buffered_terminal_diagnostic(self):
+        worker = MagicMock()
+        worker.poll.return_value = 1
+        worker.stdout.fileno.return_value = 42
+        report = {}
+        with patch.object(p.time, "monotonic", return_value=100), patch.object(p, "STEP_END", 300), \
+             patch.object(p.select, "select", side_effect=[([], [], []), ([worker.stdout], [], []), ([worker.stdout], [], [])]) as select, \
+             patch.object(p.os, "read", side_effect=[b'{"phase":"dependency_import","kind":"type_error"}\n', b""]):
+            with self.assertRaisesRegex(p.Blocked, "^worker_readiness_failed$"):
+                p.read_worker_readiness(worker, report)
+        self.assertEqual(report, {"workerFailurePhase": "dependency_import", "workerFailureKind": "type_error"})
+        self.assertEqual(select.call_args_list[1].args[3], 0)
+
+    def test_exit_recheck_without_buffered_frame_keeps_phase_unknown(self):
+        worker = MagicMock()
+        worker.poll.return_value = 1
+        report = {}
+        with patch.object(p.time, "monotonic", return_value=100), patch.object(p, "STEP_END", 300), \
+             patch.object(p.select, "select", return_value=([], [], [])), patch.object(p.os, "read") as read:
+            with self.assertRaisesRegex(p.Blocked, "^worker_exited_without_readiness$"):
+                p.read_worker_readiness(worker, report)
+        self.assertEqual(report, {})
+        read.assert_not_called()
+
+    def test_eof_without_frame_keeps_startup_phase_unknown(self):
+        _, report, error = self.read([b""], exited=1)
+        self.assertEqual(error, "worker_readiness_eof")
+        self.assertNotIn("workerFailurePhase", report)
+
+    def test_invalid_duplicate_trailing_and_multiple_frames_are_rejected(self):
+        invalid = [b'{"phase":"dependency_import","kind":"private"}\n',
+                   b'{"phase":"private","kind":"error"}\n',
+                   b'{"phase":"dependency_import","kind":"error","kind":"error"}\n',
+                   b'{"phase":"dependency_import","kind":"error"}\nprivate',
+                   b'{"phase":"dependency_import","kind":"error","message":"private"}\n',
+                   b'{"phase":"dependency_import","kind":"error"}\n{}\n', b'\xff\n',
+                   b'{"port":true,"d1":true,"r2":true,"worker":true}\n',
+                   b'{"port":80,"d1":true,"r2":true,"worker":true}\n',
+                   b'{"port":8123,"d1":false,"r2":true,"worker":true}\n']
+        for frame in invalid:
+            with self.subTest(frame=frame):
+                _, report, error = self.read([frame])
+                self.assertEqual(error, "worker_projection_invalid")
+                self.assertNotIn("workerFailurePhase", report)
+
+    def test_terminal_failure_post_frame_bytes_and_oversize_are_rejected(self):
+        for chunks in [[b'{"phase":"build","kind":"error"}\n', b"private"], [b"x" * 1025]]:
+            with self.subTest(chunks=chunks):
+                _, report, error = self.read(chunks)
+                self.assertIn(error, {"worker_projection_invalid", "worker_projection_limit"})
+                self.assertNotIn("workerFailurePhase", report)
+
+    def test_worker_readiness_preserves_original_local_and_absolute_deadlines(self):
+        worker = MagicMock()
+        with patch.object(p.time, "monotonic", side_effect=[100, 146]), patch.object(p, "STEP_END", 300), \
+             patch.object(p.select, "select") as select:
+            with self.assertRaisesRegex(p.Blocked, "worker_readiness_deadline"):
+                p.read_worker_readiness(worker, {})
+        select.assert_not_called()
+        with patch.object(p.time, "monotonic", return_value=100), patch.object(p, "STEP_END", 99), \
+             patch.object(p.select, "select") as select:
+            with self.assertRaisesRegex(p.Blocked, "absolute_step_deadline"):
+                p.read_worker_readiness(worker, {})
+        select.assert_not_called()
+
+    def test_paired_worker_diagnostics_are_closed_and_survive_finalization(self):
+        original = {"code": "worker_readiness_failed", "failureKind": "blocked",
+                    "workerFailurePhase": "runtime_ready", "workerFailureKind": "error"}
+        projected = p.escaped_error_projection(p.FinalizationFailure(p.finalization_projection(original, OSError("private"))))
+        self.assertEqual(projected["workerFailurePhase"], "runtime_ready")
+        self.assertEqual(projected["workerFailureKind"], "error")
+        self.assertEqual(projected["code"], "worker_readiness_failed")
+        for delta in [{"workerFailurePhase": "private"}, {"workerFailureKind": "private"},
+                      {"workerFailurePhase": True}, {"workerFailureKind": []}]:
+            with self.subTest(delta=delta), self.assertRaises(p.Blocked):
+                p.public_report({"authenticated": False, "credentialAdmission": False, **original, **delta})
+        with self.assertRaises(p.Blocked):
+            p.public_report({"authenticated": False, "credentialAdmission": False, "workerFailurePhase": "runtime_ready"})
+
+
 class WorkflowBootstrapTests(unittest.TestCase):
     def workflow(self):
         local = p.HERE / "hosted-macos-native.yml"
