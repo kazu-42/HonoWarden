@@ -76,6 +76,16 @@
       "path": "public-control-phases.mjs",
       "bytes": 3146,
       "sha256": "67d1eeb11f6f865fc9d96c1021f13048c74fa7409a97e0d0d640636f8b03e178"
+    },
+    {
+      "path": "utility-diagnostic.mjs",
+      "bytes": 11752,
+      "sha256": "61da08fd8994d9f6b8490695cbc07142e281e21413ca796cb490588cbb7dffd5"
+    },
+    {
+      "path": "utility-diagnostic.node-check.mjs",
+      "bytes": 12942,
+      "sha256": "538fb4123cda0b83f944636f5244591eea4c027f9427a0d7c6716559046dec92"
     }
   ]
 }
