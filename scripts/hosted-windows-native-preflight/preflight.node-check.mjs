@@ -18,6 +18,13 @@ import {
   publicExecFailureMetadata,
 } from './preflight-policy.mjs'
 import { migrationStatements } from './preflight.mjs'
+import {
+  PUBLIC_PHASES,
+  PUBLIC_SUCCESS,
+  decodePublicControlStream,
+  decodePublicControlError,
+  publicControlPhase,
+} from './public-control-phases.mjs'
 
 const input = {
   companyCommit: '2deeee0cf159da92babc86e09de44c12eea2aa93',
@@ -452,6 +459,175 @@ test('public exec failure metadata rejects unknown fields and never returns raw 
     )
 })
 
+test('cold public control accepts only the full ordered prefix and exact original success', () => {
+  const prefix = PUBLIC_PHASES.join('\n') + '\n'
+  assert.equal(decodePublicControlStream(prefix + PUBLIC_SUCCESS).success, true)
+  for (const value of [
+    PUBLIC_SUCCESS,
+    prefix,
+    'ENTRY\n' + PUBLIC_SUCCESS,
+    prefix + PUBLIC_SUCCESS + '\n',
+  ])
+    assert.equal(decodePublicControlStream(value).success, false)
+  for (let i = 0; i <= PUBLIC_PHASES.length; i++) {
+    const value = i ? PUBLIC_PHASES.slice(0, i).join('\n') + '\n' : ''
+    const decoded = decodePublicControlStream(value)
+    assert.equal(decoded.prefixValid, true)
+    assert.equal(decoded.phase, i ? PUBLIC_PHASES[i - 1] : 'NONE')
+    assert.equal(decoded.success, false)
+  }
+})
+test('cold public prefix rejects skipped repeated reordered truncated and secret frames', () => {
+  for (const value of [
+    'VERSION_OK\n',
+    'ENTRY\nENTRY\n',
+    'ENTRY\nPARSER_BEGIN\n',
+    'ENT',
+    'ENTRY\r\n',
+    'ENTRY\nprivate-secret-marker',
+    'x'.repeat(4097),
+    Buffer.from('ENTRY\n'),
+    null,
+    {},
+    1,
+  ]) {
+    const result = decodePublicControlStream(value)
+    assert.equal(result.prefixValid, false)
+    assert.equal(result.success, false)
+    assert.equal(result.phase, 'NONE')
+    assert.equal(
+      JSON.stringify(result).includes('private-secret-marker'),
+      false,
+    )
+  }
+})
+test('cold public terminal failure keeps fixed legacy code and never admits success', () => {
+  const prefix = PUBLIC_PHASES.slice(0, 4).join('\n') + '\n'
+  const terminal =
+    '{"object":"windowsPayloadControlFailure","phase":"parser","code":"powershell_parse"}'
+  const result = decodePublicControlStream(prefix + terminal)
+  assert.equal(result.prefixValid, true)
+  assert.equal(result.success, false)
+  assert.equal(
+    result.failureCode,
+    'powershell_public_payload_control_failed_parser_powershell_parse',
+  )
+  for (const value of [
+    prefix + terminal + '\n',
+    terminal,
+    prefix + terminal.replace('parser', 'manifest'),
+    prefix + terminal.replace('powershell_parse', 'unknown'),
+  ])
+    assert.equal(decodePublicControlStream(value).prefixValid, false)
+})
+test('cold public failure phase is closed own-data-only and cannot admit errored success', () => {
+  const prefix = PUBLIC_PHASES.slice(0, 3).join('\n') + '\n'
+  assert.deepEqual(publicControlPhase({ stdout: prefix }), {
+    object: 'windowsPublicControlPhase',
+    phase: 'PARSER_BEGIN',
+    prefixValid: true,
+  })
+  let getterRead = false
+  const getter = Object.defineProperty({}, 'stdout', {
+    get() {
+      getterRead = true
+      throw Error('private-secret-marker')
+    },
+  })
+  for (const error of [
+    getter,
+    Object.create({ stdout: prefix }),
+    { stdout: Buffer.from(prefix) },
+    null,
+  ])
+    assert.deepEqual(publicControlPhase(error), {
+      object: 'windowsPublicControlPhase',
+      phase: 'NONE',
+      prefixValid: false,
+    })
+  assert.equal(getterRead, false)
+  assert.deepEqual(
+    Object.keys(
+      publicControlPhase({
+        stdout: PUBLIC_PHASES.join('\n') + '\n' + PUBLIC_SUCCESS,
+      }),
+    ),
+    ['object', 'phase', 'prefixValid'],
+  )
+})
+
+test('cold public encoded command emits literal ordered flushed markers around the original controls', async () => {
+  const source = await readFile(
+    new URL('./preflight.node-check.mjs', import.meta.url),
+    'utf8',
+  )
+  const start = source.lastIndexOf('    const command = `')
+  const command = source.slice(
+    start + '    const command = `'.length,
+    source.indexOf('\n`', start),
+  )
+  const markers = [
+    ...command.matchAll(
+      /\[Console\]::Out\.Write\('([A-Z_]+)'\+\[char\]10\); \[Console\]::Out\.Flush\(\)/g,
+    ),
+  ].map((match) => match[1])
+  assert.deepEqual(markers, PUBLIC_PHASES)
+  assert.equal(
+    Buffer.from(
+      Buffer.from(command, 'utf16le').toString('base64'),
+      'base64',
+    ).toString('utf16le'),
+    command,
+  )
+  for (const statement of [
+    '$functions=@($ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $_.Name })',
+    "if ($functions.Count -ne 2 -or @($functions.Name | Select-Object -Unique).Count -ne 2) { throw 'public_functions' }",
+    '$definition=[ScriptBlock]::Create(($functions | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine)',
+    '. $definition',
+    '$payload=Read-ExternalPayload',
+    "if ($payload.files -isnot [array] -or $payload.files.Count -ne 85) { throw 'public_manifest_control' }",
+  ])
+    assert.equal(command.includes(statement), true)
+  assert.equal(command.includes('Get-Content'), false)
+  assert.equal(command.includes('Import-Module'), false)
+  assert.equal(
+    command.includes("[Console]::Out.Write('" + PUBLIC_SUCCESS + "')"),
+    true,
+  )
+})
+test('cold public host retains exact child bounds and accepts only normal full-prefix completion', async () => {
+  const source = await readFile(
+    new URL('./preflight.node-check.mjs', import.meta.url),
+    'utf8',
+  )
+  const host = source.slice(source.lastIndexOf('    let output\n'))
+  assert.match(host, /timeout: 10000,[\s\S]*maxBuffer: 4096/)
+  assert.match(
+    host,
+    /'-NoLogo',[\s\S]*'-NoProfile',[\s\S]*'-NonInteractive',[\s\S]*'-EncodedCommand'/,
+  )
+  assert.match(host, /Buffer\.from\(command, 'utf16le'\)\.toString\('base64'\)/)
+  assert.match(host, /failureMetadata = publicExecFailureMetadata\(error\)/)
+  assert.match(
+    host,
+    /if \(failureCode\) \{[\s\S]*throw Error\(failureCode \+ ' ' \+ JSON\.stringify\(failureMetadata\)\)/,
+  )
+  assert.match(host, /if \(!decodePublicControlStream\(output\)\.success\)/)
+  const erroredSuccess = {
+    stdout: PUBLIC_PHASES.join('\n') + '\n' + PUBLIC_SUCCESS,
+    code: 'ETIMEDOUT',
+    status: null,
+  }
+  assert.equal(
+    decodePublicControlError(erroredSuccess).failureCode,
+    'powershell_public_payload_control_failed',
+  )
+  assert.equal(
+    Object.hasOwn(publicControlPhase(erroredSuccess), 'success'),
+    false,
+  )
+})
+
 test(
   'Windows PowerShell 5.1 parses the real controller and admits the exact public manifest before download',
   { skip: process.platform !== 'win32' },
@@ -472,37 +648,63 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $controlPhase='version'
 try {
+[Console]::Out.Write('ENTRY'+[char]10); [Console]::Out.Flush()
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'powershell_version' }
+[Console]::Out.Write('VERSION_OK'+[char]10); [Console]::Out.Flush()
 $root='${root}'
 $tokens=$null; $parseErrors=$null
 $controlPhase='parser'
+[Console]::Out.Write('PARSER_BEGIN'+[char]10); [Console]::Out.Flush()
 $ast=[System.Management.Automation.Language.Parser]::ParseFile(([IO.Path]::Combine($root,'preflight.ps1')),[ref]$tokens,[ref]$parseErrors)
+[Console]::Out.Write('PARSER_RETURNED'+[char]10); [Console]::Out.Flush()
 if ($null -ne $parseErrors -and $parseErrors.Length -ne 0) { throw 'powershell_parse' }
 $controlPhase='functions'
 $names=@('Decode-ExternalUtf8','Read-ExternalPayload')
+[Console]::Out.Write('FUNCTION_SELECTION_BEGIN'+[char]10); [Console]::Out.Flush()
 $functions=@($ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $_.Name })
+[Console]::Out.Write('FUNCTION_SELECTION_RETURNED'+[char]10); [Console]::Out.Flush()
+[Console]::Out.Write('FUNCTION_UNIQUE_BEGIN'+[char]10); [Console]::Out.Flush()
 if ($functions.Count -ne 2 -or @($functions.Name | Select-Object -Unique).Count -ne 2) { throw 'public_functions' }
+[Console]::Out.Write('FUNCTION_UNIQUE_RETURNED'+[char]10); [Console]::Out.Flush()
+[Console]::Out.Write('FUNCTION_DEFINITION_BEGIN'+[char]10); [Console]::Out.Flush()
 $definition=[ScriptBlock]::Create(($functions | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine)
+[Console]::Out.Write('FUNCTION_DEFINITION_RETURNED'+[char]10); [Console]::Out.Flush()
+[Console]::Out.Write('FUNCTION_EVAL_BEGIN'+[char]10); [Console]::Out.Flush()
 . $definition
+[Console]::Out.Write('FUNCTION_EVAL_RETURNED'+[char]10); [Console]::Out.Flush()
 $controlPhase='legacy_array'
+[Console]::Out.Write('LEGACY_JSON_BEGIN'+[char]10); [Console]::Out.Flush()
 $legacy=@('[1,2]' | ConvertFrom-Json)
+[Console]::Out.Write('LEGACY_JSON_RETURNED'+[char]10); [Console]::Out.Flush()
 if ($legacy.Count -ne 1 -or $legacy[0] -isnot [array] -or $legacy[0].Count -ne 2) { throw 'legacy_array_control' }
 $controlPhase='direct_array'
+[Console]::Out.Write('DIRECT_JSON_BEGIN'+[char]10); [Console]::Out.Flush()
 $direct=ConvertFrom-Json -InputObject '[1,2]'
+[Console]::Out.Write('DIRECT_JSON_RETURNED'+[char]10); [Console]::Out.Flush()
 if ($direct -isnot [array] -or $direct.Count -ne 2) { throw 'direct_array_control' }
 $controlPhase='single_array'
+[Console]::Out.Write('SINGLE_JSON_BEGIN'+[char]10); [Console]::Out.Flush()
 $single=ConvertFrom-Json -InputObject '[1]'
+[Console]::Out.Write('SINGLE_JSON_RETURNED'+[char]10); [Console]::Out.Flush()
 if ($single -isnot [array] -or $single.Count -ne 1) { throw 'single_array_control' }
 $controlPhase='object_array'
+[Console]::Out.Write('OBJECT_JSON_BEGIN'+[char]10); [Console]::Out.Flush()
 $object=ConvertFrom-Json -InputObject '{"x":1}'
+[Console]::Out.Write('OBJECT_JSON_RETURNED'+[char]10); [Console]::Out.Flush()
 if ($object -is [array]) { throw 'object_array_control' }
 $controlPhase='manifest'
+[Console]::Out.Write('PAYLOAD_BEGIN'+[char]10); [Console]::Out.Flush()
 $payload=Read-ExternalPayload
+[Console]::Out.Write('PAYLOAD_RETURNED'+[char]10); [Console]::Out.Flush()
 if ($payload.files -isnot [array] -or $payload.files.Count -ne 85) { throw 'public_manifest_control' }
 $controlPhase='members'
+[Console]::Out.Write('MEMBERS_BEGIN'+[char]10); [Console]::Out.Flush()
 foreach ($file in $payload.files) { if ($file -is [array] -or $file.path -isnot [string] -or $file.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $file.bytes -le 0) { throw 'public_member_control' } }
+[Console]::Out.Write('MEMBERS_RETURNED'+[char]10); [Console]::Out.Flush()
 $controlPhase='executable'
+[Console]::Out.Write('EXECUTABLE_BEGIN'+[char]10); [Console]::Out.Flush()
 $executables=@($payload.files | Where-Object { $_.sha256 -eq '48232882cc5412f8c9e3ddb1b2b1dc50f7247f7f9444fde2bee5c5f010ffac8a' })
+[Console]::Out.Write('EXECUTABLE_RETURNED'+[char]10); [Console]::Out.Flush()
 if ($executables.Count -ne 1) { throw 'public_executable_control' }
 [Console]::Out.Write('{"object":"windowsPayloadControl","legacyWrapperCount":1,"directCount":2,"members":85,"parserErrors":0}')
 } catch {
@@ -516,6 +718,7 @@ if ($executables.Count -ne 1) { throw 'public_executable_control' }
     let output
     let failureCode
     let failureMetadata
+    let failurePhase
     try {
       output = execFileSync(
         join(
@@ -554,11 +757,21 @@ if ($executables.Count -ne 1) { throw 'public_executable_control' }
       )
     } catch (error) {
       // Never forward raw child errors, output, command text or environment values.
-      failureCode = publicControlFailureCode(error?.stdout)
+      failureCode = decodePublicControlError(error).failureCode
+      failurePhase = publicControlPhase(error)
       failureMetadata = publicExecFailureMetadata(error)
     }
-    if (failureCode)
+    if (failureCode) {
+      process.stdout.write(JSON.stringify(failurePhase) + '\n')
       throw Error(failureCode + ' ' + JSON.stringify(failureMetadata))
+    }
+    if (!decodePublicControlStream(output).success) {
+      process.stdout.write(
+        JSON.stringify(publicControlPhase({ stdout: output })) + '\n',
+      )
+      throw Error('powershell_public_payload_projection_failed')
+    }
+    output = output.slice(PUBLIC_PHASES.join('\n').length + 1)
     if (
       output.trim() !==
       '{"object":"windowsPayloadControl","legacyWrapperCount":1,"directCount":2,"members":85,"parserErrors":0}'

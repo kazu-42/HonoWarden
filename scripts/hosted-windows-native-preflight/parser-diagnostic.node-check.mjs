@@ -543,7 +543,7 @@ test('workflow diagnostic is isolated after the original failure and preserves F
   )
 })
 
-test('all frozen09 source inputs remain exact after reversing only the two SOURCE12 fixed-path compositions', async () => {
+test('unchanged frozen09 inputs remain exact and the SOURCE13 public fixture is independently pinned', async () => {
   const parent = [
     [
       'preflight.ps1',
@@ -562,8 +562,8 @@ test('all frozen09 source inputs remain exact after reversing only the two SOURC
     ],
     [
       'preflight.node-check.mjs',
-      20035,
-      'e06045bd6204653bf605638f87cb44ee00e40db33d667590cc73669d06612ebc',
+      28626,
+      '5838828d3c4eae34ec7264876109e00dcf0f56b423c2310d558c412daaec95de',
     ],
     [
       'preauth-native.cs',
@@ -615,15 +615,6 @@ test('all frozen09 source inputs remain exact after reversing only the two SOURC
           .replace(
             "([IO.Path]::Combine($root,'desktop-payload-manifest.json'))",
             "(Join-Path $root 'desktop-payload-manifest.json')",
-          ),
-      )
-    if (source === 'preflight.node-check.mjs')
-      raw = Buffer.from(
-        raw
-          .toString('utf8')
-          .replace(
-            "([IO.Path]::Combine($root,'preflight.ps1'))",
-            "(Join-Path $root 'preflight.ps1')",
           ),
       )
     assert.equal(raw.length, bytes)
