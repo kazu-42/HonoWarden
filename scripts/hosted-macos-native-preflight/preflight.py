@@ -64,6 +64,8 @@ WORKERD_BINARY_SHA = "1b652bc9930d82924f9b416a384df910bc667f88cfb72972a0b39532c9
 WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "runtime_binary_probe", "state_prepare", "build", "runtime_construct",
                          "runtime_ready", "runtime_loopback_validate", "d1_migrate", "d1_probe", "r2_probe", "http_probe"}
 WORKER_FAILURE_KINDS = {"type_error", "range_error", "syntax_error", "reference_error", "error", "unknown_exception",
+                        "miniflare_runtime_module_resolution_marker",
+                        "miniflare_runtime_module_evaluation_marker",
                         "miniflare_runtime_failure", "miniflare_runtime_stderr_present", "miniflare_runtime_ports_missing",
                         "miniflare_runtime_inspector_socket_missing", "miniflare_address_in_use", "binary_identity_unproved",
                         "binary_platform_unproved", "binary_digest_mismatch", "binary_file_changed",

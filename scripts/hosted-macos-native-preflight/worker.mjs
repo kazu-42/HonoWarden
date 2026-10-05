@@ -490,12 +490,38 @@ function runtimeFailureKind(error) {
       const nonWhitespaceSuffix = /\S/g
       nonWhitespaceSuffix.lastIndex = stderrPrefix.length
       if (nonWhitespaceSuffix.test(message.value))
-        return 'miniflare_runtime_stderr_present'
+        return nativeModuleMarkerKind(message.value, stderrPrefix.length)
     }
   } catch {
     // Descriptor failure supplies no diagnostic evidence.
   }
   return 'miniflare_runtime_failure'
+}
+
+function nativeModuleMarkerKind(message, suffixStart) {
+  // Observe public templates only; names and exception content never leave here.
+  const markers = [
+    [
+      /(?:^|(?<=\n)|(?<=: ))(?:No such module "[^"\r\n]{1,512}"\.\n {2}imported from "[^"\r\n]{1,512}"|Invalid module specifier "[^"\r\n]{1,512}"\.\n {2}imported from "[^"\r\n]{1,512}"\.)(?=$|\n)/g,
+      'miniflare_runtime_module_resolution_marker',
+    ],
+    [
+      /(?:^|(?<=\n)|(?<=: ))(?:Top-level await in module is not permitted at this time\.|Top-level await in module is unsettled\.)(?=$|\n)/g,
+      'miniflare_runtime_module_evaluation_marker',
+    ],
+  ]
+  let kind = 'miniflare_runtime_stderr_present'
+  let matches = 0
+  for (const [pattern, candidate] of markers) {
+    pattern.lastIndex = suffixStart
+    if (pattern.test(message)) {
+      matches += 1
+      if (matches !== 1 || pattern.test(message))
+        return 'miniflare_runtime_stderr_present'
+      kind = candidate
+    }
+  }
+  return kind
 }
 
 function failureKind(error) {

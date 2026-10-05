@@ -1518,5 +1518,408 @@ class WorkflowBootstrapTests(unittest.TestCase):
         self.assertIn("PREFLIGHT_EXECUTE_OUTCOME: ${{ steps.native.outcome }}", finish)
 
 
+class RuntimeNativeModuleMarkerTests(unittest.TestCase):
+    NO_SUCH_MODULE = 'No such module "fixture-module".\n  imported from "fixture-entry"'
+    INVALID_SPECIFIER = (
+        'Invalid module specifier "fixture-module".\n'
+        '  imported from "fixture-entry".'
+    )
+    AWAIT_DISALLOWED = "Top-level await in module is not permitted at this time."
+    AWAIT_UNSETTLED = "Top-level await in module is unsettled."
+    RESOLUTION_KIND = "miniflare_runtime_module_resolution_marker"
+    EVALUATION_KIND = "miniflare_runtime_module_evaluation_marker"
+    NEW_KINDS = (RESOLUTION_KIND, EVALUATION_KIND)
+
+    def classifier(self, body):
+        constants = (
+            "const [noSuchModule,invalidSpecifier,awaitDisallowed,awaitUnsettled]="
+            + json.dumps([
+                self.NO_SUCH_MODULE, self.INVALID_SPECIFIER,
+                self.AWAIT_DISALLOWED, self.AWAIT_UNSETTLED,
+            ]) + ";\n"
+        )
+        result = RuntimeFailureMessageTests().classifier(constants + body)
+        projected = json.dumps(result)
+        for sentinel in ["FICTIONAL_NATIVE_SECRET_18", "fictional-native.invalid"]:
+            self.assertTrue(
+                sentinel not in projected, "Classifier copied a fictional private field"
+            )
+        return result
+
+    def test_native_no_such_module_template_has_resolution_label(self):
+        result = self.classifier(
+            "return {kind:classify(new miniflareCoreErrorClass("
+            "'ERR_RUNTIME_FAILURE',stderrPrefix+noSuchModule))};"
+        )
+        self.assertEqual(result, {"kind": self.RESOLUTION_KIND})
+
+    def test_native_invalid_specifier_template_has_resolution_label(self):
+        result = self.classifier(
+            "return {kind:classify(new miniflareCoreErrorClass("
+            "'ERR_RUNTIME_FAILURE',stderrPrefix+invalidSpecifier))};"
+        )
+        self.assertEqual(result, {"kind": self.RESOLUTION_KIND})
+
+    def test_native_top_level_await_disallowed_has_evaluation_label(self):
+        result = self.classifier(
+            "return {kind:classify(new miniflareCoreErrorClass("
+            "'ERR_RUNTIME_FAILURE',stderrPrefix+awaitDisallowed))};"
+        )
+        self.assertEqual(result, {"kind": self.EVALUATION_KIND})
+
+    def test_native_top_level_await_unsettled_has_evaluation_label(self):
+        result = self.classifier(
+            "return {kind:classify(new miniflareCoreErrorClass("
+            "'ERR_RUNTIME_FAILURE',stderrPrefix+awaitUnsettled))};"
+        )
+        self.assertEqual(result, {"kind": self.EVALUATION_KIND})
+
+    def test_native_templates_accept_only_documented_start_and_end_boundaries(self):
+        result = self.classifier(r"""
+const variants=marker=>[marker,'\n'+marker,'public prefix: '+marker,
+  'public prefix\n'+marker+'\nother public text','public prefix: '+marker+'\n'];
+return {kinds:[noSuchModule,invalidSpecifier,awaitDisallowed,awaitUnsettled]
+  .flatMap(variants).map(tail=>classify(new miniflareCoreErrorClass(
+    'ERR_RUNTIME_FAILURE',stderrPrefix+tail)))};
+""")
+        self.assertEqual(result, {
+            "kinds": [self.RESOLUTION_KIND] * 10 + [self.EVALUATION_KIND] * 10
+        })
+
+    def test_native_resolution_truncation_punctuation_and_wrappers_do_not_match(self):
+        result = self.classifier(r"""
+const invalid=[
+  'No such module',noSuchModule.slice(0,-1),invalidSpecifier.slice(0,-1),
+  noSuchModule+'.',invalidSpecifier+'.',
+  noSuchModule.replace('".\n','"\n'),noSuchModule.replace('".\n','"..\n'),
+  noSuchModule.replace('\n  imported','\n imported'),
+  noSuchModule.replace('\n  imported','\n   imported'),
+  noSuchModule.replace('\n','\r\n'),noSuchModule.replace('No such','no such'),
+  'other '+noSuchModule,'other:'+noSuchModule,'other:  '+noSuchModule,
+  noSuchModule+' trailing',noSuchModule+' ',noSuchModule+'\r',
+  invalidSpecifier+' trailing',invalidSpecifier+' ',
+  'No such module "fixture-module".', 'Invalid module specifier "fixture-module".',
+  'imported from "fixture-entry"', '"'+noSuchModule+'"'
+];
+return {kinds:invalid.map(tail=>classify(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',stderrPrefix+tail)))};
+""")
+        self.assertEqual(result, {"kinds": ["miniflare_runtime_stderr_present"] * 23})
+
+    def test_native_evaluation_requires_whole_exact_sentences(self):
+        result = self.classifier(r"""
+const invalid=[awaitDisallowed.slice(0,-1),awaitUnsettled.slice(0,-1),
+  awaitDisallowed+'.',awaitUnsettled+'.',awaitDisallowed+' ',
+  awaitUnsettled+' trailing',
+  awaitDisallowed+'\r',awaitUnsettled.toLowerCase(),'other '+awaitDisallowed,
+  'other:'+awaitUnsettled,'other:  '+awaitUnsettled,
+  'Top-level await','Top-level await in module is unsettled',
+  '"'+awaitDisallowed+'"',awaitDisallowed.replace('module','modules')];
+return {kinds:invalid.map(tail=>classify(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',stderrPrefix+tail)))};
+""")
+        self.assertEqual(result, {"kinds": ["miniflare_runtime_stderr_present"] * 15})
+
+    def test_native_resolution_operands_are_nonempty_bounded_utf16_values(self):
+        result = self.classifier(r"""
+const missing=(module,referrer)=>'No such module "'+module+
+  '".\n  imported from "'+referrer+'"';
+const specifier=(module,referrer)=>'Invalid module specifier "'+module+
+  '".\n  imported from "'+referrer+'".';
+const valid=[missing('x','y'),missing('x'.repeat(512),'y'.repeat(512)),
+  missing('😀'.repeat(256),'😀'.repeat(256)),specifier('x'.repeat(512),'y'.repeat(512)),
+  specifier('😀'.repeat(256),'😀'.repeat(256))];
+const invalid=[];
+for(const template of [missing,specifier]){
+  for(const operand of [
+    '', 'x'.repeat(513),'😀'.repeat(256)+'x','x"y','x\ry','x\ny'
+  ]){
+    invalid.push(template(operand,'valid'),template('valid',operand));
+  }
+}
+return {valid:valid.map(tail=>classify(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',stderrPrefix+tail))),
+  invalid:invalid.map(tail=>classify(new miniflareCoreErrorClass(
+    'ERR_RUNTIME_FAILURE',stderrPrefix+tail)))};
+""")
+        self.assertEqual(result, {"valid": [self.RESOLUTION_KIND] * 5,
+                                  "invalid": ["miniflare_runtime_stderr_present"] * 24})
+
+    def test_native_duplicate_and_cross_category_matches_remain_unclassified(self):
+        result = self.classifier(r"""
+const tails=[noSuchModule+'\n'+noSuchModule,invalidSpecifier+'\n'+invalidSpecifier,
+  awaitDisallowed+'\n'+awaitDisallowed,awaitUnsettled+'\n'+awaitUnsettled,
+  noSuchModule+'\n'+invalidSpecifier,awaitDisallowed+'\n'+awaitUnsettled,
+  noSuchModule+'\n'+awaitDisallowed,awaitUnsettled+'\n'+invalidSpecifier,
+  noSuchModule+'\npublic prefix: '+noSuchModule,
+  awaitDisallowed+'\npublic prefix: '+awaitUnsettled,
+  noSuchModule+'\n'+awaitDisallowed+'\n'+invalidSpecifier];
+return {kinds:tails.map(tail=>classify(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',stderrPrefix+tail)))};
+""")
+        self.assertEqual(result, {"kinds": ["miniflare_runtime_stderr_present"] * 11})
+
+    def test_native_one_valid_template_among_nonmatching_text_is_not_ambiguous(self):
+        result = self.classifier(r"""
+const tails=['No such module\n'+noSuchModule,
+  awaitDisallowed+'\nTop-level await',
+  noSuchModule+'\n'+invalidSpecifier.slice(0,-1),
+  'public text\n'+awaitUnsettled+'\npublic text'];
+return {kinds:tails.map(tail=>classify(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',stderrPrefix+tail)))};
+""")
+        self.assertEqual(result, {
+            "kinds": [self.RESOLUTION_KIND, self.EVALUATION_KIND,
+                      self.RESOLUTION_KIND, self.EVALUATION_KIND]
+        })
+
+    def test_native_outer_sdk_class_and_own_code_gates_do_not_read_message(self):
+        result = self.classifier(r"""
+let codeGetters=0,messageGetters=0,descriptorReads=0,coercions=0;
+const guard=error=>{
+  Object.defineProperty(error,'message',{
+    get(){messageGetters++;return stderrPrefix+noSuchModule;},configurable:true
+  });
+  return new Proxy(error,{getOwnPropertyDescriptor(target,key){
+    if(key==='message')descriptorReads++;
+    return Reflect.getOwnPropertyDescriptor(target,key);
+  }});
+};
+const foreign=new Error();
+Object.defineProperty(foreign,'code',{value:'ERR_RUNTIME_FAILURE'});
+const absent=new miniflareCoreErrorClass('unused');delete absent.code;
+const inherited=new miniflareCoreErrorClass('unused');delete inherited.code;
+Object.setPrototypeOf(inherited,Object.create(miniflareCoreErrorClass.prototype,{
+  code:{value:'ERR_RUNTIME_FAILURE'}
+}));
+const accessor=new miniflareCoreErrorClass('unused');
+Object.defineProperty(accessor,'code',{
+  get(){codeGetters++;throw new Error(secretSentinel);}
+});
+const coercible={[Symbol.toPrimitive](){coercions++;return 'ERR_RUNTIME_FAILURE';}};
+const kinds=[foreign,absent,inherited,accessor,
+  new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE '),
+  new miniflareCoreErrorClass(new String('ERR_RUNTIME_FAILURE')),
+  new miniflareCoreErrorClass(coercible),
+  new miniflareCoreErrorClass('ERR_ADDRESS_IN_USE')].map(error=>classify(guard(error)));
+const unpinned=guard(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE'));
+miniflareCoreErrorClass=undefined;kinds.push(classify(unpinned));
+return {kinds,codeGetters,messageGetters,descriptorReads,coercions,helperCalls,
+  bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {
+            "kinds": ["error"] * 7 + ["miniflare_address_in_use", "error"],
+            "codeGetters": 0, "messageGetters": 0, "descriptorReads": 0,
+            "coercions": 0, "helperCalls": 0, "bytes": 0,
+        })
+
+    def test_native_message_requires_own_primitive_data_without_getters_or_coercion(
+        self,
+    ):
+        result = self.classifier(r"""
+let getters=0,coercions=0,lengthReads=0;
+const missing=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+const ownAccessor=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+Object.defineProperty(ownAccessor,'message',{
+  get(){getters++;return stderrPrefix+noSuchModule;}
+});
+const inherited=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+Object.setPrototypeOf(inherited,Object.create(miniflareCoreErrorClass.prototype,{
+  message:{value:stderrPrefix+noSuchModule}
+}));
+const inheritedAccessor=new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE');
+Object.setPrototypeOf(inheritedAccessor,
+  Object.create(miniflareCoreErrorClass.prototype,{
+    message:{get(){getters++;return stderrPrefix+noSuchModule;}}
+  }));
+const coercible={get length(){lengthReads++;return 1;},
+  toString(){coercions++;throw new Error(secretSentinel);},
+  valueOf(){coercions++;throw new Error(secretSentinel);},
+  [Symbol.toPrimitive](){coercions++;throw new Error(secretSentinel);}};
+const errors=[missing,ownAccessor,inherited,inheritedAccessor,
+  ...[new String(stderrPrefix+noSuchModule),coercible,null,undefined,
+    1,true,Symbol('fixture'),1n]
+    .map(message=>new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',message))];
+return {kinds:errors.map(classify),getters,coercions,lengthReads,
+  bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {
+            "kinds": ["miniflare_runtime_failure"] * 12,
+            "getters": 0, "coercions": 0, "lengthReads": 0, "bytes": 0,
+        })
+
+    def test_native_message_descriptor_failure_preserves_generic_closed_label(self):
+        result = self.classifier(r"""
+let messageDescriptors=0;
+const error=new Proxy(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',stderrPrefix+noSuchModule),{
+  getOwnPropertyDescriptor(target,key){
+    if(key==='message'){
+      messageDescriptors++;throw new Error(secretSentinel+' '+urlSentinel);
+    }
+    return Reflect.getOwnPropertyDescriptor(target,key);
+  }
+});
+return {kind:classify(error),messageDescriptors,bytes:byteLengthCalls()};
+""")
+        self.assertEqual(result, {
+            "kind": "miniflare_runtime_failure", "messageDescriptors": 1, "bytes": 0
+        })
+
+    def test_native_sdk_prefix_remains_exact_and_unknown_stderr_stays_generic(self):
+        result = self.classifier(r"""
+const wrong=[noSuchModule,' '+stderrPrefix+noSuchModule,
+  stderrPrefix.toLowerCase()+noSuchModule,stderrPrefix.replace('\n','\r\n')+noSuchModule,
+  stderrPrefix.slice(0,-1)+noSuchModule];
+return {wrong:wrong.map(message=>classify(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',message))),
+  unknown:classify(new miniflareCoreErrorClass(
+    'ERR_RUNTIME_FAILURE',stderrPrefix+'public unknown diagnostic')),
+  ports:classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',portsMessage)),
+  inspector:classify(new miniflareCoreErrorClass(
+    'ERR_RUNTIME_FAILURE',inspectorMessage))};
+""")
+        self.assertEqual(result, {
+            "wrong": ["miniflare_runtime_failure"] * 5,
+            "unknown": "miniflare_runtime_stderr_present",
+            "ports": "miniflare_runtime_ports_missing",
+            "inspector": "miniflare_runtime_inspector_socket_missing",
+        })
+
+    def test_native_messages_respect_ascii_utf16_and_utf8_caps_before_matching(self):
+        result = self.classifier(r"""
+const remaining=16384-stderrPrefix.length-noSuchModule.length-1;
+const ascii=stderrPrefix+'x'.repeat(remaining)+'\n'+noSuchModule;
+const acceptedAscii=classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',ascii));
+const beforeOver=byteLengthCalls();
+const overAscii=classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',ascii+'x'));
+const asciiOverMeasurements=byteLengthCalls()-beforeOver;
+const utf8=stderrPrefix+'é'.repeat(Math.floor(remaining/2))+
+  'x'.repeat(remaining%2)+'\n'+noSuchModule;
+const utf8Over=stderrPrefix+'é'.repeat(Math.floor(remaining/2))+
+  'x'.repeat(remaining%2+1)+'\n'+noSuchModule;
+const kinds=[utf8,utf8Over,stderrPrefix+'😀'.repeat(5000)+'\n'+noSuchModule,
+  stderrPrefix+'\ud800'.repeat(6000)+'\n'+noSuchModule]
+  .map(message=>classify(new miniflareCoreErrorClass('ERR_RUNTIME_FAILURE',message)));
+return {acceptedAscii,overAscii,asciiUnits:ascii.length,asciiOverMeasurements,kinds,
+  utf8UnderUtf16Cap:utf8Over.length<=16384};
+""")
+        self.assertEqual(result, {
+            "acceptedAscii": self.RESOLUTION_KIND,
+            "overAscii": "miniflare_runtime_failure", "asciiUnits": 16384,
+            "asciiOverMeasurements": 0,
+            "kinds": [self.RESOLUTION_KIND] + ["miniflare_runtime_failure"] * 3,
+            "utf8UnderUtf16Cap": True,
+        })
+
+    def test_native_operands_secret_urls_and_unknown_details_are_never_projected(self):
+        result = self.classifier(r"""
+const secret='FICTIONAL_NATIVE_SECRET_18';
+const url='https://fictional-native.invalid/module?token='+secret;
+const resolution='No such module "'+url+'".\n  imported from "'+secret+'"';
+return {resolution:classify(new miniflareCoreErrorClass(
+  'ERR_RUNTIME_FAILURE',stderrPrefix+resolution)),
+  evaluation:classify(new miniflareCoreErrorClass(
+    'ERR_RUNTIME_FAILURE',stderrPrefix+secret+'\n'+awaitUnsettled+'\n'+url)),
+  unknown:classify(new miniflareCoreErrorClass(
+    'ERR_RUNTIME_FAILURE',stderrPrefix+secret+' '+url)),
+  ambiguous:classify(new miniflareCoreErrorClass(
+    'ERR_RUNTIME_FAILURE',stderrPrefix+resolution+'\n'+awaitUnsettled))};
+""")
+        self.assertEqual(result, {
+            "resolution": self.RESOLUTION_KIND, "evaluation": self.EVALUATION_KIND,
+            "unknown": "miniflare_runtime_stderr_present",
+            "ambiguous": "miniflare_runtime_stderr_present",
+        })
+
+    def test_native_new_labels_are_terminal_frames_without_readiness_or_admission(
+        self,
+    ):
+        reader = WorkerReadinessTests()
+        for kind in self.NEW_KINDS:
+            with self.subTest(kind=kind):
+                frame = {
+                    "phase": "runtime_ready", "kind": kind,
+                    "binary": p.WORKER_BINARY_PROOF,
+                }
+                raw = json.dumps(frame).encode() + b"\n"
+                self.assertEqual(p.parse_worker_frame(raw), frame)
+                value, report, code = reader.read([raw[:9], raw[9:], b""], exited=1)
+                self.assertIsNone(value)
+                self.assertEqual(code, "worker_readiness_failed")
+                self.assertEqual(report["workerFailurePhase"], "runtime_ready")
+                self.assertEqual(report["workerFailureKind"], kind)
+                self.assertEqual(report["workerBinaryProof"], p.WORKER_BINARY_PROOF)
+                self.assertFalse(report["authenticated"])
+                self.assertFalse(report["credentialAdmission"])
+                self.assertTrue(
+                    {"workerReady", "d1Ready", "r2Ready", "port"}.isdisjoint(report)
+                )
+
+    def test_native_new_labels_survive_secondary_cleanup_failure_without_admission(
+        self,
+    ):
+        for kind in self.NEW_KINDS:
+            with self.subTest(kind=kind):
+                report = {
+                    "status": "pre_auth_blocked", "code": "worker_readiness_failed",
+                    "failureKind": "blocked", "workerFailurePhase": "runtime_ready",
+                    "workerFailureKind": kind,
+                    "workerBinaryProof": p.WORKER_BINARY_PROOF,
+                    "nativeExecuted": False,
+                    "authenticated": False, "credentialAdmission": False,
+                }
+                projected = p.escaped_error_projection(p.FinalizationFailure(
+                    p.finalization_projection(
+                        report, PermissionError("FICTIONAL_NATIVE_SECRET_18")
+                    )
+                ))
+                self.assertEqual(projected["status"], "cleanup_failed")
+                self.assertEqual(projected["code"], "worker_readiness_failed")
+                self.assertEqual(projected["failureKind"], "blocked")
+                self.assertEqual(projected["workerFailurePhase"], "runtime_ready")
+                self.assertEqual(projected["workerFailureKind"], kind)
+                self.assertEqual(projected["workerBinaryProof"], p.WORKER_BINARY_PROOF)
+                self.assertEqual(
+                    projected["cleanupFailureCodes"],
+                    ["cleanup_finalization_permission_denied"],
+                )
+                self.assertFalse(projected["cleanupComplete"])
+                self.assertFalse(projected["nativeExecuted"])
+                self.assertFalse(projected["authenticated"])
+                self.assertFalse(projected["credentialAdmission"])
+                p.apply_execute_outcome(projected, "success")
+                self.assertEqual(projected["status"], "cleanup_failed")
+                self.assertFalse(projected["credentialAdmission"])
+                self.assertTrue(
+                    "FICTIONAL_NATIVE_SECRET_18" not in json.dumps(projected)
+                )
+
+    def test_native_enum_refuses_raw_fields_unknown_and_partial_labels(self):
+        for kind in self.NEW_KINDS:
+            with self.subTest(kind=kind):
+                frame = {"phase": "runtime_ready", "kind": kind}
+                for extra in [
+                    {"stderr": "FICTIONAL_NATIVE_SECRET_18"},
+                    {"message": self.NO_SUCH_MODULE},
+                ]:
+                    with self.assertRaisesRegex(p.Blocked, "worker_projection_invalid"):
+                        p.parse_worker_frame(json.dumps({**frame, **extra}).encode())
+                for invalid in [
+                    kind + "_extra", True, [], "FICTIONAL_NATIVE_SECRET_18"
+                ]:
+                    with self.assertRaisesRegex(p.Blocked, "worker_projection_invalid"):
+                        p.parse_worker_frame(
+                            json.dumps({**frame, "kind": invalid}).encode()
+                        )
+                with self.assertRaisesRegex(
+                    p.Blocked, "worker_failure_projection_invalid"
+                ):
+                    p.public_report({
+                        "workerFailureKind": kind,
+                        "authenticated": False, "credentialAdmission": False,
+                    })
+
+
 if __name__ == "__main__":
     unittest.main()
