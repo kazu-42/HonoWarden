@@ -476,7 +476,7 @@ if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -n
 $root='${root}'
 $tokens=$null; $parseErrors=$null
 $controlPhase='parser'
-$ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'preflight.ps1'),[ref]$tokens,[ref]$parseErrors)
+$ast=[System.Management.Automation.Language.Parser]::ParseFile(([IO.Path]::Combine($root,'preflight.ps1')),[ref]$tokens,[ref]$parseErrors)
 if ($null -ne $parseErrors -and $parseErrors.Length -ne 0) { throw 'powershell_parse' }
 $controlPhase='functions'
 $names=@('Decode-ExternalUtf8','Read-ExternalPayload')

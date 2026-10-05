@@ -48,7 +48,7 @@ function Decode-ExternalUtf8([string]$Value,[int]$Maximum=16384) {
   return [Text.UTF8Encoding]::new($false,$true).GetString($bytes)
 }
 function Read-ExternalPayload {
-  $encoded=Get-Content -LiteralPath (Join-Path $root 'desktop-payload-manifest.json') -Raw | ConvertFrom-Json
+  $encoded=Get-Content -LiteralPath ([IO.Path]::Combine($root,'desktop-payload-manifest.json')) -Raw | ConvertFrom-Json
   if ($encoded.schemaVersion -ne 1 -or $encoded.encoding -cne 'canonical-base64-utf8') { throw 'payload_encoding' }
   $text=Decode-ExternalUtf8 $encoded.payloadBase64
   $sha=[Security.Cryptography.SHA256]::Create()

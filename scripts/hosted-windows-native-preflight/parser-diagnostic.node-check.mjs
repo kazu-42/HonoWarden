@@ -31,6 +31,82 @@ const input = {
   root: "C:\\reviewed space\\O'Brien\\日本語😀",
 }
 
+test('SOURCE12 uses only fixed relative file names with IO path construction at three approved sites', async () => {
+  const command = Buffer.from(
+    buildDiagnosticInvocation(input).args[4],
+    'base64',
+  ).toString('utf16le')
+  assert.match(
+    command,
+    /\$path=\[IO\.Path\]::Combine\(\$root,'preflight\.ps1'\)/,
+  )
+  assert.doesNotMatch(command, /Join-Path/)
+  const fixture = await readFile(
+    new URL('./preflight.node-check.mjs', import.meta.url),
+    'utf8',
+  )
+  assert.equal(
+    fixture.includes(
+      "ParseFile(([IO.Path]::Combine($root,'preflight.ps1')),[ref]$tokens,[ref]$parseErrors)",
+    ),
+    true,
+  )
+  assert.equal(
+    fixture.includes("ParseFile((Join-Path $root 'preflight.ps1')"),
+    false,
+  )
+  const controller = await readFile(
+    new URL('./preflight.ps1', import.meta.url),
+    'utf8',
+  )
+  assert.equal(
+    controller.includes(
+      "Get-Content -LiteralPath ([IO.Path]::Combine($root,'desktop-payload-manifest.json')) -Raw | ConvertFrom-Json",
+    ),
+    true,
+  )
+  assert.equal(
+    controller.includes("Join-Path $root 'desktop-payload-manifest.json'"),
+    false,
+  )
+  assert.equal(
+    controller.includes(
+      "$statePath=Join-Path $env:RUNNER_TEMP 'honowarden-windows-preauth-state.json'",
+    ),
+    true,
+  )
+})
+
+test('SOURCE12 lexical constructor is the only diagnostic delta and cannot relax absolute root admission', async () => {
+  const source = await readFile(
+    new URL('./parser-diagnostic.mjs', import.meta.url),
+    'utf8',
+  )
+  const inverse = source.replace(
+    "$path=[IO.Path]::Combine($root,'preflight.ps1')",
+    "$path=Join-Path $root 'preflight.ps1'",
+  )
+  assert.notEqual(inverse, source)
+  assert.equal(
+    createHash('sha256').update(inverse).digest('hex'),
+    '3efefc6c97ba8256ff61b0c6bd5ed68630240bfe60f56c5e164018a999faa93b',
+  )
+  for (const root of [
+    'relative',
+    'C:drive-relative',
+    '\\\\server\\share',
+    'C:\\root\u0000',
+  ]) {
+    let calls = 0
+    const report = runDiagnostic({ ...input, root }, () => {
+      calls++
+    })
+    assert.equal(calls, 0)
+    assert.equal(report.classification, 'diagnostic_admission_rejected')
+    assert.equal(report.nativeAdmission, false)
+  }
+})
+
 test('SOURCE11 nine prefixes separate joined and existence regions without ambiguous shortcuts', () => {
   for (let count = 0; count <= phases.length; count++) {
     assert.deepEqual(decodeDiagnosticPrefix(stream(count)), {
@@ -56,14 +132,14 @@ test('SOURCE11 nine prefixes separate joined and existence regions without ambig
   }
 })
 
-test('SOURCE11 brackets exactly unchanged joining and one existence call and preserves all other source10 bytes', async () => {
+test('SOURCE11 brackets fixed path construction and one existence call and preserves all other source10 bytes', async () => {
   const command = Buffer.from(
     buildDiagnosticInvocation(input).args[4],
     'base64',
   ).toString('utf16le')
   const statements = [
     "[Console]::Out.Write('PATH_BEGIN'+[char]10); [Console]::Out.Flush()",
-    "$path=Join-Path $root 'preflight.ps1'",
+    "$path=[IO.Path]::Combine($root,'preflight.ps1')",
     "[Console]::Out.Write('PATH_JOINED'+[char]10); [Console]::Out.Flush()",
     "[Console]::Out.Write('EXISTS_BEGIN'+[char]10); [Console]::Out.Flush()",
     '$exists=[IO.File]::Exists($path)',
@@ -78,13 +154,17 @@ test('SOURCE11 brackets exactly unchanged joining and one existence call and pre
     assert.equal(command.split(statement).length - 1, 1)
     previous = position
   }
-  assert.equal(command.split('Join-Path').length - 1, 1)
+  assert.equal(command.split('[IO.Path]::Combine').length - 1, 1)
+  assert.equal(command.split('Join-Path').length - 1, 0)
   assert.equal(command.split('[IO.File]::Exists').length - 1, 1)
   const source = await readFile(
     new URL('./parser-diagnostic.mjs', import.meta.url),
     'utf8',
   )
-  let inverse = source
+  let inverse = source.replace(
+    "$path=[IO.Path]::Combine($root,'preflight.ps1')",
+    "$path=Join-Path $root 'preflight.ps1'",
+  )
   for (const phase of ['PATH_JOINED', 'EXISTS_BEGIN', 'EXISTS_RETURNED']) {
     inverse = inverse.replace(`  '${phase}',\n`, '')
     inverse = inverse.replace(
@@ -463,7 +543,7 @@ test('workflow diagnostic is isolated after the original failure and preserves F
   )
 })
 
-test('all frozen09 source inputs except publication metadata and additive workflow remain exact', async () => {
+test('all frozen09 source inputs remain exact after reversing only the two SOURCE12 fixed-path compositions', async () => {
   const parent = [
     [
       'preflight.ps1',
@@ -527,7 +607,25 @@ test('all frozen09 source inputs except publication metadata and additive workfl
     ],
   ]
   for (const [source, bytes, sha256] of parent) {
-    const raw = await readFile(new URL(`./${source}`, import.meta.url))
+    let raw = await readFile(new URL(`./${source}`, import.meta.url))
+    if (source === 'preflight.ps1')
+      raw = Buffer.from(
+        raw
+          .toString('utf8')
+          .replace(
+            "([IO.Path]::Combine($root,'desktop-payload-manifest.json'))",
+            "(Join-Path $root 'desktop-payload-manifest.json')",
+          ),
+      )
+    if (source === 'preflight.node-check.mjs')
+      raw = Buffer.from(
+        raw
+          .toString('utf8')
+          .replace(
+            "([IO.Path]::Combine($root,'preflight.ps1'))",
+            "(Join-Path $root 'preflight.ps1')",
+          ),
+      )
     assert.equal(raw.length, bytes)
     assert.equal(createHash('sha256').update(raw).digest('hex'), sha256)
   }

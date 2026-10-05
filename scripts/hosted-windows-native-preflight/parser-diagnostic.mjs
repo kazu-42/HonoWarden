@@ -70,7 +70,7 @@ try {
   [Console]::Out.Write('VERSION_OK'+[char]10); [Console]::Out.Flush()
   $root='${root}'
   [Console]::Out.Write('PATH_BEGIN'+[char]10); [Console]::Out.Flush()
-  $path=Join-Path $root 'preflight.ps1'
+  $path=[IO.Path]::Combine($root,'preflight.ps1')
   [Console]::Out.Write('PATH_JOINED'+[char]10); [Console]::Out.Flush()
   [Console]::Out.Write('EXISTS_BEGIN'+[char]10); [Console]::Out.Flush()
   $exists=[IO.File]::Exists($path)
