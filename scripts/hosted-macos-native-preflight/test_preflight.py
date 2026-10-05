@@ -2262,3 +2262,979 @@ process.stdout.write(JSON.stringify({
                     result["counts"]["writeFile"],
                     1 if failure == "write_failure" else 0,
                 )
+
+
+class WorkerDifferentialTests(unittest.TestCase):
+    """Pure controls for the two worker roles and their one shared input."""
+
+    def patch_stack(self):
+        from contextlib import ExitStack
+
+        return ExitStack()
+
+    def test_shared_fixture_seed_and_encoding_abi(self):
+        import uuid
+
+        options = p.make_fixture_seed()
+        self.assertEqual(
+            set(options), {"databaseId", "r2BucketId", "tokenSecret"}
+        )
+        for key in ["databaseId", "r2BucketId"]:
+            self.assertEqual(uuid.UUID(options[key]).version, 4)
+        self.assertRegex(options["tokenSecret"], r"^[0-9a-f]{64}$")
+        raw = p.encode_fixture_input(options, None)
+        expected = {
+            "companyBundleSha256": None, "options": options,
+            "schema": "honowarden.native-preauth-fixture.v1",
+        }
+        self.assertEqual(
+            raw, json.dumps(
+                expected, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=True,
+            ).encode("ascii"),
+        )
+        self.assertLessEqual(len(raw), 512)
+        self.assertFalse(raw.endswith(b"\n"))
+
+    def test_launcher_worker_input_keeps_stdin_for_exact_worker(self):
+        node = "/fictional/node"
+        arguments = [
+            node, str(p.HERE / "worker.mjs"),
+            "/fictional/company", "/fictional/root", "minimal",
+        ]
+        with self.patch_stack() as stack:
+            stack.enter_context(patch.object(launch.sys, "argv", [
+                "launch", "--worker-input", *arguments,
+            ]))
+            stack.enter_context(patch.object(launch, "await_go", return_value=True))
+            execute = stack.enter_context(patch.object(launch.os, "execve"))
+            opened = stack.enter_context(patch.object(launch.os, "open"))
+            duplicated = stack.enter_context(patch.object(launch.os, "dup2"))
+            self.assertIn(launch.main(), (None, 0))
+        execute.assert_called_once_with(node, arguments, launch.os.environ)
+        opened.assert_not_called()
+        duplicated.assert_not_called()
+
+    OPTIONS = {
+        "databaseId": "11111111-1111-4111-8111-111111111111",
+        "r2BucketId": "22222222-2222-4222-8222-222222222222",
+        "tokenSecret": "a" * 64,
+    }
+    BUNDLE_SHA = "b" * 64
+
+    def test_encoder_rejects_wrong_types_keys_uuid_token_and_digest(self):
+        bad = [None, [], {**self.OPTIONS, "extra": "private"}]
+        for key, value in [
+            ("databaseId", "1" * 36), ("r2BucketId", True),
+            ("tokenSecret", "A" * 64), ("tokenSecret", "a" * 63),
+        ]:
+            bad.append({**self.OPTIONS, key: value})
+        for options in bad:
+            with self.subTest(options=options):
+                with self.assertRaises(p.Blocked):
+                    p.encode_fixture_input(options, None)
+        for digest in [True, 1, "B" * 64, "b" * 63, []]:
+            with self.subTest(digest=digest):
+                with self.assertRaises(p.Blocked):
+                    p.encode_fixture_input(self.OPTIONS, digest)
+        raw = p.encode_fixture_input(self.OPTIONS, self.BUNDLE_SHA)
+        self.assertEqual(json.loads(raw)["options"], self.OPTIONS)
+        self.assertLessEqual(len(raw), 512)
+
+    def test_launcher_worker_input_flag_is_a_closed_exact_worker_gate(self):
+        good = [
+            "/fictional/node", str(p.HERE / "worker.mjs"),
+            "/fictional/company", "/fictional/root", "company",
+        ]
+        bad = [good + ["extra"]]
+        for index, value in [
+            (0, "node"), (0, "/fictional/sandbox-exec"),
+            (1, "/fictional/worker.mjs"), (2, "company"),
+            (3, "root"), (4, "desktop"),
+        ]:
+            arguments = good.copy()
+            arguments[index] = value
+            bad.append(arguments)
+        for arguments in bad:
+            with self.patch_stack() as stack:
+                stack.enter_context(self.subTest(arguments=arguments))
+                stack.enter_context(patch.object(launch.sys, "argv", [
+                    "launch", "--worker-input", *arguments,
+                ]))
+                stack.enter_context(patch.object(
+                    launch, "await_go", return_value=True,
+                ))
+                execute = stack.enter_context(patch.object(launch.os, "execve"))
+                opened = stack.enter_context(patch.object(launch.os, "open"))
+                self.assertEqual(launch.main(), 1)
+                execute.assert_not_called()
+                opened.assert_not_called()
+
+    def test_gated_worker_roles_register_before_go_and_keep_input_open(self):
+        for role, mode in [
+            ("worker_minimal", "minimal"), ("worker_company", "company"),
+        ]:
+            with self.subTest(role=role):
+                worker = MagicMock(pid=71)
+                worker.stdin.closed = False
+                state = {"children": []}
+                events = []
+                identity = {
+                    "uid": p.os.getuid(), "pgid": 71, "session": 71,
+                    "start": "fictional-public-start",
+                }
+
+                def persist(marker, value):
+                    self.assertEqual(value["children"][0]["role"], role)
+                    events.append("persist")
+
+                worker.stdin.write.side_effect = lambda _: events.append("go")
+                with self.patch_stack() as stack:
+                    opened = stack.enter_context(patch.object(
+                        p.subprocess, "Popen", return_value=worker,
+                    ))
+                    stack.enter_context(patch.object(
+                        p, "process_identity", return_value=identity,
+                    ))
+                    stack.enter_context(patch.object(
+                        p, "update_private", side_effect=persist,
+                    ))
+                    stack.enter_context(patch.object(p, "PROCESSES", []))
+                    stopped = stack.enter_context(patch.object(p, "stop_group"))
+                    p.gated_launch([
+                        "/fictional/node", str(p.HERE / "worker.mjs"),
+                        "/fictional/company", "/fictional/root", mode,
+                    ], role, {}, state, Path("/fictional/marker"), p.subprocess.PIPE)
+                self.assertEqual(events, ["persist", "go"])
+                command = opened.call_args.args[0]
+                self.assertIn("--worker-input", command)
+                self.assertIn("node", state["children"][0]["images"])
+                self.assertNotIn("sandbox-exec", state["children"][0]["images"])
+                worker.stdin.close.assert_not_called()
+                stopped.assert_not_called()
+
+    def control_frame(self, raw, clock=10):
+        worker = MagicMock()
+        worker.poll.return_value = None
+        worker.stdout.fileno.return_value = 71
+        chunks = iter(bytes([byte]) for byte in raw)
+        report = {}
+        with self.patch_stack() as stack:
+            stack.enter_context(patch.object(p.time, "monotonic", return_value=clock))
+            stack.enter_context(patch.object(p, "time_budget", return_value=0.1))
+            stack.enter_context(patch.object(
+                p.select, "select", return_value=([worker.stdout], [], []),
+            ))
+            stack.enter_context(patch.object(
+                p.os, "read", side_effect=lambda *_: next(chunks, b""),
+            ))
+            result = p.read_worker_control(worker, 55, report)
+        return result, report
+
+    def test_control_frames_are_closed_public_objects_and_chunk_safe(self):
+        ack = {"syntheticInput": "ready"}
+        canary = {
+            "canary": "public_worker_ready",
+            "companyBundleSha256": self.BUNDLE_SHA,
+            "binary": p.WORKER_BINARY_PROOF,
+        }
+        ready = {
+            "port": 8123, "d1": True, "r2": True, "worker": True,
+            "binary": p.WORKER_BINARY_PROOF,
+        }
+        for frame in [ack, canary, ready]:
+            with self.subTest(frame=frame):
+                result, report = self.control_frame(
+                    json.dumps(frame).encode() + b"\n",
+                )
+                self.assertEqual(result, frame)
+                self.assertNotIn("minimalWorkerControl", report)
+        bad = [
+            b'{"syntheticInput":"ready","syntheticInput":"ready"}\n',
+            b'{"syntheticInput":"ready","tokenSecret":"private"}\n',
+            json.dumps({**canary, "companyBundleSha256": "B" * 64}).encode()
+            + b"\n",
+        ]
+        for raw in bad:
+            with self.subTest(raw=raw), self.assertRaises(p.Blocked):
+                self.control_frame(raw)
+
+    def test_control_eof_limit_deadline_and_failure_phases_stop(self):
+        for raw in [b"", b'{"syntheticInput":"ready"}', b"x" * 1025]:
+            with self.subTest(raw=raw[:32]), self.assertRaises(p.Blocked):
+                self.control_frame(raw)
+        with self.assertRaisesRegex(p.Blocked, "worker_readiness_deadline"):
+            self.control_frame(b'{"syntheticInput":"ready"}\n', clock=55)
+        for phase in [
+            "fixture_input", "minimal_http_probe", "minimal_runtime_dispose",
+            "bundle_restore",
+        ]:
+            with self.subTest(phase=phase):
+                frame = {"phase": phase, "kind": "error"}
+                with self.assertRaisesRegex(p.Blocked, "worker_readiness_failed"):
+                    self.control_frame(json.dumps(frame).encode() + b"\n")
+        # Exit can happen between the first select and poll. Drain only the
+        # already buffered public frame within the original deadline.
+        canary = {
+            "canary": "public_worker_ready",
+            "companyBundleSha256": self.BUNDLE_SHA,
+            "binary": p.WORKER_BINARY_PROOF,
+        }
+        failure = {"phase": "minimal_http_probe", "kind": "error"}
+        for frame in [canary, failure, None]:
+            with self.subTest(exit_frame=frame):
+                worker = MagicMock()
+                worker.poll.return_value = 0
+                raw = json.dumps(frame).encode() + b"\n" if frame else b""
+                chunks = iter(bytes([byte]) for byte in raw)
+                calls = []
+
+                def selected(*args):
+                    calls.append(args[-1])
+                    if len(calls) == 1 or frame is None:
+                        return [], [], []
+                    return [worker.stdout], [], []
+
+                with self.patch_stack() as stack:
+                    stack.enter_context(patch.object(
+                        p.time, "monotonic", return_value=10,
+                    ))
+                    stack.enter_context(patch.object(
+                        p, "time_budget", return_value=0.1,
+                    ))
+                    stack.enter_context(patch.object(
+                        p.select, "select", side_effect=selected,
+                    ))
+                    stack.enter_context(patch.object(
+                        p.os, "read", side_effect=lambda *_: next(chunks, b""),
+                    ))
+                    if frame is canary:
+                        self.assertEqual(
+                            p.read_worker_control(worker, 55, {}), canary,
+                        )
+                    else:
+                        expected = "worker_readiness_failed" if frame else (
+                            "worker_exited_without_readiness"
+                        )
+                        with self.assertRaisesRegex(p.Blocked, expected):
+                            p.read_worker_control(worker, 55, {})
+                self.assertEqual(calls[1], 0)
+
+    def pipeline(self, failure=None):
+        clock = [10]
+        events, launches, sends, handles = [], [], [], []
+        report, state = {}, {"children": []}
+        ack = {"syntheticInput": "ready"}
+        canary = {
+            "canary": "public_worker_ready",
+            "companyBundleSha256": self.BUNDLE_SHA,
+            "binary": p.WORKER_BINARY_PROOF,
+        }
+        ready = {
+            "port": 8123, "d1": True, "r2": True, "worker": True,
+            "binary": p.WORKER_BINARY_PROOF,
+        }
+        frames = iter([ack, canary, ack, ready])
+
+        def gate(arguments, role, env, registry, marker, stdout):
+            self.assertEqual(p.STEP_END, 55)
+            if role == "worker_company":
+                self.assertEqual(events[-1], "retire")
+                self.assertEqual(registry["children"], [])
+            events.append(role)
+            launches.append((arguments, role, env))
+            worker = MagicMock(pid=71 + len(handles))
+            worker.poll.return_value = None
+            worker.stdin.closed = False
+            worker.stdin.write.side_effect = lambda raw: sends.append(raw)
+            worker.stdin.close.side_effect = lambda: setattr(
+                worker.stdin, "closed", True,
+            )
+
+            def wait(**kwargs):
+                events.append("wait")
+                self.assertLessEqual(kwargs["timeout"], 45)
+                if failure == "wait_permission":
+                    raise PermissionError("fictional")
+                return 1 if failure == "nonzero" else 0
+
+            worker.wait.side_effect = wait
+            if failure == "input_pipe":
+                worker.stdin.write.side_effect = BrokenPipeError("fictional")
+            handles.append(worker)
+            p.PROCESSES.append(worker)
+            registry["children"].append({"pid": worker.pid, "role": role})
+            return worker
+
+        def control(worker, end, projection):
+            self.assertEqual(end, 55)
+            self.assertEqual(p.STEP_END, 55)
+            frame = next(frames)
+            if len(handles) == 1 and not sends:
+                if failure == "ack":
+                    return {"syntheticInput": "wrong"}
+                if failure == "eof":
+                    raise p.Blocked("worker_readiness_eof")
+            if frame is canary and failure == "canary":
+                return {"canary": "public_worker_ready"}
+            return frame
+
+        def stop(worker):
+            events.append("reap")
+            if failure == "reap_permission":
+                raise PermissionError("fictional")
+            if failure == "orphan":
+                raise p.Blocked("owned_process_stop_unproved")
+            if failure == "expired":
+                clock[0] = 55
+
+        def persist(marker, registry):
+            events.append("retire")
+            self.assertEqual(registry["children"], [])
+            if failure == "marker":
+                raise p.Blocked("marker_retirement_unproved")
+
+        error = result = None
+        with self.patch_stack() as stack:
+            stack.enter_context(patch.object(p, "STEP_END", 270))
+            stack.enter_context(patch.object(p, "PROCESSES", []))
+            stack.enter_context(patch.object(
+                p.time, "monotonic", side_effect=lambda: clock[0],
+            ))
+            stack.enter_context(patch.object(
+                p, "time_budget", side_effect=lambda cap: cap,
+            ))
+            stack.enter_context(patch.object(
+                p, "make_fixture_seed", return_value=self.OPTIONS.copy(),
+            ))
+            stack.enter_context(patch.object(p, "gated_launch", side_effect=gate))
+            stack.enter_context(patch.object(
+                p, "read_worker_control", side_effect=control,
+            ))
+            stack.enter_context(patch.object(p, "stop_group", side_effect=stop))
+            stack.enter_context(patch.object(p, "update_private", side_effect=persist))
+            try:
+                result = p.run_worker_differential(
+                    "/fictional/node", Path("/fictional/company"),
+                    Path("/fictional/root"), {"PATH": "/fictional"},
+                    state, Path("/fictional/marker"), report,
+                )
+            except Exception as caught:
+                error = caught
+            self.assertEqual(p.STEP_END, 270)
+            retained = p.PROCESSES.copy()
+        return {
+            "events": events, "launches": launches, "sends": sends,
+            "report": report, "state": state, "handles": handles,
+            "retained": retained, "error": error, "result": result,
+        }
+
+    def test_two_roles_share_seed_deadline_and_reap_before_second_gate(self):
+        result = self.pipeline()
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["events"], [
+            "worker_minimal", "wait", "reap", "retire", "worker_company",
+        ])
+        documents = [json.loads(raw) for raw in result["sends"]]
+        self.assertEqual([row["options"] for row in documents], [
+            self.OPTIONS, self.OPTIONS,
+        ])
+        self.assertEqual([row["companyBundleSha256"] for row in documents], [
+            None, self.BUNDLE_SHA,
+        ])
+        self.assertEqual(result["report"]["minimalWorkerControl"],
+                         "public_worker_ready_and_reaped")
+        self.assertEqual(result["retained"], result["handles"][1:])
+        for worker in result["handles"]:
+            worker.stdin.flush.assert_called_once()
+            worker.stdin.close.assert_called_once()
+        private = json.dumps({
+            "launches": result["launches"], "report": result["report"],
+            "state": result["state"],
+        })
+        for value in self.OPTIONS.values():
+            self.assertNotIn(value, private)
+
+    def test_nonzero_permission_or_orphan_stops_before_company_launch(self):
+        for failure in ["nonzero", "wait_permission", "orphan", "reap_permission"]:
+            with self.subTest(failure=failure):
+                result = self.pipeline(failure)
+                self.assertIsNotNone(result["error"])
+                self.assertEqual(len(result["launches"]), 1)
+                self.assertNotIn("minimalWorkerControl", result["report"])
+                self.assertEqual(len(result["state"]["children"]), 1)
+
+    def test_failed_ack_eof_or_input_pipe_stops_and_keeps_owned_handle(self):
+        for failure in ["ack", "eof", "input_pipe"]:
+            with self.subTest(failure=failure):
+                result = self.pipeline(failure)
+                self.assertIsNotNone(result["error"])
+                self.assertEqual(len(result["launches"]), 1)
+                self.assertEqual(result["sends"], [])
+                self.assertEqual(result["retained"], result["handles"])
+                result["handles"][0].stdin.close.assert_not_called()
+
+    def test_retirement_marker_write_failure_stops_second_gate(self):
+        incomplete = self.pipeline("canary")
+        self.assertIsNotNone(incomplete["error"])
+        self.assertEqual(len(incomplete["launches"]), 1)
+        self.assertNotIn("reap", incomplete["events"])
+        result = self.pipeline("marker")
+        self.assertIsNotNone(result["error"])
+        self.assertEqual(len(result["launches"]), 1)
+        self.assertEqual(result["events"][-2:], ["reap", "retire"])
+
+    def test_elapsed_original_window_cannot_be_reset_for_company(self):
+        result = self.pipeline("expired")
+        self.assertIsInstance(result["error"], p.Blocked)
+        self.assertIn("worker_readiness_deadline", str(result["error"]))
+        self.assertEqual(len(result["launches"]), 1)
+
+    def test_public_projection_accepts_only_reaped_control_and_no_seed(self):
+        report = {"authenticated": False, "credentialAdmission": False}
+        allowed = {**report, "minimalWorkerControl":
+                   "public_worker_ready_and_reaped"}
+        self.assertEqual(p.public_report(allowed), allowed)
+        for delta in [
+            {"minimalWorkerControl": "public_worker_ready_and_disposed"},
+            {"minimalWorkerControl": True}, {"options": self.OPTIONS},
+            {"tokenSecret": self.OPTIONS["tokenSecret"]},
+        ]:
+            with self.subTest(delta=delta), self.assertRaises(p.Blocked):
+                p.public_report({**report, **delta})
+
+
+class WorkerFixtureInputTests(unittest.TestCase):
+    """Run only source-extracted pure helpers with fictitious I/O in Node VM."""
+
+    def test_full_worker_initializes_fixture_constants_before_first_startup(self):
+        import re
+
+        source = (p.HERE / "worker.mjs").read_text(encoding="utf-8")
+        invocation = "\nstartup().catch(emitFailure)"
+        self.assertEqual(source.count(invocation), 1)
+        self.assertEqual(source[source.index(invocation):].strip(),
+                         "startup().catch(emitFailure)")
+        before = source[:source.index(invocation)]
+        self.assertLess(len(before.encode()), 65536)
+        for name in [
+            "FIXTURE_SCHEMA", "FIXTURE_LIMIT", "PUBLIC_BUNDLE_LIMIT",
+            "MINIMAL_BODY", "MINIMAL_PATH", "MINIMAL_SCRIPT",
+        ]:
+            self.assertEqual(len(re.findall(
+                r"(?m)^const " + name + r"(?: =|\n)", before,
+            )), 1)
+        # Strip only this closed stdlib import block. No SDK/module evaluation
+        # is enabled; the original initialization and startup source stay intact.
+        imports = re.compile(
+            r"(?m)^import (?:\{[^}]{1,512}\}|[A-Za-z]+) "
+            r"from '(node:[a-z_/]+)'\n",
+        )
+        modules = [match.group(1) for match in imports.finditer(before)]
+        self.assertEqual(modules, [
+            "node:crypto", "node:child_process", "node:buffer", "node:fs",
+            "node:module", "node:fs/promises", "node:path", "node:process",
+            "node:perf_hooks", "node:timers", "node:url",
+        ])
+        prefix = imports.sub("", before)
+        self.assertNotRegex(prefix, r"(?m)^import ")
+        script = r"""
+const vm = require('node:vm')
+const assert = require('node:assert/strict')
+const prefix = PREFIX
+const options = {
+  databaseId: '11111111-1111-4111-8111-111111111111',
+  r2BucketId: '22222222-2222-4222-8222-222222222222',
+  tokenSecret: 'a'.repeat(64),
+}
+const wire = (sha) => Buffer.from(JSON.stringify({
+  companyBundleSha256: sha, options,
+  schema: 'honowarden.native-preauth-fixture.v1',
+}))
+async function main() {
+  for (const [mode, raw, expectedAck, expectedRequires] of [
+    ['minimal', null, 1, 0], ['company', null, 1, 0],
+    ['unknown', null, 0, 0],
+    ['minimal', wire(null), 1, 1], ['company', wire('b'.repeat(64)), 1, 1],
+  ]) {
+    const frames = [], exits = [], counts = { require: 0, imports: 0 }
+    const poison = () => { throw Error('unapproved_operation') }
+    // The iterator produces bytes or EOF immediately, with no timeout or sleep.
+    const stdin = {
+      [Symbol.asyncIterator]() {
+        let used = false
+        return { next() {
+          if (used || raw === null) return Promise.resolve({ done: true })
+          used = true
+          return Promise.resolve({ value: raw, done: false })
+        } }
+      },
+    }
+    const sandbox = {
+      Buffer, Uint8Array, URL, counts,
+      process: {
+        argv: ['node', '/fixture/worker.mjs', '/company', '/root', mode],
+        stdin, stdout: { write(raw, callback) {
+          frames.push(JSON.parse(raw)); if (callback) callback()
+        } },
+        exit: (code) => exits.push(code), on: poison, getuid: poison,
+        get env() { throw Error('environment_not_admitted') },
+      },
+      resolve: (path) => path, join: (...parts) => parts.join('/'),
+      createHash: poison, cryptoRandomUUID: poison, cryptoRandomBytes: poison,
+      spawn: poison, constants: {}, mkdir: poison, open: poison,
+      readFile: poison, readdir: poison, realpath: poison, stat: poison,
+      performance: { now: poison }, clearTimeout: poison, setTimeout: poison,
+      pathToFileURL: poison,
+    }
+    const context = vm.createContext(sandbox)
+    vm.runInContext(prefix, context, {
+      timeout: 1000,
+      importModuleDynamically() { counts.imports++; throw Error('SDK_forbidden') },
+    })
+    assert.equal(vm.runInContext('FIXTURE_LIMIT', context), 512)
+    assert.equal(vm.runInContext('FIXTURE_SCHEMA', context),
+      'honowarden.native-preauth-fixture.v1')
+    sandbox.createRequire = vm.runInContext(`() => {
+      counts.require++; throw new Error('fictional_dependency_boundary')
+    }`, context)
+    await vm.runInContext('startup().catch(emitFailure)', context, { timeout: 1000 })
+    assert.equal(counts.require, expectedRequires)
+    assert.equal(counts.imports, 0)
+    assert.deepEqual(exits, [1])
+    assert.equal(frames.length, expectedAck + 1)
+    if (expectedAck) assert.deepEqual(frames[0], { syntheticInput: 'ready' })
+    assert.deepEqual(frames.at(-1), { phase: 'fixture_input', kind: 'error' })
+    assert.equal(JSON.stringify(frames).includes(options.tokenSecret), false)
+  }
+  console.log(JSON.stringify({ checked: true }))
+}
+main().catch((error) => { console.error(error.stack); process.exitCode = 1 })
+""".replace("PREFIX", json.dumps(prefix), 1)
+        result = CFMetadataIsolationTests.run_pure_node(self, script)
+        self.assertEqual(result, {"checked": True})
+
+    def node_helpers(self, checks):
+        source = (p.HERE / "worker.mjs").read_text(encoding="utf-8")
+        start = source.index("// The synthetic capability is RAM-only")
+        end = source.index("function runtimeFailureKind", start)
+        helper = source[start:end]
+        self.assertLess(len(helper.encode()), 16384)
+        branch_start = source.index(
+            "  if (mode === 'minimal') {\n    phase = 'minimal_http_probe'",
+        )
+        branch_end = source.index("  phase = 'd1_migrate'", branch_start)
+        branch = source[branch_start:branch_end]
+        script = r"""
+const vm = require('node:vm')
+const assert = require('node:assert/strict')
+const { createHash } = require('node:crypto')
+const constants = {
+  O_RDONLY: 1, O_WRONLY: 2, O_NOFOLLOW: 4, O_CREAT: 8, O_EXCL: 16,
+}
+const poison = () => { throw Error('unapproved_callback') }
+const sandbox = {
+  Buffer, Uint8Array, URL, createHash, constants,
+  process: { getuid: () => 501 },
+  join: (...parts) => parts.join('/'), open: poison,
+  cryptoRandomUUID: poison, cryptoRandomBytes: poison,
+  sameBinaryStat: (a, b) => [
+    'dev', 'ino', 'size', 'mode', 'uid', 'mtimeNs', 'ctimeNs',
+  ].every((key) => a[key] === b[key]),
+}
+const context = vm.createContext(sandbox)
+vm.runInContext(HELPER, context, { timeout: 1000 })
+const call = (source) => vm.runInContext(source, context, { timeout: 1000 })
+const options = {
+  databaseId: '11111111-1111-4111-8111-111111111111',
+  r2BucketId: '22222222-2222-4222-8222-222222222222',
+  tokenSecret: 'a'.repeat(64),
+}
+const wire = (sha = null) => Buffer.from(JSON.stringify({
+  companyBundleSha256: sha, options,
+  schema: 'honowarden.native-preauth-fixture.v1',
+}))
+const normalize = (value) => JSON.parse(JSON.stringify(value))
+const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
+function memoryFiles(settings = {}) {
+  const original = Buffer.from('export default {fetch(){return "public"}};\n')
+  const minimal = Buffer.from(call('MINIMAL_SCRIPT'))
+  const files = new Map([
+    ['/fixture/company-worker.mjs', { bytes: original, ino: 11n }],
+    ['/fixture/worker.mjs', { bytes: minimal, ino: 12n }],
+  ])
+  const events = []
+  let writes = 0
+  const stat = (entry) => ({
+    isFile: () => true, dev: 1n, ino: entry.ino, uid: 501n,
+    nlink: 1n, size: BigInt(entry.bytes.length), mode: 0o100600n,
+    mtimeNs: 1n, ctimeNs: 1n,
+  })
+  sandbox.open = async (path, flags, mode) => {
+    events.push(['open', path, flags, mode])
+    assert.ok(flags & constants.O_NOFOLLOW)
+    if (settings.symlink && path.endsWith('company-worker.mjs'))
+      throw Error('ELOOP')
+    if (flags & constants.O_EXCL) {
+      assert.equal(mode, 0o600)
+      if (files.has(path)) throw Error('EEXIST')
+      files.set(path, { bytes: Buffer.alloc(0), ino: 13n })
+    }
+    const entry = files.get(path)
+    assert.ok(entry)
+    let statCalls = 0
+    let cursor = 0
+    return {
+      async stat() {
+        statCalls++
+        let value = stat(entry)
+        if (path.endsWith('company-worker.mjs'))
+          value = { ...value, ...settings.backupStat }
+        if (settings.readRace && statCalls === 2)
+          value.ino += 100n
+        if (settings.readNlinkRace && statCalls === 2)
+          value.nlink = 2n
+        if (settings.writeRace && flags & constants.O_WRONLY)
+          value.ino += 100n
+        if (settings.writeNlinkRace && flags & constants.O_WRONLY)
+          value.nlink = 2n
+        return value
+      },
+      async read(buffer, offset, length, position) {
+        events.push(['read', path])
+        assert.equal(position, null)
+        assert.ok(length <= buffer.length - offset)
+        let bytes = entry.bytes
+        if (settings.truncated) bytes = bytes.subarray(1)
+        if (settings.badReadback && writes && path.endsWith('/worker.mjs'))
+          bytes = Buffer.alloc(entry.bytes.length, 120)
+        if (settings.growing) bytes = Buffer.concat([bytes, Buffer.from('extra')])
+        const count = Math.min(length, bytes.length - cursor, 7)
+        if (count > 0) bytes.copy(buffer, offset, cursor, cursor + count)
+        cursor += Math.max(0, count)
+        return { bytesRead: Math.max(0, count) }
+      },
+      readFile: poison,
+      async chmod(mode) { assert.equal(mode, 0o600) },
+      async truncate(size) { assert.equal(size, 0); entry.bytes = Buffer.alloc(0) },
+      async writeFile(bytes) {
+        events.push(['write', path]); writes++; entry.bytes = Buffer.from(bytes)
+      },
+      async sync() { events.push(['sync', path]) },
+      async close() { events.push(['close', path]) },
+    }
+  }
+  return { files, events, original, minimal, writes: () => writes }
+}
+async function main() {
+  CHECKS
+  console.log(JSON.stringify({ checked: true }))
+}
+main().catch((error) => {
+  console.error(error.stack); process.exitCode = 1
+})
+"""
+        script = script.replace("HELPER", json.dumps(helper), 1)
+        script = script.replace("CHECKS", checks, 1)
+        script = "const branch = " + json.dumps(branch) + ";\n" + script
+        result = CFMetadataIsolationTests.run_pure_node(self, script)
+        self.assertEqual(result, {"checked": True})
+
+    def test_canonical_minimal_company_input_matches_python_exact_bytes(self):
+        minimal = p.encode_fixture_input(WorkerDifferentialTests.OPTIONS, None)
+        company = p.encode_fixture_input(
+            WorkerDifferentialTests.OPTIONS, "b" * 64,
+        )
+        checks = r"""
+const expected = EXPECTED.map((value) => Buffer.from(value, 'base64'))
+assert.ok(wire().equals(expected[0]))
+assert.ok(wire('b'.repeat(64)).equals(expected[1]))
+const one = sandbox.parseFixtureInput(expected[0], 'minimal')
+const two = sandbox.parseFixtureInput(expected[1], 'company')
+assert.deepEqual(normalize(one.options), options)
+assert.deepEqual(normalize(two.options), options)
+assert.equal(one.companyBundleSha256, null)
+assert.equal(two.companyBundleSha256, 'b'.repeat(64))
+for (const [bytes, mode] of [
+  [expected[0], 'company'], [expected[1], 'minimal'], [expected[0], 'legacy'],
+]) assert.throws(() => sandbox.parseFixtureInput(bytes, mode))
+""".replace("EXPECTED", json.dumps([
+            base64.b64encode(raw).decode() for raw in [minimal, company]
+        ]))
+        self.node_helpers(checks)
+
+    def test_input_rejects_duplicate_noncanonical_poison_and_invalid_utf8(self):
+        self.node_helpers(r"""
+const text = wire().toString()
+const changed = [
+  text + '\n', ' ' + text, text + '{}',
+  text.replace('"companyBundleSha256":null',
+    '"companyBundleSha256":null,"companyBundleSha256":null'),
+  text.replace('"schema":', '"extra":false,"schema":'),
+  text.replace(options.databaseId, '0'.repeat(36)),
+  text.replace(options.tokenSecret, 'A'.repeat(64)),
+  text.replace('"companyBundleSha256":null', '"companyBundleSha256":true'),
+  text.replace('"schema":"', '"schema":"' + '\ufffd'),
+]
+for (const value of changed)
+  assert.throws(() => sandbox.parseFixtureInput(Buffer.from(value), 'minimal'))
+const malformed = Buffer.from(text)
+malformed[malformed.indexOf('honowarden')] = 0xff
+assert.throws(() => sandbox.parseFixtureInput(malformed, 'minimal'))
+assert.throws(() => sandbox.parseFixtureInput(Buffer.alloc(513), 'minimal'))
+assert.throws(() => sandbox.parseFixtureInput(new Uint8Array(1), 'minimal'))
+let invoked = 0
+const poisoned = { ...options }
+Object.defineProperty(poisoned, 'tokenSecret', {
+  enumerable: true, get() { invoked++; throw Error('private_getter') },
+})
+assert.throws(() => sandbox.fixtureProviders(poisoned))
+assert.equal(invoked, 0)
+""")
+
+    def test_chunked_input_waits_eof_and_rejects_oversize_before_next_chunk(self):
+        self.node_helpers(r"""
+let finish, settled = false
+const eof = new Promise((resolve) => { finish = resolve })
+const raw = wire()
+async function* chunks() {
+  yield raw.subarray(0, 17); yield raw.subarray(17); await eof
+}
+const reading = sandbox.readFixtureInput(chunks(), 'minimal')
+reading.then(() => { settled = true })
+await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+assert.equal(settled, false)
+finish()
+assert.deepEqual(normalize((await reading).options), options)
+let poisonReached = false
+async function* oversized() {
+  yield Buffer.alloc(513); poisonReached = true; throw Error('late_poison')
+}
+await assert.rejects(sandbox.readFixtureInput(oversized(), 'minimal'))
+assert.equal(poisonReached, false)
+async function* wrongChunk() { yield 'private_text' }
+await assert.rejects(sandbox.readFixtureInput(wrongChunk(), 'minimal'))
+async function* interrupted() { yield raw; throw Error('stream_failure') }
+await assert.rejects(sandbox.readFixtureInput(interrupted(), 'minimal'))
+""")
+
+    def test_fixture_providers_use_exact_two_uuids_one_token_and_no_fallback(self):
+        self.node_helpers(r"""
+const providers = sandbox.fixtureProviders(options)
+assert.throws(() => providers.validate())
+assert.equal(providers.randomUUID(), options.databaseId)
+assert.equal(providers.randomUUID(), options.r2BucketId)
+assert.throws(() => providers.randomUUID())
+assert.throws(() => providers.validate())
+assert.equal(providers.randomBytes(32).toString('hex'), options.tokenSecret)
+providers.validate()
+assert.throws(() => providers.randomBytes(32))
+const wrong = sandbox.fixtureProviders(options)
+assert.throws(() => wrong.randomBytes(16))
+assert.equal(wrong.randomBytes(32).toString('hex'), options.tokenSecret)
+assert.throws(() => wrong.validate())
+// Global providers are poisoned in this VM. Determinism cannot fall back to OS.
+assert.equal(sandbox.cryptoRandomUUID, poison)
+assert.equal(sandbox.cryptoRandomBytes, poison)
+""")
+
+    def test_disposer_shares_original_pending_and_rejected_promise_identity(self):
+        self.node_helpers(r"""
+let calls = 0, resolve
+const pending = new Promise((done) => { resolve = done })
+const dispose = sandbox.createDisposer({ dispose() { calls++; return pending } })
+const first = dispose()
+assert.equal(dispose(), first)
+await Promise.resolve()
+assert.equal(calls, 1)
+let settled = false
+first.then(() => { settled = true })
+await Promise.resolve(); assert.equal(settled, false)
+resolve(); await first
+assert.equal(dispose(), first); assert.equal(calls, 1)
+const error = Error('dispose_failure')
+let failedCalls = 0
+const failed = sandbox.createDisposer({ dispose() { failedCalls++; throw error } })
+const rejection = failed()
+assert.equal(failed(), rejection)
+await assert.rejects(rejection, (actual) => actual === error)
+assert.equal(failed(), rejection); assert.equal(failedCalls, 1)
+""")
+
+    def test_http_probe_fixed_path_bounded_body_and_reader_cleanup(self):
+        self.node_helpers(r"""
+const body = Buffer.from(call('MINIMAL_BODY'))
+async function probe(settings = {}) {
+  const chunks = settings.chunks || [body.subarray(0, 7), body.subarray(7)]
+  let reads = 0, cancels = 0, releases = 0, url
+  const reader = {
+    async read() {
+      if (settings.readFailure) throw Error('read_failure')
+      return reads < chunks.length ? { value: chunks[reads++], done: false }
+        : { done: true }
+    },
+    async cancel() {
+      cancels++
+      if (settings.cancelFailure) throw Error('cancel_failure')
+    },
+    releaseLock() {
+      releases++
+      if (settings.releaseFailure) throw Error('release_failure')
+    },
+  }
+  const response = {
+    status: settings.status ?? 200,
+    headers: { get: () => settings.type ?? 'text/plain' },
+    body: settings.noBody ? null : { getReader: () => reader },
+    text: poison, arrayBuffer: poison,
+  }
+  let error
+  try {
+    await sandbox.probeMinimalHttp({
+      async dispatchFetch(value) { url = value; return response },
+    }, new URL('http://127.0.0.1:8123/ignored?private=fiction'))
+  } catch (caught) { error = caught }
+  return { error, cancels, releases, url }
+}
+const good = await probe()
+assert.equal(good.error, undefined)
+assert.equal(good.url, 'http://127.0.0.1:8123/__honowarden_public_canary')
+assert.equal(good.cancels, 1); assert.equal(good.releases, 1)
+for (const settings of [
+  { status: 201 }, { type: 'text/plain; charset=utf-8' }, { noBody: true },
+  { chunks: [Buffer.alloc(129)] }, { chunks: [body.subarray(1)] },
+  { chunks: ['private'] }, { readFailure: true },
+]) {
+  const bad = await probe(settings)
+  assert.ok(bad.error)
+  if (!settings.status && !settings.type && !settings.noBody) {
+    assert.equal(bad.cancels, 1); assert.equal(bad.releases, 1)
+  }
+}
+for (const settings of [
+  { cancelFailure: true }, { releaseFailure: true },
+  { cancelFailure: true, releaseFailure: true },
+]) {
+  const cleanup = await probe(settings)
+  assert.ok(cleanup.error)
+  assert.equal(cleanup.cancels, 1); assert.equal(cleanup.releases, 1)
+  assert.equal(cleanup.error.message,
+    settings.cancelFailure ? 'cancel_failure' : 'release_failure')
+  const primary = await probe({ ...settings, readFailure: true })
+  assert.equal(primary.error.message, 'read_failure')
+  assert.equal(primary.cancels, 1); assert.equal(primary.releases, 1)
+}
+""")
+
+    def test_minimal_branch_emits_no_canary_before_disposal_or_on_rejection(self):
+        self.node_helpers(r"""
+let resolve, started, calls = 0
+const pending = new Promise((done) => { resolve = done })
+const disposing = new Promise((done) => { started = done })
+const output = [], exits = [], events = []
+sandbox.mode = 'minimal'; sandbox.phase = ''
+sandbox.companyBundleSha256 = 'b'.repeat(64)
+sandbox.binaryProof = 'pinned_darwin_arm64_version_verified'
+sandbox.runtime = {}; sandbox.url = new URL('http://127.0.0.1:8123/')
+sandbox.probeMinimalHttp = async () => { events.push('http') }
+sandbox.dispose = sandbox.createDisposer({
+  dispose() { calls++; started(); return pending },
+})
+sandbox.process.stdout = {
+  write(raw, callback) { output.push(JSON.parse(raw)); callback() },
+}
+sandbox.process.exit = (code) => exits.push(code)
+const running = call('(async () => {' + branch + '})()')
+await disposing
+assert.equal(output.length, 0); assert.equal(exits.length, 0)
+assert.equal(calls, 1)
+resolve(); await running
+assert.deepEqual(events, ['http'])
+assert.equal(output.length, 1)
+assert.equal(output[0].canary, 'public_worker_ready')
+assert.deepEqual(exits, [0])
+output.length = 0; exits.length = 0
+sandbox.dispose = sandbox.createDisposer({ dispose() { throw Error('failed') } })
+await assert.rejects(call('(async () => {' + branch + '})()'))
+assert.equal(output.length, 0); assert.equal(exits.length, 0)
+""")
+
+    def test_restore_verifies_digest_predecessor_and_exact_public_readback(self):
+        self.node_helpers(r"""
+let fixture = memoryFiles()
+await sandbox.restoreCompanyBundle('/fixture', digest(fixture.original))
+assert.equal(fixture.writes(), 1)
+assert.ok(fixture.files.get('/fixture/worker.mjs').bytes.equals(fixture.original))
+assert.equal(fixture.events.at(-2)[0], 'read')
+assert.equal(fixture.events.at(-1)[0], 'close')
+fixture = memoryFiles()
+await assert.rejects(sandbox.restoreCompanyBundle('/fixture', 'b'.repeat(64)))
+assert.equal(fixture.writes(), 0)
+assert.equal(fixture.events.filter((row) => row[0] === 'open').length, 1)
+fixture = memoryFiles()
+fixture.files.get('/fixture/worker.mjs').bytes = Buffer.from('different predecessor')
+await assert.rejects(sandbox.restoreCompanyBundle('/fixture', digest(fixture.original)))
+assert.equal(fixture.writes(), 0)
+fixture = memoryFiles({ badReadback: true })
+await assert.rejects(sandbox.restoreCompanyBundle('/fixture', digest(fixture.original)))
+assert.equal(fixture.writes(), 1)
+// A rejected restore cannot authorize the next SDK constructor.
+let constructors = 0
+fixture = memoryFiles()
+await assert.rejects((async () => {
+  await sandbox.restoreCompanyBundle('/fixture', 'b'.repeat(64))
+  constructors++
+})())
+assert.equal(constructors, 0)
+""")
+
+    def test_restore_refuses_symlink_permissions_hardlink_size_and_metadata_races(self):
+        self.node_helpers(r"""
+for (const settings of [
+  { symlink: true }, { backupStat: { mode: 0o100644n } },
+  { backupStat: { uid: 502n } }, { backupStat: { nlink: 2n } },
+  { backupStat: { size: 16777217n } }, { backupStat: { size: 0n } },
+  { readRace: true }, { truncated: true }, { growing: true }, { writeRace: true },
+  { readNlinkRace: true }, { writeNlinkRace: true },
+]) {
+  const fixture = memoryFiles(settings)
+  await assert.rejects(sandbox.restoreCompanyBundle(
+    '/fixture', digest(fixture.original)))
+  assert.equal(fixture.writes(), 0)
+}
+const fixture = memoryFiles()
+await assert.rejects(sandbox.restoreCompanyBundle('/fixture', 'B'.repeat(64)))
+assert.equal(fixture.events.length, 0)
+""")
+
+    def test_prepare_stash_is_exclusive_private_and_minimal_script_is_fixed(self):
+        self.node_helpers(r"""
+let fixture = memoryFiles()
+fixture.files.delete('/fixture/company-worker.mjs')
+fixture.files.get('/fixture/worker.mjs').bytes = Buffer.from(fixture.original)
+const sha = await sandbox.prepareMinimalBundle('/fixture')
+assert.equal(sha, digest(fixture.original))
+assert.ok(fixture.files.get('/fixture/company-worker.mjs')
+  .bytes.equals(fixture.original))
+assert.ok(fixture.files.get('/fixture/worker.mjs').bytes.equals(fixture.minimal))
+const created = fixture.events.find((row) => row[0] === 'open' && row[3] === 0o600)
+assert.ok(created[2] & constants.O_CREAT)
+assert.ok(created[2] & constants.O_EXCL)
+fixture = memoryFiles()
+await assert.rejects(sandbox.prepareMinimalBundle('/fixture'))
+assert.equal(fixture.writes(), 0)
+class FakeResponse {
+  constructor(body, init = {}) { this.body = body; this.init = init }
+}
+const script = call('MINIMAL_SCRIPT').replace('export default', 'globalThis.worker =')
+const minimal = vm.createContext({ URL, Response: FakeResponse })
+vm.runInContext(script, minimal, { timeout: 1000 })
+for (const [method, path, expected] of [
+  ['GET', '/__honowarden_public_canary', 'honowarden-public-native-canary-v1'],
+  ['POST', '/__honowarden_public_canary', 'refused'],
+  ['GET', '/__honowarden_public_canary?extra=1', 'refused'],
+  ['GET', '/other', 'refused'],
+]) assert.equal(minimal.worker.fetch({
+  method, url: 'http://127.0.0.1:8123' + path,
+}).body, expected)
+""")

@@ -17,11 +17,22 @@ def main():
     if not await_go(sys.stdin.buffer):
         return 1
     arguments = sys.argv[1:]
+    worker_input = bool(arguments and arguments[0] == "--worker-input")
+    if worker_input:
+        arguments = arguments[1:]
+        companion = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "worker.mjs")
+        if (len(arguments) != 5 or os.path.basename(arguments[0]) != "node"
+                or arguments[1] != companion
+                or not all(os.path.isabs(v) for v in arguments[:4])
+                or arguments[4] not in {"minimal", "company"}):
+            return 1
     if not arguments or not os.path.isabs(arguments[0]):
         return 1
-    fd = os.open(os.devnull, os.O_RDONLY)
-    os.dup2(fd, 0)
-    os.close(fd)
+    if not worker_input:
+        fd = os.open(os.devnull, os.O_RDONLY)
+        os.dup2(fd, 0)
+        os.close(fd)
     os.execve(arguments[0], arguments, os.environ)
 
 

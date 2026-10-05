@@ -1,4 +1,8 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import {
+  createHash,
+  randomBytes as cryptoRandomBytes,
+  randomUUID as cryptoRandomUUID,
+} from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { Buffer } from 'node:buffer'
 import { constants } from 'node:fs'
@@ -336,7 +340,27 @@ async function runBinaryVersion(descriptor, end) {
 }
 
 async function startup() {
-  const [company, root] = process.argv.slice(2).map((p) => resolve(p))
+  const arguments_ = process.argv.slice(2)
+  if (arguments_.length !== 2 && arguments_.length !== 3)
+    throw new TypeError('fixture_input_invalid')
+  const [company, root] = arguments_.slice(0, 2).map((p) => resolve(p))
+  const mode = arguments_[2]
+  let input
+  if (mode !== undefined) {
+    phase = 'fixture_input'
+    fixtureRequire(mode === 'minimal' || mode === 'company')
+    process.stdout.write('{"syntheticInput":"ready"}\n')
+    input = await readFixtureInput(process.stdin, mode)
+  }
+  // The historical two-argument fixture path is never selected by the supervisor.
+  const providers = input
+    ? fixtureProviders(input.options)
+    : {
+        randomUUID: cryptoRandomUUID,
+        randomBytes: cryptoRandomBytes,
+        validate() {},
+      }
+  const { randomUUID, randomBytes } = providers
   const require = createRequire(join(company, 'package.json'))
   phase = 'dependency_import'
   const { migrationStatements } = await import(
@@ -365,20 +389,28 @@ async function startup() {
   )
   miniflareCoreErrorClass = MiniflareCoreError
   phase = 'state_prepare'
-  await mkdir(join(root, 'state'), { mode: 0o700 })
+  if (mode !== 'company') await mkdir(join(root, 'state'), { mode: 0o700 })
   const scriptPath = join(root, 'worker.mjs')
-  phase = 'build'
-  await build({
-    entryPoints: [join(company, 'src/index.ts')],
-    outfile: scriptPath,
-    bundle: true,
-    platform: 'browser',
-    format: 'esm',
-    target: 'es2022',
-    external: ['cloudflare:workers', 'node:*'],
-    logLevel: 'silent',
-  })
-  phase = 'runtime_construct'
+  let companyBundleSha256
+  if (mode === 'company') {
+    phase = 'bundle_restore'
+    await restoreCompanyBundle(root, input.companyBundleSha256)
+  } else {
+    phase = 'build'
+    await build({
+      entryPoints: [join(company, 'src/index.ts')],
+      outfile: scriptPath,
+      bundle: true,
+      platform: 'browser',
+      format: 'esm',
+      target: 'es2022',
+      external: ['cloudflare:workers', 'node:*'],
+      logLevel: 'silent',
+    })
+    if (mode === 'minimal')
+      companyBundleSha256 = await prepareMinimalBundle(root)
+  }
+  phase = mode === 'minimal' ? 'minimal_runtime_construct' : 'runtime_construct'
   const runtime = new Miniflare({
     modules: true,
     cf: false,
@@ -409,19 +441,38 @@ async function startup() {
       throw new Error('external_fetch_refused')
     },
   })
-  let disposing = false
+  providers.validate()
+  const dispose = createDisposer(runtime)
   async function finish() {
-    if (disposing) return
-    disposing = true
-    await runtime.dispose()
+    await dispose()
     process.exit(0)
   }
-  process.on('SIGTERM', () => void finish())
-  process.on('SIGINT', () => void finish())
-  phase = 'runtime_ready'
+  process.on('SIGTERM', () => void finish().catch(emitFailure))
+  process.on('SIGINT', () => void finish().catch(emitFailure))
+  phase = mode === 'minimal' ? 'minimal_runtime_ready' : 'runtime_ready'
   const url = await runtime.ready
-  phase = 'runtime_loopback_validate'
+  phase =
+    mode === 'minimal'
+      ? 'minimal_runtime_loopback_validate'
+      : 'runtime_loopback_validate'
   if (url.hostname !== '127.0.0.1') throw new Error('worker_not_loopback')
+  if (mode === 'minimal') {
+    phase = 'minimal_http_probe'
+    await probeMinimalHttp(runtime, url)
+    phase = 'minimal_runtime_dispose'
+    // Joining this one promise proves only public SDK disposal. The supervisor
+    // must independently reap and prove the original process group absent.
+    await dispose()
+    process.stdout.write(
+      JSON.stringify({
+        canary: 'public_worker_ready',
+        companyBundleSha256,
+        binary: binaryProof,
+      }) + '\n',
+      () => process.exit(0),
+    )
+    return
+  }
   phase = 'd1_migrate'
   const db = await runtime.getD1Database('DB')
   const migrations = (await readdir(join(company, 'migrations')))
@@ -464,6 +515,253 @@ async function startup() {
       binary: binaryProof,
     }) + '\n',
   )
+}
+
+// The synthetic capability is RAM-only and must arrive after the launcher's GO.
+const FIXTURE_SCHEMA = 'honowarden.native-preauth-fixture.v1'
+const FIXTURE_LIMIT = 512
+const PUBLIC_BUNDLE_LIMIT = 16 * 1024 * 1024
+const MINIMAL_BODY = 'honowarden-public-native-canary-v1'
+const MINIMAL_PATH = '/__honowarden_public_canary'
+const MINIMAL_SCRIPT =
+  'export default {fetch(request){const u=new URL(request.url);' +
+  'return request.method==="GET"&&u.pathname==="/__honowarden_public_canary"' +
+  '&&u.search===""?new Response("honowarden-public-native-canary-v1",' +
+  '{headers:{"content-type":"text/plain"}}):new Response("refused",{status:404});}};\n'
+
+function fixtureRequire(value) {
+  if (!value) throw new Error('fixture_input_invalid')
+}
+function fixtureOptions(options) {
+  fixtureRequire(
+    options !== null &&
+      typeof options === 'object' &&
+      JSON.stringify(Object.keys(options).sort()) ===
+        '["databaseId","r2BucketId","tokenSecret"]',
+  )
+  const values = {}
+  for (const key of ['databaseId', 'r2BucketId', 'tokenSecret']) {
+    const descriptor = Object.getOwnPropertyDescriptor(options, key)
+    fixtureRequire(
+      descriptor &&
+        Object.hasOwn(descriptor, 'value') &&
+        typeof descriptor.value === 'string',
+    )
+    values[key] = descriptor.value
+  }
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+  fixtureRequire(uuid.test(values.databaseId) && uuid.test(values.r2BucketId))
+  fixtureRequire(/^[0-9a-f]{64}$/.test(values.tokenSecret))
+  return values
+}
+function parseFixtureInput(raw, mode) {
+  fixtureRequire(mode === 'minimal' || mode === 'company')
+  fixtureRequire(
+    Buffer.isBuffer(raw) && raw.length > 0 && raw.length <= FIXTURE_LIMIT,
+  )
+  const document = JSON.parse(raw.toString('utf8'))
+  fixtureRequire(
+    document !== null &&
+      typeof document === 'object' &&
+      JSON.stringify(Object.keys(document).sort()) ===
+        '["companyBundleSha256","options","schema"]' &&
+      document.schema === FIXTURE_SCHEMA,
+  )
+  const options = fixtureOptions(document.options)
+  const sha = document.companyBundleSha256
+  fixtureRequire(
+    mode === 'minimal'
+      ? sha === null
+      : typeof sha === 'string' && /^[0-9a-f]{64}$/.test(sha),
+  )
+  const checked = { companyBundleSha256: sha, options, schema: FIXTURE_SCHEMA }
+  // Exact canonical bytes reject duplicate keys, replacement decoding and trailing data.
+  fixtureRequire(raw.equals(Buffer.from(JSON.stringify(checked), 'utf8')))
+  return checked
+}
+async function readFixtureInput(stream, mode) {
+  const raw = Buffer.alloc(FIXTURE_LIMIT)
+  let used = 0
+  try {
+    for await (const chunk of stream) {
+      fixtureRequire(
+        Buffer.isBuffer(chunk) && used + chunk.length <= FIXTURE_LIMIT,
+      )
+      chunk.copy(raw, used)
+      used += chunk.length
+    }
+    // A complete JSON prefix does not authorize startup before EOF.
+    return parseFixtureInput(raw.subarray(0, used), mode)
+  } finally {
+    raw.fill(0)
+  }
+}
+function fixtureProviders(options) {
+  const checked = fixtureOptions(options)
+  let uuids = 0
+  let tokens = 0
+  return {
+    randomUUID() {
+      fixtureRequire(uuids < 2)
+      return [checked.databaseId, checked.r2BucketId][uuids++]
+    },
+    randomBytes(size) {
+      fixtureRequire(size === 32 && tokens++ === 0)
+      return Buffer.from(checked.tokenSecret, 'hex')
+    },
+    validate() {
+      fixtureRequire(uuids === 2 && tokens === 1)
+    },
+  }
+}
+function createDisposer(runtime) {
+  let original
+  return () => {
+    original ??= Promise.resolve().then(() => runtime.dispose())
+    return original
+  }
+}
+async function readPublicBundle(path, privateOnly) {
+  const fd = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    const before = await fd.stat({ bigint: true })
+    if (
+      !before.isFile() ||
+      before.uid !== BigInt(process.getuid()) ||
+      before.nlink !== 1n ||
+      before.size <= 0n ||
+      before.size > BigInt(PUBLIC_BUNDLE_LIMIT) ||
+      (before.mode & 0o022n) !== 0n ||
+      (privateOnly && (before.mode & 0o777n) !== 0o600n)
+    )
+      throw new Error('public_bundle_identity_invalid')
+    const bytes = Buffer.alloc(Number(before.size))
+    let used = 0
+    while (used < bytes.length) {
+      const { bytesRead } = await fd.read(
+        bytes,
+        used,
+        bytes.length - used,
+        null,
+      )
+      if (
+        !Number.isInteger(bytesRead) ||
+        bytesRead <= 0 ||
+        bytesRead > bytes.length - used
+      )
+        throw new Error('public_bundle_changed')
+      used += bytesRead
+    }
+    const { bytesRead: excess } = await fd.read(Buffer.alloc(1), 0, 1, null)
+    const after = await fd.stat({ bigint: true })
+    if (excess !== 0 || after.nlink !== 1n || !sameBinaryStat(before, after))
+      throw new Error('public_bundle_changed')
+    return { bytes, before }
+  } finally {
+    await fd.close()
+  }
+}
+async function replacePublicScript(path, bytes, before) {
+  const fd = await open(path, constants.O_WRONLY | constants.O_NOFOLLOW)
+  try {
+    const current = await fd.stat({ bigint: true })
+    if (current.nlink !== 1n || !sameBinaryStat(before, current))
+      throw new Error('public_bundle_changed')
+    await fd.chmod(0o600)
+    await fd.truncate(0)
+    await fd.writeFile(bytes)
+    await fd.sync()
+  } finally {
+    await fd.close()
+  }
+}
+async function prepareMinimalBundle(root) {
+  const script = join(root, 'worker.mjs')
+  const { bytes, before } = await readPublicBundle(script, false)
+  const sha = createHash('sha256').update(bytes).digest('hex')
+  const backup = await open(
+    join(root, 'company-worker.mjs'),
+    constants.O_WRONLY |
+      constants.O_CREAT |
+      constants.O_EXCL |
+      constants.O_NOFOLLOW,
+    0o600,
+  )
+  try {
+    await backup.writeFile(bytes)
+    await backup.sync()
+  } finally {
+    await backup.close()
+  }
+  await replacePublicScript(script, Buffer.from(MINIMAL_SCRIPT), before)
+  return sha
+}
+async function restoreCompanyBundle(root, expectedSha256) {
+  if (
+    typeof expectedSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(expectedSha256)
+  )
+    throw new Error('public_bundle_digest_invalid')
+  const { bytes } = await readPublicBundle(
+    join(root, 'company-worker.mjs'),
+    true,
+  )
+  if (createHash('sha256').update(bytes).digest('hex') !== expectedSha256)
+    throw new Error('public_bundle_digest_mismatch')
+  const script = join(root, 'worker.mjs')
+  const current = await readPublicBundle(script, true)
+  if (!current.bytes.equals(Buffer.from(MINIMAL_SCRIPT)))
+    throw new Error('public_bundle_predecessor_invalid')
+  await replacePublicScript(script, bytes, current.before)
+  // Re-read the exact path the next fresh SDK will consume.
+  const restored = await readPublicBundle(script, true)
+  if (
+    createHash('sha256').update(restored.bytes).digest('hex') !== expectedSha256
+  )
+    throw new Error('public_bundle_restore_unproved')
+}
+async function probeMinimalHttp(runtime, url) {
+  const response = await runtime.dispatchFetch(`${url.origin}${MINIMAL_PATH}`)
+  if (
+    response.status !== 200 ||
+    response.headers.get('content-type') !== 'text/plain'
+  )
+    throw new Error('minimal_http_invalid')
+  if (!response.body) throw new Error('minimal_http_invalid')
+  const reader = response.body.getReader()
+  const bytes = Buffer.alloc(128)
+  let used = 0
+  let failed = false
+  let firstFailure
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (!(value instanceof Uint8Array) || used + value.length > bytes.length)
+        throw new Error('minimal_http_invalid')
+      bytes.set(value, used)
+      used += value.length
+    }
+    if (!bytes.subarray(0, used).equals(Buffer.from(MINIMAL_BODY)))
+      throw new Error('minimal_http_invalid')
+  } catch (error) {
+    failed = true
+    firstFailure = error
+  } finally {
+    bytes.fill(0)
+    for (const close of [() => reader.cancel(), () => reader.releaseLock()]) {
+      try {
+        await close()
+      } catch (error) {
+        if (!failed) {
+          failed = true
+          firstFailure = error
+        }
+      }
+    }
+  }
+  if (failed) throw firstFailure
 }
 
 function runtimeFailureKind(error) {
@@ -550,7 +848,7 @@ function failureKind(error) {
   return 'unknown_exception'
 }
 
-startup().catch((error) => {
+function emitFailure(error) {
   // Flush only closed labels before failed exit; never log exception fields.
   process.stdout.write(
     JSON.stringify({
@@ -560,4 +858,6 @@ startup().catch((error) => {
     }) + '\n',
     () => process.exit(1),
   )
-})
+}
+
+startup().catch(emitFailure)

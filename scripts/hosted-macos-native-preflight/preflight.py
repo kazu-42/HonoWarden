@@ -9,6 +9,7 @@ import json
 import os
 import plistlib
 import re
+import secrets
 import select
 import shutil
 import signal
@@ -21,6 +22,7 @@ import tempfile
 import time
 import urllib.parse
 import urllib.request
+import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -62,7 +64,12 @@ CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", 
 WORKER_BINARY_PROOF = "pinned_darwin_arm64_version_verified"
 WORKERD_BINARY_SHA = "1b652bc9930d82924f9b416a384df910bc667f88cfb72972a0b39532c94a4cfe"
 WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "runtime_binary_probe", "state_prepare", "build", "runtime_construct",
-                         "runtime_ready", "runtime_loopback_validate", "d1_migrate", "d1_probe", "r2_probe", "http_probe"}
+                         "runtime_ready", "runtime_loopback_validate", "d1_migrate",
+                         "d1_probe", "r2_probe", "http_probe", "fixture_input",
+                         "bundle_restore", "minimal_runtime_construct",
+                         "minimal_runtime_ready", "minimal_runtime_loopback_validate",
+                         "minimal_http_probe", "minimal_runtime_dispose"}
+MINIMAL_WORKER_CONTROLS = {"public_worker_ready_and_reaped"}
 WORKER_FAILURE_KINDS = {"type_error", "range_error", "syntax_error", "reference_error", "error", "unknown_exception",
                         "miniflare_runtime_module_resolution_marker",
                         "miniflare_runtime_module_evaluation_marker",
@@ -101,7 +108,7 @@ def validate_finalization_projection(projection):
     keys = {"schemaVersion", "status", "code", "failureKind", "cleanupFailureCodes", "cleanupComplete",
             "nativeExecuted", "authenticated", "credentialAdmission"}
     diagnostic_keys = {"workerFailurePhase", "workerFailureKind"}
-    require(type(projection) is dict and set(projection) in
+    require(type(projection) is dict and (set(projection) - {"minimalWorkerControl"}) in
             (keys, keys | diagnostic_keys, keys | {"workerBinaryProof"}, keys | diagnostic_keys | {"workerBinaryProof"})
             and type(projection["schemaVersion"]) is int and projection["schemaVersion"] == 1
             and projection["status"] == "cleanup_failed" and projection["cleanupComplete"] is False
@@ -182,6 +189,8 @@ def finalization_projection(report, error):
         projection.update({key: report.get(key) for key in ["workerFailurePhase", "workerFailureKind"]})
     if "workerBinaryProof" in report:
         projection["workerBinaryProof"] = report["workerBinaryProof"]
+    if "minimalWorkerControl" in report:
+        projection["minimalWorkerControl"] = report["minimalWorkerControl"]
     return public_report(projection)
 
 
@@ -289,7 +298,17 @@ def process_identity(pid):
 
 
 def gated_launch(arguments, role, env, state, marker, stdout):
-    proc = subprocess.Popen([sys.executable, str(HERE / "launch.py"), *arguments],
+    require(role in {"worker", "desktop", "worker_minimal", "worker_company"},
+            "child_registry_invalid")
+    worker_input = role in {"worker_minimal", "worker_company"}
+    if worker_input:
+        require(len(arguments) == 5 and arguments[1] == str(HERE / "worker.mjs")
+                and arguments[4] ==
+                ("minimal" if role == "worker_minimal" else "company"),
+                "child_registry_invalid")
+    flags = ["--worker-input"] if worker_input else []
+    proc = subprocess.Popen([sys.executable, str(HERE / "launch.py"),
+                             *flags, *arguments],
                             env=env, stdin=subprocess.PIPE, stdout=stdout,
                             stderr=subprocess.DEVNULL, start_new_session=True)
     PROCESSES.append(proc)
@@ -299,7 +318,8 @@ def gated_launch(arguments, role, env, state, marker, stdout):
                 identity["pgid"] == proc.pid and identity["session"] == proc.pid, "launch_owner_not_ready")
         # The launcher can exec only these fixed image basenames; no argv or credential is saved.
         images = {Path(sys.executable).name, Path(sys.executable).resolve().name, "Python", "python3"}
-        images.add("node" if role == "worker" else "sandbox-exec")
+        images.add("node" if role in {"worker", "worker_minimal", "worker_company"}
+                   else "sandbox-exec")
         if role == "desktop":
             images.add(CLIENT_VENDOR)
         state["children"].append({"pid": proc.pid, "role": role, "uid": identity["uid"],
@@ -308,7 +328,8 @@ def gated_launch(arguments, role, env, state, marker, stdout):
         update_private(marker, state)
         proc.stdin.write(b"GO\n")
         proc.stdin.flush()
-        proc.stdin.close()
+        if not worker_input:
+            proc.stdin.close()
         return proc
     except BaseException:
         proc.stdin.close()
@@ -318,7 +339,8 @@ def gated_launch(arguments, role, env, state, marker, stdout):
 
 def stop_recorded(row):
     require(set(row) == {"pid", "role", "uid", "pgid", "session", "start", "images"}
-            and row["role"] in {"worker", "desktop"} and row["uid"] == os.getuid()
+            and row["role"] in {"worker", "desktop", "worker_minimal", "worker_company"}
+            and row["uid"] == os.getuid()
             and row["pid"] == row["pgid"] == row["session"], "child_registry_invalid")
     current = process_identity(row["pid"])
     if current is None:
@@ -632,7 +654,9 @@ def public_report(report):
             "assetSha256", "companySha", "osVersion", "architecture", "nodeVersion", "freeBytes",
             "signatureVerified", "gatekeeperAccepted", "d1Ready", "r2Ready", "workerReady",
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
-            "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes", "workerFailurePhase", "workerFailureKind", "workerBinaryProof"}
+            "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
+            "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
+            "minimalWorkerControl"}
     require(set(report) <= keys, "report_unknown_field")
     if "failureKind" in report:
         require(type(report["failureKind"]) is str and report["failureKind"] in FAILURE_KINDS, "failure_kind_invalid")
@@ -641,6 +665,10 @@ def public_report(report):
     if "workerBinaryProof" in report:
         require(type(report["workerBinaryProof"]) is str and report["workerBinaryProof"] == WORKER_BINARY_PROOF,
                 "worker_binary_projection_invalid")
+    if "minimalWorkerControl" in report:
+        require(type(report["minimalWorkerControl"]) is str
+                and report["minimalWorkerControl"] in MINIMAL_WORKER_CONTROLS,
+                "minimal_worker_projection_invalid")
     if "workerFailurePhase" in report or "workerFailureKind" in report:
         require(type(report.get("workerFailurePhase")) is str and report["workerFailurePhase"] in WORKER_FAILURE_PHASES
                 and type(report.get("workerFailureKind")) is str and report["workerFailureKind"] in WORKER_FAILURE_KINDS,
@@ -726,6 +754,143 @@ def read_worker_readiness(worker, report):
                 return frame
 
 
+def make_fixture_seed():
+    return {"databaseId": str(uuid.uuid4()), "r2BucketId": str(uuid.uuid4()),
+            "tokenSecret": secrets.token_hex(32)}
+
+
+def encode_fixture_input(options, bundle_sha256):
+    guid = r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    require(type(options) is dict and set(options) ==
+            {"databaseId", "r2BucketId", "tokenSecret"}, "fixture_input_invalid")
+    require(all(type(options[k]) is str and re.fullmatch(guid, options[k])
+                for k in ["databaseId", "r2BucketId"]), "fixture_input_invalid")
+    require(type(options["tokenSecret"]) is str and
+            re.fullmatch(r"[0-9a-f]{64}", options["tokenSecret"]),
+            "fixture_input_invalid")
+    require(bundle_sha256 is None or (type(bundle_sha256) is str and
+            re.fullmatch(r"[0-9a-f]{64}", bundle_sha256)), "fixture_input_invalid")
+    raw = json.dumps({"companyBundleSha256": bundle_sha256, "options": options,
+                      "schema": "honowarden.native-preauth-fixture.v1"},
+                     sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    require(len(raw) <= 512, "fixture_input_limit")
+    return raw
+
+
+def read_worker_control(worker, end, report):
+    raw = bytearray()
+    while True:
+        remaining = min(end - time.monotonic(), time_budget(0.1))
+        require(remaining > 0, "worker_readiness_deadline")
+        readable = select.select([worker.stdout], [], [], remaining)[0]
+        if not readable and worker.poll() is not None:
+            # Preserve terminal frames flushed after the earlier empty snapshot.
+            require(time.monotonic() < end and time_budget(0.1) > 0,
+                    "worker_readiness_deadline")
+            readable = select.select([worker.stdout], [], [], 0)[0]
+            require(readable, "worker_exited_without_readiness")
+        if not readable:
+            continue
+        block = os.read(worker.stdout.fileno(), 1)
+        require(bool(block), "worker_readiness_eof")
+        raw.extend(block)
+        require(len(raw) <= 1024, "worker_projection_limit")
+        if block == b"\n":
+            break
+    def unique_pairs(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, "worker_projection_invalid")
+            value[key] = item
+        return value
+    try:
+        frame = json.loads(raw.decode("utf-8", "strict"),
+                           object_pairs_hook=unique_pairs)
+    except (ValueError, UnicodeError, Blocked):
+        raise Blocked("worker_projection_invalid") from None
+    require(type(frame) is dict, "worker_projection_invalid")
+    if set(frame) == {"syntheticInput"}:
+        require(frame["syntheticInput"] == "ready", "worker_projection_invalid")
+        return frame
+    if set(frame) == {"canary", "companyBundleSha256", "binary"}:
+        require(frame["canary"] == "public_worker_ready" and
+                frame["binary"] == WORKER_BINARY_PROOF and
+                type(frame["companyBundleSha256"]) is str and
+                re.fullmatch(r"[0-9a-f]{64}", frame["companyBundleSha256"]),
+                "worker_projection_invalid")
+        report["workerBinaryProof"] = frame["binary"]
+        return frame
+    checked = parse_worker_frame(bytes(raw))
+    if "phase" in checked:
+        report.update(workerFailurePhase=checked["phase"],
+                      workerFailureKind=checked["kind"])
+        if "binary" in checked:
+            report["workerBinaryProof"] = checked["binary"]
+        raise Blocked("worker_readiness_failed")
+    report["workerBinaryProof"] = checked["binary"]
+    return checked
+
+
+def send_fixture_input(worker, options, bundle_sha256, end):
+    require(time.monotonic() < end and time_budget(0.1) > 0,
+            "worker_readiness_deadline")
+    raw = encode_fixture_input(options, bundle_sha256)
+    worker.stdin.write(raw)
+    worker.stdin.flush()
+    worker.stdin.close()
+    require(time.monotonic() < end and time_budget(0.1) > 0,
+            "worker_readiness_deadline")
+
+
+def run_worker_differential(node, company, root, env, state, marker, report):
+    global STEP_END
+    previous = STEP_END
+    end = time.monotonic() + 45
+    STEP_END = min(previous, end) if previous is not None else end
+    active = None
+    try:
+        options = make_fixture_seed()
+        active = gated_launch([node, str(HERE / "worker.mjs"), str(company),
+                               str(root), "minimal"], "worker_minimal", env,
+                              state, marker, subprocess.PIPE)
+        require(read_worker_control(active, end, report) ==
+                {"syntheticInput": "ready"}, "worker_input_ack_invalid")
+        send_fixture_input(active, options, None, end)
+        canary = read_worker_control(active, end, report)
+        require(set(canary) == {"canary", "companyBundleSha256", "binary"},
+                "minimal_worker_control_invalid")
+        remaining = min(end - time.monotonic(), time_budget(45))
+        require(remaining > 0, "worker_readiness_deadline")
+        require(process_permission_call("process_wait_permission_denied",
+                active.wait, timeout=remaining) == 0, "minimal_worker_exit_invalid")
+        stop_group(active)
+        report["minimalWorkerControl"] = "public_worker_ready_and_reaped"
+        active.stdout.close()
+        PROCESSES.remove(active)
+        # Only the proved-absent role is retired; Finish retains its two-live-role cap.
+        retired = [row for row in state["children"] if row["pid"] == active.pid]
+        require(len(retired) == 1 and retired[0]["role"] == "worker_minimal",
+                "child_registry_invalid")
+        state["children"].remove(retired[0])
+        update_private(marker, state)
+        require(time.monotonic() < end and time_budget(0.1) > 0,
+                "worker_readiness_deadline")
+        active = gated_launch([node, str(HERE / "worker.mjs"), str(company),
+                               str(root), "company"], "worker_company", env,
+                              state, marker, subprocess.PIPE)
+        require(read_worker_control(active, end, report) ==
+                {"syntheticInput": "ready"}, "worker_input_ack_invalid")
+        send_fixture_input(active, options, canary["companyBundleSha256"], end)
+        ready = read_worker_control(active, end, report)
+        require(set(ready) == {"port", "d1", "r2", "worker", "binary"}
+                and active.poll() is None, "worker_success_child_exited")
+        return ready
+    finally:
+        # Failed ACKs keep the gated handle for outer owned cleanup; no input or
+        # second child is admitted. Successful input delivery has already closed it.
+        STEP_END = previous
+
+
 def execute(temp, company):
     global STEP_END
     absolute_end = STEP_END
@@ -804,9 +969,8 @@ def execute(temp, company):
         command(["/usr/bin/security", "delete-generic-password", "-a", "synthetic-public", "-s", service, keychain])
         require(command(["/usr/bin/security", "find-generic-password", "-a", "synthetic-public", "-s", service, keychain], ok=(44,))[1] == 44, "keychain_probe_remains")
         report["keychainProbe"] = True
-        worker = gated_launch([node, str(HERE / "worker.mjs"), str(company), str(root)],
-                              "worker", env, state, marker, subprocess.PIPE)
-        readiness = read_worker_readiness(worker, report)
+        readiness = run_worker_differential(node, company, root, env, state,
+                                           marker, report)
         port = readiness["port"]
         report.update(d1Ready=True, r2Ready=True, workerReady=True)
         cdp_port = free_port()
