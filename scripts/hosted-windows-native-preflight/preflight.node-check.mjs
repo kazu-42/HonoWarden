@@ -581,7 +581,7 @@ test('cold public encoded command emits literal ordered flushed markers around t
   )
   for (const statement of [
     '$functions=@($ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $_.Name })',
-    "if ($functions.Count -ne 2 -or @($functions.Name | Select-Object -Unique).Count -ne 2) { throw 'public_functions' }",
+    "if ($functions.Count -ne 2 -or [String]::Equals($functions[0].Name,$functions[1].Name,[StringComparison]::Ordinal)) { throw 'public_functions' }",
     '$definition=[ScriptBlock]::Create(($functions | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine)',
     '. $definition',
     '$payload=Read-ExternalPayload',
@@ -628,6 +628,75 @@ test('cold public host retains exact child bounds and accepts only normal full-p
   )
 })
 
+test('fixed approved public function pair has identical finite uniqueness semantics', () => {
+  const approved = ['Decode-ExternalUtf8', 'Read-ExternalPayload']
+  const select = (names) => names.filter((name) => approved.includes(name))
+  const previous = (names) => {
+    const functions = select(names)
+    return functions.length === 2 && new Set(functions).size === 2
+  }
+  const candidate = (names) => {
+    const functions = select(names)
+    // Count short-circuit precedes both indexed name reads.
+    return functions.length === 2 && functions[0] !== functions[1]
+  }
+  const controls = [
+    [[], false],
+    [[approved[0]], false],
+    [[approved[1]], false],
+    [[approved[0], approved[0]], false],
+    [[approved[1], approved[1]], false],
+    [[...approved], true],
+    [[approved[1], approved[0]], true],
+    [[approved[0], approved[1], approved[0]], false],
+    [['decode-externalutf8', approved[1]], false],
+    [[approved[0], 'read-externalpayload'], false],
+    [['Decode-ExternalUtf8 ', approved[1]], false],
+  ]
+  for (const [names, admitted] of controls) {
+    assert.equal(previous(names), admitted)
+    assert.equal(candidate(names), admitted)
+  }
+  const domain = [
+    ...approved,
+    'decode-externalutf8',
+    'read-externalpayload',
+    'other',
+  ]
+  const sequences = [[]]
+  for (let length = 1; length <= 3; length++) {
+    for (const prefix of sequences.filter(
+      (value) => value.length === length - 1,
+    ))
+      for (const name of domain) sequences.push([...prefix, name])
+  }
+  for (const names of sequences) assert.equal(candidate(names), previous(names))
+})
+test('fixed public pair source uses ordinal comparison only after the exact count guard', async () => {
+  const source = await readFile(
+    new URL('./preflight.node-check.mjs', import.meta.url),
+    'utf8',
+  )
+  const start = source.lastIndexOf('    const command = `')
+  const command = source.slice(start, source.indexOf('\n`', start))
+  assert.equal(
+    command.includes(
+      "if ($functions.Count -ne 2 -or [String]::Equals($functions[0].Name,$functions[1].Name,[StringComparison]::Ordinal)) { throw 'public_functions' }",
+    ),
+    true,
+  )
+  assert.equal(command.includes('Select-Object -Unique'), false)
+  assert.equal(
+    command.includes("$names=@('Decode-ExternalUtf8','Read-ExternalPayload')"),
+    true,
+  )
+  assert.equal(command.includes('$names -ccontains $_.Name'), true)
+  assert.match(
+    command,
+    /FUNCTION_UNIQUE_BEGIN'[\s\S]*\$functions.Count -ne 2 -or \[String\]::Equals[\s\S]*FUNCTION_UNIQUE_RETURNED'/,
+  )
+})
+
 test(
   'Windows PowerShell 5.1 parses the real controller and admits the exact public manifest before download',
   { skip: process.platform !== 'win32' },
@@ -664,7 +733,7 @@ $names=@('Decode-ExternalUtf8','Read-ExternalPayload')
 $functions=@($ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $_.Name })
 [Console]::Out.Write('FUNCTION_SELECTION_RETURNED'+[char]10); [Console]::Out.Flush()
 [Console]::Out.Write('FUNCTION_UNIQUE_BEGIN'+[char]10); [Console]::Out.Flush()
-if ($functions.Count -ne 2 -or @($functions.Name | Select-Object -Unique).Count -ne 2) { throw 'public_functions' }
+if ($functions.Count -ne 2 -or [String]::Equals($functions[0].Name,$functions[1].Name,[StringComparison]::Ordinal)) { throw 'public_functions' }
 [Console]::Out.Write('FUNCTION_UNIQUE_RETURNED'+[char]10); [Console]::Out.Flush()
 [Console]::Out.Write('FUNCTION_DEFINITION_BEGIN'+[char]10); [Console]::Out.Flush()
 $definition=[ScriptBlock]::Create(($functions | ForEach-Object { $_.Extent.Text }) -join [Environment]::NewLine)

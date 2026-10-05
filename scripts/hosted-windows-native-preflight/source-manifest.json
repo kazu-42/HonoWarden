@@ -19,8 +19,8 @@
     },
     {
       "path": "preflight.node-check.mjs",
-      "bytes": 28626,
-      "sha256": "5838828d3c4eae34ec7264876109e00dcf0f56b423c2310d558c412daaec95de"
+      "bytes": 31237,
+      "sha256": "feeb26dba790963c1f6870c029f4b6f770f7cc8c6009521758040d0e18d05e37"
     },
     {
       "path": "preauth-native.cs",
@@ -70,7 +70,7 @@
     {
       "path": "parser-diagnostic.node-check.mjs",
       "bytes": 18725,
-      "sha256": "c9c00e27f1f1d396eb5f735ef78ec793e8fb41730a3238dd1d482bca5f007114"
+      "sha256": "bd02a1cc60de2f0d9f1a867c580ebe9e3bbadc080578f2fd3890d8d345de7328"
     },
     {
       "path": "public-control-phases.mjs",

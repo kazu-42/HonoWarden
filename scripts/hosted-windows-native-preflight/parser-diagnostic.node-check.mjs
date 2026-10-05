@@ -543,7 +543,7 @@ test('workflow diagnostic is isolated after the original failure and preserves F
   )
 })
 
-test('unchanged frozen09 inputs remain exact and the SOURCE13 public fixture is independently pinned', async () => {
+test('unchanged frozen09 inputs remain exact and the SOURCE14 public fixture is independently pinned', async () => {
   const parent = [
     [
       'preflight.ps1',
@@ -562,8 +562,8 @@ test('unchanged frozen09 inputs remain exact and the SOURCE13 public fixture is 
     ],
     [
       'preflight.node-check.mjs',
-      28626,
-      '5838828d3c4eae34ec7264876109e00dcf0f56b423c2310d558c412daaec95de',
+      31237,
+      'feeb26dba790963c1f6870c029f4b6f770f7cc8c6009521758040d0e18d05e37',
     ],
     [
       'preauth-native.cs',
