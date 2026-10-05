@@ -1923,3 +1923,342 @@ return {resolution:classify(new miniflareCoreErrorClass(
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CFMetadataIsolationTests(unittest.TestCase):
+    """Source-only CF setup checks; no SDK import or native runtime."""
+
+    # Exact public SDK functions; encoding retains bytes without hosted cache paths.
+    SDK_INDEX_SHA = (
+        "94a3497071b11b9382c333d740fdbdfc57491cc56924bda0b506d4dee1621b02"
+    )
+    SDK_SLICE_SHA = (
+        "7525351a38a9460810391f58b5093646cb667de6728a679843085fe4d386324a"
+    )
+    SDK_PUBLIC_B64 = (
+        "ZnVuY3Rpb24gaXNDZkZldGNoRGlzYWJsZWRCeUVudigpIHsKICBjb25zdCBlbnZWYWx1ZSA9"
+        "IHByb2Nlc3MuZW52W0NGX0ZFVENIX0VOQUJMRURfRU5WX1ZBUl07CiAgaWYgKGVudlZhbHVl"
+        "ID09PSB2b2lkIDApIHsKICAgIHJldHVybiBmYWxzZTsKICB9CiAgcmV0dXJuIGVudlZhbHVl"
+        "LnRvTG93ZXJDYXNlKCkgPT09ICJmYWxzZSI7Cn0KZnVuY3Rpb24gZ2V0Q2ZQYXRoRnJvbUVu"
+        "digpIHsKICBjb25zdCBlbnZWYWx1ZSA9IHByb2Nlc3MuZW52W0NGX0ZFVENIX1BBVEhfRU5W"
+        "X1ZBUl07CiAgaWYgKGVudlZhbHVlID09PSB2b2lkIDAgfHwgZW52VmFsdWUgPT09ICIiKSB7"
+        "CiAgICByZXR1cm4gdm9pZCAwOwogIH0KICByZXR1cm4gZW52VmFsdWU7Cn0KZnVuY3Rpb24g"
+        "Z2V0Q2ZPcHRpb25XaXRoRW52T3ZlcnJpZGUoY2YpIHsKICBpZiAoY2YgIT09IHZvaWQgMCkg"
+        "ewogICAgcmV0dXJuIGNmOwogIH0KICBpZiAoaXNDZkZldGNoRGlzYWJsZWRCeUVudigpKSB7"
+        "CiAgICByZXR1cm4gZmFsc2U7CiAgfQogIGNvbnN0IGN1c3RvbVBhdGggPSBnZXRDZlBhdGhG"
+        "cm9tRW52KCk7CiAgaWYgKGN1c3RvbVBhdGggIT09IHZvaWQgMCkgewogICAgcmV0dXJuIGN1"
+        "c3RvbVBhdGg7CiAgfQogIHJldHVybiB2b2lkIDA7Cn0KYXN5bmMgZnVuY3Rpb24gc2V0dXBD"
+        "Zihsb2cyLCBjZikgewogIGNvbnN0IGVmZmVjdGl2ZUNmID0gZ2V0Q2ZPcHRpb25XaXRoRW52"
+        "T3ZlcnJpZGUoY2YpOwogIGlmICghKGVmZmVjdGl2ZUNmID8/IHByb2Nlc3MuZW52Lk5PREVf"
+        "RU5WICE9PSAidGVzdCIpKSB7CiAgICByZXR1cm4gZmFsbGJhY2tDZjsKICB9CiAgaWYgKHR5"
+        "cGVvZiBlZmZlY3RpdmVDZiA9PT0gIm9iamVjdCIpIHsKICAgIHJldHVybiBlZmZlY3RpdmVD"
+        "ZjsKICB9CiAgbGV0IGNmUGF0aCA9IGdldERlZmF1bHRDZlBhdGgoKTsKICBpZiAodHlwZW9m"
+        "IGVmZmVjdGl2ZUNmID09PSAic3RyaW5nIikgewogICAgY2ZQYXRoID0gZWZmZWN0aXZlQ2Y7"
+        "CiAgfQogIHRyeSB7CiAgICBjb25zdCBzdG9yZWRDZiA9IEpTT04ucGFyc2UoYXdhaXQgKDAs"
+        "IGltcG9ydF9wcm9taXNlczMucmVhZEZpbGUpKGNmUGF0aCwgInV0ZjgiKSk7CiAgICBjb25z"
+        "dCBjZlN0YXQgPSBhd2FpdCAoMCwgaW1wb3J0X3Byb21pc2VzMy5zdGF0KShjZlBhdGgpOwog"
+        "ICAgKDAsIGltcG9ydF9ub2RlX2Fzc2VydDMuZGVmYXVsdCkoRGF0ZS5ub3coKSAtIGNmU3Rh"
+        "dC5tdGltZU1zIDw9IENGX0RBWVMgKiBEQVkpOwogICAgcmV0dXJuIHN0b3JlZENmOwogIH0g"
+        "Y2F0Y2ggewogIH0KICB0cnkgewogICAgY29uc3QgcmVzID0gYXdhaXQgKDAsIGltcG9ydF91"
+        "bmRpY2kyLmZldGNoKShkZWZhdWx0Q2ZGZXRjaEVuZHBvaW50LCB7CiAgICAgIHNpZ25hbDog"
+        "QWJvcnRTaWduYWwudGltZW91dCgzZTMpCiAgICB9KTsKICAgIGNvbnN0IGNmVGV4dCA9IGF3"
+        "YWl0IHJlcy50ZXh0KCk7CiAgICBjb25zdCBzdG9yZWRDZiA9IEpTT04ucGFyc2UoY2ZUZXh0"
+        "KTsKICAgIGF3YWl0ICgwLCBpbXBvcnRfcHJvbWlzZXMzLm1rZGlyKShpbXBvcnRfbm9kZV9w"
+        "YXRoNS5kZWZhdWx0LmRpcm5hbWUoY2ZQYXRoKSwgeyByZWN1cnNpdmU6IHRydWUgfSk7CiAg"
+        "ICBhd2FpdCAoMCwgaW1wb3J0X3Byb21pc2VzMy53cml0ZUZpbGUpKGNmUGF0aCwgY2ZUZXh0"
+        "LCAidXRmOCIpOwogICAgbG9nMi5kZWJ1ZygiVXBkYXRlZCBgUmVxdWVzdC5jZmAgb2JqZWN0"
+        "IGNhY2hlISIpOwogICAgcmV0dXJuIHN0b3JlZENmOwogIH0gY2F0Y2ggKGUpIHsKICAgIGxv"
+        "ZzIud2FybigKICAgICAgIlVuYWJsZSB0byBmZXRjaCB0aGUgYFJlcXVlc3QuY2ZgIG9iamVj"
+        "dCEgRmFsbGluZyBiYWNrIHRvIGEgZGVmYXVsdCBwbGFjZWhvbGRlci4uLlxuIiArIGRpbTIo"
+        "ZS5jYXVzZSA/IGUuY2F1c2Uuc3RhY2sgOiBlLnN0YWNrKQogICAgKTsKICAgIHJldHVybiBm"
+        "YWxsYmFja0NmOwogIH0KfQo="
+    )
+    SDK_PUBLIC_SOURCE = base64.b64decode(SDK_PUBLIC_B64).decode("utf-8")
+    CF_HARNESS = r"""
+const vm = require('node:vm');
+const optionContext = {
+  scriptPath: '/fictional/worker.mjs', root: '/fictional',
+  join: (...parts) => parts.join('/'), randomUUID: () => 'fictional-uuid',
+  randomBytes: () => ({toString: () => '0'.repeat(64)}),
+  Log: class { constructor(level) { this.level = level; } },
+  LogLevel: {NONE: 0},
+};
+const options = vm.runInNewContext('(' + cfg.options + ')',
+  optionContext, {timeout: 1000});
+const counts = {
+  env: 0, defaultPath: 0, readFile: 0, stat: 0, assert: 0,
+  fetch: 0, timeout: 0, mkdir: 0, writeFile: 0, dirname: 0,
+  debug: 0, warn: 0,
+};
+const paths = [];
+const poisoned = (key) => {
+  counts[key]++;
+  throw new Error('fictional_poison_' + key);
+};
+const callback = (key, body) => (...args) => {
+  counts[key]++;
+  if (cfg.poison === 'callbacks')
+    throw new Error('fictional_poison_' + key);
+  return body(...args);
+};
+const property = (object, key, body) => Object.defineProperty(object, key, {
+  get() {
+    if (cfg.poison === 'getters') return poisoned(key);
+    return callback(key, body);
+  },
+});
+const proc = {};
+Object.defineProperty(proc, 'env', {get() {
+  if (cfg.poison === 'getters') return poisoned('env');
+  counts.env++;
+  return cfg.env;
+}});
+const fallback = Object.freeze({fixture: 'fallback'});
+const now = 9000000000;
+const io = {};
+property(io, 'readFile', async (path, encoding) => {
+  paths.push(path);
+  if (encoding !== 'utf8') throw new Error('fictional_encoding');
+  if (cfg.cache === 'miss') throw new Error('fictional_cache_miss');
+  return cfg.cache === 'invalid' ? '{invalid' : '{"fixture":"cache"}';
+});
+property(io, 'stat', async () => ({
+  mtimeMs: cfg.cache === 'stale' ? now - 31 * 864e5 : now,
+}));
+property(io, 'mkdir', async () => undefined);
+property(io, 'writeFile', async () => {
+  if (cfg.writeFailure) throw new Error('fictional_write_failure');
+});
+const http = {};
+property(http, 'fetch', async () => {
+  if (cfg.fetchFailure) throw new Error('fictional_fetch_failure');
+  return {text: async () => '{"fixture":"fetched"}'};
+});
+const log = {};
+property(log, 'debug', () => undefined);
+property(log, 'warn', () => undefined);
+const context = {
+  process: proc, fallbackCf: fallback, import_promises3: io,
+  import_undici2: http,
+  CF_FETCH_ENABLED_ENV_VAR: 'CLOUDFLARE_CF_FETCH_ENABLED',
+  CF_FETCH_PATH_ENV_VAR: 'CLOUDFLARE_CF_FETCH_PATH',
+  CF_DAYS: 30, DAY: 864e5, Date: {now: () => now},
+  defaultCfFetchEndpoint: 'https://fictional.invalid/cf.json',
+  dim2: () => 'fictional_failure',
+  import_node_assert3: {default: callback('assert', (valid) => {
+    if (!valid) throw new Error('fictional_stale_cache');
+  })},
+  import_node_path5: {default: {dirname: callback('dirname',
+    (path) => path.slice(0, path.lastIndexOf('/')))}},
+  AbortSignal: {timeout: callback('timeout', () => ({}))},
+};
+Object.defineProperty(context, 'getDefaultCfPath', {get() {
+  if (cfg.poison === 'getters') return poisoned('defaultPath');
+  return callback('defaultPath', () => '/fictional/cache/cf.json');
+}});
+const setup = vm.runInNewContext(cfg.sdk + '\nsetupCf;', context,
+  {timeout: 1000});
+let cf;
+if (cfg.kind === 'actual' || cfg.kind === 'old_actual') cf = options.cf;
+if (cfg.kind === 'false') cf = false;
+if (cfg.kind === 'true') cf = true;
+if (cfg.kind === 'string') cf = '/fictional/custom-cf.json';
+(async () => {
+  try {
+    const result = await setup(log, cf);
+    process.stdout.write(JSON.stringify({
+      fallback: result === fallback, value: result, counts, paths, error: null,
+    }));
+  } catch (error) {
+    process.stdout.write(JSON.stringify({
+      fallback: false, counts, paths, error: error.message,
+    }));
+  }
+})();
+"""
+
+    OPTIONS18_SHA = (
+        "3f10773edec38e13f7211215efc6c85736953fe355b082184f8aff102b6e5dfa"
+    )
+
+    def actual_options_source(self):
+        import re
+
+        source = (p.HERE / "worker.mjs").read_text()
+        marker = "const runtime = new Miniflare("
+        self.assertEqual(source.count(marker), 1)
+        match = re.search(
+            r"const runtime = new Miniflare\((\{[\s\S]*?\n  \})\)", source
+        )
+        self.assertIsNotNone(match)
+        options = match.group(1)
+        self.assertLess(len(options.encode()), 4096)
+        return options
+
+    def run_pure_node(self, script):
+        import shutil
+
+        node = shutil.which("node")
+        self.assertIsNotNone(node, "the pinned Node 22 fixture runner is required")
+        result = p.subprocess.run(
+            [node, "--input-type=commonjs", "-e", script],
+            env={"PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def actual_options(self):
+        expression = json.dumps(self.actual_options_source())
+        return self.run_pure_node("""
+const vm = require('node:vm');
+const context = {
+  scriptPath: '/fictional/worker.mjs', root: '/fictional',
+  join: (...parts) => parts.join('/'), randomUUID: () => 'fictional-uuid',
+  randomBytes: () => ({toString: () => '0'.repeat(64)}),
+  Log: class { constructor(level) { this.level = level; } },
+  LogLevel: {NONE: 0},
+};
+const options = vm.runInNewContext('(' + """ + expression + """ + ')',
+  context, {timeout: 1000});
+process.stdout.write(JSON.stringify({
+  ownsCf: Object.hasOwn(options, 'cf'), value: options.cf ?? null,
+}));
+""")
+
+    def test_actual_miniflare_options_explicitly_disable_cf_metadata(self):
+        options = self.actual_options()
+        self.assertTrue(options["ownsCf"])
+        self.assertIs(options["value"], False)
+
+    def test_whole_options_object_inverse_preserves_source18(self):
+        options = self.actual_options_source()
+        self.assertLessEqual(options.count("    cf: false,\n"), 1)
+        inverse = options.replace("    cf: false,\n", "")
+        self.assertEqual(
+            hashlib.sha256(inverse.encode()).hexdigest(), self.OPTIONS18_SHA
+        )
+
+    def cf_probe(
+        self, kind="actual", *, env=None, cache="miss",
+        poison=None, fetch_failure=False, write_failure=False,
+    ):
+        options = self.actual_options_source()
+        if kind == "old_actual":
+            options = options.replace("    cf: false,\n", "")
+        payload = {
+            "options": options, "sdk": self.SDK_PUBLIC_SOURCE,
+            "kind": kind, "env": {} if env is None else env,
+            "cache": cache, "poison": poison,
+            "fetchFailure": fetch_failure, "writeFailure": write_failure,
+        }
+        script = "const cfg = " + json.dumps(payload) + ";\n" + self.CF_HARNESS
+        return self.run_pure_node(script)
+
+    def test_public_sdk_fixture_has_exact_pinned_function_bytes(self):
+        self.assertEqual(len(self.SDK_PUBLIC_SOURCE.encode()), 1907)
+        self.assertEqual(
+            hashlib.sha256(self.SDK_PUBLIC_SOURCE.encode()).hexdigest(),
+            self.SDK_SLICE_SHA,
+        )
+        self.assertEqual(len(self.SDK_INDEX_SHA), 64)
+        for name in [
+            "isCfFetchDisabledByEnv", "getCfPathFromEnv",
+            "getCfOptionWithEnvOverride", "setupCf",
+        ]:
+            self.assertEqual(
+                self.SDK_PUBLIC_SOURCE.count("function " + name + "("), 1
+            )
+
+    def test_actual_cf_returns_fallback_before_poisoned_dependencies(self):
+        for poison in ["getters", "callbacks"]:
+            with self.subTest(poison=poison):
+                result = self.cf_probe(poison=poison)
+                self.assertIsNone(result["error"])
+                self.assertTrue(result["fallback"])
+                self.assertEqual(set(result["counts"].values()), {0})
+                self.assertEqual(result["paths"], [])
+
+    def test_explicit_false_bypasses_poisoned_environment_overrides(self):
+        result = self.cf_probe(
+            "false", poison="getters",
+            env={
+                "NODE_ENV": "production",
+                "CLOUDFLARE_CF_FETCH_ENABLED": "true",
+                "CLOUDFLARE_CF_FETCH_PATH": "/fictional/poisoned-cf.json",
+            },
+        )
+        self.assertIsNone(result["error"])
+        self.assertTrue(result["fallback"])
+        self.assertEqual(set(result["counts"].values()), {0})
+
+    def test_old_missing_true_string_controls_attempt_cache_and_fetch(self):
+        for kind in ["old_actual", "missing", "true", "string"]:
+            with self.subTest(kind=kind):
+                result = self.cf_probe(kind, fetch_failure=True)
+                self.assertIsNone(result["error"])
+                self.assertTrue(result["fallback"])
+                for key in ["defaultPath", "readFile", "fetch", "timeout", "warn"]:
+                    self.assertEqual(result["counts"][key], 1)
+                self.assertEqual(result["counts"]["writeFile"], 0)
+                expected = (
+                    "/fictional/custom-cf.json" if kind == "string"
+                    else "/fictional/cache/cf.json"
+                )
+                self.assertEqual(result["paths"], [expected])
+
+    def test_test_env_disable_mask_missing_but_not_explicit_true(self):
+        for env in [
+            {"NODE_ENV": "test"},
+            {"CLOUDFLARE_CF_FETCH_ENABLED": "false"},
+        ]:
+            with self.subTest(env=env):
+                missing = self.cf_probe("missing", env=env)
+                self.assertTrue(missing["fallback"])
+                self.assertEqual(missing["counts"]["readFile"], 0)
+                self.assertEqual(missing["counts"]["fetch"], 0)
+                explicit = self.cf_probe("true", env=env, fetch_failure=True)
+                self.assertTrue(explicit["fallback"])
+                self.assertEqual(explicit["counts"]["readFile"], 1)
+                self.assertEqual(explicit["counts"]["fetch"], 1)
+
+    def test_fresh_cache_reads_stat_and_skips_fetch_and_writes(self):
+        for kind in ["missing", "true", "string"]:
+            with self.subTest(kind=kind):
+                result = self.cf_probe(kind, cache="fresh")
+                self.assertIsNone(result["error"])
+                self.assertFalse(result["fallback"])
+                self.assertEqual(result["value"], {"fixture": "cache"})
+                for key in ["readFile", "stat", "assert"]:
+                    self.assertEqual(result["counts"][key], 1)
+                for key in ["fetch", "timeout", "mkdir", "writeFile", "warn"]:
+                    self.assertEqual(result["counts"][key], 0)
+
+    def test_stale_invalid_cache_fetches_and_writes_fictional_metadata(self):
+        for cache in ["stale", "invalid"]:
+            with self.subTest(cache=cache):
+                result = self.cf_probe("true", cache=cache)
+                self.assertIsNone(result["error"])
+                self.assertFalse(result["fallback"])
+                self.assertEqual(result["value"], {"fixture": "fetched"})
+                for key in ["readFile", "fetch", "timeout", "mkdir", "writeFile"]:
+                    self.assertEqual(result["counts"][key], 1)
+                self.assertEqual(result["counts"]["debug"], 1)
+                self.assertEqual(result["counts"]["warn"], 0)
+
+    def test_fetch_write_failures_return_fallback_in_full_sdk_branch(self):
+        for failure in ["fetch_failure", "write_failure"]:
+            with self.subTest(failure=failure):
+                result = self.cf_probe("true", **{failure: True})
+                self.assertIsNone(result["error"])
+                self.assertTrue(result["fallback"])
+                self.assertEqual(result["counts"]["readFile"], 1)
+                self.assertEqual(result["counts"]["fetch"], 1)
+                self.assertEqual(result["counts"]["warn"], 1)
+                self.assertEqual(result["counts"]["debug"], 0)
+                self.assertEqual(
+                    result["counts"]["writeFile"],
+                    1 if failure == "write_failure" else 0,
+                )

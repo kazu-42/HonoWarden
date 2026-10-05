@@ -381,6 +381,7 @@ async function startup() {
   phase = 'runtime_construct'
   const runtime = new Miniflare({
     modules: true,
+    cf: false,
     scriptPath,
     compatibilityDate: '2026-07-21',
     compatibilityFlags: ['nodejs_compat'],
