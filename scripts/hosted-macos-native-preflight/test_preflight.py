@@ -2136,7 +2136,9 @@ process.stdout.write(JSON.stringify({
     def test_whole_options_object_inverse_preserves_source18(self):
         options = self.actual_options_source()
         self.assertLessEqual(options.count("    cf: false,\n"), 1)
+        self.assertEqual(options.count("    modulesRoot: root,\n"), 1)
         inverse = options.replace("    cf: false,\n", "")
+        inverse = inverse.replace("    modulesRoot: root,\n", "")
         self.assertEqual(
             hashlib.sha256(inverse.encode()).hexdigest(), self.OPTIONS18_SHA
         )

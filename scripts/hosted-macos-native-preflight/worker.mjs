@@ -415,6 +415,7 @@ async function startup() {
     modules: true,
     cf: false,
     scriptPath,
+    modulesRoot: root,
     compatibilityDate: '2026-07-21',
     compatibilityFlags: ['nodejs_compat'],
     host: '127.0.0.1',
@@ -476,7 +477,7 @@ async function startup() {
   phase = 'd1_migrate'
   const db = await runtime.getD1Database('DB')
   const migrations = (await readdir(join(company, 'migrations')))
-    .filter((name) => /^\d{4}_[A-Za-z0-9_-]+\.sql$/.test(name))
+    .filter((name) => /^\d{4}[a-z]?_[A-Za-z0-9_-]+\.sql$/.test(name))
     .sort()
   if (!migrations.some((name) => name.startsWith('0030_')))
     throw new Error('migration_missing')
