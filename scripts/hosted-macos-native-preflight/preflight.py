@@ -599,8 +599,8 @@ def sandbox_profile(port, cdp_port):
             and port != cdp_port, "sandbox_ports_invalid")
     # macOS sandbox-exec availability/SBPL and actual denial are runtime gates, never assumed.
     return (f'(version 1)\n(allow default)\n(deny network-outbound)\n'
-            f'(allow network-outbound (remote tcp "127.0.0.1:{port}"))\n'
-            f'(deny network-inbound)\n(allow network-inbound (local tcp "127.0.0.1:{cdp_port}"))\n')
+            f'(allow network-outbound (remote tcp "localhost:{port}"))\n'
+            f'(deny network-inbound)\n(allow network-inbound (local tcp "localhost:{cdp_port}"))\n')
 
 
 def cleanup(root, state):

@@ -94,8 +94,8 @@ class PolicyTests(unittest.TestCase):
     def test_sandbox_has_exact_loopback_exceptions(self):
         profile = p.sandbox_profile(8123, 8124)
         self.assertIn("(deny network-outbound)", profile)
-        self.assertIn('remote tcp "127.0.0.1:8123"', profile)
-        self.assertIn('local tcp "127.0.0.1:8124"', profile)
+        self.assertIn('remote tcp "localhost:8123"', profile)
+        self.assertIn('local tcp "localhost:8124"', profile)
         self.assertNotIn("localhost:*", profile)
 
     def test_sandbox_ports_fail_closed(self):
