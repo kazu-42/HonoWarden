@@ -215,15 +215,25 @@ export function createApi(fetcher: FetchPort) {
         typeof data.TwoFactorToken === 'string' &&
         /^[A-Za-z0-9_-]{20,512}$/.test(data.TwoFactorToken)
       ) {
-        if (
-          !Array.isArray(data.TwoFactorProviders) ||
-          !data.TwoFactorProviders.some(
+        const listedTotp =
+          Array.isArray(data.TwoFactorProviders) &&
+          data.TwoFactorProviders.some(
             (provider: unknown) =>
-              provider !== null &&
-              typeof provider === 'object' &&
-              (provider as Record<string, unknown>).type === 'totp',
+              provider === 0 ||
+              (provider !== null &&
+                typeof provider === 'object' &&
+                (provider as Record<string, unknown>).type === 'totp'),
           )
-        )
+        const providers = data.TwoFactorProviders2
+        const mappedTotp =
+          providers !== null &&
+          typeof providers === 'object' &&
+          !Array.isArray(providers) &&
+          Object.hasOwn(providers, '0') &&
+          ((providers as Record<string, unknown>)['0'] === null ||
+            (typeof (providers as Record<string, unknown>)['0'] === 'object' &&
+              !Array.isArray((providers as Record<string, unknown>)['0'])))
+        if (!listedTotp && !mappedTotp)
           throw new AdminError('authentication', 'second_factor_unsupported')
         throw new TotpChallenge(data.TwoFactorToken)
       }

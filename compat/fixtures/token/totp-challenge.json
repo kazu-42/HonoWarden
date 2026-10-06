@@ -24,11 +24,8 @@
         "Object": "error"
       },
       "TwoFactorToken": "synthetic-two-factor-token",
-      "TwoFactorProviders": [
-        {
-          "type": "totp"
-        }
-      ]
+      "TwoFactorProviders": [0],
+      "TwoFactorProviders2": { "0": {} }
     }
   },
   "assertions": [
@@ -52,9 +49,13 @@
       "length": 1
     },
     {
-      "path": "$.TwoFactorProviders.0.type",
-      "type": "string",
-      "value": "totp"
+      "path": "$.TwoFactorProviders.0",
+      "type": "number",
+      "value": 0
+    },
+    {
+      "path": "$.TwoFactorProviders2.0",
+      "type": "object"
     },
     {
       "path": "$.access_token",

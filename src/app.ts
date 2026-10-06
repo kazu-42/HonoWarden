@@ -8441,11 +8441,8 @@ function totpChallengeResponse(challengeToken: string) {
       },
     }),
     TwoFactorToken: challengeToken,
-    TwoFactorProviders: [
-      {
-        type: 'totp',
-      },
-    ],
+    TwoFactorProviders: [0],
+    TwoFactorProviders2: { '0': {} },
   }
 }
 

@@ -210,53 +210,70 @@ describe('browser private session controller', () => {
     }
   })
 
-  it('binds TOTP challenge and code to the original device without exposing the challenge', async () => {
-    let grants = 0
-    const { client, calls } = fixture((path) =>
-      path === '/identity/connect/token' && ++grants === 1
-        ? json(
-            {
-              error: 'invalid_grant',
-              TwoFactorToken: 'c'.repeat(43),
-              TwoFactorProviders: [{ type: 'totp' }],
-            },
-            400,
-          )
-        : json(token),
-    )
-    await client.login('person@example.test', 'Public password')
-    expect(client.getSession().phase).toBe('totpRequired')
-    expect(JSON.stringify(client.getSession())).not.toContain('c'.repeat(43))
-    await client.verifyTotp('123456')
-    const forms = calls
-      .filter((call) => call.path === '/identity/connect/token')
-      .map((call) => new URLSearchParams(call.init.body as string))
-    expect(forms[1]!.get('deviceIdentifier')).toBe(
-      forms[0]!.get('deviceIdentifier'),
-    )
-    expect(forms[1]!.get('twoFactorToken')).toBe('c'.repeat(43))
-    expect(forms[1]!.get('twoFactorCode')).toBe('123456')
-    expect(client.getSession().mfaVerified).toBe(true)
-    client.dispose()
-  })
+  it.each([
+    { TwoFactorProviders: [0], TwoFactorProviders2: { '0': {} } },
+    { TwoFactorProviders: [0] },
+    { TwoFactorProviders2: { '0': {} } },
+    { TwoFactorProviders2: { '0': null } },
+    { TwoFactorProviders: [{ type: 'totp' }] },
+  ])(
+    'binds supported TOTP metadata %j to the original device without exposing the challenge',
+    async (providers) => {
+      let grants = 0
+      const { client, calls } = fixture((path) =>
+        path === '/identity/connect/token' && ++grants === 1
+          ? json(
+              {
+                error: 'invalid_grant',
+                TwoFactorToken: 'c'.repeat(43),
+                ...providers,
+              },
+              400,
+            )
+          : json(token),
+      )
+      await client.login('person@example.test', 'Public password')
+      expect(client.getSession().phase).toBe('totpRequired')
+      expect(JSON.stringify(client.getSession())).not.toContain('c'.repeat(43))
+      await client.verifyTotp('123456')
+      const forms = calls
+        .filter((call) => call.path === '/identity/connect/token')
+        .map((call) => new URLSearchParams(call.init.body as string))
+      expect(forms[1]!.get('deviceIdentifier')).toBe(
+        forms[0]!.get('deviceIdentifier'),
+      )
+      expect(forms[1]!.get('twoFactorToken')).toBe('c'.repeat(43))
+      expect(forms[1]!.get('twoFactorCode')).toBe('123456')
+      expect(client.getSession().mfaVerified).toBe(true)
+      client.dispose()
+    },
+  )
 
-  it('refuses an unsupported second-factor provider instead of mislabeling it TOTP', async () => {
-    const { client } = fixture(() =>
-      json(
-        {
-          error: 'invalid_grant',
-          TwoFactorToken: 'c'.repeat(43),
-          TwoFactorProviders: [{ type: 'email' }],
-        },
-        400,
-      ),
-    )
-    await expect(
-      client.login('person@example.test', 'Public password'),
-    ).rejects.toMatchObject({ code: 'second_factor_unsupported' })
-    expect(client.getSession().phase).toBe('signedOut')
-    client.dispose()
-  })
+  it.each([
+    { TwoFactorProviders: [{ type: 'email' }] },
+    { TwoFactorProviders: [1], TwoFactorProviders2: { '1': {} } },
+    { TwoFactorProviders: ['0'] },
+    { TwoFactorProviders2: { '0': 'invalid' } },
+  ])(
+    'refuses unsupported second-factor metadata %j instead of mislabeling it TOTP',
+    async (providers) => {
+      const { client } = fixture(() =>
+        json(
+          {
+            error: 'invalid_grant',
+            TwoFactorToken: 'c'.repeat(43),
+            ...providers,
+          },
+          400,
+        ),
+      )
+      await expect(
+        client.login('person@example.test', 'Public password'),
+      ).rejects.toMatchObject({ code: 'second_factor_unsupported' })
+      expect(client.getSession().phase).toBe('signedOut')
+      client.dispose()
+    },
+  )
 
   it('preserves committed invite failure metadata without retrying the invitation batch', async () => {
     const { client, calls } = fixture((path) =>
