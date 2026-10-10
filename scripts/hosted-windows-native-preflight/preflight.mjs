@@ -24,6 +24,17 @@ import { selectDesktopTarget, ensure } from './policy.mjs'
 
 const { Response } = globalThis
 
+export function loadPinnedWebSocket(require, scopedRequire = createRequire) {
+  if (require('miniflare/package.json').version !== '4.20260714.0')
+    throw Error('websocket_pin')
+  const runtimeRequire = scopedRequire(require.resolve('miniflare'))
+  if (runtimeRequire('ws/package.json').version !== '8.21.0')
+    throw Error('websocket_pin')
+  const WebSocket = runtimeRequire('ws')
+  if (typeof WebSocket !== 'function') throw Error('websocket_pin')
+  return WebSocket
+}
+
 export function migrationStatements(sql) {
   const statements = [],
     lines = []
@@ -194,7 +205,7 @@ async function run(input) {
       port,
       jobName: input.jobName,
       helper: createWindowsHelper(root),
-      WebSocket: require('ws'),
+      WebSocket: loadPinnedWebSocket(require),
       select: (targets, p) => selectDesktopTarget(targets, expected, p),
       timeoutMs: remainingBudget(input.expiresAtMs, Date.now(), 20000),
     })

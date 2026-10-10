@@ -20,7 +20,7 @@ import {
   publicControlFailureCode,
   publicExecFailureMetadata,
 } from './preflight-policy.mjs'
-import { migrationStatements } from './preflight.mjs'
+import { migrationStatements, loadPinnedWebSocket } from './preflight.mjs'
 import {
   PUBLIC_PHASES,
   PUBLIC_SUCCESS,
@@ -52,6 +52,36 @@ test('native helper failures expose only fixed phases and retain child exit evid
   await assert.rejects(
     attachOwnedPage({ child: { exitCode: 0 }, timeoutMs: 100 }),
     { code: 'desktop_process_exited' },
+  )
+})
+
+test('WebSocket resolves only from the pinned runtime dependency scope', () => {
+  class WebSocket {}
+  const require = (name) => {
+    assert.equal(name, 'miniflare/package.json')
+    return { version: '4.20260714.0' }
+  }
+  require.resolve = (name) => {
+    assert.equal(name, 'miniflare')
+    return '/owned/miniflare/index.js'
+  }
+  const scope = (path) => {
+    assert.equal(path, '/owned/miniflare/index.js')
+    return (name) =>
+      name === 'ws/package.json'
+        ? { version: '8.21.0' }
+        : name === 'ws'
+          ? WebSocket
+          : assert.fail('unexpected dependency')
+  }
+  assert.equal(loadPinnedWebSocket(require, scope), WebSocket)
+  assert.throws(
+    () => loadPinnedWebSocket(require, () => () => ({ version: 'other' })),
+    /websocket_pin/,
+  )
+  assert.throws(
+    () => loadPinnedWebSocket(() => ({ version: 'other' }), scope),
+    /websocket_pin/,
   )
 })
 

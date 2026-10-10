@@ -231,6 +231,7 @@ export const NATIVE_PHASES = [
 export const NATIVE_FAILURES = [
   'none',
   'build_pin',
+  'websocket_pin',
   'migration_incomplete',
   'not_empty',
   'r2_probe',
@@ -242,6 +243,7 @@ export const NATIVE_FAILURES = [
   'prelogin_dom_unavailable',
   'ERR_RUNTIME_FAILURE',
   'ERR_MODULE_NOT_FOUND',
+  'MODULE_NOT_FOUND',
   'ERR_DLOPEN_FAILED',
   'windows_helper_failed',
   'windows_helper_compile',

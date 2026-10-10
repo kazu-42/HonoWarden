@@ -552,18 +552,18 @@ test('pre-auth runtime and bounded public control sources are independently pinn
     ],
     [
       'preflight.mjs',
-      8910,
-      'a29fcd75e03b29f838b02ca711dde34610257225150c18d068c3fbc101003a69',
+      9399,
+      '5c9ceb3f058a3d31615eef4bccf566ef2ca5bdbc9645d1a8ea1ba97f414e4555',
     ],
     [
       'preflight-policy.mjs',
-      8355,
-      '35fc2fb889213e265069845fcd5d4d42c8ed7af44a2cd1bca4fc827add6c6c04',
+      8396,
+      '71def8e7289b2446f61b902910beaad2ac3e8517dbb4b4c0fc453ebdae75a3b3',
     ],
     [
       'preflight.node-check.mjs',
-      33486,
-      '8324de35e78916034b8cb48853686f9432e41a305141c8e590524820cb075871',
+      34402,
+      '42888f7f028a90ddcd5df8835290da4c2dd339ce0498267d30853c6ff33c6356',
     ],
     [
       'preauth-native.cs',
