@@ -567,18 +567,18 @@ test('pre-auth runtime and bounded public control sources are independently pinn
     ],
     [
       'preauth-native.cs',
-      3810,
-      'f901a2fc61e4f0898220081abdbf6ca7cb8e82592e3662f9eec8a77e8f938f3d',
+      3407,
+      '6f64d5514e11b8236e8baa62fc8f897fbc778132d4bf2e93a7fafe4da12febd8',
     ],
     [
       'windows-native.cs',
-      11098,
-      '7927f0424060da37b9d5c87a43ae0feedc62da3570356b7fc1fb5d7da83d4f2a',
+      11400,
+      '8e552d4a7e126a0bf5e347a81392fa0475ff98e8f71f30f9728941f5d36c6527',
     ],
     [
       'windows-helper.ps1',
-      4199,
-      '7c1034be3822a4ed96a9f08ff890c3096362b918018d7d05e06e1bc0c17cbd44',
+      4077,
+      '9264657c2f0eac443719f8d500b4000786e9e3346dd75fc26c9561bca3f52eb7',
     ],
     [
       'windows.mjs',

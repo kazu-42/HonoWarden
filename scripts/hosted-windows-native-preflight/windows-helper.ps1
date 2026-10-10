@@ -42,9 +42,8 @@ try {
       listenerProcessId=[int]$listeners[0].OwningProcess; listenerOnlyLoopback=$true} | ConvertTo-Json -Compress -Depth 4
   } elseif ($Mode -eq 'WindowProof') {
     $phase = 'window'
-    Add-Type -Path (Join-Path $PSScriptRoot 'preauth-native.cs') -ReferencedAssemblies 'System.Security.dll','System.dll'
     $running = Get-Process -Id ([int]$request.desktopPid) -ErrorAction Stop
-    @{visible=[HonoWardenPreauthNative]::VisibleOwnedWindow($running.MainWindowHandle,[uint32]$request.desktopPid);
+    @{visible=[HonoWardenWindowsNative]::VisibleOwnedWindow($running.MainWindowHandle,[uint32]$request.desktopPid);
       sameSession=($running.SessionId -ne 0 -and $running.SessionId -eq (Get-Process -Id $PID).SessionId)} | ConvertTo-Json -Compress
   } else {
     $running = Get-Process -Id ([int]$request.desktopPid) -ErrorAction Stop

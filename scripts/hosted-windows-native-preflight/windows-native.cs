@@ -45,6 +45,7 @@ public static class HonoWardenWindowsNative {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetMenuStringW(IntPtr menu, uint item, StringBuilder text, int max, uint flags);
   [DllImport("user32.dll")] static extern uint GetMenuState(IntPtr menu, uint item, uint flags);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr SendMessageTimeoutW(IntPtr window, uint message,
     UIntPtr word, IntPtr parameter, uint flags, uint timeout, out UIntPtr result);
 
@@ -125,5 +126,8 @@ public static class HonoWardenWindowsNative {
     var found = new List<uint>(); int inspected=0; FindMenu(menu, expected, found, 0, ref inspected);
     if(found.Count != 1) throw new InvalidOperationException("native_menu_not_unique");
     UIntPtr result; Check(SendMessageTimeoutW(window, 0x111, (UIntPtr)found[0], IntPtr.Zero, 0x2, 2000, out result) != IntPtr.Zero);
+  }
+  public static bool VisibleOwnedWindow(IntPtr window,uint expectedPid) {
+    uint actual; return window!=IntPtr.Zero && GetWindowThreadProcessId(window,out actual)!=0 && actual==expectedPid && IsWindowVisible(window);
   }
 }

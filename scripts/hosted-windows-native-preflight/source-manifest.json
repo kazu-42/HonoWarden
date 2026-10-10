@@ -24,18 +24,18 @@
     },
     {
       "path": "preauth-native.cs",
-      "bytes": 3810,
-      "sha256": "f901a2fc61e4f0898220081abdbf6ca7cb8e82592e3662f9eec8a77e8f938f3d"
+      "bytes": 3407,
+      "sha256": "6f64d5514e11b8236e8baa62fc8f897fbc778132d4bf2e93a7fafe4da12febd8"
     },
     {
       "path": "windows-native.cs",
-      "bytes": 11098,
-      "sha256": "7927f0424060da37b9d5c87a43ae0feedc62da3570356b7fc1fb5d7da83d4f2a"
+      "bytes": 11400,
+      "sha256": "8e552d4a7e126a0bf5e347a81392fa0475ff98e8f71f30f9728941f5d36c6527"
     },
     {
       "path": "windows-helper.ps1",
-      "bytes": 4199,
-      "sha256": "7c1034be3822a4ed96a9f08ff890c3096362b918018d7d05e06e1bc0c17cbd44"
+      "bytes": 4077,
+      "sha256": "9264657c2f0eac443719f8d500b4000786e9e3346dd75fc26c9561bca3f52eb7"
     },
     {
       "path": "windows.mjs",
@@ -70,7 +70,7 @@
     {
       "path": "parser-diagnostic.node-check.mjs",
       "bytes": 18428,
-      "sha256": "94b49feb44878cbd9d094e624e6cc644561407961d532f194eda9f209874ac13"
+      "sha256": "8a375472a5ca0a60f996815a5de46a774b16e149ddbff556a6a98d1587c0ce9d"
     },
     {
       "path": "public-control-phases.mjs",
@@ -89,8 +89,8 @@
     },
     {
       "path": "native-stdio.node-check.mjs",
-      "bytes": 4065,
-      "sha256": "cf815940063c3853c2f834b415fce91b75d7fe683c611e6f1a8390e16efb1e65"
+      "bytes": 4300,
+      "sha256": "384d597af1bb5a4997b1aeeb5b8b72d4bf0e66ff5bb97ae3ff8f2b7010cc0209"
     }
   ]
 }

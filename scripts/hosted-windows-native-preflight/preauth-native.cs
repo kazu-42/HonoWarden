@@ -13,8 +13,6 @@ public static class HonoWardenPreauthNative {
   [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool CredReadW(string target,uint type,uint flags,out IntPtr value);
   [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool CredDeleteW(string target,uint type,uint flags);
   [DllImport("advapi32.dll")] static extern void CredFree(IntPtr value);
-  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
-  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
   static void Target(string target) {
     if(!System.Text.RegularExpressions.Regex.IsMatch(target,"^HonoWarden-HostedPreauth-[a-f0-9-]{36}$")) throw new InvalidOperationException("marker_target_invalid");
   }
@@ -52,8 +50,5 @@ public static class HonoWardenPreauthNative {
       plain=ProtectedData.Unprotect(wrapped,null,DataProtectionScope.CurrentUser);
       return Convert.ToBase64String(bytes)==Convert.ToBase64String(plain);
     } finally { Array.Clear(bytes,0,bytes.Length); if(wrapped!=null) Array.Clear(wrapped,0,wrapped.Length); if(plain!=null) Array.Clear(plain,0,plain.Length); }
-  }
-  public static bool VisibleOwnedWindow(IntPtr window,uint expectedPid) {
-    uint actual; return window!=IntPtr.Zero && GetWindowThreadProcessId(window,out actual)!=0 && actual==expectedPid && IsWindowVisible(window);
   }
 }

@@ -28,6 +28,8 @@ try {
   }
   $phase='compile'
   Add-Type -Path '${root}/windows-native.cs'
+  if ([HonoWardenWindowsNative]::VisibleOwnedWindow([IntPtr]::Zero,[uint32]$PID)) { throw 'null_window_accepted' }
+  if ([HonoWardenWindowsNative]::VisibleOwnedWindow([IntPtr]::new(1),[uint32]$PID)) { throw 'invalid_window_accepted' }
   $phase='open'
   $handle=[HonoWardenWindowsNative]::OpenNullOutput()
   try {
