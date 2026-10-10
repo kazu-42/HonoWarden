@@ -92,16 +92,22 @@ class PolicyTests(unittest.TestCase):
             p.listener_owned(b"p42\n", 42, 8123)
 
     def test_sandbox_has_exact_loopback_exceptions(self):
-        profile = p.sandbox_profile(8123, 8124)
+        profile = p.sandbox_profile(8123, 8124, Path('/owned/task'))
         self.assertIn("(deny network-outbound)", profile)
         self.assertIn('remote tcp "localhost:8123"', profile)
         self.assertIn('local tcp "localhost:8124"', profile)
         self.assertNotIn("localhost:*", profile)
+        self.assertIn('remote unix-socket (subpath "/owned/task/tmp")', profile)
+        self.assertIn('local unix-socket (subpath "/owned/task/profile")', profile)
+        self.assertNotIn('(remote unix-socket)', profile)
+        for root in [Path('/'), Path('/tmp'), Path('relative'), Path('/owned/../foreign'), Path('/owned/invalid\n')]:
+            with self.assertRaises(p.Blocked):
+                p.sandbox_profile(8123, 8124, root)
 
     def test_sandbox_ports_fail_closed(self):
         for first, second in [(8123, 8123), (1, 8123), (8123, 70000), (True, 8123), ("8123", 8124)]:
             with self.subTest(values=(first, second)), self.assertRaises(p.Blocked):
-                p.sandbox_profile(first, second)
+                p.sandbox_profile(first, second, Path('/owned/task'))
 
     def test_websocket_payload_bound_precedes_allocation(self):
         sock = FakeSocket(b"\x81\x7f" + struct.pack("!Q", p.CAP + 1))

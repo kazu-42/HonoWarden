@@ -785,13 +785,48 @@ def cdp_probe(url, expected_port, expression):
                 return value
 
 
-def sandbox_profile(port, cdp_port):
+def sandbox_profile(port, cdp_port, root):
     require(type(port) is int and type(cdp_port) is int and 1024 <= port <= 65535 and 1024 <= cdp_port <= 65535
             and port != cdp_port, "sandbox_ports_invalid")
+    require(isinstance(root, Path) and root.is_absolute() and len(root.parts) >= 3
+            and ".." not in root.parts and not any(ord(c) < 32 or ord(c) == 127 for c in str(root)),
+            "sandbox_ipc_root_invalid")
     # macOS sandbox-exec availability/SBPL and actual denial are runtime gates, never assumed.
-    return (f'(version 1)\n(allow default)\n(deny network-outbound)\n'
+    profile = (f'(version 1)\n(allow default)\n(deny network-outbound)\n'
             f'(allow network-outbound (remote tcp "localhost:{port}"))\n'
             f'(deny network-inbound)\n(allow network-inbound (local tcp "localhost:{cdp_port}"))\n')
+    # Electron's singleton and child IPC use pathname Unix sockets. Keep these
+    # within the task's temporary/profile directories; no IP exception is added.
+    for directory in [root / "tmp", root / "profile"]:
+        path = json.dumps(str(directory))
+        profile += f'(allow network-outbound (remote unix-socket (subpath {path})))\n'
+        profile += f'(allow network-inbound (local unix-socket (subpath {path})))\n'
+    return profile
+
+
+def prove_unix_socket_controls(root, profile, env):
+    paths = [root / "tmp/ipc-control", root / "profile/ipc-control", root / "ipc-denied"]
+    with contextlib.ExitStack() as stack:
+        for path in paths:
+            server = stack.enter_context(socket.socket(socket.AF_UNIX))
+            server.bind(str(path))
+            server.listen(1)
+        # The denied socket is live and owned too, but outside both allowlisted
+        # directories. A missing server is never accepted as a denial proof.
+        probe = ("import errno,socket,sys\n"
+                 "for index,path in enumerate(sys.argv[1:4]):\n"
+                 " s=socket.socket(socket.AF_UNIX);s.settimeout(1)\n"
+                 " try:s.connect(path)\n"
+                 " except OSError as e:\n"
+                 "  if index!=2 or e.errno!=errno.EPERM:sys.exit(2)\n"
+                 " else:\n"
+                 "  if index==2:sys.exit(3)\n"
+                 " finally:s.close()\n"
+                 "s=socket.socket(socket.AF_UNIX);s.bind(sys.argv[4]);s.listen(1);s.close()\n"
+                 "print('owned_unix_allowed_outside_denied')")
+        output, _ = command(["/usr/bin/sandbox-exec", "-f", str(profile), sys.executable, "-B", "-c", probe,
+                             *map(str, paths), str(root / "tmp/ipc-bind-control")], env=env, timeout=5)
+        require(output.strip() == b"owned_unix_allowed_outside_denied", "sandbox_unix_control_failed")
 
 
 def cleanup(root, state):
@@ -847,8 +882,10 @@ def public_report(report):
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
-            "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary"} | DESKTOP_DIAGNOSTIC_KEYS
+            "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if "unixSocketControls" in report:
+        require(type(report["unixSocketControls"]) is bool, "unix_socket_projection_invalid")
     if "desktopLogSummary" in report:
         summary = report["desktopLogSummary"]
         require(type(summary) is dict and set(summary) == {"outputPresent", "truncated", "readFailed", "singletonMarker", "permissionMarker", "socketMarker", "gpuMarker"}
@@ -1178,7 +1215,7 @@ def execute(temp, company):
         report.update(d1Ready=True, r2Ready=True, workerReady=True)
         cdp_port = free_port()
         profile = root / "network.sb"
-        profile.write_text(sandbox_profile(port, cdp_port), encoding="utf-8")
+        profile.write_text(sandbox_profile(port, cdp_port, root), encoding="utf-8")
         os.chmod(profile, 0o600)
         allowed, _ = command(["/usr/bin/sandbox-exec", "-f", str(profile), "/usr/bin/curl", "--silent",
                               "--fail", "--max-time", "2", f"http://127.0.0.1:{port}/"], env=env)
@@ -1194,6 +1231,8 @@ def execute(temp, company):
                      "except OSError as e:sys.exit(0 if e.errno==errno.EPERM else 2)\nelse:sys.exit(3)")
             command(["/usr/bin/sandbox-exec", "-f", str(profile), sys.executable, "-c", probe], env=env)
         report["sandboxNegativeControl"] = True
+        prove_unix_socket_controls(root, profile, env)
+        report["unixSocketControls"] = True
         app_proc = gated_launch(["/usr/bin/sandbox-exec", "-f", str(profile), str(executable),
                                  f"--remote-debugging-port={cdp_port}", "--remote-debugging-address=127.0.0.1",
                                  f"--user-data-dir={root / 'profile'}", "--lang=en", "--no-proxy-server"],
