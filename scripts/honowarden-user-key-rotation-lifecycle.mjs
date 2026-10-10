@@ -8,7 +8,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, URL } from 'node:url'
 
 import {
   createIdempotentCleanup,
@@ -829,9 +829,23 @@ function authorizedJson(baseUrl, path, accessToken, init = {}) {
   })
 }
 
-function authorizedBytes(baseUrl, path, accessToken) {
-  return requestBytes(baseUrl, path, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+async function authorizedBytes(baseUrl, path, accessToken) {
+  const metadata = await authorizedJson(baseUrl, path, accessToken)
+  assertStatus(metadata, 200, 'attachment download metadata')
+  assert(typeof metadata.body.url === 'string', 'attachment URL is missing')
+  const url = new URL(metadata.body.url)
+  assert(
+    url.origin === new URL(baseUrl).origin &&
+      url.pathname === `${path}/data` &&
+      !url.username &&
+      !url.password &&
+      !url.hash &&
+      url.searchParams.has('ticket'),
+    'attachment URL is outside the local capability route',
+  )
+  // Official clients fetch the short-lived capability without a bearer token.
+  return requestBytes(baseUrl, `${url.pathname}${url.search}`, {
+    redirect: 'error',
   })
 }
 
