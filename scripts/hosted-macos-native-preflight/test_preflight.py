@@ -708,10 +708,40 @@ class FailureProjectionTests(unittest.TestCase):
         proc = MagicMock(pid=123)
         proc.poll.return_value = 1
         with patch.object(p.os, "killpg", side_effect=PermissionError("private")) as signals, \
+             patch.object(p.time, "sleep"), patch.object(p, "STEP_END", None), \
+             self.assertRaises(p.Blocked) as caught:
+            p.stop_group(proc)
+        self.assertEqual(str(caught.exception), "process_group_probe_permission_denied")
+        self.assertEqual(signals.call_args_list, [unittest.mock.call(123, 0)] * 20)
+
+    def test_reaped_group_transient_denial_requires_a_later_kernel_absence_observation(self):
+        proc = MagicMock(pid=123)
+        proc.poll.return_value = 0
+        with patch.object(p.os, "killpg", side_effect=[PermissionError("private"), ProcessLookupError("private")]) as signals, \
+             patch.object(p.time, "sleep"):
+            p.stop_group(proc)
+        self.assertEqual(signals.call_args_list, [unittest.mock.call(123, 0)] * 2)
+        proc.wait.assert_not_called()
+
+    def test_reaped_group_retry_never_signals_a_reappearing_group(self):
+        proc = MagicMock(pid=123)
+        proc.poll.return_value = 0
+        with patch.object(p.os, "killpg", side_effect=[PermissionError("private"), None]) as signals, \
+             patch.object(p.time, "sleep"), self.assertRaises(p.Blocked) as caught:
+            p.stop_group(proc)
+        self.assertEqual(str(caught.exception), "owned_group_without_live_leader")
+        self.assertEqual(signals.call_args_list, [unittest.mock.call(123, 0)] * 2)
+
+    def test_reaped_group_retry_cannot_extend_an_expired_step(self):
+        proc = MagicMock(pid=123)
+        proc.poll.return_value = 0
+        with patch.object(p.os, "killpg", side_effect=PermissionError("private")) as signals, \
+             patch.object(p, "time_budget", return_value=0), patch.object(p.time, "sleep") as sleep, \
              self.assertRaises(p.Blocked) as caught:
             p.stop_group(proc)
         self.assertEqual(str(caught.exception), "process_group_probe_permission_denied")
         signals.assert_called_once_with(123, 0)
+        sleep.assert_not_called()
 
     def test_killed_leader_with_remaining_group_is_still_unproved(self):
         proc = MagicMock(pid=123)

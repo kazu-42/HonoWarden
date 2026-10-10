@@ -392,10 +392,21 @@ def reaped_child_group_absent(proc):
     require(status is None or type(status) is int, "owned_process_projection_invalid")
     if status is None:
         return False
-    try:
-        process_permission_call("process_group_probe_permission_denied", os.killpg, proc.pid, 0)
-    except ProcessLookupError:
-        return True
+    end = time.monotonic() + time_budget(1)
+    for attempt in range(20):
+        try:
+            os.killpg(proc.pid, 0)
+            break
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            # A reaped leader's group may still be disappearing. Denial never
+            # proves absence: only a later ESRCH can do so. Never TERM/KILL a
+            # reaped or reused identity, and never extend the shared deadline.
+            remaining = min(end - time.monotonic(), time_budget(1))
+            if attempt == 19 or remaining <= 0:
+                raise Blocked("process_group_probe_permission_denied") from None
+            time.sleep(min(0.05, remaining))
     # A remaining or reused group lacks the original leader; never signal it destructively.
     raise Blocked("owned_group_without_live_leader")
 
