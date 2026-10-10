@@ -148,12 +148,14 @@ try {
     $state | ConvertTo-Json -Compress | Set-Content -LiteralPath $statePath -Encoding UTF8
     $report.credentialMarker=[HonoWardenPreauthNative]::MarkerProbe($state.marker)
     if (-not $report.dpapi -or -not $report.credentialMarker) { throw 'marker_probe' }
+    $report.phase='private_stdio'
     $pipe=[IO.Pipes.AnonymousPipeServerStream]::new([IO.Pipes.PipeDirection]::Out,[IO.HandleInheritability]::Inheritable)
-    $nullStream=[IO.FileStream]::new('NUL',[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite)
-    $nullHandle=$nullStream.SafeFileHandle.DangerousGetHandle()
+    $nullStream=[HonoWardenWindowsNative]::OpenNullOutput()
+    $nullHandle=$nullStream.DangerousGetHandle()
     if (-not [HonoWardenWindowsNative]::SetHandleInformation($nullHandle,1,1)) { throw 'stdio' }
     $childEnv=@{SystemRoot=$env:SystemRoot;windir=$env:windir;SystemDrive=$env:SystemDrive;COMSPEC=(Join-Path $env:SystemRoot 'System32/cmd.exe');PATH=((Split-Path -Parent $node)+';'+(Join-Path $env:SystemRoot 'System32'));TEMP=$env:TEMP;TMP=$env:TMP;USERPROFILE=(Join-Path $state.attempt 'user');APPDATA=(Join-Path $state.attempt 'appdata');LOCALAPPDATA=(Join-Path $state.attempt 'localappdata');ProgramFiles=$env:ProgramFiles;'ProgramFiles(x86)'=${env:ProgramFiles(x86)}}
     $environmentBlock=(($childEnv.Keys | Sort-Object | ForEach-Object {$_+'='+$childEnv[$_]}) -join [char]0)+[char]0+[char]0
+    $report.phase='owned_node_launch'
     $processInfo=[HonoWardenWindowsNative]::StartOwnedNode($job,$node,(Join-Path $root 'preflight.mjs'),$root,$environmentBlock,[IntPtr]::new([long]$pipe.GetClientHandleAsString()),$nullHandle)
     $pipe.DisposeLocalCopyOfClientHandle()
     $input=@{companyCommit='2deeee0cf159da92babc86e09de44c12eea2aa93';company=$Company;createdAtMs=$created;expiresAtMs=($created+240000);freeBytes=$drive.AvailableFreeSpace;freshHostedGuest=$true;attempt=$state.attempt;jobName=$state.jobName}

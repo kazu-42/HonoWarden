@@ -379,6 +379,6 @@ test('Utility workflow is additive failure-only and cannot clear original failur
   )
   assert.equal(
     createHash('sha256').update(inverse).digest('hex'),
-    '14c5fefbc5388cddcbf741b46e8d352cff416bc42f467207f98262dd6b0bcd8e',
+    '0927b01a2b01d915dadabacec385c9faef343984fb8a8b53a6779deafad2e90e',
   )
 })

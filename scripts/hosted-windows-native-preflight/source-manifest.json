@@ -4,8 +4,8 @@
   "files": [
     {
       "path": "preflight.ps1",
-      "bytes": 15922,
-      "sha256": "b601485dd6ac1e2164f7b4edcda1042294680d22d2dd122f35d6c174a31edad8"
+      "bytes": 15926,
+      "sha256": "c2dc8bb2daaabc91fb17906facd8e6e4b7412bc20245cc924e8027e796ddda4f"
     },
     {
       "path": "preflight.mjs",
@@ -29,8 +29,8 @@
     },
     {
       "path": "windows-native.cs",
-      "bytes": 10394,
-      "sha256": "58e4cc2b906b1df1d43c7e0b640725e68b8af110354773fa4fc8648e0a48492d"
+      "bytes": 11098,
+      "sha256": "7927f0424060da37b9d5c87a43ae0feedc62da3570356b7fc1fb5d7da83d4f2a"
     },
     {
       "path": "windows-helper.ps1",
@@ -69,8 +69,8 @@
     },
     {
       "path": "parser-diagnostic.node-check.mjs",
-      "bytes": 18730,
-      "sha256": "fe78e5511b41ef84dd1a858ab2be75fbafa9065625ba49797398ad3be9002b50"
+      "bytes": 18427,
+      "sha256": "2781175361a95399783eab51173f47512957231d40f8eff1a4e74d72cb095e2f"
     },
     {
       "path": "public-control-phases.mjs",
@@ -85,7 +85,12 @@
     {
       "path": "utility-diagnostic.node-check.mjs",
       "bytes": 12942,
-      "sha256": "538fb4123cda0b83f944636f5244591eea4c027f9427a0d7c6716559046dec92"
+      "sha256": "b949a2883c46fbc56edebe573f1b9641e458c89ef2e2641aba176fd42ddbc518"
+    },
+    {
+      "path": "native-stdio.node-check.mjs",
+      "bytes": 2572,
+      "sha256": "6c4a0087bf4e38713a4b6db150abe7c06a7a576165a71b6103a4650966672f7f"
     }
   ]
 }

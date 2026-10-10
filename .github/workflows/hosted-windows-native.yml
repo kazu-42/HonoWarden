@@ -75,7 +75,7 @@ jobs:
           }
       - name: Check source policy tests
         id: source_policy_tests
-        run: node --test "$env:PACKET/preflight.node-check.mjs"
+        run: node --test "$env:PACKET/preflight.node-check.mjs" "$env:PACKET/native-stdio.node-check.mjs"
       - name: Check independent diagnostic policy tests
         id: diagnostic_policy_tests
         if: success() || (failure() && steps.source_policy_tests.outcome == 'failure')

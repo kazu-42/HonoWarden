@@ -539,16 +539,16 @@ test('workflow diagnostic is isolated after the original failure and preserves F
     )
   assert.equal(
     createHash('sha256').update(original).digest('hex'),
-    '94f260ab9c1dc82d0247e06e829ac78b3e767f0c37ff6ca7e11c99b441f8f702',
+    '18635e482b9e9f43c2e0639724b96ab122515eb8dffc2c408f63f61797ea199f',
   )
 })
 
-test('unchanged native inputs remain exact and the bounded public control fixture is independently pinned', async () => {
+test('pre-auth runtime and bounded public control sources are independently pinned', async () => {
   const parent = [
     [
       'preflight.ps1',
-      15912,
-      'a2b7b0466078e1a5e6de099c5f1ffa460a214c38dee866fff8c31401a388ca09',
+      15926,
+      'c2dc8bb2daaabc91fb17906facd8e6e4b7412bc20245cc924e8027e796ddda4f',
     ],
     [
       'preflight.mjs',
@@ -572,8 +572,8 @@ test('unchanged native inputs remain exact and the bounded public control fixtur
     ],
     [
       'windows-native.cs',
-      10394,
-      '58e4cc2b906b1df1d43c7e0b640725e68b8af110354773fa4fc8648e0a48492d',
+      11098,
+      '7927f0424060da37b9d5c87a43ae0feedc62da3570356b7fc1fb5d7da83d4f2a',
     ],
     [
       'windows-helper.ps1',
@@ -607,16 +607,7 @@ test('unchanged native inputs remain exact and the bounded public control fixtur
     ],
   ]
   for (const [source, bytes, sha256] of parent) {
-    let raw = await readFile(new URL(`./${source}`, import.meta.url))
-    if (source === 'preflight.ps1')
-      raw = Buffer.from(
-        raw
-          .toString('utf8')
-          .replace(
-            "([IO.Path]::Combine($root,'desktop-payload-manifest.json'))",
-            "(Join-Path $root 'desktop-payload-manifest.json')",
-          ),
-      )
+    const raw = await readFile(new URL(`./${source}`, import.meta.url))
     assert.equal(raw.length, bytes)
     assert.equal(createHash('sha256').update(raw).digest('hex'), sha256)
   }

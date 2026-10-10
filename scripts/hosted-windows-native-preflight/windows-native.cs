@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 public static class HonoWardenWindowsNative {
   [StructLayout(LayoutKind.Sequential)] public struct BasicLimits {
@@ -27,6 +28,7 @@ public static class HonoWardenWindowsNative {
   [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateJobObject(IntPtr job, uint exitCode);
   [DllImport("kernel32.dll", SetLastError=true)] public static extern bool CloseHandle(IntPtr handle);
   [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
   [DllImport("kernel32.dll", SetLastError=true)] static extern uint ResumeThread(IntPtr thread);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr process, uint exitCode);
   [DllImport("kernel32.dll", SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
@@ -54,6 +56,13 @@ public static class HonoWardenWindowsNative {
       slashes = 0; output.Append(c);
     }
     output.Append('\\', slashes * 2); return output.Append('"').ToString();
+  }
+  public static SafeFileHandle OpenNullOutput() {
+    // .NET Framework path-based FileStream rejects character devices. Open only
+    // the fixed NUL device, never a caller-selected file or inherited output.
+    SafeFileHandle handle = CreateFileW("NUL", 0x40000000, 0x3, IntPtr.Zero, 3, 0, IntPtr.Zero);
+    if(handle.IsInvalid) { int error = Marshal.GetLastWin32Error(); handle.Dispose(); throw new Win32Exception(error); }
+    return handle;
   }
   public static IntPtr CreateOwnedJob(string name) {
     IntPtr job = CreateJobObjectW(IntPtr.Zero, name); int error = Marshal.GetLastWin32Error();
