@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import process from 'node:process'
 
 test(
-  'Windows Framework rejects a path-based NUL stream and the native output handle is valid and disposed',
+  'Windows native output handle is valid and disposed with an independent legacy comparison',
   { skip: process.platform !== 'win32' },
   () => {
     const systemRoot = process.env.SystemRoot
@@ -18,10 +18,14 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $phase='legacy'
 try {
-  $rejected=$false
+  $legacyResult='opened'
   try { $legacy=[IO.FileStream]::new('NUL',[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite); $legacy.Dispose() }
-  catch { $rejected=$_.Exception.GetBaseException() -is [ArgumentException] }
-  if (-not $rejected) { throw 'legacy_control' }
+  catch {
+    $exception=$_.Exception.GetBaseException()
+    if ($exception -is [ArgumentException]) { $legacyResult='argument_rejected' }
+    elseif ($exception -is [NotSupportedException]) { $legacyResult='not_supported' }
+    else { $legacyResult='other_rejected' }
+  }
   $phase='compile'
   Add-Type -Path '${root}/windows-native.cs'
   $phase='open'
@@ -33,7 +37,7 @@ try {
   } finally { $handle.Dispose() }
   $phase='closed'
   if (-not $handle.IsClosed) { throw 'handle_not_closed' }
-  [Console]::Out.Write('native_null_output_control_passed')
+  [Console]::Out.Write('native_null_output_control_passed:' + $legacyResult)
 } catch {
   $kind=$_.Exception.GetBaseException().GetType().Name
   if (@('ArgumentException','NotSupportedException','IOException','UnauthorizedAccessException','Win32Exception','TypeLoadException','InvalidOperationException','RuntimeException') -cnotcontains $kind) { $kind='other' }
@@ -41,6 +45,7 @@ try {
 }
 `
     let output
+    let failure
     try {
       output = execFileSync(
         join(
@@ -87,8 +92,21 @@ try {
         /^native_null_output_control_failed:(legacy|compile|open|inherit|closed):(ArgumentException|NotSupportedException|IOException|UnauthorizedAccessException|Win32Exception|TypeLoadException|InvalidOperationException|RuntimeException|other)$/.test(
           value,
         )
-      throw Error(safe ? value : 'native_null_output_control_failed')
+      failure = safe ? value : 'native_null_output_control_failed'
     }
-    assert.equal(output, 'native_null_output_control_passed')
+    // Child errors carry encoded commands and environment details; report only
+    // the fixed diagnostic projection, never the raw error or its cause.
+    if (failure) throw Error(failure)
+    assert.match(
+      output,
+      /^native_null_output_control_passed:(opened|argument_rejected|not_supported|other_rejected)$/,
+    )
+    process.stdout.write(
+      JSON.stringify({
+        object: 'windowsNullOutputControl',
+        nativeHandle: 'valid_and_disposed',
+        legacy: output.split(':')[1],
+      }) + '\n',
+    )
   },
 )

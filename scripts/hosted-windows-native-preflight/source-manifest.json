@@ -89,8 +89,8 @@
     },
     {
       "path": "native-stdio.node-check.mjs",
-      "bytes": 3428,
-      "sha256": "a4a49493f58394a655d82b14fe547a6f2be1d0be67dddaa14b16f3119ff7897b"
+      "bytes": 4065,
+      "sha256": "cf815940063c3853c2f834b415fce91b75d7fe683c611e6f1a8390e16efb1e65"
     }
   ]
 }
