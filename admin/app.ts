@@ -6,6 +6,7 @@ import {
   type AuditPage,
   type CollectionGrant,
   type CollectionView,
+  type EmailCodeVerificationAttempt,
   type EmailVerificationAttempt,
   type GroupView,
   type MemberStatus,
@@ -162,6 +163,27 @@ export async function runEmailVerificationSubmission(input: {
   } catch {
     if (!input.isCurrent()) return { kind: 'stale' }
     return { kind: 'unknown', error: failure }
+  }
+}
+
+export async function runEmailCodeSubmission(input: {
+  attempt: EmailCodeVerificationAttempt
+  takeCode: () => string
+  isCurrent: () => boolean
+  currentVerification: () => boolean | undefined
+}): Promise<EmailVerificationUiOutcome> {
+  try {
+    return await runEmailVerificationSubmission({
+      submit: () => input.attempt.submit(input.takeCode()),
+      // Keep the scoped readback available after an uncertain consume response.
+      // Dialog cleanup independently aborts this attempt when it is closed.
+      dispose: () => {},
+      isCurrent: input.isCurrent,
+      currentVerification: input.currentVerification,
+      readback: () => input.attempt.readback(),
+    })
+  } finally {
+    input.attempt.dispose()
   }
 }
 
@@ -2196,10 +2218,14 @@ export function mountAdminApp(
     )
   }
   function emailVerificationPanel(): HTMLElement {
-    const action = button(
-      'ブラウザでメールを確認',
-      () => emailVerificationDialog(),
+    const mailAction = button(
+      'メールで確認',
+      () => emailCodeVerificationDialog(),
       session.emailVerified === false ? 'primary' : '',
+    )
+    mailAction.disabled = !session.email
+    const action = button('ブラウザでメールを確認', () =>
+      emailVerificationDialog(),
     )
     action.disabled = !session.email
     return element(
@@ -2231,11 +2257,208 @@ export function mountAdminApp(
         element(
           'p',
           'note',
-          'サインイン中のメールアドレスの所有を確認します。ブラウザとメールサービスに依存する実験的な機能です。',
+          'サインイン中のメールアドレスに届くコードで所有を確認します。認証アプリによる本人確認とは別の操作です。ブラウザでの確認は、ブラウザとメールサービスに依存する実験的な機能です。',
         ),
-        element('div', 'inline-actions', action),
+        element('div', 'inline-actions', mailAction, action),
       ),
     )
+  }
+  function emailCodeVerificationDialog(): void {
+    const capturedEpoch = epoch
+    const orgId = selectedOrganizationId
+    const accountEmail = session.email
+    if (!accountEmail || session.phase !== 'unlocked') return
+    const code = field('email-verification-code', 'メールに届いた確認コード')
+    code.input.autocomplete = 'one-time-code'
+    code.input.autocapitalize = 'off'
+    code.input.spellcheck = false
+    code.input.required = true
+    code.input.maxLength = 128
+    const stateArea = element('div', 'email-verification-state')
+    stateArea.setAttribute('role', 'status')
+    let attempt: EmailCodeVerificationAttempt | null = null
+    let busy = false
+    let dialog: HTMLDialogElement | null = null
+    let form: HTMLFormElement | null = null
+    const owns = (): boolean =>
+      current(capturedEpoch, orgId) &&
+      session.email === accountEmail &&
+      activeDialog === dialog &&
+      Boolean(dialog?.isConnected && form?.isConnected)
+    const canSubmit = (): boolean =>
+      owns() && attempt !== null && !busy && code.input.value.trim() !== ''
+    const updateControls = (): void => {
+      sendButton.disabled = busy || !attempt
+      code.input.disabled = busy
+      const submit = form?.querySelector<HTMLButtonElement>(
+        'button[type="submit"]',
+      )
+      if (submit) submit.disabled = !canSubmit()
+    }
+    const sendButton = button('確認コードを送信', () => {
+      void sendCode()
+    })
+    showDialog(
+      'メールで確認',
+      element(
+        'div',
+        '',
+        element(
+          'p',
+          'dialog-note',
+          `${accountEmail} に確認コードを送信します。`,
+        ),
+        element('div', 'inline-actions', sendButton),
+        stateArea,
+        code.root,
+        element(
+          'p',
+          'note',
+          'メール本文のコード全体を貼り付けてください。コードには有効期限があり、一度だけ使用できます。新しいコードを送信した場合は、最新のメールを使用してください。',
+        ),
+      ),
+      'メールアドレスを確認',
+      async (_form, errorArea) => {
+        if (!canSubmit() || !attempt) return
+        const submittedAttempt = attempt
+        busy = true
+        updateControls()
+        stateArea.replaceChildren(
+          element('p', 'note', '確認結果を取得しています'),
+        )
+        const result = await runEmailCodeSubmission({
+          attempt: submittedAttempt,
+          takeCode: () => {
+            const value = code.input.value
+            code.input.value = ''
+            return value
+          },
+          isCurrent: owns,
+          currentVerification: () => client.getSession().emailVerified,
+        })
+        busy = false
+        if (!owns() || result.kind === 'stale') return
+        if (attempt === submittedAttempt) attempt = null
+        if (result.kind === 'verified') {
+          closeDialog()
+          outcomeNotice = {
+            title: 'メールアドレスの所有を確認しました',
+            message: '最新のアカウントの確認状態を取得しました。',
+            tone: 'success',
+          }
+          render()
+          return
+        }
+        if (result.kind === 'rejected') {
+          const failure = formatUiError(result.error)
+          const invalidCode =
+            result.error instanceof AdminError &&
+            ['email_verification_code_invalid', 'invalid_request'].includes(
+              result.error.code,
+            )
+          errorArea.replaceChildren(
+            noticeNode(
+              invalidCode
+                ? {
+                    ...failure,
+                    title: '確認コードを利用できませんでした',
+                    message:
+                      '最新のメールにあるコード全体を確認してください。期限切れや使用済みの場合は、新しいコードを送信してください。',
+                  }
+                : failure,
+            ),
+          )
+          stateArea.replaceChildren()
+          attempt = client.prepareEmailCodeVerification()
+          updateControls()
+          code.input.focus()
+          return
+        }
+        closeDialog()
+        outcomeNotice = {
+          ...formatUiError(
+            result.kind === 'unknown' ? result.error : undefined,
+          ),
+          title: '確認結果を確定できません',
+          message:
+            result.kind === 'unknown' && result.canonicalVerified !== undefined
+              ? result.canonicalVerified
+                ? '現在のアカウントのメール確認状態は「確認済み」です。コードの再送は必要ありません。'
+                : '現在のアカウントのメール確認状態は「未確認」です。コードは再送していません。確認を続ける場合は「メールで確認」から新しいコードを送信してください。'
+              : '確認操作が保存されている可能性があります。最新の状態も取得できませんでした。一度サインアウトしてサインインし直してください。コードは再送していません。',
+          tone: 'warning',
+        }
+        render()
+      },
+      false,
+      () => {
+        attempt?.dispose()
+        attempt = null
+        code.input.value = ''
+      },
+      canSubmit,
+    )
+    dialog = activeDialog
+    form = dialog?.querySelector('form') ?? null
+    if (!form) {
+      closeDialog()
+      return
+    }
+    try {
+      attempt = client.prepareEmailCodeVerification()
+      code.input.addEventListener('input', updateControls)
+      updateControls()
+    } catch (error) {
+      stateArea.replaceChildren(noticeNode(formatUiError(error)))
+      updateControls()
+    }
+    async function sendCode(): Promise<void> {
+      if (!owns() || !attempt || busy) return
+      busy = true
+      code.input.value = ''
+      updateControls()
+      form?.querySelector('.dialog-errors')?.replaceChildren()
+      stateArea.replaceChildren(
+        element('p', 'note', '確認コードの送信を依頼しています'),
+      )
+      try {
+        await attempt.requestCode()
+        if (!owns()) return
+        stateArea.replaceChildren(
+          noticeNode({
+            title: '確認コードの送信を受け付けました',
+            message:
+              'メールが届いたら、本文のコードを入力してください。届かない場合は迷惑メールフォルダーもご確認ください。',
+            tone: 'neutral',
+          }),
+        )
+        sendButton.textContent = '新しい確認コードを送信'
+      } catch (error) {
+        if (!owns()) return
+        const uncertain =
+          !(error instanceof AdminError) ||
+          ['transport', 'unavailable'].includes(error.kind)
+        stateArea.replaceChildren(
+          noticeNode(
+            uncertain
+              ? {
+                  ...formatUiError(error),
+                  title: '確認コードの送信結果を確認できません',
+                  message:
+                    'メールが送られている可能性があります。受信箱を確認してください。自動で再送はしていません。届かない場合は、管理者にお問い合わせください。',
+                  tone: 'warning',
+                }
+              : formatUiError(error),
+          ),
+        )
+      } finally {
+        busy = false
+        if (owns()) {
+          updateControls()
+          code.input.focus()
+        }
+      }
+    }
   }
   function emailVerificationDialog(): void {
     const capturedEpoch = epoch
@@ -2293,7 +2516,7 @@ export function mountAdminApp(
       element(
         'p',
         'note',
-        '確認情報を取得できない場合、この画面には通常の確認メールを受け取って完了する経路がありません。メール確認の利用準備については管理者にご確認ください。',
+        'ブラウザから確認情報を取得できない場合は、この画面を閉じて「メールで確認」から、メールに届くコードで確認できます。各機能の利用準備については管理者にご確認ください。',
       ),
     )
     showDialog(

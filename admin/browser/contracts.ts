@@ -99,6 +99,12 @@ export type EmailVerificationAttempt = {
   submit(): Promise<{ status: 'verified' | 'proofUnavailable' }>
   dispose(): void
 }
+export type EmailCodeVerificationAttempt = {
+  requestCode(): Promise<void>
+  submit(code: string): Promise<{ status: 'verified' }>
+  readback(): Promise<boolean>
+  dispose(): void
+}
 export interface AdminClient {
   getSession(): SessionView
   subscribe(listener: (state: SessionView) => void): () => void
@@ -109,6 +115,7 @@ export interface AdminClient {
   verifyTotpSetup(code: string): Promise<void>
   startTotpChange(currentCode: string): Promise<TotpSetupView>
   verifyTotpChange(code: string): Promise<void>
+  prepareEmailCodeVerification(): EmailCodeVerificationAttempt
   prepareEmailVerification(input: {
     form: HTMLFormElement
     emailInput: HTMLInputElement
