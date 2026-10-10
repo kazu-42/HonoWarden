@@ -1402,6 +1402,7 @@ async function execute(options, packet) {
         HONOWARDEN_BOOTSTRAP_ENABLED: 'true',
         HONOWARDEN_BOOTSTRAP_TOKEN: secrets.bootstrap,
         HONOWARDEN_ALLOWED_EMAILS: accounts
+          .filter((account) => account !== recipient)
           .map((account) => account.email)
           .join(','),
         HONOWARDEN_USER_KEY_ID_ENABLED: 'true',
@@ -1409,6 +1410,7 @@ async function execute(options, packet) {
         HONOWARDEN_TOTP_SECRET: secrets.totp,
         HONOWARDEN_ORGANIZATION_INVITE_SECRET: secrets.invite,
         HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED: 'true',
+        HONOWARDEN_INVITATION_REGISTRATION_ENABLED: 'true',
         HONOWARDEN_ORGANIZATION_GROUPS_ENABLED: 'true',
         HONOWARDEN_ORGANIZATION_POLICIES_ENABLED: 'true',
         HONOWARDEN_ORGANIZATION_AUDIT_ENABLED: 'true',
@@ -1557,6 +1559,7 @@ async function execute(options, packet) {
     })
     origin = 'https://127.0.0.1:' + server.address().port
     for (const account of accounts) {
+      if (account === recipient) continue
       const response = await worker.dispatchFetch(
         origin + '/api/accounts/bootstrap',
         {
@@ -1669,6 +1672,65 @@ async function execute(options, packet) {
         action: 'navigate_login',
       }
       await account.page.goto(origin + path)
+      if (account === recipient && !account.id) {
+        await account.page
+          .getByRole('button', {
+            name: '初めての方はアカウントを作成',
+            exact: true,
+          })
+          .click()
+        await account.page
+          .getByLabel('表示名', { exact: true })
+          .fill('Synthetic recipient')
+        await account.page
+          .getByLabel('メールアドレス', { exact: true })
+          .fill(account.email)
+        await account.page
+          .getByLabel('マスターパスワード', { exact: true })
+          .fill(account.password)
+        await account.page
+          .getByLabel('マスターパスワードを再入力', { exact: true })
+          .fill(account.password)
+        await account.page
+          .getByRole('button', { name: 'アカウントを作成', exact: true })
+          .click()
+        await account.page
+          .getByText('アカウントを作成しました', { exact: true })
+          .waitFor()
+        const registered = await database
+          .prepare(
+            'SELECT id,user_key,private_key,public_key,master_password_hash FROM users WHERE email_normalized = ?',
+          )
+          .bind(account.email)
+          .first()
+        invariant(
+          registered && registered.master_password_hash === account.hash,
+          'ui_registration_not_persisted',
+        )
+        const master = pbkdf2Sync(
+          account.password,
+          account.email,
+          600000,
+          32,
+          'sha256',
+        )
+        const stretched = Buffer.concat(
+          ['enc', 'mac'].map((info) =>
+            createHmac('sha256', master)
+              .update(Buffer.concat([Buffer.from(info), Buffer.from([1])]))
+              .digest(),
+          ),
+        )
+        account.userKey.fill(0)
+        account.privateKey.fill(0)
+        account.id = registered.id
+        account.userKey = decrypt(stretched, registered.user_key)
+        account.privateKey = decrypt(account.userKey, registered.private_key)
+        account.publicKey = registered.public_key
+        master.fill(0)
+        stretched.fill(0)
+        report.invitedAccountCreatedThroughUi = true
+      }
       report.browser.lastAction.action = 'fill_login_email'
       await account.page
         .getByLabel('メールアドレス', { exact: true })

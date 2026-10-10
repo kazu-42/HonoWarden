@@ -6,6 +6,10 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
 import { registerAdminRoutes } from './admin-routes'
+import {
+  createInvitedAccount,
+  parseInvitedAccountRegistration,
+} from './invited-account-registration'
 import { registerOrganizationMembershipRoutes } from './organization-membership-routes'
 import { createOrganizationMembershipMailerDelivery } from './organization-membership'
 import { registerOrganizationGroupsRoutes } from './organization-groups-routes'
@@ -2264,6 +2268,79 @@ app.get(
   '/api/ciphers/:id/attachment/:attachmentId/renew',
   renewCipherAttachmentUploadRoute,
 )
+app.post('/api/accounts/register-invited', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (
+    c.env?.HONOWARDEN_INVITATION_REGISTRATION_ENABLED !== 'true' ||
+    c.env?.HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED !== 'true'
+  )
+    return c.notFound()
+  const secret = c.env.HONOWARDEN_ORGANIZATION_INVITE_SECRET
+  if (!secret || new TextEncoder().encode(secret).length < 32) {
+    console.error(
+      JSON.stringify({
+        event: 'invited_account_registration_failed',
+        requestId: c.get('requestId'),
+        reason: 'configuration',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Account registration is unavailable.',
+      ),
+      503,
+    )
+  }
+  const body = await readBoundedJsonBody(c.req.raw, 73728)
+  const input = body.ok ? parseInvitedAccountRegistration(body.value) : null
+  if (!input)
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'A valid invited account payload is required.',
+      ),
+      400,
+    )
+  try {
+    if (
+      !(await createInvitedAccount(
+        c.env.DB,
+        input,
+        secret,
+        new Date().toISOString(),
+      ))
+    ) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'registration_unavailable',
+          'Use an active invitation for a new account, or sign in to your existing account.',
+        ),
+        403,
+      )
+    }
+    return c.json({ object: 'accountRegistration', created: true }, 201)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'invited_account_registration_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Account registration could not be confirmed.',
+      ),
+      503,
+    )
+  }
+})
 app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
   c.header('Cache-Control', 'no-store')
   c.header('Referrer-Policy', 'no-referrer')
@@ -9511,6 +9588,7 @@ function apiError(
     | 'organization_not_found'
     | 'rate_limited'
     | 'reauth_required'
+    | 'registration_unavailable'
     | 'revision_conflict'
     | 'runtime_environment_invalid'
     | 'session_revocation_incomplete'

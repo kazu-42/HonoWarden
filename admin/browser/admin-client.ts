@@ -28,6 +28,7 @@ import { validateKdf, type KdfSettings } from './crypto/kdf'
 import type { WrappedAccount, WrappedOrganization } from './crypto/keyring'
 import { consumeInvitation, type PendingInvitation } from './invitation'
 import { prepareEmailVerification } from './email-verification'
+import type { WrappedAccountRegistration } from './crypto/account-registration'
 
 export type AdminClientOptions = {
   fetch?: FetchPort
@@ -565,6 +566,56 @@ export function createAdminClient(
       listeners.add(listener)
       listener(view())
       return () => listeners.delete(listener)
+    },
+    async registerInvitedAccount(input) {
+      if (!invitation) throw new AdminError('validation', 'invitation_required')
+      if (!['signedOut', 'expired'].includes(state.phase))
+        throw new AdminError('conflict', 'registration_unavailable')
+      const email = input.email.trim().toLowerCase()
+      const displayName = input.displayName.trim()
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        email.length > 254 ||
+        !displayName ||
+        displayName.length > 100 ||
+        input.password.length < 12 ||
+        input.password.length > 256
+      )
+        throw new AdminError('validation', 'registration_invalid')
+      const current = invitation
+      reset('signedOut')
+      const expected = epoch
+      publish({ phase: 'authenticating', email })
+      try {
+        port = newCrypto()
+        const wrapped = await cryptoCall<WrappedAccountRegistration>({
+          action: 'createAccount',
+          email,
+          password: input.password,
+        })
+        input.password = ''
+        assertEpoch(expected)
+        const result = record(
+          (
+            await request(
+              '/api/accounts/register-invited',
+              {
+                method: 'POST',
+                body: { email, displayName, ...wrapped, invitation: current },
+              },
+              false,
+            )
+          ).value,
+        )
+        if (result.object !== 'accountRegistration' || result.created !== true)
+          throw new AdminError('unavailable', 'response_invalid')
+      } finally {
+        input.password = ''
+        if (epoch === expected) {
+          stopCrypto()
+          publish({ phase: 'signedOut', email })
+        }
+      }
     },
     async login(email, password) {
       const keptInvitation = invitation

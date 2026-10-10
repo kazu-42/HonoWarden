@@ -273,6 +273,13 @@ export function formatUiError(error: unknown): UiNotice {
       message:
         'メールアドレス、パスワード、認証コードを確認してください。期限が切れた場合は再度サインインしてください。',
     }
+  if (error.code === 'registration_unavailable')
+    return {
+      ...result,
+      title: 'アカウントを作成できませんでした',
+      message:
+        '既にアカウントをお持ちの場合はサインインしてください。初めて利用する場合は、招待先のメールアドレスと招待の有効期限を確認してください。',
+    }
   if (error.kind === 'authorization' || error.httpStatus === 404)
     return {
       ...result,
@@ -644,6 +651,7 @@ export function mountAdminApp(
   client: AdminClient,
 ): () => void {
   let session = client.getSession()
+  let registering = false
   let selectedOrganizationId: string | null = null
   let view: View = 'overview'
   let epoch = 0
@@ -3375,11 +3383,15 @@ export function mountAdminApp(
     const locked = session.phase === 'locked'
     const totp = session.phase === 'totpRequired'
     const authenticating = session.phase === 'authenticating'
+    const registration =
+      registering && !!session.pendingInvitation && !locked && !totp
     const title = locked
       ? 'ロックを解除'
       : totp
         ? '認証コードを確認'
-        : '組織管理にサインイン'
+        : registration
+          ? '招待からアカウントを作成'
+          : '組織管理にサインイン'
     const form = element('form', 'auth-card')
     form.setAttribute('aria-busy', String(authenticating))
     form.append(
@@ -3392,7 +3404,9 @@ export function mountAdminApp(
           ? 'このブラウザでの作業を再開します。'
           : totp
             ? '認証アプリに表示されている6桁のコードを入力してください。'
-            : '会社から案内されたアカウントでサインインしてください。',
+            : registration
+              ? '招待を受け取ったメールアドレスで、あなたのアカウントを作成します。'
+              : '会社から案内されたアカウントでサインインしてください。',
       ),
     )
     if (outcomeNotice) form.append(noticeNode(outcomeNotice))
@@ -3409,7 +3423,9 @@ export function mountAdminApp(
         element(
           'p',
           'auth-email',
-          'サインイン後に組織への招待を承諾できます。',
+          registration
+            ? 'アカウント作成後にサインインして招待を承諾します。管理者の確認後、共有データを利用できます。'
+            : 'サインイン後に組織への招待を承諾できます。',
         ),
       )
     const email = field(
@@ -3425,8 +3441,30 @@ export function mountAdminApp(
       totp ? '認証アプリの6桁コード' : 'マスターパスワード',
       totp ? 'text' : 'password',
     )
-    secret.input.autocomplete = totp ? 'one-time-code' : 'current-password'
+    secret.input.autocomplete = totp
+      ? 'one-time-code'
+      : registration
+        ? 'new-password'
+        : 'current-password'
     secret.input.required = true
+    const displayName = field('register-name', '表示名', 'text')
+    displayName.input.autocomplete = 'name'
+    displayName.input.required = true
+    displayName.input.maxLength = 100
+    const confirmation = field(
+      'register-password-confirmation',
+      'マスターパスワードを再入力',
+      'password',
+    )
+    confirmation.input.autocomplete = 'new-password'
+    confirmation.input.required = true
+    if (registration) {
+      secret.input.minLength = 12
+      secret.input.maxLength = 256
+      confirmation.input.minLength = 12
+      confirmation.input.maxLength = 256
+      form.append(displayName.root)
+    }
     if (totp) {
       secret.input.inputMode = 'numeric'
       secret.input.pattern = '[0-9]{6}'
@@ -3436,6 +3474,15 @@ export function mountAdminApp(
     else if (session.email)
       form.append(element('p', 'auth-email', session.email))
     form.append(secret.root)
+    if (registration)
+      form.append(
+        confirmation.root,
+        element(
+          'p',
+          'note',
+          '12文字以上の、他で使用していないパスワードを設定してください。管理者もこのパスワードを確認・復元できません。',
+        ),
+      )
     const submit = element(
       'button',
       'button primary',
@@ -3445,11 +3492,30 @@ export function mountAdminApp(
           ? 'ロックを解除'
           : totp
             ? 'コードを確認'
-            : 'サインイン',
+            : registration
+              ? 'アカウントを作成'
+              : 'サインイン',
     )
     submit.type = 'submit'
     submit.disabled = authenticating
     form.append(submit)
+    if (session.pendingInvitation && !locked && !totp) {
+      const toggle = button(
+        registration
+          ? 'アカウントをお持ちの方はサインイン'
+          : '初めての方はアカウントを作成',
+        () => {
+          secret.input.value = ''
+          confirmation.input.value = ''
+          registering = !registering
+          outcomeNotice = null
+          render()
+        },
+        'quiet',
+      )
+      toggle.disabled = authenticating
+      form.append(toggle)
+    }
     if (locked || totp)
       form.append(
         button('別のアカウントでサインイン', () => signOut(), 'quiet'),
@@ -3464,8 +3530,16 @@ export function mountAdminApp(
     form.addEventListener('submit', (event) => {
       event.preventDefault()
       if (submit.disabled) return
+      if (registration && secret.input.value !== confirmation.input.value) {
+        confirmation.input.setCustomValidity(
+          'マスターパスワードが一致しません。',
+        )
+        confirmation.input.reportValidity()
+        return
+      }
       const password = secret.input.value
       secret.input.value = ''
+      confirmation.input.value = ''
       const address = email.input.value
       submit.disabled = true
       outcomeNotice = null
@@ -3474,9 +3548,27 @@ export function mountAdminApp(
           ? client.unlock(password)
           : totp
             ? client.verifyTotp(password)
-            : client.login(address, password)
+            : registration
+              ? client
+                  .registerInvitedAccount({
+                    email: address,
+                    password,
+                    displayName: displayName.input.value,
+                  })
+                  .then(() => {
+                    registering = false
+                    outcomeNotice = {
+                      title: 'アカウントを作成しました',
+                      message:
+                        '設定したマスターパスワードでサインインして、招待を承諾してください。',
+                      tone: 'neutral',
+                    }
+                    render()
+                  })
+              : client.login(address, password)
       )
         .catch((error: unknown) => {
+          if (error instanceof AdminError && error.kind === 'cancelled') return
           if (session.phase !== 'unlocked') {
             outcomeNotice = formatUiError(error)
             render()
@@ -3486,6 +3578,12 @@ export function mountAdminApp(
           submit.disabled = false
         })
     })
+    confirmation.input.addEventListener('input', () =>
+      confirmation.input.setCustomValidity(''),
+    )
+    secret.input.addEventListener('input', () =>
+      confirmation.input.setCustomValidity(''),
+    )
     root.replaceChildren(
       element(
         'div',
