@@ -407,6 +407,15 @@ class DesktopLogProjectionTests(unittest.TestCase):
         self.assertLessEqual(len(value.tail), 64)
         self.assertEqual(p.public_report({'desktopLogSummary': value.summary, 'authenticated': False, 'credentialAdmission': False})['desktopLogSummary'], value.summary)
 
+    def test_native_failure_markers_drop_message_paths_and_credentials(self):
+        value = p.DesktopLogProjection()
+        value.feed(b'sandbox initialization failed: private-token /private/path posix_spawn seatbelt renderer process crashed')
+        self.assertTrue(value.summary['sandboxInitMarker'])
+        self.assertTrue(value.summary['spawnMarker'])
+        self.assertTrue(value.summary['seatbeltMarker'])
+        self.assertTrue(value.summary['rendererCrashMarker'])
+        self.assertNotIn('private', json.dumps(value.summary))
+
     def test_only_the_bounded_prefix_is_classified_and_later_output_is_discarded(self):
         value = p.DesktopLogProjection()
         value.feed(b'x' * p.CAP)

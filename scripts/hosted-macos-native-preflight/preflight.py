@@ -637,7 +637,8 @@ class DesktopLogProjection:
         self.tail = b""
         self.summary = dict(outputPresent=False, truncated=False, readFailed=False,
                             singletonMarker=False, permissionMarker=False,
-                            socketMarker=False, gpuMarker=False)
+                            socketMarker=False, gpuMarker=False, sandboxInitMarker=False,
+                            spawnMarker=False, seatbeltMarker=False, rendererCrashMarker=False)
 
     def feed(self, value):
         require(type(value) is bytes, "desktop_log_input_invalid")
@@ -651,7 +652,11 @@ class DesktopLogProjection:
         markers = {"singletonMarker": [b"process_singleton", b"singletonlock", b"singletonsocket"],
                    "permissionMarker": [b"permission denied", b"operation not permitted"],
                    "socketMarker": [b"socket", b"address already in use"],
-                   "gpuMarker": [b"gpu process exited", b"gpu process launch failed"]}
+                   "gpuMarker": [b"gpu process exited", b"gpu process launch failed"],
+                   "sandboxInitMarker": [b"sandbox initialization failed", b"sandbox_init"],
+                   "spawnMarker": [b"posix_spawn", b"child_process_launcher"],
+                   "seatbeltMarker": [b"seatbelt"],
+                   "rendererCrashMarker": [b"render process gone", b"renderer process crashed"]}
         for key, patterns in markers.items():
             self.summary[key] |= any(pattern in text for pattern in patterns)
         self.tail = text[-64:]
@@ -903,7 +908,7 @@ def public_report(report):
         require(type(report["unixSocketControls"]) is bool, "unix_socket_projection_invalid")
     if "desktopLogSummary" in report:
         summary = report["desktopLogSummary"]
-        require(type(summary) is dict and set(summary) == {"outputPresent", "truncated", "readFailed", "singletonMarker", "permissionMarker", "socketMarker", "gpuMarker"}
+        require(type(summary) is dict and set(summary) == {"outputPresent", "truncated", "readFailed", "singletonMarker", "permissionMarker", "socketMarker", "gpuMarker", "sandboxInitMarker", "spawnMarker", "seatbeltMarker", "rendererCrashMarker"}
                 and all(type(value) is bool for value in summary.values()), "desktop_log_projection_invalid")
     if "desktopTargetSummary" in report:
         summary = report["desktopTargetSummary"]
@@ -1261,6 +1266,14 @@ def execute(temp, company):
                 desktop_log_reader.join(timeout=time_budget(0.1))
             report["desktopLogSummary"] = dict(desktop_log.summary)
         report["appListenerOwned"] = True
+        # Establish the native window/session independently of renderer CDP.
+        swift = shutil.which("swift")
+        require(swift is not None, "swift_missing")
+        gui = json.loads(command([swift, str(HERE / "gui-probe.swift"), str(app_proc.pid)], timeout=25, env=env)[0])
+        report["gui"] = gui
+        report["desktopLogSummary"] = dict(desktop_log.summary)
+        public_report(report)
+        require(gui["onConsole"] and gui["appWindowCount"] >= 1, "native_window_not_visible")
         dom = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
                         "({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input')})")
         require(set(dom) == {"visibleDom"} and type(dom["visibleDom"]) is bool, "renderer_projection_invalid")
@@ -1272,12 +1285,6 @@ def execute(temp, company):
         require(set(result) == {"visibleDom", "appLoopback"} and all(type(v) is bool for v in result.values()), "renderer_projection_invalid")
         report.update(result)
         require(result["visibleDom"] and result["appLoopback"], "native_ui_loopback_not_ready")
-        swift = shutil.which("swift")
-        require(swift is not None, "swift_missing")
-        gui = json.loads(command([swift, str(HERE / "gui-probe.swift"), str(app_proc.pid)], timeout=25, env=env)[0])
-        report["gui"] = gui
-        public_report(report)
-        require(gui["onConsole"] and gui["appWindowCount"] >= 1, "native_window_not_visible")
         require(any((root / "profile").iterdir()), "owned_profile_not_used")
         require(not (Path(os.path.expanduser("~")) / "Library/Application Support" / CLIENT_VENDOR).exists(), "guest_default_profile_used")
         report["status"] = "pre_auth_capability_passed"
