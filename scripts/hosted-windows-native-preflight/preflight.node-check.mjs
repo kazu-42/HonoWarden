@@ -64,24 +64,20 @@ test('interrupted native work retains the last complete finite phase without pro
   }
 })
 
-test(
-  'Windows progress readback accepts only a bounded complete phase',
-  { skip: process.platform !== 'win32' },
-  async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), 'honowarden-progress-reader-'),
+test('Windows progress readback accepts only a bounded complete phase', async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), 'honowarden-progress-reader-'))
+  try {
+    const source = await readFile(
+      new URL('./preflight.ps1', import.meta.url),
+      'utf8',
     )
-    try {
-      const source = await readFile(
-        new URL('./preflight.ps1', import.meta.url),
-        'utf8',
-      )
-      const functionSource = (name, next) =>
-        source.slice(
-          source.indexOf(`function ${name}(`),
-          source.indexOf(`function ${next}(`),
-        )
-      const command = `
+    const functionSource = (name, next) => {
+      const start = source.indexOf(`function ${name}(`)
+      const end = source.indexOf(`function ${next}`)
+      assert.ok(start >= 0 && end > start)
+      return source.slice(start, end)
+    }
+    const command = `
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 ${functionSource('Assert-PlainPath', 'Private-Directory')}
@@ -99,7 +95,16 @@ foreach ($invalid in @('','private-secret-marker',('x'*33),('cleanup'+[char]10))
 }
 [Console]::Out.Write('progress_reader_passed')
 `
-      const output = execFileSync(
+    // Windows limits the complete command line, including UTF-16 Base64.
+    assert.ok(Buffer.from(command, 'utf16le').toString('base64').length < 20000)
+    if (process.platform !== 'win32') {
+      context.skip('Native reader requires Windows PowerShell')
+      return
+    }
+    let output
+    let failureMetadata
+    try {
+      output = execFileSync(
         join(
           process.env.SystemRoot,
           'System32/WindowsPowerShell/v1.0/powershell.exe',
@@ -116,14 +121,19 @@ foreach ($invalid in @('','private-secret-marker',('x'*33),('cleanup'+[char]10))
           maxBuffer: 4096,
           encoding: 'utf8',
           windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
         },
       )
-      assert.equal(output, 'progress_reader_passed')
-    } finally {
-      await rm(directory, { recursive: true, force: true })
+    } catch (error) {
+      failureMetadata = publicExecFailureMetadata(error)
     }
-  },
-)
+    if (failureMetadata)
+      throw Error('progress_reader_failed ' + JSON.stringify(failureMetadata))
+    assert.equal(output, 'progress_reader_passed')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 test('native helper failures expose only fixed phases and retain child exit evidence', async () => {
   for (const [code, expected] of [

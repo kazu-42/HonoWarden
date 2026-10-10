@@ -562,8 +562,8 @@ test('pre-auth runtime and bounded public control sources are independently pinn
     ],
     [
       'preflight.node-check.mjs',
-      41089,
-      '3f316bf506586c8c6a4f061b968e49661dc7bb0b0c7d7deb1aeaf9a7ff1da638',
+      41635,
+      '43385940658dbcedcbdaa126fc19277bfcb466fc71798eb56d4a5d77bc502b8e',
     ],
     [
       'preauth-native.cs',
