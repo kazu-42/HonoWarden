@@ -32,6 +32,39 @@ envelopes are deferred. Existing WebAuthn enrollment endpoints do not establish
 passkey login support. The browser has no plaintext vault-secret download.
 Audit CSV contains a bounded metadata projection only.
 
+The user's launch requirements include the Brave browser extension and both
+Windows and macOS Desktop. CLI acceptance does not replace either Desktop target.
+Company name, membership, administrator assignment, and onboarding values belong
+in the dashboard setup flow rather than an operator questionnaire. The existing
+organization creation and invitation UI is the starting point; new-account
+registration and editable company settings require their own tested source and
+runtime evidence before the complete self-service flow can be called ready.
+
+## Personal Attachment Downloads
+
+Official CLI 2026.9.1 requests JSON metadata from
+`GET /api/ciphers/:id/attachment/:attachmentId`, then fetches its absolute `url`
+without a vault Authorization header. See the pinned upstream
+[metadata request](https://github.com/bitwarden/clients/blob/cli-v2026.9.1/apps/cli/src/commands/get.command.ts)
+and [binary download](https://github.com/bitwarden/clients/blob/cli-v2026.9.1/apps/cli/src/commands/download.command.ts).
+
+The metadata route requires the normal authenticated session. Its URL contains a
+purpose-specific HMAC capability expiring after 120 seconds, scoped to one origin,
+personal cipher, attachment revision, user, device, session family, and credential
+generation. Fetching the binary rechecks that session, active account, personal
+cipher ownership, non-trashed state, and attachment metadata. Revoked sessions and
+deleted attachments cannot continue downloading with a previously issued URL.
+This capability is not an access token and cannot authenticate vault APIs.
+Both responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+Encrypted bytes are always served as an attachment with an octet-stream type.
+
+Use the access-token keyring's active and previous keys for rotation; the download
+MAC has a separate purpose domain. Removing a key invalidates its outstanding
+URLs. A client can request new metadata after expiry or key retirement. Keep full
+download URLs, query strings, and response bodies out of operator logs and error
+reports: the URL is a short-lived capability. Missing R2 objects remain explicit
+storage failures. Organization-owned attachments remain outside this contract.
+
 ## Required Schema And Runtime Profile
 
 Apply every tracked migration in order. These six migrations are unconditional

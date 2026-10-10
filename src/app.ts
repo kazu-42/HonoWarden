@@ -50,6 +50,10 @@ import {
   pendingAttachmentExpiresAt,
 } from './domain/attachment'
 import {
+  signAttachmentDownload,
+  verifyAttachmentDownload,
+} from './domain/attachment-download'
+import {
   authRequestPolicy,
   authRequestQuotaPolicy,
   buildAuthRequestAccessCodeHash,
@@ -2261,12 +2265,20 @@ app.get(
   renewCipherAttachmentUploadRoute,
 )
 app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  c.header('Referrer-Policy', 'no-referrer')
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
   }
 
   try {
+    const cipher = await findCipherById(c.env.DB, {
+      id: c.req.param('id'),
+      userId: auth.user.id,
+    })
+    if (!cipher || cipher.deletedAt)
+      return c.json(attachmentNotFoundError(c.get('requestId')), 404)
     const attachment = await findCipherAttachment(c.env.DB, {
       id: c.req.param('attachmentId'),
       cipherId: c.req.param('id'),
@@ -2277,6 +2289,100 @@ app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
       return c.json(attachmentNotFoundError(c.get('requestId')), 404)
     }
 
+    const config = resolveAccessTokenRuntimeConfig(c.env)
+    if (!config.ok) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'Attachment download is not configured.',
+        ),
+        503,
+      )
+    }
+    const origin = resolvePublicOrigin(c.req.raw)
+    const url = new URL(
+      `${buildAttachmentDirectUploadUrl(attachment)}/data`,
+      origin,
+    )
+    url.searchParams.set(
+      'ticket',
+      await signAttachmentDownload(config.signer, {
+        userId: auth.user.id,
+        deviceIdentifier: auth.deviceIdentifier,
+        sessionId: auth.sessionId,
+        securityStamp: auth.user.securityStamp,
+        cipherId: attachment.cipherId,
+        attachmentId: attachment.id,
+        revisionDate: attachment.revisionDate,
+        origin,
+      }),
+    )
+    return c.json({ ...buildAttachmentResponse(attachment), url: url.href })
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'attachment_download_metadata_failed',
+        requestId: c.get('requestId'),
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'storage_unavailable',
+        'Attachment download failed.',
+      ),
+      503,
+    )
+  }
+})
+app.get('/api/ciphers/:id/attachment/:attachmentId/data', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  c.header('Referrer-Policy', 'no-referrer')
+  const config = resolveAccessTokenRuntimeConfig(c.env)
+  if (!config.ok) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'Attachment download is not configured.',
+      ),
+      503,
+    )
+  }
+  const scope = await verifyAttachmentDownload(
+    config.verifier,
+    c.req.query('ticket') ?? '',
+  )
+  const denied = () => c.json(attachmentNotFoundError(c.get('requestId')), 404)
+  if (
+    !scope ||
+    scope.cipherId !== c.req.param('id') ||
+    scope.attachmentId !== c.req.param('attachmentId') ||
+    scope.origin !== resolvePublicOrigin(c.req.raw)
+  ) {
+    return denied()
+  }
+  try {
+    const user = await findAuthUserBySession(c.env.DB, scope)
+    if (!user || user.disabledAt || user.securityStamp !== scope.securityStamp)
+      return denied()
+    const cipher = await findCipherById(c.env.DB, {
+      id: scope.cipherId,
+      userId: scope.userId,
+    })
+    if (!cipher || cipher.deletedAt) return denied()
+    const attachment = await findCipherAttachment(c.env.DB, {
+      id: scope.attachmentId,
+      cipherId: scope.cipherId,
+      userId: scope.userId,
+    })
+    if (
+      !attachment ||
+      attachment.uploadState !== 'uploaded' ||
+      attachment.revisionDate !== scope.revisionDate
+    )
+      return denied()
     const object = await c.env.VAULT_OBJECTS.get(attachment.objectKey)
     if (!object?.body) {
       return c.json(
@@ -2290,7 +2396,10 @@ app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
     }
 
     const headers = new Headers({
-      'Content-Type': attachment.contentType ?? 'application/octet-stream',
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': 'attachment',
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
       'X-HonoWarden-Attachment-Id': attachment.id,
     })
 
@@ -2299,6 +2408,12 @@ app.get('/api/ciphers/:id/attachment/:attachmentId', async (c) => {
       headers,
     })
   } catch {
+    console.error(
+      JSON.stringify({
+        event: 'attachment_download_failed',
+        requestId: c.get('requestId'),
+      }),
+    )
     return c.json(
       apiError(
         c.get('requestId'),
