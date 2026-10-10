@@ -1,6 +1,30 @@
 # Current State
 
-Last updated: 2026-10-04
+Last updated: 2026-10-11
+
+## 2026-10-11 Company Onboarding Follow-up
+
+Draft PRs #155 and #156 add invitation-bound account creation, private mail
+delivery services, compatible attachment download capabilities, and dashboard
+company settings. Owners can save a company name, invitation email domain,
+planned member count, and test recipient, explicitly complete invitation
+addresses, and request a bounded test email. Apply additive migration 0032
+before enabling company settings; all tracked writer flags remain default-off.
+See [company settings](operations/company-settings.md).
+
+The main onboarding checkpoint passed 4,049 local tests and all 16 actual
+Brave/official CLI/restore phases with synthetic data. An earlier company
+settings checkpoint passed all 17 phases, including settings after restore.
+The first extended-settings full run passed 4,084 and failed 16; the failures
+identified an omitted migration-freeze entry and outdated audit vocabulary,
+with dependent release-gate assertions also failing. Corrections require fresh
+verification. None of these local results proves hosted deployment, actual
+mailbox receipt, or authenticated Windows/macOS Desktop acceptance. Scoped
+Cloudflare readback is currently blocked by token authentication failure.
+
+The first operator account still uses authorized bootstrap; company settings
+do not open public registration. Later historical sections retain their original
+scope and evidence rather than describing the latest candidate.
 
 ## 2026-10-04 Company Administration Source
 

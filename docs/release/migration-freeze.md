@@ -45,6 +45,7 @@ changes and update this document in the same change.
 | `migrations/0029_organization_membership_mutation_marker.sql` | `bb7878e639689caba48825b914e0db21d8f8b83810a0037e0a4fb7f98b853b88` |
 | `migrations/0030_organization_policy_mutation_marker.sql`     | `b353368af866d30d546f83188dc5cf5642b56047de1a8a2161b09a91d2ee7858` |
 | `migrations/0031_email_verification.sql`                      | `0875c85363623e89329499fbcf7fd7e3b3907c51015a2f76b68adfcd6b6a358a` |
+| `migrations/0032_company_settings.sql`                        | `86560684688c3332de0685fe703b5faacb012365573f7e43b658279dbf645338` |
 
 Migration 0022 is a post-release, local-only source addition for nullable user-key
 ID metadata and old-writer invalidation. It has not been applied remotely. The
@@ -92,6 +93,13 @@ See [ADR 0017](../adr/0017-email-verification-protocol.md) and
 
 ## Required Tables At Freeze
 
+Migration 0032 adds dashboard company metadata behind the default-off
+`HONOWARDEN_COMPANY_SETTINGS_ENABLED` flag. It has not been applied remotely.
+Apply it before activation and retain the populated table on application
+rollback. The existing audit table also stores required test-mail cooldown
+claims; no inbox-delivery assertion is stored. See
+[company settings](../operations/company-settings.md).
+
 - `schema_migrations`
 - `users`
 - `devices`
@@ -111,6 +119,7 @@ See [ADR 0017](../adr/0017-email-verification-protocol.md) and
 - `user_totp`
 - `totp_challenges`
 - `organizations`
+- `organization_company_settings`
 - `organization_users`
 - `organization_groups`
 - `organization_group_users`

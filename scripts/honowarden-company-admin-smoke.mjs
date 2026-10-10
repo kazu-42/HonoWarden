@@ -1839,7 +1839,8 @@ async function execute(options, packet) {
               .bind(company.orgId)
               .first()
             invariant(
-              settings?.default_email_domain === 'example.test' &&
+              settings?.default_email_domain ===
+                recipient.email.split('@')[1] &&
                 settings.expected_member_count === 20 &&
                 settings.mail_test_recipient === owner.email,
               'company_settings_restore_mismatch',
@@ -2397,7 +2398,7 @@ async function companyFlow(context) {
     })
     await dialog
       .getByLabel('既定のメールドメイン', { exact: true })
-      .fill('example.test')
+      .fill(recipient.email.split('@')[1])
     await dialog.getByLabel('導入予定人数', { exact: true }).fill('20')
     await dialog
       .getByLabel('テストメールの送信先', { exact: true })
@@ -2419,7 +2420,7 @@ async function companyFlow(context) {
     invariant(
       (await reopened
         .getByLabel('既定のメールドメイン', { exact: true })
-        .inputValue()) === 'example.test' &&
+        .inputValue()) === recipient.email.split('@')[1] &&
         (await reopened
           .getByLabel('導入予定人数', { exact: true })
           .inputValue()) === '20' &&
