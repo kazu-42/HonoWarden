@@ -552,8 +552,8 @@ test('pre-auth runtime and bounded public control sources are independently pinn
     ],
     [
       'preflight.mjs',
-      8859,
-      '38531f6c318dfa7cedeea2970d7e42d1babeaead41e27fb1a94d7ed82f73cb7a',
+      8910,
+      'a29fcd75e03b29f838b02ca711dde34610257225150c18d068c3fbc101003a69',
     ],
     [
       'preflight-policy.mjs',

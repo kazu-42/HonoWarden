@@ -90,7 +90,9 @@ async function run(input) {
     result.nodePhase = 'worker_start'
     worker = new Miniflare({
       modules: true,
+      cf: false,
       scriptPath: join(input.attempt, 'worker.mjs'),
+      modulesRoot: input.attempt,
       compatibilityDate: '2026-07-21',
       compatibilityFlags: ['nodejs_compat'],
       host: '127.0.0.1',
