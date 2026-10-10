@@ -355,6 +355,23 @@
       "lastReviewedAt": "2026-10-11",
       "evidenceLevel": "local_api",
       "evidence": [
+        "test/integration/initial-setup-d1.test.ts",
+        "test/admin-account-registration.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "accounts.initial_setup",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "rationale": "Default-off first-account dashboard setup requires an operator-issued setup code and an atomic empty-database singleton claim. It accepts only client-wrapped material and grants no session or organization membership. The durable receipt prevents reopening after account deletion.",
+      "covers": [{ "method": "POST", "path": "/api/accounts/initial-setup" }],
+      "migrations": ["0033_initial_setup.sql"]
+    },
+    {
+      "lastReviewedAt": "2026-10-11",
+      "evidenceLevel": "local_api",
+      "evidence": [
         "test/integration/invited-account-registration-d1.test.ts",
         "test/admin-account-registration.test.ts"
       ],
@@ -3091,7 +3108,8 @@
         "0029_organization_membership_mutation_marker.sql",
         "0030_organization_policy_mutation_marker.sql",
         "0031_email_verification.sql",
-        "0032_company_settings.sql"
+        "0032_company_settings.sql",
+        "0033_initial_setup.sql"
       ]
     },
     {

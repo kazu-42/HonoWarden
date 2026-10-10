@@ -35,6 +35,7 @@ const errorCodes = new Set([
   'totp_unavailable',
   'authentication_required',
   'email_verification_unavailable',
+  'initial_setup_unavailable',
 ])
 export function record(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value))
@@ -92,6 +93,7 @@ export type ApiRequest = {
   signal: AbortSignal
   ifMatch?: string
   csv?: boolean
+  bootstrapToken?: string
 }
 export function createApi(fetcher: FetchPort) {
   return async (
@@ -101,6 +103,16 @@ export function createApi(fetcher: FetchPort) {
     if (!/^\/(?:api|identity)\//.test(path) || /[\r\n#]/.test(path))
       throw new AdminError('validation', 'endpoint_invalid')
     const headers: Record<string, string> = {}
+    if (input.bootstrapToken !== undefined) {
+      if (
+        path !== '/api/accounts/initial-setup' ||
+        input.method !== 'POST' ||
+        input.token ||
+        !/^[!-~]{32,512}$/.test(input.bootstrapToken)
+      )
+        throw new AdminError('validation', 'initial_setup_unavailable')
+      headers['X-HonoWarden-Bootstrap-Token'] = input.bootstrapToken
+    }
     if (input.token) headers.Authorization = `Bearer ${input.token}`
     if (input.ifMatch) headers['If-Match'] = input.ifMatch
     let body: string | undefined

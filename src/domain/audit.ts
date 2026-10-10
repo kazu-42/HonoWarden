@@ -1,5 +1,6 @@
 export type AuditEventName =
   | 'admin.bootstrap'
+  | 'admin.initial_setup'
   | 'account.security_stamp.rotate'
   | 'account.password.change'
   | 'account.kdf.change'

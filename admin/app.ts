@@ -266,6 +266,13 @@ export function formatUiError(error: unknown): UiNotice {
         'アカウントのセキュリティから認証アプリを登録した後、現在のセッションを本人確認してください。',
       tone: 'warning',
     }
+  if (error.code === 'initial_setup_unavailable')
+    return {
+      ...result,
+      title: '初回セットアップを実行できません',
+      message:
+        'アカウント作成済みの場合はサインインしてください。未設定の場合は、運用担当者にセットアップの有効化とコードを確認してください。',
+    }
   if (error.kind === 'authentication')
     return {
       ...result,
@@ -678,6 +685,7 @@ export function mountAdminApp(
 ): () => void {
   let session = client.getSession()
   let registering = false
+  let settingUp = false
   let selectedOrganizationId: string | null = null
   let view: View = 'overview'
   let epoch = 0
@@ -3616,15 +3624,21 @@ export function mountAdminApp(
     const locked = session.phase === 'locked'
     const totp = session.phase === 'totpRequired'
     const authenticating = session.phase === 'authenticating'
+    const initialSetup =
+      settingUp && !session.pendingInvitation && !locked && !totp
     const registration =
-      registering && !!session.pendingInvitation && !locked && !totp
+      (initialSetup || (registering && !!session.pendingInvitation)) &&
+      !locked &&
+      !totp
     const title = locked
       ? 'ロックを解除'
       : totp
         ? '認証コードを確認'
-        : registration
-          ? '招待からアカウントを作成'
-          : '組織管理にサインイン'
+        : initialSetup
+          ? '最初のアカウントを登録'
+          : registration
+            ? '招待からアカウントを作成'
+            : '組織管理にサインイン'
     const form = element('form', 'auth-card')
     form.setAttribute('aria-busy', String(authenticating))
     form.append(
@@ -3637,9 +3651,11 @@ export function mountAdminApp(
           ? 'このブラウザでの作業を再開します。'
           : totp
             ? '認証アプリに表示されている6桁のコードを入力してください。'
-            : registration
-              ? '招待を受け取ったメールアドレスで、あなたのアカウントを作成します。'
-              : '会社から案内されたアカウントでサインインしてください。',
+            : initialSetup
+              ? '未設定のHonoWardenで最初のアカウントを登録します。運用担当者が発行したセットアップコードが必要です。'
+              : registration
+                ? '招待を受け取ったメールアドレスで、あなたのアカウントを作成します。'
+                : '会社から案内されたアカウントでサインインしてください。',
       ),
     )
     if (outcomeNotice) form.append(noticeNode(outcomeNotice))
@@ -3691,6 +3707,16 @@ export function mountAdminApp(
     )
     confirmation.input.autocomplete = 'new-password'
     confirmation.input.required = true
+    const setupCode = field(
+      'initial-setup-code',
+      'セットアップコード',
+      'password',
+    )
+    setupCode.input.autocomplete = 'off'
+    setupCode.input.required = true
+    setupCode.input.minLength = 32
+    setupCode.input.maxLength = 512
+    if (initialSetup) form.append(setupCode.root)
     if (registration) {
       secret.input.minLength = 12
       secret.input.maxLength = 256
@@ -3749,6 +3775,23 @@ export function mountAdminApp(
       toggle.disabled = authenticating
       form.append(toggle)
     }
+    if (!session.pendingInvitation && !locked && !totp) {
+      const toggle = button(
+        initialSetup ? 'サインインに戻る' : '初回セットアップ',
+        () => {
+          if (authenticating) return
+          secret.input.value = ''
+          confirmation.input.value = ''
+          setupCode.input.value = ''
+          settingUp = !settingUp
+          outcomeNotice = null
+          render()
+        },
+        'quiet',
+      )
+      toggle.disabled = authenticating
+      form.append(toggle)
+    }
     if (locked || totp)
       form.append(
         button('別のアカウントでサインイン', () => signOut(), 'quiet'),
@@ -3771,6 +3814,8 @@ export function mountAdminApp(
         return
       }
       const password = secret.input.value
+      const code = setupCode.input.value
+      setupCode.input.value = ''
       secret.input.value = ''
       confirmation.input.value = ''
       const address = email.input.value
@@ -3782,22 +3827,30 @@ export function mountAdminApp(
           : totp
             ? client.verifyTotp(password)
             : registration
-              ? client
-                  .registerInvitedAccount({
-                    email: address,
-                    password,
-                    displayName: displayName.input.value,
-                  })
-                  .then(() => {
-                    registering = false
-                    outcomeNotice = {
-                      title: 'アカウントを作成しました',
-                      message:
-                        '設定したマスターパスワードでサインインして、招待を承諾してください。',
-                      tone: 'neutral',
-                    }
-                    render()
-                  })
+              ? (initialSetup
+                  ? client.setupInitialAccount({
+                      email: address,
+                      password,
+                      displayName: displayName.input.value,
+                      setupCode: code,
+                    })
+                  : client.registerInvitedAccount({
+                      email: address,
+                      password,
+                      displayName: displayName.input.value,
+                    })
+                ).then(() => {
+                  registering = false
+                  settingUp = false
+                  outcomeNotice = {
+                    title: 'アカウントを作成しました',
+                    message: initialSetup
+                      ? '設定したマスターパスワードでサインインし、会社の組織を作成してください。'
+                      : '設定したマスターパスワードでサインインして、招待を承諾してください。',
+                    tone: 'neutral',
+                  }
+                  render()
+                })
               : client.login(address, password)
       )
         .catch((error: unknown) => {

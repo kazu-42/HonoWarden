@@ -123,6 +123,12 @@ export interface AdminClient {
   getSession(): SessionView
   subscribe(listener: (state: SessionView) => void): () => void
   login(email: string, password: string): Promise<void>
+  setupInitialAccount(input: {
+    email: string
+    password: string
+    displayName: string
+    setupCode: string
+  }): Promise<void>
   registerInvitedAccount(input: {
     email: string
     password: string

@@ -1400,6 +1400,7 @@ async function execute(options, packet) {
         HONOWARDEN_TOKEN_SECRET: secrets.token,
         HONOWARDEN_ADMIN_ENABLED: 'true',
         HONOWARDEN_BOOTSTRAP_ENABLED: 'true',
+        HONOWARDEN_INITIAL_SETUP_ENABLED: 'true',
         HONOWARDEN_BOOTSTRAP_TOKEN: secrets.bootstrap,
         HONOWARDEN_ALLOWED_EMAILS: accounts
           .filter((account) => account !== recipient)
@@ -1575,8 +1576,8 @@ async function execute(options, packet) {
       server.listen(0, '127.0.0.1', resolve)
     })
     origin = 'https://127.0.0.1:' + server.address().port
-    for (const account of accounts) {
-      if (account === recipient) continue
+    const bootstrapOutsider = async () => {
+      const account = outsider
       const response = await worker.dispatchFetch(
         origin + '/api/accounts/bootstrap',
         {
@@ -1689,16 +1690,31 @@ async function execute(options, packet) {
         action: 'navigate_login',
       }
       await account.page.goto(origin + path)
-      if (account === recipient && !account.id) {
+      if ((account === owner || account === recipient) && !account.id) {
+        if (account === owner) {
+          invariant(
+            (await database
+              .prepare('SELECT COUNT(*) AS count FROM users')
+              .first('count')) === 0,
+            'initial_setup_database_not_empty',
+          )
+        }
         await account.page
           .getByRole('button', {
-            name: '初めての方はアカウントを作成',
+            name:
+              account === owner
+                ? '初回セットアップ'
+                : '初めての方はアカウントを作成',
             exact: true,
           })
           .click()
+        if (account === owner)
+          await account.page
+            .getByLabel('セットアップコード', { exact: true })
+            .fill(secrets.bootstrap)
         await account.page
           .getByLabel('表示名', { exact: true })
-          .fill('Synthetic recipient')
+          .fill('Synthetic ' + account.label)
         await account.page
           .getByLabel('メールアドレス', { exact: true })
           .fill(account.email)
@@ -1746,7 +1762,26 @@ async function execute(options, packet) {
         account.publicKey = registered.public_key
         master.fill(0)
         stretched.fill(0)
-        report.invitedAccountCreatedThroughUi = true
+        if (account === owner) {
+          invariant(
+            (await database
+              .prepare(
+                'SELECT user_id FROM initial_setup_receipt WHERE singleton=1',
+              )
+              .first('user_id')) === owner.id,
+            'initial_setup_receipt_missing',
+          )
+          ownerStepUp.userKey.fill(0)
+          ownerStepUp.privateKey.fill(0)
+          Object.assign(ownerStepUp, {
+            id: owner.id,
+            userKey: Buffer.from(owner.userKey),
+            privateKey: Buffer.from(owner.privateKey),
+            publicKey: owner.publicKey,
+          })
+          report.initialAccountCreatedThroughUi = true
+          await bootstrapOutsider()
+        } else report.invitedAccountCreatedThroughUi = true
       }
       report.browser.lastAction.action = 'fill_login_email'
       await account.page
@@ -1832,6 +1867,14 @@ async function execute(options, packet) {
             })
           }
           const verifyCompanySettings = async () => {
+            invariant(
+              (await database
+                .prepare(
+                  'SELECT user_id FROM initial_setup_receipt WHERE singleton=1',
+                )
+                .first('user_id')) === owner.id,
+              'initial_setup_receipt_restore_mismatch',
+            )
             const settings = await database
               .prepare(
                 'SELECT default_email_domain, expected_member_count, mail_test_recipient FROM organization_company_settings WHERE organization_id = ?',

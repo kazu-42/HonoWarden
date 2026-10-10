@@ -1,17 +1,14 @@
-import { normalizeEmail } from './domain/prelogin'
+import {
+  parseAccountRegistrationFields,
+  type AccountRegistrationFields,
+} from './domain/account-registration'
 import { buildBootstrapUserRecord } from './domain/bootstrap'
 import {
   buildOrganizationMembershipInviteTokenHash,
   parseOrganizationMembershipAcceptRequest,
 } from './domain/organization-membership'
 
-type Registration = {
-  email: string
-  displayName: string | null
-  masterPasswordHash: string
-  userKey: string
-  publicKey: string
-  privateKey: string
+type Registration = AccountRegistrationFields & {
   invitation: { organizationId: string; membershipId: string; token: string }
 }
 const fields = new Set([
@@ -25,39 +22,14 @@ const fields = new Set([
 ])
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
-const bounded = (value: unknown, max: number): value is string =>
-  typeof value === 'string' &&
-  value.length > 0 &&
-  value.length <= max &&
-  value.trim() === value &&
-  ![...value].some(
-    (character) =>
-      character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
-  )
 
 export function parseInvitedAccountRegistration(
   body: unknown,
 ): Registration | null {
   if (!object(body) || Object.keys(body).some((key) => !fields.has(key)))
     return null
-  const email =
-    typeof body.email === 'string' && body.email.length <= 254
-      ? normalizeEmail(body.email)
-      : null
-  if (
-    !email ||
-    !bounded(body.masterPasswordHash, 44) ||
-    !/^[A-Za-z0-9+/]{43}=$/.test(body.masterPasswordHash) ||
-    !bounded(body.userKey, 4096) ||
-    !bounded(body.publicKey, 32768) ||
-    !bounded(body.privateKey, 32768) ||
-    (body.displayName !== undefined &&
-      body.displayName !== null &&
-      !bounded(body.displayName, 100))
-  )
-    return null
-  if (btoa(atob(body.masterPasswordHash)) !== body.masterPasswordHash)
-    return null
+  const registration = parseAccountRegistrationFields(body)
+  if (!registration) return null
   const invite = body.invitation
   if (
     !object(invite) ||
@@ -73,12 +45,7 @@ export function parseInvitedAccountRegistration(
   )
     return null
   return {
-    email,
-    displayName: typeof body.displayName === 'string' ? body.displayName : null,
-    masterPasswordHash: body.masterPasswordHash,
-    userKey: body.userKey,
-    publicKey: body.publicKey,
-    privateKey: body.privateKey,
+    ...registration,
     invitation: {
       organizationId: invite.organizationId,
       membershipId: invite.membershipId,
