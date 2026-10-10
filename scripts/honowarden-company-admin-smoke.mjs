@@ -11,6 +11,7 @@ import {
   generateKeyPairSync,
   pbkdf2Sync,
   privateDecrypt,
+  publicEncrypt,
   randomBytes,
   randomUUID,
   constants,
@@ -38,6 +39,17 @@ import {
   stopTrackedProcesses,
 } from './honowarden-signal-cleanup.mjs'
 import { isolatedClientEnvironment } from './honowarden-official-client-harness.mjs'
+import {
+  assertCompanyGroupOnlyState,
+  collectCompanyRestoreObjectKeys,
+  companyRestoreStorage,
+  createCompanyNativeAttachment,
+  establishCompanyGroupOnlyMember,
+  isRestoredTotpChallenge,
+  prepareCompanyRestoreResource,
+  restoreCompanySnapshot,
+  verifyCompanyNativeAttachment,
+} from './honowarden-company-restore-smoke.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -122,9 +134,16 @@ export async function searchRunAuditFromUi(page, startedAt) {
   const local = await page.evaluate(({ from, to }) => {
     const inputValue = (value) => {
       const date = new Date(value)
-      return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 23)
+      return (
+        new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 23)
+          // Chromium normalizes insignificant zeroes; Playwright fill requires
+          // that canonical value while the submitted instant stays unchanged.
+          .replace(/(\.\d*?)0+$/, '$1')
+          .replace(/\.$/, '')
+          .replace(/:00$/, '')
+      )
     }
     return { from: inputValue(from), to: inputValue(to) }
   }, query)
@@ -318,6 +337,7 @@ export function parseOptions(args) {
   for (let index = 0; index < rest.length; index++) {
     const name = rest[index]
     if (name === '--execute') options.execute = true
+    else if (name === '--restore') options.restore = true
     else if (name === '--without-native') options.nativeCli = undefined
     else {
       invariant(
@@ -329,6 +349,10 @@ export function parseOptions(args) {
     }
   }
   invariant(action !== 'plan' || !options.execute, 'plan_cannot_execute')
+  invariant(
+    !options.restore || options.nativeCli,
+    'restore_requires_native_client',
+  )
   if (action === 'run') {
     invariant(
       options.execute === true && options.confirm === confirmation,
@@ -465,6 +489,9 @@ async function sourceFingerprint() {
     'wrangler.jsonc',
     'vite.admin.config.ts',
     'scripts/honowarden-company-admin-smoke.mjs',
+    'scripts/honowarden-company-restore-smoke.mjs',
+    'scripts/honowarden-backup.mjs',
+    'scripts/honowarden-credential-lifecycle-state.mjs',
     'scripts/honowarden-signal-cleanup.mjs',
     'scripts/honowarden-official-client-harness.mjs',
   )
@@ -531,6 +558,7 @@ async function preparation(options) {
     downloads: false,
     installs: false,
     remoteWrites: false,
+    restoreRequested: options.restore === true,
     runDeadlineMs,
     cleanupDeadlineMs,
     runRoot: relative(repoRoot, runRoot),
@@ -725,6 +753,9 @@ export function nativeCommandAction(args) {
   if (args[0] === 'config' && args[1] === 'server') return 'configure_server'
   if (args[0] === 'sync' && args[1] === '--force') return 'forced_sync'
   if (args[0] === 'list' && args[1] === 'items') return 'list_items'
+  if (args[0] === 'create' && args[1] === 'attachment')
+    return 'create_attachment'
+  if (args[0] === 'get' && args[1] === 'attachment') return 'get_attachment'
   if (args[0] === 'login') return 'login'
   if (args[0] === 'logout') return 'logout'
   return 'unsupported'
@@ -1294,6 +1325,17 @@ async function execute(options, packet) {
           sharedItem.login.uris[0].uri === shared.expected.uri,
         'native_shared_decrypt_failed',
       )
+    if (personal.attachment) {
+      report.native.checks.push(
+        await verifyCompanyNativeAttachment({
+          root: join(root, 'native'),
+          cipher: personal,
+          item: personalItem,
+          native,
+          session: nativeSession,
+        }),
+      )
+    }
     report.native.checks.push({
       flow: expectShared
         ? 'shared_and_personal_five_fields_decrypted'
@@ -1301,6 +1343,13 @@ async function execute(options, packet) {
       passed: true,
     })
   }
+  const createNativeAttachment = (cipher) =>
+    createCompanyNativeAttachment({
+      root: join(root, 'native'),
+      cipher,
+      native,
+      session: nativeSession,
+    })
   try {
     const { build } = await import(
       pathToFileURL(packet.modules.esbuildPath).href
@@ -1323,7 +1372,13 @@ async function execute(options, packet) {
     report.workerBundleSha256 = createHash('sha256')
       .update(await readFile(bundle))
       .digest('hex')
-    worker = new Miniflare({
+    const restoreSource = options.restore
+      ? await prepareCompanyRestoreResource(
+          join(root, 'restore-source'),
+          'source',
+        )
+      : undefined
+    const runtimeOptions = {
       modules: true,
       scriptPath: bundle,
       compatibilityDate: '2026-07-21',
@@ -1334,6 +1389,7 @@ async function execute(options, packet) {
       r2Buckets: { VAULT_OBJECTS: randomUUID() },
       d1Persist: join(root, 'state', 'd1'),
       r2Persist: join(root, 'state', 'r2'),
+      ...(restoreSource ? companyRestoreStorage(restoreSource) : {}),
       log: new Log(LogLevel.NONE),
       handleRuntimeStdio: (stdout, stderr) => {
         stdout.resume()
@@ -1390,11 +1446,18 @@ async function execute(options, packet) {
           )
           const delivery = await request.json()
           invariant(
-            delivery.recipientEmail === recipient.email &&
+            (delivery.recipientEmail === recipient.email ||
+              (options.restore &&
+                delivery.recipientEmail === outsider.email)) &&
               /^[A-Za-z0-9_-]{43}$/.test(delivery.token),
             'unexpected_synthetic_recipient',
           )
-          invariant(deliveries.length === 0, 'unexpected_duplicate_delivery')
+          invariant(
+            !deliveries.some(
+              (entry) => entry.recipientEmail === delivery.recipientEmail,
+            ),
+            'unexpected_duplicate_delivery',
+          )
           deliveries.push(delivery)
           report.mail.acknowledgedCount++
           return new Response(null, { status: 202 })
@@ -1403,7 +1466,8 @@ async function execute(options, packet) {
       outboundService: async () => {
         throw new SmokeFailure('worker_external_fetch_refused')
       },
-    })
+    }
+    worker = new Miniflare(runtimeOptions)
     await worker.ready
     database = await worker.getD1Database('DB')
     const migrations = (await readdir(join(repoRoot, 'migrations')))
@@ -1627,7 +1691,7 @@ async function execute(options, packet) {
         'browser_token_not_observed',
       )
     }
-    await companyFlow({
+    const company = await companyFlow({
       owner,
       ownerStepUp,
       recipient,
@@ -1643,6 +1707,7 @@ async function execute(options, packet) {
       safeScreenshot,
       native,
       nativeReadback,
+      createNativeAttachment,
       freshOtp,
       login,
       root,
@@ -1655,6 +1720,282 @@ async function execute(options, packet) {
         nativeSession = session
       },
     })
+    if (options.restore) {
+      await check(
+        'company_generation_bound_export_and_fresh_restore',
+        async () => {
+          report.restore = { status: 'running', phase: 'capture' }
+          const verifyGroupOnly = async () => {
+            const membership = await database
+              .prepare(
+                'SELECT status, type, org_key FROM organization_users WHERE id = ? AND organization_id = ? AND user_id = ?',
+              )
+              .bind(company.survivorMembershipId, company.orgId, outsider.id)
+              .first()
+            const direct = await database
+              .prepare(
+                'SELECT collection_id FROM collection_users WHERE organization_user_id = ?',
+              )
+              .bind(company.survivorMembershipId)
+              .all()
+            const groups = await database
+              .prepare(
+                'SELECT gu.group_id, cg.collection_id, cg.read_only, cg.hide_passwords, cg.manage FROM organization_group_users gu JOIN collection_groups cg ON cg.group_id = gu.group_id AND cg.organization_id = gu.organization_id WHERE gu.organization_user_id = ? AND gu.organization_id = ?',
+              )
+              .bind(company.survivorMembershipId, company.orgId)
+              .all()
+            assertCompanyGroupOnlyState({
+              membership,
+              directGrants: direct.results,
+              groupGrants: groups.results,
+              groupId: company.survivorGroupId,
+              collectionId: company.collectionId,
+            })
+          }
+          await verifyGroupOnly()
+          const bucket = await worker.getR2Bucket('VAULT_OBJECTS')
+          invariant(
+            Boolean(company.personal.attachment),
+            'restore_attachment_missing',
+          )
+          const objectKeys = await collectCompanyRestoreObjectKeys(bucket, 1)
+          const restored = await restoreCompanySnapshot({
+            root,
+            source: restoreSource,
+            completedGeneration: {
+              status: 'passed',
+              sourceSha256: packet.source.sha256,
+              completedAt: new Date().toISOString(),
+              checks: report.checks,
+            },
+            objectKeys,
+            stopSource: async () => {
+              await worker.dispose()
+              worker = undefined
+            },
+            runBackup: async (args) => {
+              report.restore.phase = args[0]
+              const result = await boundedCommand(
+                process.execPath,
+                [join(repoRoot, 'scripts/honowarden-backup.mjs'), ...args],
+                {
+                  ...childEnvironment(root),
+                  PATH:
+                    dirname(process.execPath) +
+                    ':' +
+                    join(repoRoot, 'node_modules/.bin') +
+                    ':/usr/bin:/bin',
+                },
+                90000,
+              )
+              result.stderr.fill(0)
+              return JSON.parse(result.stdout)
+            },
+          })
+          report.restore = {
+            ...restored.evidence,
+            runtimeChecks: [],
+            restartCount: 0,
+          }
+          const restart = async () => {
+            worker = new Miniflare({
+              ...runtimeOptions,
+              ...companyRestoreStorage(restored.target),
+            })
+            await worker.ready
+            database = await worker.getD1Database('DB')
+          }
+          await restart()
+          await verifyGroupOnly()
+          const verifyDenied = async () => {
+            await api(
+              '/api/accounts/profile',
+              'GET',
+              undefined,
+              owner.token,
+              401,
+            )
+            await api(
+              '/api/accounts/profile',
+              'GET',
+              undefined,
+              ownerStepUp.token,
+              401,
+            )
+            await api(
+              '/api/accounts/profile',
+              'GET',
+              undefined,
+              company.prooflessToken,
+            )
+            const proofless = await api(
+              '/api/sync',
+              'GET',
+              undefined,
+              company.prooflessToken,
+            )
+            invariant(
+              !proofless.ciphers.some(
+                (cipher) => cipher.id === company.shared.id,
+              ),
+              'restore_proofless_shared_access',
+            )
+            await api(
+              '/api/ciphers/' + company.shared.id,
+              'GET',
+              undefined,
+              company.prooflessToken,
+              404,
+            )
+            await api(
+              '/api/ciphers/' + company.shared.id,
+              'GET',
+              undefined,
+              recipient.token,
+              404,
+            )
+            report.restore.runtimeChecks.push({
+              flow: 'logged_out_families_and_revoked_member_denied_proofless_family_not_elevated',
+              passed: true,
+            })
+          }
+          const loginAndDecrypt = async (
+            account,
+            personal,
+            expectShared,
+            flow,
+          ) => {
+            // This password-only request must still challenge after storage restoration.
+            const challenge = await api(
+              '/identity/connect/token',
+              'POST',
+              new URLSearchParams({
+                grant_type: 'password',
+                username: account.email,
+                password: account.hash,
+                scope: 'api offline_access',
+                deviceIdentifier: randomUUID(),
+                deviceType: '8',
+                deviceName: 'Synthetic restore challenge',
+              }),
+              undefined,
+              400,
+            )
+            report.restore.lastChallenge = {
+              status: 400,
+              numericProvider: challenge.TwoFactorProviders?.[0] === 0,
+              providerMapPresent:
+                typeof challenge.TwoFactorProviders2?.[0] === 'object',
+              challengeTokenPresent:
+                typeof challenge.TwoFactorToken === 'string',
+              accessTokenAbsent: !Object.hasOwn(challenge, 'access_token'),
+              refreshTokenAbsent: !Object.hasOwn(challenge, 'refresh_token'),
+            }
+            invariant(
+              isRestoredTotpChallenge(challenge),
+              'restore_totp_challenge_missing',
+            )
+            nativeSession = await native(
+              [
+                'login',
+                account.email,
+                '--passwordenv',
+                'BW_PASSWORD',
+                '--method',
+                '0',
+                '--code',
+                await freshOtp(account),
+                '--raw',
+                '--nointeraction',
+              ],
+              { BW_PASSWORD: account.password },
+            )
+            await nativeReadback(
+              account,
+              company.shared,
+              personal,
+              expectShared,
+            )
+            report.restore.runtimeChecks.push({
+              flow,
+              passed: true,
+            })
+          }
+          await verifyDenied()
+          await loginAndDecrypt(
+            owner,
+            company.ownerPersonal,
+            true,
+            'owner_fresh_native_totp_shared_and_personal_decrypt',
+          )
+          await worker.dispose()
+          worker = undefined
+          await restart()
+          report.restore.restartCount++
+          await nativeReadback(
+            owner,
+            company.shared,
+            company.ownerPersonal,
+            true,
+          )
+          report.restore.runtimeChecks.push({
+            flow: 'owner_native_forced_sync_decrypt_after_worker_restart',
+            passed: true,
+          })
+          await native(['logout'])
+          await loginAndDecrypt(
+            outsider,
+            company.survivorPersonal,
+            true,
+            'group_only_member_fresh_native_totp_shared_and_personal_decrypt',
+          )
+          await worker.dispose()
+          worker = undefined
+          await restart()
+          report.restore.restartCount++
+          await verifyGroupOnly()
+          await nativeReadback(
+            outsider,
+            company.shared,
+            company.survivorPersonal,
+            true,
+          )
+          report.restore.runtimeChecks.push({
+            flow: 'group_only_member_shared_and_personal_decrypt_after_restart',
+            passed: true,
+          })
+          await native(['logout'])
+          await loginAndDecrypt(
+            recipient,
+            company.personal,
+            false,
+            'revoked_member_fresh_native_totp_personal_and_attachment_decrypt',
+          )
+          await worker.dispose()
+          worker = undefined
+          await restart()
+          report.restore.restartCount++
+          await nativeReadback(
+            recipient,
+            company.shared,
+            company.personal,
+            false,
+          )
+          report.restore.runtimeChecks.push({
+            flow: 'revoked_member_personal_and_attachment_after_worker_restart',
+            passed: true,
+          })
+          await native(['logout'])
+          nativeSession = undefined
+          await verifyDenied()
+          report.restore.status = 'passed'
+          report.exclusions = report.exclusions.filter(
+            (value) => value !== 'backup/restore',
+          )
+        },
+        'local_restored_worker_and_official_client',
+      )
+    }
     invariant(
       report.browser.externalRequestCount === 0 &&
         report.browser.pageErrorCount === 0,
@@ -1776,6 +2117,7 @@ async function companyFlow(context) {
     safeScreenshot,
     native,
     nativeReadback,
+    createNativeAttachment,
     freshOtp,
     login,
     root,
@@ -1796,6 +2138,11 @@ async function companyFlow(context) {
   let shared
   let personal
   let currentCipher
+  let ownerPersonal
+  let prooflessToken
+  let survivorPersonal
+  let survivorMembershipId
+  let survivorGroupId
   const ownerPage = owner.page
   const recipientPage = recipient.page
   const loadRecipientCollections = async () => {
@@ -2073,6 +2420,21 @@ async function companyFlow(context) {
           201,
         )
       ).id
+      if (options.restore) {
+        ownerPersonal = cipherFixture(
+          owner.userKey,
+          'owner-personal-restore-canary',
+        )
+        ownerPersonal.id = (
+          await api(
+            '/api/ciphers',
+            'POST',
+            ownerPersonal.payload,
+            owner.token,
+            201,
+          )
+        ).id
+      }
       shared = cipherFixture(organizationKey, 'shared-canary', orgId)
       currentCipher = await api(
         '/api/ciphers/create',
@@ -2209,6 +2571,10 @@ async function companyFlow(context) {
           ),
         )
         await nativeReadback(recipient, shared, personal, true)
+        if (options.restore) {
+          await createNativeAttachment(personal)
+          await nativeReadback(recipient, shared, personal, true)
+        }
       },
       'local_official_client',
     )
@@ -2334,6 +2700,7 @@ async function companyFlow(context) {
         undefined,
         grant.access_token,
       )
+      prooflessToken = grant.access_token
       invariant(assurance.verified === false, 'api_key_family_was_assured')
       const result = await api(
         '/api/sync',
@@ -2582,6 +2949,68 @@ async function companyFlow(context) {
     },
     'local_admin_ui_and_api',
   )
+  if (options.restore)
+    await check(
+      'api_creates_surviving_group_only_restore_member',
+      async () => {
+        // The prior outsider denial remains tested; only now admit this account.
+        const membership = await establishCompanyGroupOnlyMember({
+          api,
+          account: outsider,
+          ownerToken: owner.token,
+          organizationId: orgId,
+          collectionId,
+          wrappedOrganizationKey:
+            '3.' +
+            publicEncrypt(
+              {
+                key: Buffer.from(outsider.publicKey, 'base64'),
+                format: 'der',
+                type: 'spki',
+                padding: constants.RSA_PKCS1_OAEP_PADDING,
+                oaepHash: 'sha256',
+              },
+              organizationKey,
+            ).toString('base64'),
+          readInvitation: () =>
+            deliveries.find(
+              (delivery) => delivery.recipientEmail === outsider.email,
+            ),
+          freshOtp,
+        })
+        survivorMembershipId = membership.membershipId
+        survivorGroupId = membership.groupId
+        survivorPersonal = cipherFixture(
+          outsider.userKey,
+          'group-only-personal-restore-canary',
+        )
+        survivorPersonal.id = (
+          await api(
+            '/api/ciphers',
+            'POST',
+            survivorPersonal.payload,
+            outsider.token,
+            201,
+          )
+        ).id
+        const value = await sync(outsider)
+        invariant(
+          value.ciphers.some((cipher) => cipher.id === shared.id),
+          'source_group_only_shared_missing',
+        )
+        assertDecryptedCipher(
+          await api(
+            '/api/ciphers/' + shared.id,
+            'GET',
+            undefined,
+            outsider.token,
+          ),
+          organizationKey,
+          shared.expected,
+        )
+      },
+      'local_api',
+    )
   await check('browser_lock_unlock_and_owned_session_logout', async () => {
     await ownerPage.getByRole('button', { name: 'ロック', exact: true }).click()
     await ownerPage
@@ -2608,6 +3037,17 @@ async function companyFlow(context) {
       report.native.status = 'passed'
     }
   })
+  return {
+    shared,
+    personal,
+    ownerPersonal,
+    prooflessToken,
+    orgId,
+    collectionId,
+    survivorPersonal,
+    survivorMembershipId,
+    survivorGroupId,
+  }
 }
 
 async function main(args) {
@@ -2629,6 +3069,7 @@ async function main(args) {
         ...(options.nativeCli
           ? ['--native-cli', options.nativeCli]
           : ['--without-native']),
+        ...(options.restore ? ['--restore'] : []),
         '--execute',
         '--confirm',
         confirmation,
