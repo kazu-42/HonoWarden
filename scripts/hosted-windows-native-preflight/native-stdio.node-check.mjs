@@ -16,20 +16,29 @@ test(
     const command = `
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+$phase='legacy'
 try {
   $rejected=$false
   try { $legacy=[IO.FileStream]::new('NUL',[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite); $legacy.Dispose() }
   catch { $rejected=$_.Exception.GetBaseException() -is [ArgumentException] }
   if (-not $rejected) { throw 'legacy_control' }
+  $phase='compile'
   Add-Type -Path '${root}/windows-native.cs'
+  $phase='open'
   $handle=[HonoWardenWindowsNative]::OpenNullOutput()
   try {
     if ($handle.IsInvalid -or $handle.IsClosed) { throw 'handle_invalid' }
+    $phase='inherit'
     if (-not [HonoWardenWindowsNative]::SetHandleInformation($handle.DangerousGetHandle(),1,1)) { throw 'handle_inherit' }
   } finally { $handle.Dispose() }
+  $phase='closed'
   if (-not $handle.IsClosed) { throw 'handle_not_closed' }
   [Console]::Out.Write('native_null_output_control_passed')
-} catch { [Console]::Out.Write('native_null_output_control_failed'); exit 1 }
+} catch {
+  $kind=$_.Exception.GetBaseException().GetType().Name
+  if (@('ArgumentException','NotSupportedException','IOException','UnauthorizedAccessException','Win32Exception','TypeLoadException','InvalidOperationException','RuntimeException') -cnotcontains $kind) { $kind='other' }
+  [Console]::Out.Write('native_null_output_control_failed:'+ $phase + ':' + $kind); exit 1
+}
 `
     let output
     try {
@@ -68,8 +77,17 @@ try {
           },
         },
       )
-    } catch {
-      throw Error('native_null_output_control_failed')
+    } catch (error) {
+      const value = Object.getOwnPropertyDescriptor(
+        error ?? {},
+        'stdout',
+      )?.value
+      const safe =
+        typeof value === 'string' &&
+        /^native_null_output_control_failed:(legacy|compile|open|inherit|closed):(ArgumentException|NotSupportedException|IOException|UnauthorizedAccessException|Win32Exception|TypeLoadException|InvalidOperationException|RuntimeException|other)$/.test(
+          value,
+        )
+      throw Error(safe ? value : 'native_null_output_control_failed')
     }
     assert.equal(output, 'native_null_output_control_passed')
   },
