@@ -601,7 +601,7 @@ test('cold public host retains exact child bounds and accepts only normal full-p
     'utf8',
   )
   const host = source.slice(source.lastIndexOf('    let output\n'))
-  assert.match(host, /timeout: 10000,[\s\S]*maxBuffer: 4096/)
+  assert.match(host, /timeout: 45000,[\s\S]*maxBuffer: 4096/)
   assert.match(
     host,
     /'-NoLogo',[\s\S]*'-NoProfile',[\s\S]*'-NonInteractive',[\s\S]*'-EncodedCommand'/,
@@ -806,7 +806,10 @@ if ($executables.Count -ne 1) { throw 'public_executable_control' }
         ],
         {
           encoding: 'utf8',
-          timeout: 10000,
+          // The isolated public Utility control on windows-2025 completed in
+          // 20-30 seconds on two fresh runs. Allow cold module initialization;
+          // retain a finite deadline and require the complete success frame.
+          timeout: 45000,
           maxBuffer: 4096,
           windowsHide: true,
           stdio: ['ignore', 'pipe', 'pipe'],
