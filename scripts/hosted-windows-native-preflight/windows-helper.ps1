@@ -1,6 +1,7 @@
 param([ValidateSet('ProcessProof','SyncMenu','LogoutMenu','EdgeIdentity','WindowProof')][string]$Mode)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$phase = 'request'
 try {
   $inputBytes = [Console]::In.ReadToEnd()
   if ($inputBytes.Length -gt 16384) { throw 'input_bound' }
@@ -21,21 +22,26 @@ try {
     exit 0
   }
   if ($request.jobName -notmatch '^Local\\HonoWarden-[a-f0-9-]{36}$' -or $request.desktopPid -lt 1) { throw 'identity_invalid' }
+  $phase = 'compile'
   Add-Type -Path (Join-Path $PSScriptRoot 'windows-native.cs')
+  $phase = 'job'
   $owned = [HonoWardenWindowsNative]::JobPids($request.jobName)
   if ($owned -notcontains [uint32]$request.desktopPid) { throw 'not_in_job' }
+  $phase = 'process'
   $process = Get-CimInstance -ClassName Win32_Process -Filter ('ProcessId=' + [uint32]$request.desktopPid)
   if ($null -eq $process -or $process.ExecutablePath -ne $request.desktopPath) { throw 'path_identity_invalid' }
   $hash = (Get-FileHash -LiteralPath $process.ExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant()
   $created = $process.CreationDate.ToUniversalTime().ToString('o')
   if ($hash -ne $request.desktopHash -or ($request.desktopCreatedAt -and $created -ne $request.desktopCreatedAt)) { throw 'process_identity_invalid' }
   if ($Mode -eq 'ProcessProof') {
+    $phase = 'listener'
     $listeners = @(Get-NetTCPConnection -State Listen -LocalPort ([uint16]$request.port) -ErrorAction Stop)
     if ($listeners.Count -ne 1 -or $listeners[0].LocalAddress -ne '127.0.0.1' -or [uint32]$listeners[0].OwningProcess -ne [uint32]$request.desktopPid) { throw 'listener_not_owned_loopback' }
     @{jobProcessIds=@($owned); desktopPid=[int]$process.ProcessId; desktopCreatedAt=$created; desktopHash=$hash;
       desktopPathMatches=$true; desktopAppdataMatches=($process.CommandLine.Contains('--user-data-dir=' + $request.appdata));
       listenerProcessId=[int]$listeners[0].OwningProcess; listenerOnlyLoopback=$true} | ConvertTo-Json -Compress -Depth 4
   } elseif ($Mode -eq 'WindowProof') {
+    $phase = 'window'
     Add-Type -Path (Join-Path $PSScriptRoot 'preauth-native.cs') -ReferencedAssemblies 'System.Security.dll','System.dll'
     $running = Get-Process -Id ([int]$request.desktopPid) -ErrorAction Stop
     @{visible=[HonoWardenPreauthNative]::VisibleOwnedWindow($running.MainWindowHandle,[uint32]$request.desktopPid);
@@ -47,6 +53,7 @@ try {
     @{object='nativeMenu'; invoked=$true} | ConvertTo-Json -Compress
   }
 } catch {
-  @{object='windowsHelperFailure'; code='windows_helper_failed'} | ConvertTo-Json -Compress
+  $code = if ($phase -in @('compile','job','process','listener','window')) { 'windows_helper_' + $phase } else { 'windows_helper_failed' }
+  @{object='windowsHelperFailure'; code=$code} | ConvertTo-Json -Compress
   exit 1
 }

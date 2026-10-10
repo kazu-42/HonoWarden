@@ -124,15 +124,31 @@ export function createWindowsHelper(controller, { spawner = spawn } = {}) {
         settled = true
         clearTimeout(timer)
         try {
-          ensure(code === 0, 'windows_helper_failed')
           const value = JSON.parse(Buffer.concat(parts).toString())
+          if (
+            value?.object === 'windowsHelperFailure' &&
+            Object.keys(value).length === 2 &&
+            [
+              'windows_helper_compile',
+              'windows_helper_job',
+              'windows_helper_process',
+              'windows_helper_listener',
+              'windows_helper_window',
+            ].includes(value.code)
+          )
+            throw new ControllerFailure(value.code)
+          ensure(code === 0, 'windows_helper_failed')
           ensure(
             value?.object !== 'windowsHelperFailure',
             'windows_helper_failed',
           )
           resolve(value)
-        } catch {
-          reject(new ControllerFailure('windows_helper_failed'))
+        } catch (error) {
+          reject(
+            error instanceof ControllerFailure
+              ? error
+              : new ControllerFailure('windows_helper_failed'),
+          )
         } finally {
           for (const part of parts) part.fill(0)
           parts = []
@@ -168,9 +184,10 @@ export async function attachOwnedPage({
   timeoutMs = 20000,
 }) {
   let createdAt = null
+  let lastFailure = new ControllerFailure('process_identity_invalid')
   const end = Date.now() + timeoutMs
   while (Date.now() < end) {
-    ensure(child.exitCode === null, 'process_identity_invalid')
+    ensure(child.exitCode === null, 'desktop_process_exited')
     try {
       const proof = await helper('ProcessProof', {
         jobName,
@@ -214,8 +231,9 @@ export async function attachOwnedPage({
       }
     } catch (error) {
       if (error.code === 'desktop_target_not_unique') throw error
+      if (error instanceof ControllerFailure) lastFailure = error
       await new Promise((yes) => setTimeout(yes, 150))
     }
   }
-  throw new ControllerFailure('process_identity_invalid')
+  throw lastFailure
 }

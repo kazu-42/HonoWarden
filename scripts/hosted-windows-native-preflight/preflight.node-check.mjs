@@ -6,6 +6,8 @@ import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
+import { EventEmitter } from 'node:events'
+import { createWindowsHelper, attachOwnedPage } from './windows.mjs'
 import { hasControlCharacter } from './policy.mjs'
 import {
   admitProbe,
@@ -26,6 +28,32 @@ import {
   decodePublicControlError,
   publicControlPhase,
 } from './public-control-phases.mjs'
+
+test('native helper failures expose only fixed phases and retain child exit evidence', async () => {
+  for (const [code, expected] of [
+    ['windows_helper_listener', 'windows_helper_listener'],
+    ['private-value', 'windows_helper_failed'],
+  ]) {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.kill = () => {}
+    child.stdin = new EventEmitter()
+    child.stdin.end = () => {
+      child.stdout.emit(
+        'data',
+        Buffer.from(JSON.stringify({ object: 'windowsHelperFailure', code })),
+      )
+      child.emit('close', 1)
+    }
+    const helper = createWindowsHelper('/public', { spawner: () => child })
+    await assert.rejects(helper('ProcessProof', {}), { code: expected })
+    assert.equal(nativeFailureCode({ code: expected }), expected)
+  }
+  await assert.rejects(
+    attachOwnedPage({ child: { exitCode: 0 }, timeoutMs: 100 }),
+    { code: 'desktop_process_exited' },
+  )
+})
 
 const input = {
   companyCommit: '2deeee0cf159da92babc86e09de44c12eea2aa93',
