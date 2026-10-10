@@ -70,7 +70,7 @@
     {
       "path": "parser-diagnostic.node-check.mjs",
       "bytes": 18427,
-      "sha256": "d675e7abca089750ee3ad64489a49462bce0fe3f7ef03daa0dfda8ee0881e5f0"
+      "sha256": "f372bb9c4757863284942319b020871411ab815ab5f38374947149d5f584c516"
     },
     {
       "path": "public-control-phases.mjs",
