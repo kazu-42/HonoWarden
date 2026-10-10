@@ -70,6 +70,16 @@ WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "runtime_binary_pr
                          "minimal_runtime_ready", "minimal_runtime_loopback_validate",
                          "minimal_http_probe", "minimal_runtime_dispose"}
 MINIMAL_WORKER_CONTROLS = {"public_worker_ready_and_reaped"}
+DESKTOP_DIAGNOSTIC_KEYS = {"desktopProcessState", "desktopExitCode", "desktopSignal",
+                           "desktopReadinessPhase", "desktopReadinessFailurePhase",
+                           "desktopReadinessFailureKind"}
+DESKTOP_READINESS_PHASES = {"launch_released", "process_poll", "listener_query",
+                            "listener_identity", "target_discovery", "target_identity", "ready"}
+DESKTOP_READINESS_FAILURES = {"none", "blocked_other", "permission_error", "timeout", "os_error",
+                              "value_error", "unknown_exception", "command_failed", "command_deadline",
+                              "command_output_limit", "cdp_listener_missing", "cdp_listener_identity_mismatch",
+                              "cdp_redirect_refused", "cdp_http_failed", "cdp_http_limit", "cdp_targets_invalid",
+                              "desktop_renderer_identity_mismatch", "absolute_step_deadline"}
 WORKER_FAILURE_KINDS = {"type_error", "range_error", "syntax_error", "reference_error", "error", "unknown_exception",
                         "miniflare_runtime_module_resolution_marker",
                         "miniflare_runtime_module_evaluation_marker",
@@ -108,7 +118,7 @@ def validate_finalization_projection(projection):
     keys = {"schemaVersion", "status", "code", "failureKind", "cleanupFailureCodes", "cleanupComplete",
             "nativeExecuted", "authenticated", "credentialAdmission"}
     diagnostic_keys = {"workerFailurePhase", "workerFailureKind"}
-    require(type(projection) is dict and (set(projection) - {"minimalWorkerControl"}) in
+    require(type(projection) is dict and (set(projection) - {"minimalWorkerControl"} - DESKTOP_DIAGNOSTIC_KEYS) in
             (keys, keys | diagnostic_keys, keys | {"workerBinaryProof"}, keys | diagnostic_keys | {"workerBinaryProof"})
             and type(projection["schemaVersion"]) is int and projection["schemaVersion"] == 1
             and projection["status"] == "cleanup_failed" and projection["cleanupComplete"] is False
@@ -191,6 +201,7 @@ def finalization_projection(report, error):
         projection["workerBinaryProof"] = report["workerBinaryProof"]
     if "minimalWorkerControl" in report:
         projection["minimalWorkerControl"] = report["minimalWorkerControl"]
+    projection.update({key: report[key] for key in DESKTOP_DIAGNOSTIC_KEYS if key in report})
     return public_report(projection)
 
 
@@ -526,6 +537,94 @@ def bounded_http(port, path):
         return json.loads(raw)
 
 
+def desktop_process_projection(returncode):
+    # Only POSIX exit/signal ranges are retained, never arbitrary poll values.
+    state, code, signum = "invalid", None, None
+    if returncode is None:
+        state = "running"
+    elif type(returncode) is int and 0 <= returncode <= 255:
+        state, code = "exited", returncode
+    elif type(returncode) is int and -127 <= returncode <= -1:
+        state, signum = "signaled", -returncode
+    return {"desktopProcessState": state, "desktopExitCode": code, "desktopSignal": signum}
+
+
+def observe_desktop_process(app_proc):
+    try:
+        return desktop_process_projection(app_proc.poll())
+    except OSError:
+        # Diagnostic observation must not replace the first readiness failure.
+        return {"desktopProcessState": "unavailable", "desktopExitCode": None, "desktopSignal": None}
+
+
+def desktop_readiness_failure(error):
+    if isinstance(error, Blocked):
+        # Do not format arbitrary exception text, including custom __str__ methods.
+        value = error.args[0] if len(error.args) == 1 else None
+        return value if type(value) is str and value in DESKTOP_READINESS_FAILURES - {"none"} else "blocked_other"
+    return failure_kind(error)
+
+
+def validate_desktop_diagnostics(report):
+    require(DESKTOP_DIAGNOSTIC_KEYS <= report.keys(), "desktop_diagnostics_invalid")
+    phase, failed_phase, kind = (report[key] for key in
+                               ["desktopReadinessPhase", "desktopReadinessFailurePhase", "desktopReadinessFailureKind"])
+    require(type(phase) is str and phase in DESKTOP_READINESS_PHASES
+            and type(failed_phase) is str and failed_phase in DESKTOP_READINESS_PHASES | {"none"}
+            and type(kind) is str and kind in DESKTOP_READINESS_FAILURES
+            and ((failed_phase == "none") == (kind == "none")), "desktop_diagnostics_invalid")
+    state, code, signum = (report[key] for key in ["desktopProcessState", "desktopExitCode", "desktopSignal"])
+    require(type(state) is str and (
+        (state in {"running", "invalid", "unavailable"} and code is None and signum is None)
+        or (state == "exited" and type(code) is int and 0 <= code <= 255 and signum is None)
+        or (state == "signaled" and code is None and type(signum) is int and 1 <= signum <= 127)
+    ), "desktop_diagnostics_invalid")
+
+
+def await_desktop_target(app_proc, app, cdp_port, report):
+    report.update(desktop_process_projection(None))
+    report.update(desktopReadinessPhase="launch_released", desktopReadinessFailurePhase="none",
+                  desktopReadinessFailureKind="none")
+    target = None
+    end = time.monotonic() + 30
+    try:
+        while time.monotonic() < end:
+            report["desktopReadinessPhase"] = "process_poll"
+            report.update(observe_desktop_process(app_proc))
+            require(report["desktopProcessState"] != "unavailable", "desktop_process_observation_failed")
+            require(report["desktopProcessState"] != "invalid", "desktop_process_projection_invalid")
+            if report["desktopProcessState"] != "running":
+                break
+            require(time_budget(1) > 0, "absolute_step_deadline")
+            try:
+                report["desktopReadinessPhase"] = "listener_query"
+                listener = command(["/usr/sbin/lsof", "-nP", f"-iTCP:{cdp_port}", "-sTCP:LISTEN", "-Fpn"], timeout=3)[0]
+                report["desktopReadinessPhase"] = "listener_identity"
+                listener_owned(listener, app_proc.pid, cdp_port)
+                report["desktopReadinessPhase"] = "target_discovery"
+                candidates = bounded_http(cdp_port, "/json/list")
+                require(isinstance(candidates, list) and len(candidates) <= 10, "cdp_targets_invalid")
+                report["desktopReadinessPhase"] = "target_identity"
+                expected = str(app / "Contents/Resources/app.asar") + "/"
+                matches = [t for t in candidates if t.get("type") == "page" and
+                           urllib.parse.urlsplit(t.get("url", "")).scheme == "file" and
+                           urllib.parse.unquote(urllib.parse.urlsplit(t["url"]).path).startswith(expected) and
+                           urllib.parse.unquote(urllib.parse.urlsplit(t["url"]).path).endswith("/index.html")]
+                require(len(matches) == 1, "desktop_renderer_identity_mismatch")
+                target = matches[0]
+                report["desktopReadinessPhase"] = "ready"
+                break
+            except (Blocked, OSError, ValueError) as error:
+                report["desktopReadinessFailurePhase"] = report["desktopReadinessPhase"]
+                report["desktopReadinessFailureKind"] = desktop_readiness_failure(error)
+                readiness_retry(error)
+        require(target is not None, "native_cdp_not_ready")
+        return target
+    finally:
+        # Observe before cleanup can terminate the owned launch process.
+        report.update(observe_desktop_process(app_proc))
+
+
 def take(sock, count):
     value = bytearray()
     while len(value) < count:
@@ -656,8 +755,10 @@ def public_report(report):
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
-            "minimalWorkerControl"}
+            "minimalWorkerControl"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if DESKTOP_DIAGNOSTIC_KEYS & report.keys():
+        validate_desktop_diagnostics(report)
     if "failureKind" in report:
         require(type(report["failureKind"]) is str and report["failureKind"] in FAILURE_KINDS, "failure_kind_invalid")
     if "cleanupFailureCodes" in report:
@@ -996,26 +1097,7 @@ def execute(temp, company):
                                  f"--user-data-dir={root / 'profile'}", "--lang=en", "--no-proxy-server"],
                                 "desktop", env, state, marker, subprocess.DEVNULL)
         report["nativeExecuted"] = True
-        target = None
-        end = time.monotonic() + 30
-        while time.monotonic() < end and app_proc.poll() is None:
-            require(time_budget(1) > 0, "absolute_step_deadline")
-            try:
-                listener = command(["/usr/sbin/lsof", "-nP", f"-iTCP:{cdp_port}", "-sTCP:LISTEN", "-Fpn"], timeout=3)[0]
-                listener_owned(listener, app_proc.pid, cdp_port)
-                candidates = bounded_http(cdp_port, "/json/list")
-                require(isinstance(candidates, list) and len(candidates) <= 10, "cdp_targets_invalid")
-                expected = str(app / "Contents/Resources/app.asar") + "/"
-                matches = [t for t in candidates if t.get("type") == "page" and
-                           urllib.parse.urlsplit(t.get("url", "")).scheme == "file" and
-                           urllib.parse.unquote(urllib.parse.urlsplit(t["url"]).path).startswith(expected) and
-                           urllib.parse.unquote(urllib.parse.urlsplit(t["url"]).path).endswith("/index.html")]
-                require(len(matches) == 1, "desktop_renderer_identity_mismatch")
-                target = matches[0]
-                break
-            except (Blocked, OSError, ValueError) as error:
-                readiness_retry(error)
-        require(target is not None, "native_cdp_not_ready")
+        target = await_desktop_target(app_proc, app, cdp_port, report)
         report["appListenerOwned"] = True
         result = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
                            "(async()=>({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input'),appLoopback:await fetch('http://127.0.0.1:" + str(port) +
