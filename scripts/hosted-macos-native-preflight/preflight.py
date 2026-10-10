@@ -762,7 +762,10 @@ def cdp_probe(url, expected_port, expression):
         sock.sendall(request)
         headers = bytearray()
         while not headers.endswith(b"\r\n\r\n"):
-            headers.extend(take(sock, 1))
+            try:
+                headers.extend(take(sock, 1))
+            except TimeoutError as error:
+                raise Blocked("cdp_upgrade_timeout") from error
             require(len(headers) <= 8192, "cdp_upgrade_limit")
         accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest())
         fields = {}
@@ -783,7 +786,10 @@ def cdp_probe(url, expected_port, expression):
         total, end = 0, time.monotonic() + 10
         while True:
             require(time.monotonic() < end, "cdp_deadline")
-            frame = read_frame(sock)
+            try:
+                frame = read_frame(sock)
+            except TimeoutError as error:
+                raise Blocked("cdp_evaluation_timeout") from error
             total += len(frame)
             require(total <= 2 * CAP, "cdp_total_limit")
             result = json.loads(frame)
@@ -1244,7 +1250,7 @@ def execute(temp, company):
         report["unixSocketControls"] = True
         app_proc = gated_launch(["/usr/bin/sandbox-exec", "-f", str(profile), str(executable),
                                  f"--remote-debugging-port={cdp_port}", "--remote-debugging-address=127.0.0.1",
-                                 f"--user-data-dir={root / 'profile'}", "--lang=en", "--no-proxy-server"],
+                                 f"--user-data-dir={root / 'profile'}", "--lang=en", "--no-proxy-server", "--disable-gpu"],
                                 "desktop", desktop_environment(root, env), state, marker, subprocess.PIPE)
         report["nativeExecuted"] = True
         desktop_log, desktop_log_reader = capture_desktop_log(app_proc)
@@ -1255,9 +1261,14 @@ def execute(temp, company):
                 desktop_log_reader.join(timeout=time_budget(0.1))
             report["desktopLogSummary"] = dict(desktop_log.summary)
         report["appListenerOwned"] = True
-        result = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
-                           "(async()=>({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input'),appLoopback:await fetch('http://127.0.0.1:" + str(port) +
-                           "/',{mode:'no-cors',credentials:'omit',cache:'no-store'}).then(()=>true).catch(()=>false)}))()")
+        dom = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
+                        "({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input')})")
+        require(set(dom) == {"visibleDom"} and type(dom["visibleDom"]) is bool, "renderer_projection_invalid")
+        report.update(dom)
+        network = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
+                           "(async()=>({appLoopback:await fetch('http://127.0.0.1:" + str(port) +
+                           "/',{mode:'no-cors',credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(2000)}).then(()=>true).catch(()=>false)}))()")
+        result = {**dom, **network}
         require(set(result) == {"visibleDom", "appLoopback"} and all(type(v) is bool for v in result.values()), "renderer_projection_invalid")
         report.update(result)
         require(result["visibleDom"] and result["appLoopback"], "native_ui_loopback_not_ready")
