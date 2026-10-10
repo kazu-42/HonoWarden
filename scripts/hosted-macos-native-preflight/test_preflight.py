@@ -380,6 +380,41 @@ class PolicyTests(unittest.TestCase):
         sleep.assert_called_once_with(0.125)
 
 
+class DesktopLogProjectionTests(unittest.TestCase):
+    def test_split_markers_never_export_raw_messages(self):
+        value = p.DesktopLogProjection()
+        value.feed(b'private-token process_single')
+        value.feed(b'ton_posix.cc Permission denied /private/path socket')
+        self.assertTrue(value.summary['singletonMarker'])
+        self.assertTrue(value.summary['permissionMarker'])
+        self.assertTrue(value.summary['socketMarker'])
+        self.assertNotIn('private', json.dumps(value.summary))
+        self.assertLessEqual(len(value.tail), 64)
+        self.assertEqual(p.public_report({'desktopLogSummary': value.summary, 'authenticated': False, 'credentialAdmission': False})['desktopLogSummary'], value.summary)
+
+    def test_only_the_bounded_prefix_is_classified_and_later_output_is_discarded(self):
+        value = p.DesktopLogProjection()
+        value.feed(b'x' * p.CAP)
+        value.feed(b'process_singleton socket Permission denied')
+        self.assertTrue(value.summary['truncated'])
+        self.assertFalse(value.summary['singletonMarker'])
+        self.assertEqual(value.seen, p.CAP)
+        with self.assertRaises(p.Blocked):
+            p.public_report({'desktopLogSummary': {**value.summary, 'raw': 'private'}, 'authenticated': False, 'credentialAdmission': False})
+        with self.assertRaises(p.Blocked):
+            p.public_report({'desktopLogSummary': {**value.summary, 'socketMarker': 1}, 'authenticated': False, 'credentialAdmission': False})
+
+    def test_drain_releases_its_tail_and_closes_on_eof_or_failure(self):
+        for failure in [False, True]:
+            stream = MagicMock()
+            stream.read1.side_effect = [b'private output', OSError('private')] if failure else [b'private output', b'']
+            value = p.DesktopLogProjection()
+            value.drain(stream)
+            self.assertEqual(value.tail, b'')
+            self.assertEqual(value.summary['readFailed'], failure)
+            stream.close.assert_called_once()
+
+
 class FailureProjectionTests(unittest.TestCase):
     def escaped_finalization(self, stage, report=None, written=None):
         tree = ast.parse((p.HERE / "preflight.py").read_text())

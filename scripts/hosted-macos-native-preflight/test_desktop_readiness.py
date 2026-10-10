@@ -246,7 +246,8 @@ class DesktopReadinessTests(unittest.TestCase):
         source = ast.unparse(execute)
         self.assertIn("target = await_desktop_target(app_proc, app, cdp_port, report)", source)
         self.assertLess(source.index("await_desktop_target("), source.index("report['appListenerOwned'] = True"))
-        self.assertIn("subprocess.DEVNULL", source)
+        self.assertIn("capture_desktop_log(app_proc)", source)
+        self.assertIn("report['desktopLogSummary'] = dict(desktop_log.summary)", source)
 
 
 class DesktopLaunchTests(unittest.TestCase):

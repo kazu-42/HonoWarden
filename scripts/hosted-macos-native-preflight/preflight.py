@@ -19,6 +19,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -204,6 +205,8 @@ def finalization_projection(report, error):
     projection.update({key: report[key] for key in DESKTOP_DIAGNOSTIC_KEYS if key in report})
     if "desktopTargetSummary" in report:
         projection["desktopTargetSummary"] = report["desktopTargetSummary"]
+    if "desktopLogSummary" in report:
+        projection["desktopLogSummary"] = report["desktopLogSummary"]
     return public_report(projection)
 
 
@@ -323,7 +326,8 @@ def gated_launch(arguments, role, env, state, marker, stdout):
     proc = subprocess.Popen([sys.executable, str(HERE / "launch.py"),
                              *flags, *arguments],
                             env=env, stdin=subprocess.PIPE, stdout=stdout,
-                            stderr=subprocess.DEVNULL, start_new_session=True)
+                            stderr=subprocess.STDOUT if role == "desktop" and stdout == subprocess.PIPE else subprocess.DEVNULL,
+                            start_new_session=True)
     PROCESSES.append(proc)
     try:
         identity = process_identity(proc.pid)
@@ -617,6 +621,56 @@ def desktop_target_summary(candidates, app):
     return result
 
 
+class DesktopLogProjection:
+    """Drain owned pre-auth output in RAM; only fixed markers may be projected."""
+    def __init__(self):
+        self.seen = 0
+        self.tail = b""
+        self.summary = dict(outputPresent=False, truncated=False, readFailed=False,
+                            singletonMarker=False, permissionMarker=False,
+                            socketMarker=False, gpuMarker=False)
+
+    def feed(self, value):
+        require(type(value) is bytes, "desktop_log_input_invalid")
+        self.summary["outputPresent"] |= bool(value)
+        remaining = max(0, CAP - self.seen)
+        self.summary["truncated"] |= len(value) > remaining
+        self.seen += min(remaining, len(value))
+        if not remaining:
+            return
+        text = (self.tail + value[:remaining]).lower()
+        markers = {"singletonMarker": [b"process_singleton", b"singletonlock", b"singletonsocket"],
+                   "permissionMarker": [b"permission denied", b"operation not permitted"],
+                   "socketMarker": [b"socket", b"address already in use"],
+                   "gpuMarker": [b"gpu process exited", b"gpu process launch failed"]}
+        for key, patterns in markers.items():
+            self.summary[key] |= any(pattern in text for pattern in patterns)
+        self.tail = text[-64:]
+
+    def drain(self, stream):
+        try:
+            while True:
+                value = stream.read1(4096)
+                if not value:
+                    break
+                self.feed(value)
+        except Exception:
+            self.summary["readFailed"] = True
+        finally:
+            self.tail = b""
+            try:
+                stream.close()
+            except Exception:
+                self.summary["readFailed"] = True
+
+
+def capture_desktop_log(proc):
+    projection = DesktopLogProjection()
+    reader = threading.Thread(target=projection.drain, args=(proc.stdout,), daemon=True)
+    reader.start()
+    return projection, reader
+
+
 def await_desktop_target(app_proc, app, cdp_port, report):
     report.update(desktop_process_projection(None))
     report.update(desktopReadinessPhase="launch_released", desktopReadinessFailurePhase="none",
@@ -793,8 +847,12 @@ def public_report(report):
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
-            "minimalWorkerControl", "desktopTargetSummary"} | DESKTOP_DIAGNOSTIC_KEYS
+            "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if "desktopLogSummary" in report:
+        summary = report["desktopLogSummary"]
+        require(type(summary) is dict and set(summary) == {"outputPresent", "truncated", "readFailed", "singletonMarker", "permissionMarker", "socketMarker", "gpuMarker"}
+                and all(type(value) is bool for value in summary.values()), "desktop_log_projection_invalid")
     if "desktopTargetSummary" in report:
         summary = report["desktopTargetSummary"]
         require(type(summary) is dict and set(summary) == {"total", "pages", "blankPages", "filePages", "ownedBundlePages", "ownedIndexPages"}
@@ -1139,9 +1197,15 @@ def execute(temp, company):
         app_proc = gated_launch(["/usr/bin/sandbox-exec", "-f", str(profile), str(executable),
                                  f"--remote-debugging-port={cdp_port}", "--remote-debugging-address=127.0.0.1",
                                  f"--user-data-dir={root / 'profile'}", "--lang=en", "--no-proxy-server"],
-                                "desktop", env, state, marker, subprocess.DEVNULL)
+                                "desktop", env, state, marker, subprocess.PIPE)
         report["nativeExecuted"] = True
-        target = await_desktop_target(app_proc, app, cdp_port, report)
+        desktop_log, desktop_log_reader = capture_desktop_log(app_proc)
+        try:
+            target = await_desktop_target(app_proc, app, cdp_port, report)
+        finally:
+            if app_proc.poll() is not None:
+                desktop_log_reader.join(timeout=time_budget(0.1))
+            report["desktopLogSummary"] = dict(desktop_log.summary)
         report["appListenerOwned"] = True
         result = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
                            "(async()=>({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input'),appLoopback:await fetch('http://127.0.0.1:" + str(port) +
