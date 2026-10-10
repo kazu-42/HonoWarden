@@ -6,7 +6,7 @@ $statePath=Join-Path $env:RUNNER_TEMP 'honowarden-windows-preauth-state.json'
 $failed=$false; $job=[IntPtr]::Zero; $processInfo=$null; $pipe=$null; $nullStream=$null; $state=$null
 $journalAuthenticated=$false
 $previousTemp=$env:TEMP; $previousTmp=$env:TMP
-$report=@{object='windowsHostedPreauth';status='blocked';phase='admission';failureCode=$null;worker=$false;gui=$false;dpapi=$false;credentialMarker=$false;cleanup=$false;authenticated=$false;windows11Acceptance=$false}
+$report=@{object='windowsHostedPreauth';status='blocked';phase='admission';failureCode=$null;nodePhase='not_started';nodeFailure='none';worker=$false;gui=$false;dpapi=$false;credentialMarker=$false;cleanup=$false;authenticated=$false;windows11Acceptance=$false}
 function Assert-PlainPath([string]$Path) {
   $cursor=[IO.Path]::GetFullPath($Path)
   if ($cursor.StartsWith('\\')) { throw 'network_path' }
@@ -165,11 +165,16 @@ try {
     while (($waitCode=[HonoWardenWindowsNative]::WaitForSingleObject($processInfo.Process,200)) -eq 258) { if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $created+240000) { throw 'absolute_deadline' } }
     if ($waitCode -ne 0) { throw 'native_wait_failed' }
     [uint32]$exitCode=0
-    if (-not [HonoWardenWindowsNative]::GetExitCodeProcess($processInfo.Process,[ref]$exitCode) -or $exitCode -ne 0) { throw 'native_exit_failed' }
+    if (-not [HonoWardenWindowsNative]::GetExitCodeProcess($processInfo.Process,[ref]$exitCode)) { throw 'native_exit_failed' }
     $resultPath=Join-Path $state.attempt 'safe-result.json'
     if ((Get-Item -LiteralPath $resultPath).Length -gt 4096) { throw 'result_bound' }
     $result=Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+    $nativePhases=@('not_started','bundle','worker_start','migration','d1_probe','r2_probe','worker_config','desktop_launch','desktop_attach','window_proof','dom_probe','complete')
+    $nativeFailures=@('none','build_pin','migration_incomplete','not_empty','r2_probe','r2_cleanup','worker_not_loopback','worker_config','preauth_deadline','gui_unavailable','prelogin_dom_unavailable','ERR_RUNTIME_FAILURE','ERR_MODULE_NOT_FOUND','ERR_DLOPEN_FAILED','other')
+    if ($nativePhases -cnotcontains $result.nodePhase -or $nativeFailures -cnotcontains $result.nodeFailure) { throw 'result_bound' }
+    $report.nodePhase=$result.nodePhase;$report.nodeFailure=$result.nodeFailure
     $report.worker=($result.worker -eq $true);$report.gui=($result.gui -eq $true)
+    if ($exitCode -ne 0) { throw 'native_exit_failed' }
     if (-not $report.worker -or -not $report.gui -or $result.cleanup -ne $true) { throw 'preauth_capability_unavailable' }
     $report.status='preauth_capabilities_observed'
   }

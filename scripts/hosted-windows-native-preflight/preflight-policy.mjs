@@ -214,6 +214,54 @@ export function remainingBudget(deadline, now = Date.now(), maximum = 10000) {
     throw Error('preauth_deadline')
   return Math.min(remaining, maximum)
 }
+export const NATIVE_PHASES = [
+  'not_started',
+  'bundle',
+  'worker_start',
+  'migration',
+  'd1_probe',
+  'r2_probe',
+  'worker_config',
+  'desktop_launch',
+  'desktop_attach',
+  'window_proof',
+  'dom_probe',
+  'complete',
+]
+export const NATIVE_FAILURES = [
+  'none',
+  'build_pin',
+  'migration_incomplete',
+  'not_empty',
+  'r2_probe',
+  'r2_cleanup',
+  'worker_not_loopback',
+  'worker_config',
+  'preauth_deadline',
+  'gui_unavailable',
+  'prelogin_dom_unavailable',
+  'ERR_RUNTIME_FAILURE',
+  'ERR_MODULE_NOT_FOUND',
+  'ERR_DLOPEN_FAILED',
+  'other',
+]
+export function nativeFailureCode(error) {
+  try {
+    for (const field of ['code', 'message']) {
+      const value = Object.getOwnPropertyDescriptor(error, field)
+      if (
+        value &&
+        Object.hasOwn(value, 'value') &&
+        NATIVE_FAILURES.includes(value.value) &&
+        value.value !== 'none'
+      )
+        return value.value
+    }
+  } catch {
+    /* Fixed projection only. */
+  }
+  return 'other'
+}
 export function projectedResult(value) {
   return {
     object: 'windowsHostedPreauth',
@@ -224,5 +272,11 @@ export function projectedResult(value) {
     cleanup: value.cleanup === true,
     authenticated: false,
     windows11Acceptance: false,
+    nodePhase: NATIVE_PHASES.includes(value.nodePhase)
+      ? value.nodePhase
+      : 'not_started',
+    nodeFailure: NATIVE_FAILURES.includes(value.nodeFailure)
+      ? value.nodeFailure
+      : 'other',
   }
 }

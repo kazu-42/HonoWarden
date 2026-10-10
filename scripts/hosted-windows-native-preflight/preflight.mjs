@@ -13,6 +13,7 @@ import {
   remainingBudget,
   projectedResult,
   decodeDesktopPayload,
+  nativeFailureCode,
 } from './preflight-policy.mjs'
 import {
   createWindowsHelper,
@@ -50,7 +51,13 @@ async function run(input) {
   const root = dirname(fileURLToPath(import.meta.url)),
     require = createRequire(join(input.company, 'package.json'))
   let worker, connection, desktop, timer
-  const result = { worker: false, gui: false, cleanup: false }
+  const result = {
+    worker: false,
+    gui: false,
+    cleanup: false,
+    nodePhase: 'bundle',
+    nodeFailure: 'none',
+  }
   try {
     timer = setTimeout(
       () => {
@@ -80,6 +87,7 @@ async function run(input) {
     })
     remainingBudget(input.expiresAtMs)
     const { Miniflare, Log, LogLevel } = require('miniflare')
+    result.nodePhase = 'worker_start'
     worker = new Miniflare({
       modules: true,
       scriptPath: join(input.attempt, 'worker.mjs'),
@@ -103,6 +111,7 @@ async function run(input) {
       outboundService: () => new Response(null, { status: 502 }),
     })
     const database = await worker.getD1Database('DB')
+    result.nodePhase = 'migration'
     for (const name of (await readdir(join(input.company, 'migrations')))
       .filter((name) => name.endsWith('.sql'))
       .sort()) {
@@ -112,10 +121,12 @@ async function run(input) {
       ))
         await database.prepare(sql).run()
     }
+    result.nodePhase = 'd1_probe'
     const count = await database
       .prepare('SELECT COUNT(*) AS count FROM users')
       .first('count')
     if (count !== 0) throw Error('not_empty')
+    result.nodePhase = 'r2_probe'
     const bucket = await worker.getR2Bucket('VAULT_OBJECTS'),
       marker = 'preauth-public-marker-' + randomUUID()
     try {
@@ -126,6 +137,7 @@ async function run(input) {
       await bucket.delete(marker)
       ensure((await bucket.get(marker)) === null, 'r2_cleanup')
     }
+    result.nodePhase = 'worker_config'
     const origin = (await worker.ready).origin
     if (new URL(origin).hostname !== '127.0.0.1')
       throw Error('worker_not_loopback')
@@ -146,6 +158,7 @@ async function run(input) {
       payload.executablePath,
     )
     await mkdir(profile)
+    result.nodePhase = 'desktop_launch'
     desktop = spawn(
       executablePath,
       [
@@ -167,6 +180,7 @@ async function run(input) {
     const expected = pathToFileURL(
       join(input.attempt, 'desktop/resources/app.asar/index.html'),
     ).href
+    result.nodePhase = 'desktop_attach'
     connection = await attachOwnedPage({
       child: desktop,
       identity: {
@@ -185,6 +199,7 @@ async function run(input) {
     await connection.prove()
     remainingBudget(input.expiresAtMs)
     const helper = createWindowsHelper(root)
+    result.nodePhase = 'window_proof'
     const visible = await helper('WindowProof', {
       jobName: input.jobName,
       desktopPid: desktop.pid,
@@ -196,6 +211,7 @@ async function run(input) {
     })
     if (visible.visible !== true || visible.sameSession !== true)
       throw Error('gui_unavailable')
+    result.nodePhase = 'dom_probe'
     result.gui = await connection.cdp.evaluate(
       function (expected) {
         const { location, document, getComputedStyle } = globalThis
@@ -217,8 +233,10 @@ async function run(input) {
       [expected],
     )
     if (result.gui !== true) throw Error('prelogin_dom_unavailable')
-  } catch {
+    result.nodePhase = 'complete'
+  } catch (error) {
     result.failed = true
+    result.nodeFailure = nativeFailureCode(error)
   } finally {
     clearTimeout(timer)
     let clean = true

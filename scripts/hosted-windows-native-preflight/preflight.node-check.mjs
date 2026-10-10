@@ -11,6 +11,7 @@ import {
   admitProbe,
   remainingBudget,
   projectedResult,
+  nativeFailureCode,
   decodeExternalUtf8,
   requirePayloadPath,
   decodeDesktopPayload,
@@ -67,6 +68,38 @@ test('safe result excludes raw exceptions, URLs, credentials and unproved accept
   assert.equal(result.authenticated, false)
   assert.equal(result.windows11Acceptance, false)
   assert.equal(JSON.stringify(result).includes('private-value'), false)
+})
+test('native diagnostics use only closed phases and own data error codes', () => {
+  assert.equal(nativeFailureCode(new Error('private-token')), 'other')
+  assert.equal(nativeFailureCode(new Error('r2_probe')), 'r2_probe')
+  assert.equal(
+    nativeFailureCode({ code: 'ERR_RUNTIME_FAILURE' }),
+    'ERR_RUNTIME_FAILURE',
+  )
+  assert.equal(
+    nativeFailureCode(Object.create({ code: 'ERR_RUNTIME_FAILURE' })),
+    'other',
+  )
+  assert.equal(
+    nativeFailureCode({
+      get code() {
+        throw Error('private')
+      },
+    }),
+    'other',
+  )
+  const result = projectedResult({
+    nodePhase: 'worker_start',
+    nodeFailure: 'ERR_RUNTIME_FAILURE',
+  })
+  assert.equal(result.nodePhase, 'worker_start')
+  assert.equal(result.nodeFailure, 'ERR_RUNTIME_FAILURE')
+  assert.equal(result.authenticated, false)
+  assert.equal(
+    projectedResult({ nodePhase: 'private', nodeFailure: 'private' })
+      .nodeFailure,
+    'other',
+  )
 })
 test('workflow restricts public same-repo trusted PR paths and retains pinned tool integrity', async () => {
   let source

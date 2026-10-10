@@ -547,23 +547,23 @@ test('pre-auth runtime and bounded public control sources are independently pinn
   const parent = [
     [
       'preflight.ps1',
-      15926,
-      'c2dc8bb2daaabc91fb17906facd8e6e4b7412bc20245cc924e8027e796ddda4f',
+      16676,
+      '12e629d43562e86c106e3312e33765ecc1666a9d335f2b2f40f860e65f8febcf',
     ],
     [
       'preflight.mjs',
-      8348,
-      '982e5c77b8adeff6ca0199eaa475fe87a1e79a7ef8d443f9a2e556e3dfbcfb7a',
+      8859,
+      '38531f6c318dfa7cedeea2970d7e42d1babeaead41e27fb1a94d7ed82f73cb7a',
     ],
     [
       'preflight-policy.mjs',
-      6837,
-      'b0630b569c3ea3ee100b4f136a7776baf9e2b9df6f88e41e19683c64add32c0d',
+      8027,
+      '234d28815a39005a29adda250a498afc5ab5be6a56491f6ae8dbaca10a287356',
     ],
     [
       'preflight.node-check.mjs',
-      31473,
-      'baa8ce2db677244ec1a933d930e8c5632231b00afe6e060db75fb8a5a1fa480c',
+      32436,
+      '0194d80b423d4d148d42b84ce1cf1c9be2c68652d8398ea540f1df706e6afc6f',
     ],
     [
       'preauth-native.cs',
