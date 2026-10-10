@@ -202,6 +202,8 @@ def finalization_projection(report, error):
     if "minimalWorkerControl" in report:
         projection["minimalWorkerControl"] = report["minimalWorkerControl"]
     projection.update({key: report[key] for key in DESKTOP_DIAGNOSTIC_KEYS if key in report})
+    if "desktopTargetSummary" in report:
+        projection["desktopTargetSummary"] = report["desktopTargetSummary"]
     return public_report(projection)
 
 
@@ -581,6 +583,29 @@ def validate_desktop_diagnostics(report):
     ), "desktop_diagnostics_invalid")
 
 
+def desktop_target_summary(candidates, app):
+    require(type(candidates) is list and len(candidates) <= 10, "cdp_targets_invalid")
+    result = dict(total=len(candidates), pages=0, blankPages=0, filePages=0,
+                  ownedBundlePages=0, ownedIndexPages=0)
+    expected = str(app / "Contents/Resources/app.asar") + "/"
+    for target in candidates:
+        require(type(target) is dict and type(target.get("type", "")) is str
+                and type(target.get("url", "")) is str, "cdp_targets_invalid")
+        if target.get("type") != "page":
+            continue
+        result["pages"] += 1
+        raw = target.get("url", "")
+        result["blankPages"] += int(raw in {"", "about:blank"})
+        parsed = urllib.parse.urlsplit(raw)
+        if parsed.scheme == "file":
+            result["filePages"] += 1
+            path = urllib.parse.unquote(parsed.path)
+            if not parsed.netloc and path.startswith(expected) and ".." not in PurePosixPath(path).parts:
+                result["ownedBundlePages"] += 1
+                result["ownedIndexPages"] += int(path.endswith("/index.html"))
+    return result
+
+
 def await_desktop_target(app_proc, app, cdp_port, report):
     report.update(desktop_process_projection(None))
     report.update(desktopReadinessPhase="launch_released", desktopReadinessFailurePhase="none",
@@ -603,11 +628,13 @@ def await_desktop_target(app_proc, app, cdp_port, report):
                 listener_owned(listener, app_proc.pid, cdp_port)
                 report["desktopReadinessPhase"] = "target_discovery"
                 candidates = bounded_http(cdp_port, "/json/list")
-                require(isinstance(candidates, list) and len(candidates) <= 10, "cdp_targets_invalid")
+                report["desktopTargetSummary"] = desktop_target_summary(candidates, app)
                 report["desktopReadinessPhase"] = "target_identity"
                 expected = str(app / "Contents/Resources/app.asar") + "/"
                 matches = [t for t in candidates if t.get("type") == "page" and
                            urllib.parse.urlsplit(t.get("url", "")).scheme == "file" and
+                           not urllib.parse.urlsplit(t["url"]).netloc and
+                           ".." not in PurePosixPath(urllib.parse.unquote(urllib.parse.urlsplit(t["url"]).path)).parts and
                            urllib.parse.unquote(urllib.parse.urlsplit(t["url"]).path).startswith(expected) and
                            urllib.parse.unquote(urllib.parse.urlsplit(t["url"]).path).endswith("/index.html")]
                 require(len(matches) == 1, "desktop_renderer_identity_mismatch")
@@ -755,8 +782,14 @@ def public_report(report):
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
-            "minimalWorkerControl"} | DESKTOP_DIAGNOSTIC_KEYS
+            "minimalWorkerControl", "desktopTargetSummary"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if "desktopTargetSummary" in report:
+        summary = report["desktopTargetSummary"]
+        require(type(summary) is dict and set(summary) == {"total", "pages", "blankPages", "filePages", "ownedBundlePages", "ownedIndexPages"}
+                and all(type(value) is int and 0 <= value <= 10 for value in summary.values()), "desktop_target_summary_invalid")
+        require(summary["ownedIndexPages"] <= summary["ownedBundlePages"] <= summary["filePages"] <= summary["pages"] <= summary["total"]
+                and summary["blankPages"] + summary["filePages"] <= summary["pages"], "desktop_target_summary_invalid")
     if DESKTOP_DIAGNOSTIC_KEYS & report.keys():
         validate_desktop_diagnostics(report)
     if "failureKind" in report:

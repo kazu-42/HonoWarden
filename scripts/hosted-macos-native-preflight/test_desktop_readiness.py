@@ -19,6 +19,27 @@ class DesktopReadinessTests(unittest.TestCase):
         "webSocketDebuggerUrl": "ws://127.0.0.1:8124/devtools/page/fictional",
     }
 
+    def test_target_diagnostics_distinguish_loading_from_wrong_bundle_without_urls(self):
+        targets = [self.TARGET, {"type": "page", "url": "about:blank"},
+                   {"type": "page", "url": "file:///foreign/PRIVATE_MARKER/index.html"},
+                   {"type": "page", "url": "https://private.invalid/PRIVATE_MARKER"}]
+        summary = p.desktop_target_summary(targets, self.APP)
+        self.assertEqual(summary, {"total": 4, "pages": 4, "blankPages": 1,
+                                   "filePages": 2, "ownedBundlePages": 1, "ownedIndexPages": 1})
+        self.assertNotIn("PRIVATE_MARKER", json.dumps(summary))
+        report = {"authenticated": False, "credentialAdmission": False, "desktopTargetSummary": summary}
+        p.public_report(report)
+        for invalid in [{**summary, "total": 11}, {**summary, "pages": True},
+                        {**summary, "url": "PRIVATE_MARKER"}, {**summary, "ownedIndexPages": 2}]:
+            with self.assertRaises(p.Blocked):
+                p.public_report({**report, "desktopTargetSummary": invalid})
+
+    def test_target_diagnostics_reject_invalid_frames_without_private_exception_text(self):
+        for candidates in [[None], [{"type": "page", "url": []}], "PRIVATE_MARKER", [{}] * 11]:
+            with self.assertRaises(p.Blocked) as caught:
+                p.desktop_target_summary(candidates, self.APP)
+            self.assertEqual(str(caught.exception), "cdp_targets_invalid")
+
     def attempt(self, *, polls=(None, None), listener=None, candidates=None,
                 discovery_error=None, deadline=False, retry_error=None):
         report = {"authenticated": False, "credentialAdmission": False}
@@ -122,6 +143,8 @@ class DesktopReadinessTests(unittest.TestCase):
 
     def test_foreign_or_duplicate_renderer_never_counts_as_ready(self):
         for candidates in ([{**self.TARGET, "url": "file:///foreign/index.html"}],
+                           [{**self.TARGET, "url": "file://foreign/owned/extract/Client.app/Contents/Resources/app.asar/index.html"}],
+                           [{**self.TARGET, "url": "file:///owned/extract/Client.app/Contents/Resources/app.asar/../foreign/index.html"}],
                            [self.TARGET, self.TARGET], [], [{**self.TARGET, "type": "worker"}]):
             with self.subTest(candidates=candidates):
                 report, target, error, _ = self.attempt(candidates=candidates, deadline=True)
