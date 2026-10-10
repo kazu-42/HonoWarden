@@ -4,23 +4,23 @@
   "files": [
     {
       "path": "preflight.ps1",
-      "bytes": 17169,
-      "sha256": "60454ad3f221a85ca719e2d3db0eedc88bcc0f6afbf07c8d06a59c7e8ed70725"
+      "bytes": 17976,
+      "sha256": "6f28c3c09b6ac1c1278409621ebf1382103f87cf6cd4bd5f4d0a51057278cae7"
     },
     {
       "path": "preflight.mjs",
-      "bytes": 9440,
-      "sha256": "37fa1933ff6f891b4d000d6576feedf189c0f5a59f185f24d080f042a9a805ac"
+      "bytes": 10100,
+      "sha256": "9e0867534f1ce7d43cfef5df14c26cf2d4dbcfc15f48635013d47597d63117a0"
     },
     {
       "path": "preflight-policy.mjs",
-      "bytes": 8586,
-      "sha256": "8e256c396c9d754ef33c35ee54afbe3d564c7d50c1f0ace23370e22150bc077a"
+      "bytes": 8623,
+      "sha256": "0cdfeab06f6700d664c792218c4f841b81a11577a232e43e895c6bfefa30c058"
     },
     {
       "path": "preflight.node-check.mjs",
-      "bytes": 37932,
-      "sha256": "49e77bcef8f5687c028a4436198b95e770878321be11df2fabe6b8e6109f36a4"
+      "bytes": 41089,
+      "sha256": "3f316bf506586c8c6a4f061b968e49661dc7bb0b0c7d7deb1aeaf9a7ff1da638"
     },
     {
       "path": "preauth-native.cs",
@@ -69,8 +69,8 @@
     },
     {
       "path": "parser-diagnostic.node-check.mjs",
-      "bytes": 18427,
-      "sha256": "ece02727fe65e5c40aefe06d1b446d08b72ae4c31b7b1161da4bb837d9b401f2"
+      "bytes": 18428,
+      "sha256": "eddea3e4551ccbf85d20601b79806cf33ae9a137596e17dde5a51ccfcd2a5a9c"
     },
     {
       "path": "public-control-phases.mjs",

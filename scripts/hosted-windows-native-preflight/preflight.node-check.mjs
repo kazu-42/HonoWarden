@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, mkdtemp, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { URL, fileURLToPath } from 'node:url'
 import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
@@ -22,7 +23,11 @@ import {
   publicControlFailureCode,
   publicExecFailureMetadata,
 } from './preflight-policy.mjs'
-import { migrationStatements, loadPinnedWebSocket } from './preflight.mjs'
+import {
+  migrationStatements,
+  loadPinnedWebSocket,
+  writeNativeProgress,
+} from './preflight.mjs'
 import {
   PUBLIC_PHASES,
   PUBLIC_SUCCESS,
@@ -30,6 +35,95 @@ import {
   decodePublicControlError,
   publicControlPhase,
 } from './public-control-phases.mjs'
+
+test('interrupted native work retains the last complete finite phase without promoting capabilities', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'honowarden-progress-'))
+  try {
+    await writeNativeProgress(directory, 'desktop_attach')
+    assert.equal(
+      await readFile(join(directory, 'safe-progress.txt'), 'utf8'),
+      'desktop_attach',
+    )
+    await assert.rejects(
+      writeNativeProgress(directory, 'private-secret-marker'),
+    )
+    assert.equal(
+      await readFile(join(directory, 'safe-progress.txt'), 'utf8'),
+      'desktop_attach',
+    )
+    await writeNativeProgress(directory, 'cleanup')
+    assert.equal(
+      await readFile(join(directory, 'safe-progress.txt'), 'utf8'),
+      'cleanup',
+    )
+    assert.deepEqual(await readdir(directory), ['safe-progress.txt'])
+    assert.equal(projectedResult({ nodePhase: 'cleanup' }).cleanup, false)
+    assert.equal(projectedResult({ nodePhase: 'cleanup' }).authenticated, false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test(
+  'Windows progress readback accepts only a bounded complete phase',
+  { skip: process.platform !== 'win32' },
+  async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), 'honowarden-progress-reader-'),
+    )
+    try {
+      const source = await readFile(
+        new URL('./preflight.ps1', import.meta.url),
+        'utf8',
+      )
+      const functionSource = (name, next) =>
+        source.slice(
+          source.indexOf(`function ${name}(`),
+          source.indexOf(`function ${next}(`),
+        )
+      const command = `
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+${functionSource('Assert-PlainPath', 'Private-Directory')}
+${functionSource('Read-NativeProgress', 'Verify-Source')}
+$attempt=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(directory).toString('base64')}'))
+$path=Join-Path $attempt 'safe-progress.txt'
+if ((Read-NativeProgress $attempt) -cne 'not_started') { throw 'missing' }
+foreach ($phase in @('desktop_attach','desktop_revalidate','cleanup')) {
+  [IO.File]::WriteAllText($path,$phase)
+  if ((Read-NativeProgress $attempt) -cne $phase) { throw 'phase' }
+}
+foreach ($invalid in @('','private-secret-marker',('x'*33),('cleanup'+[char]10))) {
+  [IO.File]::WriteAllText($path,$invalid)
+  if ((Read-NativeProgress $attempt) -cne 'not_started') { throw 'invalid' }
+}
+[Console]::Out.Write('progress_reader_passed')
+`
+      const output = execFileSync(
+        join(
+          process.env.SystemRoot,
+          'System32/WindowsPowerShell/v1.0/powershell.exe',
+        ),
+        [
+          '-NoLogo',
+          '-NoProfile',
+          '-NonInteractive',
+          '-EncodedCommand',
+          Buffer.from(command, 'utf16le').toString('base64'),
+        ],
+        {
+          timeout: 30000,
+          maxBuffer: 4096,
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      )
+      assert.equal(output, 'progress_reader_passed')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  },
+)
 
 test('native helper failures expose only fixed phases and retain child exit evidence', async () => {
   for (const [code, expected] of [

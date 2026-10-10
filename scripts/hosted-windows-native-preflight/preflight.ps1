@@ -24,6 +24,15 @@ function Private-Directory([string]$Path) {
   $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
   Set-Acl -LiteralPath $Path -AclObject $acl
 }
+function Read-NativeProgress([string]$Attempt) {
+  $path=Join-Path $Attempt 'safe-progress.txt'
+  Assert-PlainPath $path
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return 'not_started' }
+  if ((Get-Item -LiteralPath $path).Length -gt 32) { return 'not_started' }
+  $phase=[IO.File]::ReadAllText($path)
+  if (@('not_started','bundle','worker_start','migration','d1_probe','r2_probe','worker_config','desktop_launch','desktop_attach','desktop_revalidate','window_proof','dom_probe','complete','cleanup') -ccontains $phase) { return $phase }
+  return 'not_started'
+}
 function Verify-Source {
   $manifest=Get-Content -LiteralPath (Join-Path $root 'source-manifest.json') -Raw | ConvertFrom-Json
   foreach ($file in $manifest.files) {
@@ -169,7 +178,7 @@ try {
     $resultPath=Join-Path $state.attempt 'safe-result.json'
     if ((Get-Item -LiteralPath $resultPath).Length -gt 4096) { throw 'result_bound' }
     $result=Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
-    $nativePhases=@('not_started','bundle','worker_start','migration','d1_probe','r2_probe','worker_config','desktop_launch','desktop_attach','window_proof','dom_probe','complete')
+    $nativePhases=@('not_started','bundle','worker_start','migration','d1_probe','r2_probe','worker_config','desktop_launch','desktop_attach','desktop_revalidate','window_proof','dom_probe','complete','cleanup')
     $nativeFailures=@('none','build_pin','websocket_pin','migration_incomplete','not_empty','r2_probe','r2_cleanup','worker_not_loopback','worker_config','preauth_deadline','gui_unavailable','prelogin_dom_unavailable','ERR_RUNTIME_FAILURE','ERR_MODULE_NOT_FOUND','MODULE_NOT_FOUND','ERR_DLOPEN_FAILED','windows_helper_failed','windows_helper_timeout','windows_helper_spawn','windows_helper_input','windows_helper_output','windows_helper_output_bound','windows_helper_json','windows_helper_exit','windows_helper_compile','windows_helper_job','windows_helper_process','windows_helper_listener','windows_helper_window','desktop_process_exited','process_identity_invalid','desktop_target_not_unique','cdp_timeout','cdp_closed','cdp_malformed','cdp_command_failed','other')
     if ($nativePhases -cnotcontains $result.nodePhase -or $nativeFailures -cnotcontains $result.nodeFailure) { throw 'result_bound' }
     $report.nodePhase=$result.nodePhase;$report.nodeFailure=$result.nodeFailure
@@ -183,6 +192,9 @@ try {
   $allowedFailureCodes=@('explicit_mode_required','hosted_runner_required','source_path','source_hash','state_bound','state_identity','server_identity','interactive_session_unavailable','reserve_before_prepare','company_commit','company_source_changed','executable_digest','authenticode_unproved','pe_magic','pe_machine','node_version','preexisting_journal_retained','no_retry_or_existing_state','external_data_encoding','payload_encoding','payload_equivalence','asset_members','asset_url','asset_identity','asset_extract','asset_path','asset_member','asset_extra_members','asset_executable','desktop_version','reserve_after_prepare','preexisting_marker_refused','marker_probe','stdio','absolute_deadline','native_wait_failed','native_exit_failed','result_bound','preauth_capability_unavailable')
   $code=$_.Exception.Message
   $report.failureCode=if ($allowedFailureCodes -ccontains $code) { $code } else { 'unexpected_preauth_failure' }
+  if ($state -and $journalAuthenticated -and $report.nodePhase -eq 'not_started') {
+    try { $report.nodePhase=Read-NativeProgress $state.attempt } catch { $report.nodePhase='not_started' }
+  }
 }
 finally {
   $report.cleanup=Cleanup-Owned

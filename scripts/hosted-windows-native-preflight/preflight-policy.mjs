@@ -224,9 +224,11 @@ export const NATIVE_PHASES = [
   'worker_config',
   'desktop_launch',
   'desktop_attach',
+  'desktop_revalidate',
   'window_proof',
   'dom_probe',
   'complete',
+  'cleanup',
 ]
 export const NATIVE_FAILURES = [
   'none',

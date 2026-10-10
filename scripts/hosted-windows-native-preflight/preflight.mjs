@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
+import { readFile, writeFile, rename, mkdir, readdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
@@ -14,6 +14,7 @@ import {
   projectedResult,
   decodeDesktopPayload,
   nativeFailureCode,
+  NATIVE_PHASES,
 } from './preflight-policy.mjs'
 import {
   createWindowsHelper,
@@ -23,6 +24,13 @@ import {
 import { selectDesktopTarget, ensure } from './policy.mjs'
 
 const { Response } = globalThis
+
+export async function writeNativeProgress(attempt, phase) {
+  ensure(NATIVE_PHASES.includes(phase), 'progress_phase_invalid')
+  const pending = join(attempt, 'safe-progress.pending')
+  await writeFile(pending, phase, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+  await rename(pending, join(attempt, 'safe-progress.txt'))
+}
 
 export function loadPinnedWebSocket(require, scopedRequire = createRequire) {
   if (require('miniflare/package.json').version !== '4.20260714.0')
@@ -69,7 +77,12 @@ async function run(input) {
     nodePhase: 'bundle',
     nodeFailure: 'none',
   }
+  const phase = async (name) => {
+    result.nodePhase = name
+    await writeNativeProgress(input.attempt, name)
+  }
   try {
+    await phase('bundle')
     timer = setTimeout(
       () => {
         connection?.cdp.close()
@@ -98,7 +111,7 @@ async function run(input) {
     })
     remainingBudget(input.expiresAtMs)
     const { Miniflare, Log, LogLevel } = require('miniflare')
-    result.nodePhase = 'worker_start'
+    await phase('worker_start')
     worker = new Miniflare({
       modules: true,
       cf: false,
@@ -124,7 +137,7 @@ async function run(input) {
       outboundService: () => new Response(null, { status: 502 }),
     })
     const database = await worker.getD1Database('DB')
-    result.nodePhase = 'migration'
+    await phase('migration')
     for (const name of (await readdir(join(input.company, 'migrations')))
       .filter((name) => name.endsWith('.sql'))
       .sort()) {
@@ -134,12 +147,12 @@ async function run(input) {
       ))
         await database.prepare(sql).run()
     }
-    result.nodePhase = 'd1_probe'
+    await phase('d1_probe')
     const count = await database
       .prepare('SELECT COUNT(*) AS count FROM users')
       .first('count')
     if (count !== 0) throw Error('not_empty')
-    result.nodePhase = 'r2_probe'
+    await phase('r2_probe')
     const bucket = await worker.getR2Bucket('VAULT_OBJECTS'),
       marker = 'preauth-public-marker-' + randomUUID()
     try {
@@ -150,7 +163,7 @@ async function run(input) {
       await bucket.delete(marker)
       ensure((await bucket.get(marker)) === null, 'r2_cleanup')
     }
-    result.nodePhase = 'worker_config'
+    await phase('worker_config')
     const origin = (await worker.ready).origin
     if (new URL(origin).hostname !== '127.0.0.1')
       throw Error('worker_not_loopback')
@@ -171,7 +184,7 @@ async function run(input) {
       payload.executablePath,
     )
     await mkdir(profile)
-    result.nodePhase = 'desktop_launch'
+    await phase('desktop_launch')
     desktop = spawn(
       executablePath,
       [
@@ -193,7 +206,7 @@ async function run(input) {
     const expected = pathToFileURL(
       join(input.attempt, 'desktop/resources/app.asar/index.html'),
     ).href
-    result.nodePhase = 'desktop_attach'
+    await phase('desktop_attach')
     const helper = createWindowsHelper(root, {
       timeoutMs: 30000,
       deadline: input.expiresAtMs,
@@ -213,9 +226,10 @@ async function run(input) {
       select: (targets, p) => selectDesktopTarget(targets, expected, p),
       timeoutMs: remainingBudget(input.expiresAtMs, Date.now(), 60000),
     })
+    await phase('desktop_revalidate')
     await connection.prove()
     remainingBudget(input.expiresAtMs)
-    result.nodePhase = 'window_proof'
+    await phase('window_proof')
     const visible = await helper('WindowProof', {
       jobName: input.jobName,
       desktopPid: desktop.pid,
@@ -227,7 +241,7 @@ async function run(input) {
     })
     if (visible.visible !== true || visible.sameSession !== true)
       throw Error('gui_unavailable')
-    result.nodePhase = 'dom_probe'
+    await phase('dom_probe')
     result.gui = await connection.cdp.evaluate(
       function (expected) {
         const { location, document, getComputedStyle } = globalThis
@@ -256,6 +270,12 @@ async function run(input) {
   } finally {
     clearTimeout(timer)
     let clean = true
+    try {
+      await writeNativeProgress(input.attempt, 'cleanup')
+    } catch {
+      // Diagnostic persistence must never prevent owned cleanup.
+      result.failed = true
+    }
     try {
       connection?.cdp.close()
     } catch {
