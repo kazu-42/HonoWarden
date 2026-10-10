@@ -72,8 +72,21 @@ export async function verifyBundle(bundle, digest) {
 }
 export function createWindowsHelper(
   controller,
-  { spawner = spawn, schedule = setTimeout, cancel = clearTimeout } = {},
+  {
+    spawner = spawn,
+    schedule = setTimeout,
+    cancel = clearTimeout,
+    timeoutMs = 10000,
+    deadline = Infinity,
+  } = {},
 ) {
+  ensure(
+    Number.isSafeInteger(timeoutMs) &&
+      timeoutMs > 0 &&
+      timeoutMs <= 30000 &&
+      (deadline === Infinity || Number.isSafeInteger(deadline)),
+    'windows_helper_failed',
+  )
   const executable = join(
     process.env.SystemRoot ?? 'C:\\Windows',
     'System32',
@@ -83,6 +96,8 @@ export function createWindowsHelper(
   )
   return (mode, request) =>
     new Promise((resolve, reject) => {
+      const budget = Math.min(timeoutMs, deadline - Date.now())
+      ensure(budget > 0, 'windows_helper_timeout')
       const child = spawner(
         executable,
         [
@@ -118,7 +133,7 @@ export function createWindowsHelper(
         child.kill()
         reject(new ControllerFailure(code))
       }
-      const timer = schedule(() => fail('windows_helper_timeout'), 10000)
+      const timer = schedule(() => fail('windows_helper_timeout'), budget)
       child.on('error', () => fail('windows_helper_spawn'))
       child.stdin.once?.('error', () => fail('windows_helper_input'))
       child.stdout.once?.('error', () => fail('windows_helper_output'))

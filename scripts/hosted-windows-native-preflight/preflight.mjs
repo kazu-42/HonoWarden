@@ -194,6 +194,10 @@ async function run(input) {
       join(input.attempt, 'desktop/resources/app.asar/index.html'),
     ).href
     result.nodePhase = 'desktop_attach'
+    const helper = createWindowsHelper(root, {
+      timeoutMs: 30000,
+      deadline: input.expiresAtMs,
+    })
     connection = await attachOwnedPage({
       child: desktop,
       identity: {
@@ -204,14 +208,13 @@ async function run(input) {
       appdata: profile,
       port,
       jobName: input.jobName,
-      helper: createWindowsHelper(root),
+      helper,
       WebSocket: loadPinnedWebSocket(require),
       select: (targets, p) => selectDesktopTarget(targets, expected, p),
-      timeoutMs: remainingBudget(input.expiresAtMs, Date.now(), 20000),
+      timeoutMs: remainingBudget(input.expiresAtMs, Date.now(), 60000),
     })
     await connection.prove()
     remainingBudget(input.expiresAtMs)
-    const helper = createWindowsHelper(root)
     result.nodePhase = 'window_proof'
     const visible = await helper('WindowProof', {
       jobName: input.jobName,

@@ -116,6 +116,50 @@ test('helper transport failures retain a finite cause without child output', asy
   }
 })
 
+test('cold helper wait consumes the existing absolute budget before spawning', async () => {
+  let spawned = 0,
+    observedDelay = 0,
+    killed = 0
+  const child = new EventEmitter()
+  child.stdout = new EventEmitter()
+  child.stdin = new EventEmitter()
+  child.kill = () => killed++
+  let expire
+  child.stdin.end = () => expire()
+  const options = {
+    timeoutMs: 30000,
+    deadline: Date.now() + 2000,
+    spawner: () => {
+      spawned++
+      return child
+    },
+    schedule: (callback, delay) => {
+      observedDelay = delay
+      expire = callback
+      return 1
+    },
+    cancel: () => {},
+  }
+  await assert.rejects(
+    createWindowsHelper('/public', options)('ProcessProof', {}),
+    {
+      code: 'windows_helper_timeout',
+    },
+  )
+  assert.equal(spawned, 1)
+  assert.equal(killed, 1)
+  assert.ok(observedDelay > 0 && observedDelay <= 2000)
+  await assert.rejects(
+    createWindowsHelper('/public', { ...options, deadline: Date.now() - 1 })(
+      'ProcessProof',
+      {},
+    ),
+    { code: 'windows_helper_timeout' },
+  )
+  assert.equal(spawned, 1)
+  assert.throws(() => createWindowsHelper('/public', { timeoutMs: 30001 }))
+})
+
 test('PowerShell admits exactly the same finite native diagnostics as the child', async () => {
   const source = await readFile(
     new URL('./preflight.ps1', import.meta.url),
