@@ -14,6 +14,8 @@ import {
   remainingBudget,
   projectedResult,
   nativeFailureCode,
+  NATIVE_FAILURES,
+  NATIVE_PHASES,
   decodeExternalUtf8,
   requirePayloadPath,
   decodeDesktopPayload,
@@ -53,6 +55,24 @@ test('native helper failures expose only fixed phases and retain child exit evid
     attachOwnedPage({ child: { exitCode: 0 }, timeoutMs: 100 }),
     { code: 'desktop_process_exited' },
   )
+})
+
+test('PowerShell admits exactly the same finite native diagnostics as the child', async () => {
+  const source = await readFile(
+    new URL('./preflight.ps1', import.meta.url),
+    'utf8',
+  )
+  for (const [name, expected] of [
+    ['nativeFailures', NATIVE_FAILURES],
+    ['nativePhases', NATIVE_PHASES],
+  ]) {
+    const match = source.match(new RegExp('\\$' + name + '=\\@\\(([^)]+)\\)'))
+    assert.ok(match)
+    assert.deepEqual(
+      [...match[1].matchAll(/'([^']+)'/g)].map((value) => value[1]),
+      expected,
+    )
+  }
 })
 
 test('WebSocket resolves only from the pinned runtime dependency scope', () => {
