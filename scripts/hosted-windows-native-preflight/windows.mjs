@@ -70,7 +70,10 @@ export async function verifyBundle(bundle, digest) {
   await scan(bundle)
   return manifest
 }
-export function createWindowsHelper(controller, { spawner = spawn } = {}) {
+export function createWindowsHelper(
+  controller,
+  { spawner = spawn, schedule = setTimeout, cancel = clearTimeout } = {},
+) {
   const executable = join(
     process.env.SystemRoot ?? 'C:\\Windows',
     'System32',
@@ -103,26 +106,32 @@ export function createWindowsHelper(controller, { spawner = spawn } = {}) {
       let bytes = 0,
         parts = [],
         settled = false
-      const fail = () => {
+      const releaseOutput = () => {
+        for (const part of parts) part.fill(0)
+        parts = []
+      }
+      const fail = (code) => {
         if (settled) return
         settled = true
-        clearTimeout(timer)
+        cancel(timer)
+        releaseOutput()
         child.kill()
-        reject(new ControllerFailure('windows_helper_failed'))
+        reject(new ControllerFailure(code))
       }
-      const timer = setTimeout(fail, 10000)
-      child.on('error', fail)
-      child.stdin.once?.('error', fail)
-      child.stdout.once?.('error', fail)
+      const timer = schedule(() => fail('windows_helper_timeout'), 10000)
+      child.on('error', () => fail('windows_helper_spawn'))
+      child.stdin.once?.('error', () => fail('windows_helper_input'))
+      child.stdout.once?.('error', () => fail('windows_helper_output'))
       child.stdout.on('data', (chunk) => {
+        if (settled) return
         bytes += chunk.length
-        if (bytes > 16384) fail()
+        if (bytes > 16384) fail('windows_helper_output_bound')
         else parts.push(chunk)
       })
       child.on('close', (code) => {
         if (settled) return
         settled = true
-        clearTimeout(timer)
+        cancel(timer)
         try {
           const value = JSON.parse(Buffer.concat(parts).toString())
           if (
@@ -137,26 +146,25 @@ export function createWindowsHelper(controller, { spawner = spawn } = {}) {
             ].includes(value.code)
           )
             throw new ControllerFailure(value.code)
-          ensure(code === 0, 'windows_helper_failed')
           ensure(
             value?.object !== 'windowsHelperFailure',
             'windows_helper_failed',
           )
+          ensure(code === 0, 'windows_helper_exit')
           resolve(value)
         } catch (error) {
           reject(
             error instanceof ControllerFailure
               ? error
-              : new ControllerFailure('windows_helper_failed'),
+              : new ControllerFailure('windows_helper_json'),
           )
         } finally {
-          for (const part of parts) part.fill(0)
-          parts = []
+          releaseOutput()
         }
       })
       const input = JSON.stringify(request)
       if (Buffer.byteLength(input) > 16384) {
-        fail()
+        fail('windows_helper_input')
         return
       }
       child.stdin.end(input)

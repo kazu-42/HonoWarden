@@ -4,8 +4,8 @@
   "files": [
     {
       "path": "preflight.ps1",
-      "bytes": 17000,
-      "sha256": "1ae02df029a091fb39cabc9bd8c439962363e86ccff7c20b48c0b92dd169b0ae"
+      "bytes": 17169,
+      "sha256": "60454ad3f221a85ca719e2d3db0eedc88bcc0f6afbf07c8d06a59c7e8ed70725"
     },
     {
       "path": "preflight.mjs",
@@ -14,13 +14,13 @@
     },
     {
       "path": "preflight-policy.mjs",
-      "bytes": 8396,
-      "sha256": "71def8e7289b2446f61b902910beaad2ac3e8517dbb4b4c0fc453ebdae75a3b3"
+      "bytes": 8586,
+      "sha256": "8e256c396c9d754ef33c35ee54afbe3d564c7d50c1f0ace23370e22150bc077a"
     },
     {
       "path": "preflight.node-check.mjs",
-      "bytes": 34973,
-      "sha256": "c450fa3c49a7a703b23b8d1905cc88993e91520747a9631f1275571dfd3b8e3d"
+      "bytes": 36778,
+      "sha256": "109a1ab8cdca648d79aa28ed2d4e489dff3448ad443f93d8f4929616e5cf83de"
     },
     {
       "path": "preauth-native.cs",
@@ -39,8 +39,8 @@
     },
     {
       "path": "windows.mjs",
-      "bytes": 7090,
-      "sha256": "77d49222db6c35f9ee8ffeb145c67c14283e547d1bc5b8b32136074a3339cb2b"
+      "bytes": 7402,
+      "sha256": "df6249440350ea667e91d527343bba9fbf4780bba7b04a3d4a53ce7c4755e040"
     },
     {
       "path": "cdp.mjs",
@@ -49,8 +49,8 @@
     },
     {
       "path": "policy.mjs",
-      "bytes": 8295,
-      "sha256": "80ff386c2c59fa0e94918513c33a1519a4042bfc3a58439ef10d31bafb504d16"
+      "bytes": 8485,
+      "sha256": "294115800f29345b46c0ef3df1c78d1a2707b3e4742ba0400a744a9c300264fc"
     },
     {
       "path": "desktop-payload-manifest.json",
@@ -70,7 +70,7 @@
     {
       "path": "parser-diagnostic.node-check.mjs",
       "bytes": 18427,
-      "sha256": "1a6ef8368035fc174f782c6ae8e8c539c42512ab8cc058f442949346b772b060"
+      "sha256": "7cc0ee1a8badbad93da47c9b12e9495f46c6cdb203f46174cb731c503084c044"
     },
     {
       "path": "public-control-phases.mjs",

@@ -57,6 +57,65 @@ test('native helper failures expose only fixed phases and retain child exit evid
   )
 })
 
+test('helper transport failures retain a finite cause without child output', async () => {
+  for (const [kind, expected] of [
+    ['timeout', 'windows_helper_timeout'],
+    ['spawn', 'windows_helper_spawn'],
+    ['input', 'windows_helper_input'],
+    ['output', 'windows_helper_output'],
+    ['bound', 'windows_helper_output_bound'],
+    ['json', 'windows_helper_json'],
+    ['exit', 'windows_helper_exit'],
+  ]) {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stdin = new EventEmitter()
+    let killed = 0,
+      timeout,
+      cancelled = 0
+    child.kill = () => killed++
+    child.stdin.end = () => {
+      if (kind === 'timeout') timeout()
+      else if (['spawn', 'input', 'output'].includes(kind))
+        (kind === 'spawn'
+          ? child
+          : kind === 'input'
+            ? child.stdin
+            : child.stdout
+        ).emit('error', new Error('private-child-value'))
+      else {
+        child.stdout.emit(
+          'data',
+          Buffer.from(
+            kind === 'bound'
+              ? 'x'.repeat(16385)
+              : kind === 'json'
+                ? 'private-child-value'
+                : '{}',
+          ),
+        )
+        child.emit('close', 1)
+      }
+    }
+    const helper = createWindowsHelper('/public', {
+      spawner: () => child,
+      schedule: (callback, delay) => {
+        assert.equal(delay, 10000)
+        timeout = callback
+        return 'owned-timer'
+      },
+      cancel: (timer) => {
+        assert.equal(timer, 'owned-timer')
+        cancelled++
+      },
+    })
+    await assert.rejects(helper('ProcessProof', {}), { code: expected })
+    assert.equal(cancelled, 1)
+    assert.equal(killed, ['json', 'exit'].includes(kind) ? 0 : 1)
+    assert.equal(nativeFailureCode({ code: expected }), expected)
+  }
+})
+
 test('PowerShell admits exactly the same finite native diagnostics as the child', async () => {
   const source = await readFile(
     new URL('./preflight.ps1', import.meta.url),

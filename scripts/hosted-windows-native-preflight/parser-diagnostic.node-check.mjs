@@ -547,8 +547,8 @@ test('pre-auth runtime and bounded public control sources are independently pinn
   const parent = [
     [
       'preflight.ps1',
-      17000,
-      '1ae02df029a091fb39cabc9bd8c439962363e86ccff7c20b48c0b92dd169b0ae',
+      17169,
+      '60454ad3f221a85ca719e2d3db0eedc88bcc0f6afbf07c8d06a59c7e8ed70725',
     ],
     [
       'preflight.mjs',
@@ -557,13 +557,13 @@ test('pre-auth runtime and bounded public control sources are independently pinn
     ],
     [
       'preflight-policy.mjs',
-      8396,
-      '71def8e7289b2446f61b902910beaad2ac3e8517dbb4b4c0fc453ebdae75a3b3',
+      8586,
+      '8e256c396c9d754ef33c35ee54afbe3d564c7d50c1f0ace23370e22150bc077a',
     ],
     [
       'preflight.node-check.mjs',
-      34973,
-      'c450fa3c49a7a703b23b8d1905cc88993e91520747a9631f1275571dfd3b8e3d',
+      36778,
+      '109a1ab8cdca648d79aa28ed2d4e489dff3448ad443f93d8f4929616e5cf83de',
     ],
     [
       'preauth-native.cs',
@@ -582,8 +582,8 @@ test('pre-auth runtime and bounded public control sources are independently pinn
     ],
     [
       'windows.mjs',
-      7090,
-      '77d49222db6c35f9ee8ffeb145c67c14283e547d1bc5b8b32136074a3339cb2b',
+      7402,
+      'df6249440350ea667e91d527343bba9fbf4780bba7b04a3d4a53ce7c4755e040',
     ],
     [
       'cdp.mjs',
@@ -592,8 +592,8 @@ test('pre-auth runtime and bounded public control sources are independently pinn
     ],
     [
       'policy.mjs',
-      8295,
-      '80ff386c2c59fa0e94918513c33a1519a4042bfc3a58439ef10d31bafb504d16',
+      8485,
+      '294115800f29345b46c0ef3df1c78d1a2707b3e4742ba0400a744a9c300264fc',
     ],
     [
       'desktop-payload-manifest.json',
