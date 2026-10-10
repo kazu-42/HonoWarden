@@ -275,6 +275,15 @@ def safe_environment(root, original):
     return result
 
 
+def desktop_environment(root, original):
+    result = safe_environment(root, original)
+    # Chromium on macOS uses this override before NSTemporaryDirectory;
+    # TMPDIR alone does not confine the singleton socket to our allowed root.
+    result["MAC_CHROMIUM_TMPDIR"] = str(root / "tmp")
+    result[CLIENT_SLUG.upper() + "_APPDATA_DIR"] = str(root / "profile")
+    return result
+
+
 def write_private(path, value):
     require(time_budget(1) > 0, "write_deadline_exhausted")
     with open(path, "x", encoding="utf-8") as file:
@@ -1236,7 +1245,7 @@ def execute(temp, company):
         app_proc = gated_launch(["/usr/bin/sandbox-exec", "-f", str(profile), str(executable),
                                  f"--remote-debugging-port={cdp_port}", "--remote-debugging-address=127.0.0.1",
                                  f"--user-data-dir={root / 'profile'}", "--lang=en", "--no-proxy-server"],
-                                "desktop", env, state, marker, subprocess.PIPE)
+                                "desktop", desktop_environment(root, env), state, marker, subprocess.PIPE)
         report["nativeExecuted"] = True
         desktop_log, desktop_log_reader = capture_desktop_log(app_proc)
         try:

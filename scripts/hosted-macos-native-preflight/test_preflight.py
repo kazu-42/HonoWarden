@@ -387,6 +387,15 @@ class PolicyTests(unittest.TestCase):
 
 
 class DesktopLogProjectionTests(unittest.TestCase):
+    def test_desktop_paths_override_host_configuration_without_copying_secrets(self):
+        root = Path('/owned')
+        appdata = p.CLIENT_SLUG.upper() + '_APPDATA_DIR'
+        value = p.desktop_environment(root, {'PATH': '/usr/bin', 'MAC_CHROMIUM_TMPDIR': '/foreign', appdata: '/foreign-profile', 'GITHUB_TOKEN': 'private'})
+        self.assertEqual(value['MAC_CHROMIUM_TMPDIR'], '/owned/tmp')
+        self.assertEqual(value[appdata], '/owned/profile')
+        self.assertEqual(set(value), {'PATH', 'HOME', 'TMPDIR', 'LANG', 'MAC_CHROMIUM_TMPDIR', appdata})
+        self.assertNotIn('private', json.dumps(value))
+
     def test_split_markers_never_export_raw_messages(self):
         value = p.DesktopLogProjection()
         value.feed(b'private-token process_single')
