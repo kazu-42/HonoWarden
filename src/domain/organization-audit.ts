@@ -11,6 +11,8 @@ export const organizationAuditEventNames = [
   'organization.group.delete',
   'organization.group.member.remove',
   'organization.policy.update',
+  'organization.settings.update',
+  'organization.mail_test.request',
 ] as const
 
 export type OrganizationAuditEventName =
@@ -32,6 +34,8 @@ export const organizationAuditEventTargets: Record<
   'organization.group.delete': 'organization_group',
   'organization.group.member.remove': 'organization_group',
   'organization.policy.update': 'organization',
+  'organization.settings.update': 'organization',
+  'organization.mail_test.request': 'organization',
 }
 
 export type OrganizationAuditTargetType =

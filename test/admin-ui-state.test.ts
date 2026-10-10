@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatUiError,
   normalizeInvitationEmails,
+  completeInvitationDomain,
   runMfaVerification,
   runMutationWithReadback,
 } from '../admin/app'
@@ -216,6 +217,21 @@ describe('MFA submission outcomes and ephemeral state', () => {
 })
 
 describe('administration safe input and copy', () => {
+  it('completes only bare invitation names and retains explicit external domains', () => {
+    expect(
+      completeInvitationDomain(' First, second@external.test ', 'example.test'),
+    ).toEqual(['first@example.test', 'second@external.test'])
+    expect(() =>
+      completeInvitationDomain('first, first@example.test', 'example.test'),
+    ).toThrow()
+    expect(() =>
+      completeInvitationDomain('first name', 'example.test'),
+    ).toThrow()
+    expect(() => completeInvitationDomain('first', null)).toThrow()
+    expect(() =>
+      completeInvitationDomain('first', 'example.test/path'),
+    ).toThrow()
+  })
   it('rejects duplicate normalized invitations instead of silently dropping one', () => {
     expect(() =>
       normalizeInvitationEmails(' Person@example.test\nperson@EXAMPLE.TEST '),

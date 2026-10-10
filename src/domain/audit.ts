@@ -52,6 +52,8 @@ export type AuditEventName =
   | 'organization.group.delete'
   | 'organization.group.member.remove'
   | 'organization.policy.update'
+  | 'organization.settings.update'
+  | 'organization.mail_test.request'
   | 'send.text.create'
   | 'session.revoke_all'
   | 'totp.change'

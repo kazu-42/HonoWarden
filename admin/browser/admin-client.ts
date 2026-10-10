@@ -15,6 +15,7 @@ import {
   type AuditPage,
   type CollectionGrant,
   type CollectionView,
+  type CompanySettingsView,
   type GroupInput,
   type GroupView,
   type MemberView,
@@ -36,6 +37,34 @@ export type AdminClientOptions = {
   clock?: () => number
   invitation?: PendingInvitation
   lifecycle?: boolean
+}
+
+function companySettings(value: unknown): CompanySettingsView {
+  const row = record(value)
+  if (
+    row.object !== 'companySettings' ||
+    typeof row.canEdit !== 'boolean' ||
+    (row.expectedMemberCount !== null &&
+      (typeof row.expectedMemberCount !== 'number' ||
+        !Number.isSafeInteger(row.expectedMemberCount) ||
+        row.expectedMemberCount < 1 ||
+        row.expectedMemberCount > 100000))
+  )
+    throw new AdminError('unavailable', 'response_invalid')
+  return {
+    name: string(row.name, 100),
+    defaultEmailDomain:
+      row.defaultEmailDomain === null
+        ? null
+        : string(row.defaultEmailDomain, 253),
+    expectedMemberCount: row.expectedMemberCount as number | null,
+    mailTestRecipient:
+      row.mailTestRecipient === null
+        ? null
+        : string(row.mailTestRecipient, 254),
+    revision: row.revision === null ? null : id(row.revision),
+    canEdit: row.canEdit,
+  }
 }
 
 function role(value: unknown): Role {
@@ -1073,6 +1102,41 @@ export function createAdminClient(
       invitation = undefined
       publish({ ...state })
       await mutationReadback(sync)
+    },
+    async getCompanySettings(orgId) {
+      unlocked()
+      return companySettings(
+        (await authorized(`${orgPath(orgId)}/admin-settings`)).value,
+      )
+    },
+    async requestCompanyTestMail(orgId, revision) {
+      unlocked()
+      const response = (
+        await authorized(`${orgPath(orgId)}/admin-settings/test-mail`, {
+          method: 'POST',
+          body: { revision },
+        })
+      ).value
+      const value = record(response)
+      if (
+        value.object !== 'companyTestMail' ||
+        value.status !== 'accepted' ||
+        value.mailboxReceipt !== false
+      )
+        throw new AdminError('transport', 'invalid_response')
+    },
+    async updateCompanySettings(orgId, input) {
+      unlocked()
+      const settings = companySettings(
+        (
+          await authorized(`${orgPath(orgId)}/admin-settings`, {
+            method: 'PUT',
+            body: input,
+          })
+        ).value,
+      )
+      await mutationReadback(sync)
+      return settings
     },
     async createOrganization(input) {
       unlocked()
