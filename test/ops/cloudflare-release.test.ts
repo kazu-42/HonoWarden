@@ -1990,42 +1990,6 @@ describe('Cloudflare release executor', () => {
     ).toHaveLength(2)
   })
 
-  it('refuses an already saturated version list before upload', async () => {
-    const fx = fixture()
-    let writes = 0
-    const runner = async (command: string, args: string[]) => {
-      if (command === 'wrangler' && args.includes('list'))
-        return {
-          stdout: JSON.stringify(
-            Array.from({ length: 10 }, (_, i) => ({
-              id: `bbbbbbbb-0000-4000-8000-${String(i).padStart(12, '0')}`,
-            })),
-          ),
-          code: 0,
-        }
-      if (command === 'wrangler' && args.includes('upload')) writes++
-      return fx.runner(command, args)
-    }
-    await expect(
-      release(
-        [
-          'upload',
-          '--target',
-          'staging',
-          '--commit',
-          sha,
-          '--expect-active',
-          oldVersion,
-          '--execute',
-          '--confirm',
-          'staging',
-        ],
-        { ...fx, runner, fetch: vaultRead, cwd: process.cwd() },
-      ),
-    ).rejects.toThrow('version_history_truncated')
-    expect(writes).toBe(0)
-  })
-
   it('stops on uploaded version readback mismatch before activation', async () => {
     const fx = fixture()
     const calls: string[][] = []
@@ -2133,13 +2097,25 @@ describe('Cloudflare release executor', () => {
       readFileSync(join(process.cwd(), profilePath), 'utf8'),
     )
     const bytes = Buffer.from('export default {}')
-    for (const [setup, mismatch, omitSecret, truncated, addedSecret] of [
-      [true, false, false, false, false],
-      [false, false, false, false, false],
-      [true, true, false, false, false],
-      [true, false, true, false, false],
-      [true, false, false, true, false],
-      [true, false, false, false, true],
+    for (const [
+      setup,
+      mismatch,
+      omitSecret,
+      truncated,
+      addedSecret,
+      saturated,
+    ] of [
+      [true, false, false, false, false, false],
+      [false, false, false, false, false, false],
+      [true, true, false, false, false, false],
+      [true, false, true, false, false, false],
+      [true, false, false, true, false, false],
+      [true, false, false, false, true, false],
+      // A full ten-row page before upload must not block a release while
+      // the post-upload page still overlaps it.
+      [false, false, false, false, false, true],
+      // A full page that loses continuity after upload must still stop.
+      [false, false, false, true, false, true],
     ] as const) {
       const fx = fixture()
       const sourceSecretFile = join(fx.root, 'new-secret.json')
@@ -2215,6 +2191,13 @@ describe('Cloudflare release executor', () => {
       ) => {
         if (command === 'wrangler' && args.includes('upload'))
           uploadCalls.push(args)
+        const olderPage = Array.from({ length: 10 }, (_, i) => ({
+          id: `dddddddd-0000-4000-8000-${String(i).padStart(12, '0')}`,
+          annotations: {
+            'workers/tag': 'd'.repeat(40),
+            'workers/message': 'older release',
+          },
+        }))
         if (args.includes('list'))
           return {
             stdout: JSON.stringify(
@@ -2244,9 +2227,13 @@ describe('Cloudflare release executor', () => {
                             'workers/message': 'other',
                           },
                         }))
-                      : []),
+                      : saturated
+                        ? olderPage.slice(0, 9)
+                        : []),
                   ]
-                : [],
+                : saturated
+                  ? olderPage
+                  : [],
             ),
             code: 0,
           }

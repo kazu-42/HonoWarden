@@ -1777,10 +1777,9 @@ export async function release(argv, deps = {}) {
     if (args.command === 'upload') {
       await predecessor()
       await verifyDurableObjectMigration()
+      // Wrangler returns only the latest ten versions. A full page is not a
+      // reason to refuse; continuity is proven after the upload instead.
       const previousList = await listVersions()
-      // Wrangler returns only the latest ten. A saturated page cannot prove
-      // that an internally retried POST created exactly one new version.
-      if (previousList.length >= 10) fail('version_history_truncated')
       const priorVersions = new Set(previousList.map((row) => row.id))
       const predecessorView = await json([
         'versions',
@@ -1973,11 +1972,23 @@ export async function release(argv, deps = {}) {
       // versionsUpload() may retry the POST internally. The machine output
       // ID alone cannot establish that exactly one candidate was created.
       const listed = await listVersions()
-      // The set difference is independent of local and provider clocks.
-      if (listed.length >= 10) {
+      // The set difference is independent of local and provider clocks. The
+      // ten-row page still proves continuity while it keeps at least one
+      // pre-upload version. Any other new version means another writer was
+      // active, so internally retried duplicates could be hidden.
+      const newRows = listed.filter((row) => !priorVersions.has(row.id))
+      const foreignRows = newRows.filter(
+        (row) =>
+          row.annotations?.['workers/tag'] !== args.commit ||
+          row.annotations?.['workers/message'] !== message,
+      )
+      if (
+        (previousList.length > 0 && newRows.length === listed.length) ||
+        foreignRows.length > 0
+      ) {
         record('classification', {
           reason: 'version_history_truncated',
-          versionIds: listed.map((row) => row.id),
+          versionIds: newRows.map((row) => row.id),
         })
         await classifyUpload('version_history_truncated', ids[0])
       }
