@@ -216,6 +216,19 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(result["networkDiagnostic"]["requestObserved"])
         self.assertNotIn("appLoopback", result)
 
+    def test_login_dom_waits_for_a_visible_empty_email_control(self):
+        with patch.object(p, "cdp_probe", side_effect=[{"visibleDom": False}, {"visibleDom": True}]) as probe, \
+             patch.object(p.time, "sleep"):
+            self.assertEqual(p.await_login_dom("ws://owned", 8123, "target"), {"visibleDom": True})
+        self.assertEqual(probe.call_count, 2)
+        self.assertIn("login-email-input", probe.call_args.args[2])
+
+    def test_login_dom_never_retries_a_failed_protocol_operation(self):
+        with patch.object(p, "cdp_probe", side_effect=p.Blocked("cdp_evaluation_failed")) as probe:
+            with self.assertRaisesRegex(p.Blocked, "cdp_evaluation_failed"):
+                p.await_login_dom("ws://owned", 8123, "target")
+        self.assertEqual(probe.call_count, 1)
+
     def test_browser_transport_rejects_invalid_session_before_evaluation(self):
         for session in [None, "", "unexpected/value", "x" * 101]:
             with self.subTest(session=session):
@@ -2348,8 +2361,13 @@ process.stdout.write(JSON.stringify({
         options = self.actual_options_source()
         self.assertLessEqual(options.count("    cf: false,\n"), 1)
         self.assertEqual(options.count("    modulesRoot: root,\n"), 1)
+        desktop_binding = "      HONOWARDEN_DESKTOP_CLIENTS_ENABLED: 'true',\n"
+        self.assertEqual(options.count(desktop_binding), 1)
         inverse = options.replace("    cf: false,\n", "")
         inverse = inverse.replace("    modulesRoot: root,\n", "")
+        # Preserve the historic complete-options digest; only the explicit
+        # reviewed Desktop compatibility binding is new in this fixture.
+        inverse = inverse.replace(desktop_binding, "")
         self.assertEqual(
             hashlib.sha256(inverse.encode()).hexdigest(), self.OPTIONS18_SHA
         )

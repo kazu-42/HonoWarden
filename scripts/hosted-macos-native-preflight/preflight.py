@@ -29,7 +29,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
-COMPANY_SHA = "2deeee0cf159da92babc86e09de44c12eea2aa93"
+COMPANY_SHA = "711e61be8382e907aa3e6025ff85c5e69eb40817"
 ASSET_SHA = "8cb6badb3a8af77cc3e4b060fa14858cd7fd74be7360b1b6e98dde1afed409d2"
 ASSET_BYTES = 272075739
 UNPACKED_BYTES = 774807395
@@ -770,14 +770,15 @@ def cdp_probe(url, expected_port, expression, target_id=None, diagnostic_url=Non
 
 NETWORK_ERRORS = {"none", "other", "net::ERR_FAILED", "net::ERR_BLOCKED_BY_ORB", "net::ERR_CONNECTION_REFUSED", "net::ERR_ADDRESS_UNREACHABLE",
                   "net::ERR_TIMED_OUT", "net::ERR_BLOCKED_BY_CLIENT", "net::ERR_BLOCKED_BY_RESPONSE",
+                  "net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin",
                   "net::ERR_INTERNET_DISCONNECTED", "net::ERR_ACCESS_DENIED", "net::ERR_NETWORK_ACCESS_DENIED",
                   "net::ERR_CONNECTION_RESET", "net::ERR_ABORTED", "net::ERR_INVALID_URL"}
-NETWORK_BLOCKS = {"none", "other", "csp", "mixed-content", "origin", "inspector", "subresource-filter"}
+NETWORK_BLOCKS = {"none", "other", "csp", "mixed-content", "origin", "inspector", "subresource-filter", "corp-not-same-origin"}
 
 
 class LoopbackNetworkProjection:
     def __init__(self, url):
-        require(type(url) is str and re.fullmatch(r"http://127\.0\.0\.1:[0-9]{4,5}/", url), "network_probe_url_invalid")
+        require(type(url) is str and re.fullmatch(r"http://127\.0\.0\.1:[0-9]{4,5}/(?:api/config)?", url), "network_probe_url_invalid")
         self.url = url
         self.identifiers = set()
         self.result = dict(requestObserved=False, responseStatus=None, error="none", blocked="none", cors=False)
@@ -857,6 +858,19 @@ def cdp_probe_once(url, expected_port, expression, target_id=None, diagnostic_ur
         if projection is not None:
             value["networkDiagnostic"] = projection.result
         return value
+
+
+def await_login_dom(browser_ws, port, target_id):
+    end = time.monotonic() + time_budget(20)
+    while time.monotonic() < end:
+        result = cdp_probe(browser_ws, port,
+            "({visibleDom:document.visibilityState==='visible'&&[...document.querySelectorAll('[data-testid=\"login-email-input\"]')].filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden'&&e.value==='').length===1})",
+            target_id=target_id)
+        require(set(result) == {"visibleDom"} and type(result["visibleDom"]) is bool, "renderer_projection_invalid")
+        if result["visibleDom"]:
+            return result
+        time.sleep(time_budget(0.2))
+    raise Blocked("prelogin_dom_not_ready")
 
 
 def cdp_call(sock, identifier, method, params, session_id=None, observe=None):
@@ -1292,7 +1306,7 @@ def execute(temp, company):
         dirty, _ = command(["/usr/bin/git", "-C", str(company), "status", "--porcelain", "--untracked-files=no"])
         require(not dirty, "company_tracked_source_modified")
         require(hashlib.sha256((company / "scripts/honowarden-company-admin-smoke.mjs").read_bytes()).hexdigest()
-                == "0878f053eb2a87d5c58eafac28b7fc93620e19259fdf49f86a0400a9d99dc575", "public_helper_digest_mismatch")
+                == "2540d25c26f16df2647ebdc575ce69f615d51a9ec06eaf1297c44bb92779c058", "public_helper_digest_mismatch")
         report["osVersion"] = command(["/usr/bin/sw_vers", "-productVersion"])[0].decode().strip()
         report["architecture"] = command(["/usr/bin/uname", "-m"])[0].decode().strip()
         require(report["architecture"] in {"arm64", "x86_64"}, "runner_architecture_mismatch")
@@ -1391,15 +1405,12 @@ def execute(temp, company):
         require(type(version) is dict and type(version.get("webSocketDebuggerUrl")) is str,
                 "cdp_browser_endpoint_missing")
         browser_ws = version["webSocketDebuggerUrl"]
-        dom = cdp_probe(browser_ws, cdp_port,
-                        "({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input')})",
-                        target_id=target["id"])
-        require(set(dom) == {"visibleDom"} and type(dom["visibleDom"]) is bool, "renderer_projection_invalid")
+        dom = await_login_dom(browser_ws, cdp_port, target["id"])
         report.update(dom)
         network = cdp_probe(browser_ws, cdp_port,
                            "(async()=>({appLoopback:await fetch('http://127.0.0.1:" + str(port) +
-                           "/',{mode:'no-cors',credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(2000)}).then(()=>true).catch(()=>false)}))()",
-                           target_id=target["id"], diagnostic_url=f"http://127.0.0.1:{port}/")
+                           "/api/config',{mode:'cors',credentials:'include',cache:'no-store',signal:AbortSignal.timeout(2000)}).then(async r=>r.ok&&(await r.json()).object==='config').catch(()=>false)}))()",
+                           target_id=target["id"], diagnostic_url=f"http://127.0.0.1:{port}/api/config")
         report["networkDiagnostic"] = network.pop("networkDiagnostic")
         result = {**dom, **network}
         require(set(result) == {"visibleDom", "appLoopback"} and all(type(v) is bool for v in result.values()), "renderer_projection_invalid")

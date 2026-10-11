@@ -37,7 +37,7 @@ jobs:
       - name: Check out the exact public company candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: 2deeee0cf159da92babc86e09de44c12eea2aa93
+          ref: 711e61be8382e907aa3e6025ff85c5e69eb40817
           path: company
           persist-credentials: false
           fetch-depth: 1

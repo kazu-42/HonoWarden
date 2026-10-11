@@ -435,6 +435,7 @@ async function startup() {
       HONOWARDEN_ALLOWED_EMAILS: 'native-preflight@example.invalid',
       HONOWARDEN_BOOTSTRAP_ENABLED: 'false',
       HONOWARDEN_ADMIN_ENABLED: 'false',
+      HONOWARDEN_DESKTOP_CLIENTS_ENABLED: 'true',
       HONOWARDEN_AUDIT_LOGS: 'false',
       HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED: 'false',
     },
