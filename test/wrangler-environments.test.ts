@@ -13,6 +13,7 @@ type WranglerBinding = {
 
 type WranglerEnvironment = {
   name: string
+  services?: Array<{ binding: string; service: string }>
   preview_urls: boolean
   workers_dev: boolean
   routes: Array<{
@@ -37,6 +38,7 @@ type WranglerEnvironment = {
 
 type WranglerConfig = {
   name: string
+  services?: Array<{ binding: string; service: string }>
   preview_urls: boolean
   workers_dev: boolean
   triggers: {
@@ -126,6 +128,25 @@ describe('wrangler configuration scopes', () => {
     expect(config.env.staging.name).not.toBe(config.env.production.name)
     expect(config.env.staging.name).not.toBe(config.name)
     expect(config.env.production.name).not.toBe(config.name)
+  })
+
+  it('binds vault mail to private services in the matching environment only', () => {
+    expect(config.services).toBeUndefined()
+    for (const [scope, suffix] of [
+      [config.env.staging, '-staging'],
+      [config.env.production, ''],
+    ] as const) {
+      expect(scope.services).toEqual([
+        {
+          binding: 'ORGANIZATION_MEMBERSHIP_MAILER',
+          service: `honowarden-invitation-mailer${suffix}`,
+        },
+        {
+          binding: 'ACCOUNT_LIFECYCLE_MAILER',
+          service: `honowarden-account-mailer${suffix}`,
+        },
+      ])
+    }
   })
 
   it('keeps the default Wrangler identity on local resources', () => {

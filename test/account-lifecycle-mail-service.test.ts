@@ -18,12 +18,9 @@ afterEach(() => {
 })
 
 it.each(['deliver', 'suppress'] as const)(
-  'enqueues %s without a provider key or provider I/O, then only sends eligible queued work',
+  'enqueues %s without provider I/O, then only sends eligible queued work',
   async (disposition) => {
-    const provider = vi.fn(async () =>
-      Response.json({ id: 'synthetic-provider-id' }),
-    )
-    vi.stubGlobal('fetch', provider)
+    const provider = vi.fn(async () => ({ messageId: 'synthetic-provider-id' }))
     const envelopes: AccountMailEnvelope[] = []
     const request = new Request(
       'https://account-lifecycle-mailer.internal/deliver',
@@ -42,6 +39,7 @@ it.each(['deliver', 'suppress'] as const)(
     )
     const response = await service.fetch(request, {
       ...env,
+      EMAIL: { send: provider },
       ACCOUNT_LIFECYCLE_DELIVERY_QUEUE: {
         send: async (envelope) => {
           envelopes.push(envelope)
@@ -55,14 +53,7 @@ it.each(['deliver', 'suppress'] as const)(
     expect(await response.text()).toBe('')
     expect(provider).not.toHaveBeenCalled()
     const queued = { body: envelopes[0], ack: vi.fn(), retry: vi.fn() }
-    const consumingEnv =
-      disposition === 'deliver'
-        ? {
-            ...env,
-            HONOWARDEN_ACCOUNT_MAIL_RESEND_API_KEY:
-              're_synthetic_account_mail_only',
-          }
-        : env
+    const consumingEnv = { ...env, EMAIL: { send: provider } }
     await service.queue(
       { messages: [queued] } as unknown as MessageBatch,
       consumingEnv,
@@ -73,13 +64,15 @@ it.each(['deliver', 'suppress'] as const)(
   },
 )
 
-it('uses the same provider idempotency key and body when queue delivery retries after an ambiguous provider failure', async () => {
+it('retries the same code after an ambiguous provider failure without an idempotency key', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   const provider = vi
-    .fn<typeof fetch>()
+    .fn(async (message: EmailMessageBuilder) => {
+      void message
+      return { messageId: 'synthetic-provider-id' }
+    })
     .mockRejectedValueOnce(new Error('synthetic lost provider response'))
-    .mockResolvedValueOnce(Response.json({ id: 'synthetic-provider-id' }))
-  vi.stubGlobal('fetch', provider)
+    .mockResolvedValueOnce({ messageId: 'synthetic-provider-id' })
   const codec = createAccountMailCodec({
     activeKeyId: env.HONOWARDEN_ACCOUNT_MAIL_ACTIVE_KEY_ID,
     keysJson: env.HONOWARDEN_ACCOUNT_MAIL_ENCRYPTION_KEYS,
@@ -99,7 +92,7 @@ it('uses the same provider idempotency key and body when queue delivery retries 
   const queued = { body: envelope, ack: vi.fn(), retry: vi.fn() }
   const consumingEnv = {
     ...env,
-    HONOWARDEN_ACCOUNT_MAIL_RESEND_API_KEY: 're_synthetic_account_mail_only',
+    EMAIL: { send: provider } as unknown as SendEmail,
   }
   await service.queue(
     { messages: [queued] } as unknown as MessageBatch,
@@ -113,12 +106,11 @@ it('uses the same provider idempotency key and body when queue delivery retries 
   )
   expect(queued.ack).toHaveBeenCalledOnce()
   expect(provider).toHaveBeenCalledTimes(2)
-  const first = provider.mock.calls[0]![1]!
-  const second = provider.mock.calls[1]![1]!
-  const firstKey = new Headers(first.headers).get('idempotency-key')
-  expect(firstKey).toMatch(/^honowarden-invitation:[a-f0-9]{64}$/)
-  expect(new Headers(second.headers).get('idempotency-key')).toBe(firstKey)
-  expect(second.body).toBe(first.body)
+  expect(provider.mock.calls[1]![0]).toEqual(provider.mock.calls[0]![0])
+  expect(provider.mock.calls[0]![0]).toMatchObject({
+    to: 'member@example.test',
+    text: expect.stringContaining('s'.repeat(43)),
+  })
 })
 
 it('fails closed on producer configuration and leaves invalid consumer configuration for queue retry', async () => {
@@ -142,4 +134,40 @@ it('fails closed on producer configuration and leaves invalid consumer configura
     [JSON.stringify({ event: 'account_mail_configuration_failed' })],
     [JSON.stringify({ event: 'account_mail_configuration_failed' })],
   ])
+})
+
+it('rejects missing sender and email binding before queue consumption', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const queue = {
+    send: vi.fn(async () => ({
+      metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+    })),
+  }
+  const request = new Request(
+    'https://account-lifecycle-mailer.internal/deliver',
+    { method: 'POST' },
+  )
+  for (const invalid of [
+    { ...env, ACCOUNT_LIFECYCLE_DELIVERY_QUEUE: queue },
+    {
+      ...env,
+      HONOWARDEN_ACCOUNT_MAIL_SENDER_EMAIL: '',
+      ACCOUNT_LIFECYCLE_DELIVERY_QUEUE: queue,
+      EMAIL: { send: async () => ({ messageId: 'id' }) },
+    },
+  ]) {
+    const response = await service.fetch(request.clone(), invalid)
+    expect(response.status).toBe(503)
+    await expect(
+      service.queue({ messages: [] } as unknown as MessageBatch, invalid),
+    ).rejects.toThrow(
+      /^Account lifecycle mail consumer configuration is invalid\.$/,
+    )
+  }
+  expect(queue.send).not.toHaveBeenCalled()
+  expect(log.mock.calls).toEqual(
+    Array.from({ length: 4 }, () => [
+      JSON.stringify({ event: 'account_mail_configuration_failed' }),
+    ]),
+  )
 })

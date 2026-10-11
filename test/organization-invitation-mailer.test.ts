@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createOrganizationMembershipMailerDelivery } from '../src/organization-membership'
-import { createResendInvitationSender } from '../src/organization-invitation-resend'
 import {
   createOrganizationInvitationMailer,
   type OrganizationInvitationSender,
@@ -64,18 +63,12 @@ describe('organization invitation mailer service', () => {
     })
     expect(send.mock.calls[0]![0].text).not.toMatch(/https:|token=|password/)
   })
-  it('uses a distinct provider idempotency key for each authorized test while preserving retry deduplication', async () => {
-    const keys: (string | null)[] = []
+  it('constructs distinct test messages without invitation tokens', async () => {
+    const send = vi.fn<OrganizationInvitationSender>(async () => 'accepted')
     const mailer = createOrganizationInvitationMailer({
       adminOrigin: 'https://vault.example.test',
       senderEmail: 'invites@example.test',
-      send: createResendInvitationSender({
-        apiKey: 'synthetic-provider-key',
-        fetch: async (_url, init) => {
-          keys.push(new Headers(init.headers).get('idempotency-key'))
-          return Response.json({ id: 'synthetic-accepted' })
-        },
-      }),
+      send,
     })
     const first = {
       recipientEmail: delivery.recipientEmail,
@@ -97,9 +90,8 @@ describe('organization invitation mailer service', () => {
         ).status,
       ).toBe(202)
     }
-    expect(keys[0]).toBeTruthy()
-    expect(keys[0]).toBe(keys[1])
-    expect(keys[2]).not.toBe(keys[0])
+    expect(send.mock.calls[0]![0].text).toBe(send.mock.calls[1]![0].text)
+    expect(send.mock.calls[2]![0].text).not.toBe(send.mock.calls[0]![0].text)
   })
   it.each([
     null,

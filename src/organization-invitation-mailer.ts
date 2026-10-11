@@ -17,6 +17,37 @@ export type OrganizationInvitationSender = (
   signal: AbortSignal,
 ) => Promise<'accepted'>
 
+const encoder = new TextEncoder()
+
+export function validOrganizationInvitationMessage(
+  message: OrganizationInvitationMail,
+): boolean {
+  const sender = parseOrganizationMembershipInviteRequest({
+    emails: [message.from],
+    type: 2,
+  })
+  const recipient = parseOrganizationMembershipInviteRequest({
+    emails: [message.to],
+    type: 2,
+  })
+  return (
+    sender.ok &&
+    sender.value.emailsNormalized[0] === message.from &&
+    recipient.ok &&
+    recipient.value.emailsNormalized[0] === message.to &&
+    typeof message.subject === 'string' &&
+    message.subject.length > 0 &&
+    message.subject.length <= 256 &&
+    ![...message.subject].some(
+      (character) =>
+        character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+    ) &&
+    typeof message.text === 'string' &&
+    message.text.length > 0 &&
+    encoder.encode(message.text).byteLength <= 8192
+  )
+}
+
 type MailerOptions = {
   adminOrigin: string
   senderEmail: string
@@ -151,7 +182,7 @@ function canonicalHttpsOrigin(value: string): boolean {
   }
 }
 
-function normalizedEmail(value: unknown): value is string {
+export function normalizedEmail(value: unknown): value is string {
   const parsed = parseOrganizationMembershipInviteRequest({
     emails: [value],
     type: 2,

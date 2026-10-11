@@ -3,7 +3,7 @@
 This source adapter implements the existing `ACCOUNT_LIFECYCLE_MAILER` contract.
 It does not enable account lifecycle routes or deploy a mail service. Apply the
 organization invitation delivery source first: this adapter reuses its bounded
-plain-text Resend transport with a separate credential. EVP issuer configuration,
+plain-text Cloudflare Email Service transport. EVP issuer configuration,
 Microsoft interoperability, and official client acceptance remain separate work.
 
 ## Acceptance and authority
@@ -12,7 +12,7 @@ The private receiver accepts only `POST https://account-lifecycle-mailer.interna
 with bounded JSON. Both `deliver` and `suppress` validate, encrypt, and await one
 `Queue.send` through the same code path. An empty HTTP 202 means the queue binding
 accepted the encrypted message. It does not mean the provider accepted it or a
-recipient received it. The receiver has no provider dependency and bounds the
+recipient received it. The receiver makes no provider send and bounds the
 enqueue wait at five seconds. The public account endpoints retain their existing
 response contract, including empty HTTP 200 for deletion recovery.
 
@@ -25,7 +25,8 @@ access. The internal URL check is not authentication: private deployment and the
 service binding provide the invocation boundary.
 
 The consumer acknowledges suppressed messages without constructing a provider
-request, including when sender/provider configuration is missing. Eligible mail
+request. Worker configuration still requires the sender and `EMAIL` binding.
+Eligible mail
 contains a plain-text code and purpose-specific instructions. It invents no
 confirmation URL. Deletion mail also includes the account reference required by
 the existing logged-out `delete-recover-token` request. That identifier never
@@ -35,13 +36,13 @@ a client implementing their existing confirmation contract.
 
 ## Private Worker and binding configuration
 
-Prepare a separately reviewed target configuration with these settings. Names
-below are proposed dedicated resources, not resources created by this change.
-This patch leaves all tracked vault feature-flag values unchanged.
+The tracked `wrangler.account-mailer.jsonc` config defines local, staging, and
+production targets. Names are proposed dedicated resources, not resources
+created by this change. All tracked vault feature-flag values remain unchanged.
 
 ```jsonc
 {
-  "name": "honowarden-account-mail",
+  "name": "honowarden-account-mailer",
   "main": "src/account-lifecycle-mail-service.ts",
   "compatibility_date": "2026-07-06",
   "workers_dev": false,
@@ -50,28 +51,34 @@ This patch leaves all tracked vault feature-flag values unchanged.
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "vars": {
     "HONOWARDEN_ACCOUNT_MAIL_ACTIVE_KEY_ID": "account-mail-1",
-    "HONOWARDEN_ACCOUNT_MAIL_SENDER_EMAIL": "accounts@example.test",
+    "HONOWARDEN_ACCOUNT_MAIL_SENDER_EMAIL": "no-reply@mail.honowarden.com",
   },
   "queues": {
     "producers": [
       {
         "binding": "ACCOUNT_LIFECYCLE_DELIVERY_QUEUE",
-        "queue": "honowarden-account-mail-delivery",
+        "queue": "honowarden-account-mail",
         "delivery_delay": 0,
       },
     ],
     "consumers": [
       {
-        "queue": "honowarden-account-mail-delivery",
+        "queue": "honowarden-account-mail",
         "max_batch_size": 10,
         "max_batch_timeout": 1,
         "max_retries": 3,
         "retry_delay": 60,
         "max_concurrency": 1,
-        "dead_letter_queue": "honowarden-account-mail-delivery-dlq",
+        "dead_letter_queue": "honowarden-account-mail-dlq",
       },
     ],
   },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["no-reply@mail.honowarden.com"],
+    },
+  ],
 }
 ```
 
@@ -79,7 +86,11 @@ Do not inherit routes, custom domains, previews, assets, cron triggers, DB/R2
 bindings, inquiry secrets, or vault secrets into this Worker. Before any activation,
 read back those properties and verify only the intended vault Worker can invoke
 the service. In the separately reviewed vault target configuration, bind
-`ACCOUNT_LIFECYCLE_MAILER` to service `honowarden-account-mail`. Keep
+`ACCOUNT_LIFECYCLE_MAILER` to service `honowarden-account-mailer`. Staging uses
+`honowarden-account-mailer-staging`, sender
+`no-reply-staging@mail.honowarden.com`, and queue/DLQ
+`honowarden-account-mail-staging` / `honowarden-account-mail-staging-dlq`.
+The tracked vault service bindings are environment specific. Keep
 `HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED` off in the company-use/production target
 until runtime acceptance is complete. Exercising the actual API requires a
 separately authorized, scoped activation in an isolated synthetic test target;
@@ -91,15 +102,18 @@ Supply these values privately, never through a committed configuration:
 | Secret                                    | Contract                                                                                                                                      |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `HONOWARDEN_ACCOUNT_MAIL_ENCRYPTION_KEYS` | JSON object mapping the active key ID and at most two previous IDs to independently generated 32-byte AES keys, canonical unpadded base64url. |
-| `HONOWARDEN_ACCOUNT_MAIL_RESEND_API_KEY`  | A separate account-mail-only Resend key, with sending-only permission restricted to the approved sender domain.                               |
 
 The nonsecret active key ID must exist in the keyring. The sender must be a
 normalized mailbox on the approved, currently verified domain. Do not reuse token
 signing, TOTP, invitation-mail, inquiry, or provider credentials as encryption
-keys; do not reuse the invitation/inquiry sending key. The earlier inquiry
-deployment does not establish current authorization or provider configuration.
-See Resend's [sending permissions](https://resend.com/docs/api-reference/api-keys/create-api-key)
-and [domain-scoped keys](https://resend.com/docs/dashboard/api-keys/introduction).
+keys. The earlier inquiry deployment does not establish current authorization
+or provider configuration. Cloudflare Email Service is beta and requires Workers
+Paid to send to arbitrary recipients. Onboard `mail.honowarden.com` in the
+dashboard and verify the cf-bounce MX/SPF/DKIM and DMARC records created under
+that subdomain. Leave apex routing MX/SPF, Resend `send.` records, and apex
+`_dmarc` untouched. Turn Email preview OFF before sending codes: its default ON
+state retains message bodies in dashboard activity for about a week. Cloudflare
+receives the recipient and code-bearing message.
 
 ## Retention, retries, and recovery
 
@@ -123,6 +137,11 @@ survive later batch failures. These settings use Cloudflare's documented
 and [dead-letter routing](https://developers.cloudflare.com/queues/configuration/dead-letter-queues/).
 Keep batch size, retry limit, retry delay, concurrency, retention, and DLQ target
 in the runtime readback; code cannot enforce cloud retry counts or retention.
+The one-second batch timeout and single consumer concurrency limit initial
+queue latency and simultaneous provider sends. Three 60-second retries fit
+within the shortest 15-minute code expiry; an expired message is acknowledged
+without sending. Queue backlog can still outlive a code, so expiry is checked
+again at consumption.
 
 Structurally invalid messages are acknowledged with a fixed `message_invalid`
 event, so an accidental plaintext poison message is not copied into the DLQ.
@@ -143,13 +162,11 @@ are drained, or all affected messages are intentionally expired/discarded under
 the reviewed recovery procedure. Do not automatically replay a DLQ. Any approved
 replay retains the original envelope; expired codes remain unsendable.
 
-This is at-least-once delivery. The Resend transport hashes the complete fixed
-mail payload for its idempotency key; retrying the same envelope produces the
-same body/key. Its existing `honowarden-invitation:` namespace is retained as a
-transport implementation detail. Resend documents a 24-hour idempotency window;
-it does not promise exactly-once inbox delivery. Keep sender configuration stable
-while draining retries, because changing `from` changes that digest. See
-[Resend send and idempotency](https://resend.com/docs/api-reference/emails/send-email).
+This is at-least-once delivery. Cloudflare Email Service has no idempotency key.
+After an ambiguous provider failure, a queue retry can deliver a duplicate of
+the same code. The authoritative reservation and single-use checks still reject
+replay; a second inbox message is possible. Provider acceptance is not mailbox
+receipt.
 
 Queue send has no cancellation API. If its result is lost or arrives after the
 five-second timeout, the receiver returns 503 although the message may already
@@ -158,7 +175,7 @@ a late email can contain an unusable code. Reissuing a code can similarly leave
 older queued mail. The consumer has no DB lookup and does not undo either state.
 The backend's existing reservation, expiry, generation, and single-use checks
 remain authoritative. A provider can likewise accept a send before a response
-is lost; bounded queue retry and idempotency mitigate that ambiguity without
+is lost; bounded queue retry limits that ambiguity without
 claiming exactly-once delivery.
 
 Rollback keeps the account lifecycle flag off, stops new producers, and pauses
@@ -172,8 +189,8 @@ before removing resources.
 Source tests prove encrypted roundtrip/tamper handling, equal-size deliver and
 suppress envelopes, deferred 202 until queue acceptance, fixed errors, timeout
 cancellation, suppression without provider access, expiry, poison handling,
-stable retry body/idempotency key, and native Worker/Queue type compatibility.
-They use synthetic keys, a queue fake, and injected/stubbed provider fetch.
+stable retry message, and native Worker/Queue type compatibility.
+They use synthetic keys, a queue fake, and a stubbed email binding.
 
 These tests do not prove Cloudflare durability, cloud retry/DLQ behavior, actual
 provider acceptance/receipt, or known/unknown account latency equivalence. The
