@@ -66,6 +66,11 @@ const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
 const expectedHourlyCron = ['0 * * * *']
 
 describe('wrangler configuration scopes', () => {
+  it('keeps opaque Desktop origin compatibility disabled in every tracked scope', () => {
+    for (const scope of [config, config.env.staging, config.env.production]) {
+      expect(scope.vars.HONOWARDEN_DESKTOP_CLIENTS_ENABLED).toBe('false')
+    }
+  })
   it('declares the non-inheritable Worker version metadata binding in all scopes', () => {
     expect(config.version_metadata).toEqual({
       binding: 'CF_VERSION_METADATA',
