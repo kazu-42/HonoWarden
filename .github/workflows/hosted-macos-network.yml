@@ -1,0 +1,29 @@
+name: Hosted macOS network inspection
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/hosted-macos-network.yml
+      - scripts/hosted-macos-network/**
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.repository == 'kazu-42/HonoWarden' && github.event.repository.private == false && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'task/macos-hosted-native-preflight-')
+    runs-on: macos-15
+    timeout-minutes: 3
+    steps:
+      - name: Check out the exact inspection source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Check the read-only projection
+        run: python3 -m unittest discover -s scripts/hosted-macos-network -p 'test_*.py' -v
+      - name: Inspect the disposable guest packet filter without changing it
+        run: python3 scripts/hosted-macos-network/packet_filter.py
+      - name: Verify and remove an owned finite loopback filter in this disposable guest
+        run: python3 scripts/hosted-macos-network/packet_filter.py --control
