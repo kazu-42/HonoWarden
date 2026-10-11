@@ -77,7 +77,8 @@ END;
 CREATE TRIGGER trg_users_kdf_population_delete
 AFTER DELETE ON users
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'missing old KDF population during user delete')
+  WHERE NOT EXISTS (
     SELECT 1
     FROM account_kdf_population
     WHERE kdf_algorithm = OLD.kdf_algorithm
@@ -86,7 +87,7 @@ BEGIN
       AND kdf_memory_is_null = (OLD.kdf_memory IS NULL)
       AND kdf_parallelism = COALESCE(OLD.kdf_parallelism, 0)
       AND kdf_parallelism_is_null = (OLD.kdf_parallelism IS NULL)
-  ) THEN RAISE(ABORT, 'missing old KDF population during user delete') END;
+  );
 
   DELETE FROM account_kdf_population
   WHERE kdf_algorithm = OLD.kdf_algorithm
@@ -115,7 +116,8 @@ WHEN OLD.kdf_algorithm IS NOT NEW.kdf_algorithm
   OR OLD.kdf_memory IS NOT NEW.kdf_memory
   OR OLD.kdf_parallelism IS NOT NEW.kdf_parallelism
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'missing old KDF population during user update')
+  WHERE NOT EXISTS (
     SELECT 1
     FROM account_kdf_population
     WHERE kdf_algorithm = OLD.kdf_algorithm
@@ -124,7 +126,7 @@ BEGIN
       AND kdf_memory_is_null = (OLD.kdf_memory IS NULL)
       AND kdf_parallelism = COALESCE(OLD.kdf_parallelism, 0)
       AND kdf_parallelism_is_null = (OLD.kdf_parallelism IS NULL)
-  ) THEN RAISE(ABORT, 'missing old KDF population during user update') END;
+  );
 
   DELETE FROM account_kdf_population
   WHERE kdf_algorithm = OLD.kdf_algorithm
