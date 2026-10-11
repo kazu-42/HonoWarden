@@ -6,7 +6,7 @@ $statePath=Join-Path $env:RUNNER_TEMP 'honowarden-windows-preauth-state.json'
 $failed=$false; $job=[IntPtr]::Zero; $processInfo=$null; $pipe=$null; $nullStream=$null; $state=$null
 $journalAuthenticated=$false
 $previousTemp=$env:TEMP; $previousTmp=$env:TMP
-$report=@{object='windowsHostedPreauth';status='blocked';phase='admission';failureCode=$null;nodePhase='not_started';nodeFailure='none';worker=$false;gui=$false;dpapi=$false;credentialMarker=$false;cleanup=$false;authenticated=$false;windows11Acceptance=$false}
+$report=@{object='windowsHostedPreauth';status='blocked';phase='admission';failureCode=$null;nodePhase='not_started';nodeFailure='none';worker=$false;gui=$false;dpapi=$false;credentialMarker=$false;cleanup=$false;authenticated=$false;windows11Acceptance=$false;preparationMs=$null;timings=@()}
 function Assert-PlainPath([string]$Path) {
   $cursor=[IO.Path]::GetFullPath($Path)
   if ($cursor.StartsWith('\\')) { throw 'network_path' }
@@ -32,6 +32,25 @@ function Read-NativeProgress([string]$Attempt) {
   $phase=[IO.File]::ReadAllText($path)
   if (@('not_started','bundle','worker_start','migration','d1_probe','r2_probe','worker_config','desktop_launch','desktop_attach','desktop_revalidate','window_proof','dom_probe','complete','cleanup') -ccontains $phase) { return $phase }
   return 'not_started'
+}
+function Read-NativeTiming([string]$Attempt) {
+  try {
+    $path=Join-Path $Attempt 'safe-timing.json'
+    Assert-PlainPath $path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -gt 2048) { return }
+    $raw=[IO.File]::ReadAllText($path)
+    if (-not $raw.StartsWith('[') -or -not $raw.EndsWith(']')) { return }
+    $rows=@(ConvertFrom-Json -InputObject $raw)
+    $allowed=@('not_started','bundle','worker_start','migration','d1_probe','r2_probe','worker_config','desktop_launch','desktop_attach','desktop_revalidate','window_proof','dom_probe','complete','cleanup')
+    if ($rows.Count -lt 1 -or $rows.Count -gt $allowed.Count) { return }
+    $seen=@();$previous=-1;$output=@()
+    foreach ($row in $rows) {
+      if ($null -eq $row -or @($row.PSObject.Properties).Count -ne 2 -or $allowed -cnotcontains $row.phase -or $seen -ccontains $row.phase -or ($row.elapsedMs -isnot [int] -and $row.elapsedMs -isnot [long]) -or $row.elapsedMs -lt 0 -or $row.elapsedMs -lt $previous -or $row.elapsedMs -gt 300000) { return }
+      $seen+=@($row.phase);$previous=$row.elapsedMs
+      $output+=@(@{phase=$row.phase;elapsedMs=[long]$row.elapsedMs})
+    }
+    return $output
+  } catch { return }
 }
 function Verify-Source {
   $manifest=Get-Content -LiteralPath (Join-Path $root 'source-manifest.json') -Raw | ConvertFrom-Json
@@ -165,6 +184,7 @@ try {
     $childEnv=@{SystemRoot=$env:SystemRoot;windir=$env:windir;SystemDrive=$env:SystemDrive;COMSPEC=(Join-Path $env:SystemRoot 'System32/cmd.exe');PATH=((Split-Path -Parent $node)+';'+(Join-Path $env:SystemRoot 'System32'));TEMP=$env:TEMP;TMP=$env:TMP;USERPROFILE=(Join-Path $state.attempt 'user');APPDATA=(Join-Path $state.attempt 'appdata');LOCALAPPDATA=(Join-Path $state.attempt 'localappdata');ProgramFiles=$env:ProgramFiles;'ProgramFiles(x86)'=${env:ProgramFiles(x86)}}
     $environmentBlock=(($childEnv.Keys | Sort-Object | ForEach-Object {$_+'='+$childEnv[$_]}) -join [char]0)+[char]0+[char]0
     $report.phase='owned_node_launch'
+    $report.preparationMs=[Math]::Min(300000,[Math]::Max(0,[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()-$created))
     $processInfo=[HonoWardenWindowsNative]::StartOwnedNode($job,$node,(Join-Path $root 'preflight.mjs'),$root,$environmentBlock,[IntPtr]::new([long]$pipe.GetClientHandleAsString()),$nullHandle)
     $pipe.DisposeLocalCopyOfClientHandle()
     $input=@{companyCommit='2deeee0cf159da92babc86e09de44c12eea2aa93';company=$Company;createdAtMs=$created;expiresAtMs=($created+240000);freeBytes=$drive.AvailableFreeSpace;freshHostedGuest=$true;attempt=$state.attempt;jobName=$state.jobName}
@@ -197,9 +217,12 @@ try {
   }
 }
 finally {
+  if ($state -and $journalAuthenticated) {
+    try { $report.timings=@(Read-NativeTiming $state.attempt) } catch { $report.timings=@() }
+  }
   $report.cleanup=Cleanup-Owned
   if (-not $report.cleanup) { $failed=$true; $report.status='owned_cleanup_unproved' }
   $env:TEMP=$previousTemp;$env:TMP=$previousTmp
-  $report | ConvertTo-Json -Compress
+  $report | ConvertTo-Json -Compress -Depth 4
 }
 if ($failed) { exit 1 }

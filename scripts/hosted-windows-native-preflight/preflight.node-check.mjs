@@ -27,6 +27,7 @@ import {
   migrationStatements,
   loadPinnedWebSocket,
   writeNativeProgress,
+  writeNativeTiming,
 } from './preflight.mjs'
 import {
   PUBLIC_PHASES,
@@ -64,6 +65,40 @@ test('interrupted native work retains the last complete finite phase without pro
   }
 })
 
+test('timing diagnostics retain bounded monotonic milestones without changing admission', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'honowarden-timing-'))
+  const marks = [
+    { phase: 'bundle', elapsedMs: 12000 },
+    { phase: 'desktop_attach', elapsedMs: 150000 },
+  ]
+  try {
+    await writeNativeTiming(directory, marks)
+    const saved = await readFile(join(directory, 'safe-timing.json'), 'utf8')
+    assert.deepEqual(JSON.parse(saved), marks)
+    for (const invalid of [
+      [{ phase: 'private-value', elapsedMs: 1 }],
+      [{ phase: 'bundle', elapsedMs: '1' }],
+      [{ phase: 'bundle', elapsedMs: -1 }],
+      [{ phase: 'bundle', elapsedMs: 300001 }],
+      [{ phase: 'bundle', elapsedMs: 0, authenticated: true }],
+      [marks[1], marks[0]],
+      [marks[0], marks[0]],
+      [],
+    ]) {
+      await assert.rejects(writeNativeTiming(directory, invalid))
+      assert.equal(
+        await readFile(join(directory, 'safe-timing.json'), 'utf8'),
+        saved,
+      )
+    }
+    assert.deepEqual(await readdir(directory), ['safe-timing.json'])
+    assert.equal(projectedResult({ timings: marks }).authenticated, false)
+    assert.equal(projectedResult({ timings: marks }).worker, false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('Windows progress readback accepts only a bounded complete phase', async (context) => {
   const directory = await mkdtemp(join(tmpdir(), 'honowarden-progress-reader-'))
   try {
@@ -92,6 +127,15 @@ foreach ($phase in @('desktop_attach','desktop_revalidate','cleanup')) {
 foreach ($invalid in @('','private-secret-marker',('x'*33),('cleanup'+[char]10))) {
   [IO.File]::WriteAllText($path,$invalid)
   if ((Read-NativeProgress $attempt) -cne 'not_started') { throw 'invalid' }
+}
+$timingPath=Join-Path $attempt 'safe-timing.json'
+if (@(Read-NativeTiming $attempt).Count -ne 0) { throw 'timing_missing' }
+[IO.File]::WriteAllText($timingPath,'[{"phase":"bundle","elapsedMs":12000},{"phase":"desktop_attach","elapsedMs":150000}]')
+$timing=@(Read-NativeTiming $attempt)
+if ($timing.Count -ne 2 -or $timing[1].phase -cne 'desktop_attach' -or $timing[1].elapsedMs -ne 150000) { throw 'timing_value' }
+foreach ($invalid in @('',('x'*2049),'[]','{}','[{"phase":"private","elapsedMs":0}]','[{"phase":"bundle","elapsedMs":"1"}]','[{"phase":"bundle","elapsedMs":-1}]','[{"phase":"bundle","elapsedMs":300001}]','[{"phase":"bundle","elapsedMs":0,"authenticated":true}]','[{"phase":"desktop_attach","elapsedMs":2},{"phase":"bundle","elapsedMs":1}]','[{"phase":"bundle","elapsedMs":1},{"phase":"bundle","elapsedMs":1}]')) {
+  [IO.File]::WriteAllText($timingPath,$invalid)
+  if (@(Read-NativeTiming $attempt).Count -ne 0) { throw 'timing_invalid' }
 }
 [Console]::Out.Write('progress_reader_passed')
 `

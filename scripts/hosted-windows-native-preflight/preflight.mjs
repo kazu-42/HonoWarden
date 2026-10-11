@@ -32,6 +32,39 @@ export async function writeNativeProgress(attempt, phase) {
   await rename(pending, join(attempt, 'safe-progress.txt'))
 }
 
+export async function writeNativeTiming(attempt, marks) {
+  ensure(
+    Array.isArray(marks) &&
+      marks.length > 0 &&
+      marks.length <= NATIVE_PHASES.length,
+    'timing_invalid',
+  )
+  let previous = -1
+  const seen = new Set()
+  for (const mark of marks) {
+    ensure(
+      mark &&
+        Object.keys(mark).length === 2 &&
+        NATIVE_PHASES.includes(mark.phase) &&
+        !seen.has(mark.phase) &&
+        Number.isSafeInteger(mark.elapsedMs) &&
+        mark.elapsedMs >= previous &&
+        mark.elapsedMs >= 0 &&
+        mark.elapsedMs <= 300000,
+      'timing_invalid',
+    )
+    seen.add(mark.phase)
+    previous = mark.elapsedMs
+  }
+  const pending = join(attempt, 'safe-timing.pending')
+  await writeFile(pending, JSON.stringify(marks), {
+    encoding: 'utf8',
+    flag: 'wx',
+    mode: 0o600,
+  })
+  await rename(pending, join(attempt, 'safe-timing.json'))
+}
+
 export function loadPinnedWebSocket(require, scopedRequire = createRequire) {
   if (require('miniflare/package.json').version !== '4.20260714.0')
     throw Error('websocket_pin')
@@ -77,9 +110,15 @@ async function run(input) {
     nodePhase: 'bundle',
     nodeFailure: 'none',
   }
+  const timings = []
+  const timing = async (name) => {
+    timings.push({ phase: name, elapsedMs: Date.now() - input.createdAtMs })
+    await writeNativeTiming(input.attempt, timings)
+  }
   const phase = async (name) => {
     result.nodePhase = name
     await writeNativeProgress(input.attempt, name)
+    await timing(name)
   }
   try {
     await phase('bundle')
@@ -263,7 +302,7 @@ async function run(input) {
       [expected],
     )
     if (result.gui !== true) throw Error('prelogin_dom_unavailable')
-    result.nodePhase = 'complete'
+    await phase('complete')
   } catch (error) {
     result.failed = true
     result.nodeFailure = nativeFailureCode(error)
@@ -272,6 +311,7 @@ async function run(input) {
     let clean = true
     try {
       await writeNativeProgress(input.attempt, 'cleanup')
+      await timing('cleanup')
     } catch {
       // Diagnostic persistence must never prevent owned cleanup.
       result.failed = true
