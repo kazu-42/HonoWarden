@@ -756,19 +756,59 @@ def read_frame(sock):
     return take(sock, length)
 
 
-def cdp_probe(url, expected_port, expression, target_id=None):
+def cdp_probe(url, expected_port, expression, target_id=None, diagnostic_url=None):
     # A discoverable Electron target can precede its WebSocket readiness. Only
     # retry before any Runtime.evaluate is sent; never replay a UI operation.
     for attempt in range(3):
         require(time_budget(3) > 0, "absolute_step_deadline")
         try:
-            return cdp_probe_once(url, expected_port, expression, target_id=target_id)
+            return cdp_probe_once(url, expected_port, expression, target_id=target_id, diagnostic_url=diagnostic_url)
         except Blocked as error:
             if str(error) != "cdp_upgrade_timeout" or attempt == 2:
                 raise
 
 
-def cdp_probe_once(url, expected_port, expression, target_id=None):
+NETWORK_ERRORS = {"none", "other", "net::ERR_FAILED", "net::ERR_BLOCKED_BY_ORB", "net::ERR_CONNECTION_REFUSED", "net::ERR_ADDRESS_UNREACHABLE",
+                  "net::ERR_TIMED_OUT", "net::ERR_BLOCKED_BY_CLIENT", "net::ERR_BLOCKED_BY_RESPONSE",
+                  "net::ERR_INTERNET_DISCONNECTED", "net::ERR_ACCESS_DENIED", "net::ERR_NETWORK_ACCESS_DENIED",
+                  "net::ERR_CONNECTION_RESET", "net::ERR_ABORTED", "net::ERR_INVALID_URL"}
+NETWORK_BLOCKS = {"none", "other", "csp", "mixed-content", "origin", "inspector", "subresource-filter"}
+
+
+class LoopbackNetworkProjection:
+    def __init__(self, url):
+        require(type(url) is str and re.fullmatch(r"http://127\.0\.0\.1:[0-9]{4,5}/", url), "network_probe_url_invalid")
+        self.url = url
+        self.identifiers = set()
+        self.result = dict(requestObserved=False, responseStatus=None, error="none", blocked="none", cors=False)
+
+    def observe(self, event):
+        params = event.get("params", {})
+        if type(params) is not dict:
+            return
+        identifier = params.get("requestId")
+        if type(identifier) is not str or len(identifier) > 100:
+            return
+        method = event.get("method")
+        request = params.get("request", {})
+        if method == "Network.requestWillBeSent" and type(request) is dict and request.get("url") == self.url:
+            require(len(self.identifiers) < 4, "network_probe_request_limit")
+            self.identifiers.add(identifier)
+            self.result["requestObserved"] = True
+        if identifier not in self.identifiers:
+            return
+        if method == "Network.loadingFailed":
+            error, blocked = params.get("errorText"), params.get("blockedReason", "none")
+            self.result.update(error=error if type(error) is str and error in NETWORK_ERRORS else "other",
+                               blocked=blocked if type(blocked) is str and blocked in NETWORK_BLOCKS else "other",
+                               cors=isinstance(params.get("corsErrorStatus"), dict))
+        if method == "Network.responseReceived" and isinstance(params.get("response"), dict):
+            status = params["response"].get("status")
+            if type(status) is int and 100 <= status <= 599:
+                self.result["responseStatus"] = status
+
+
+def cdp_probe_once(url, expected_port, expression, target_id=None, diagnostic_url=None):
     parsed = urllib.parse.urlsplit(url)
     require(parsed.scheme == "ws" and parsed.hostname == "127.0.0.1" and parsed.port == expected_port,
             "cdp_websocket_not_loopback")
@@ -804,15 +844,22 @@ def cdp_probe_once(url, expected_port, expression, target_id=None):
             attached = cdp_call(sock, 1, "Target.attachToTarget", {"targetId": target_id, "flatten": True})
             session_id = attached.get("sessionId")
             require(type(session_id) is str and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", session_id), "cdp_session_invalid")
-        result = cdp_call(sock, 2 if session_id else 1, "Runtime.evaluate", {
+        number = 2 if session_id else 1
+        projection = LoopbackNetworkProjection(diagnostic_url) if diagnostic_url is not None else None
+        if projection is not None:
+            cdp_call(sock, number, "Network.enable", {}, session_id)
+            number += 1
+        result = cdp_call(sock, number, "Runtime.evaluate", {
             "expression": expression, "returnByValue": True, "awaitPromise": True,
-        }, session_id)
+        }, session_id, projection.observe if projection is not None else None)
         value = result.get("result", {}).get("value")
         require(isinstance(value, dict), "cdp_projection_invalid")
+        if projection is not None:
+            value["networkDiagnostic"] = projection.result
         return value
 
 
-def cdp_call(sock, identifier, method, params, session_id=None):
+def cdp_call(sock, identifier, method, params, session_id=None, observe=None):
     message = {"id": identifier, "method": method, "params": params}
     if session_id is not None:
         message["sessionId"] = session_id
@@ -831,6 +878,8 @@ def cdp_call(sock, identifier, method, params, session_id=None):
         total += len(frame)
         require(total <= 2 * CAP, "cdp_total_limit")
         result = json.loads(frame)
+        if observe is not None and result.get("sessionId") == session_id:
+            observe(result)
         if result.get("id") == identifier:
             require("error" not in result and "exceptionDetails" not in result.get("result", {}), "cdp_evaluation_failed")
             require(isinstance(result.get("result"), dict), "cdp_projection_invalid")
@@ -942,12 +991,19 @@ def public_report(report):
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
             "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls",
-            "networkIsolationBackend", "networkNegativeControl"} | DESKTOP_DIAGNOSTIC_KEYS
+            "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
     if "networkIsolationBackend" in report:
         require(report["networkIsolationBackend"] == "owned_pf_anchor", "network_projection_invalid")
     if "networkNegativeControl" in report:
         require(type(report["networkNegativeControl"]) is bool, "network_projection_invalid")
+    if "networkDiagnostic" in report:
+        item = report["networkDiagnostic"]
+        require(type(item) is dict and set(item) == {"requestObserved", "responseStatus", "error", "blocked", "cors"}
+                and all(type(item[key]) is bool for key in ["requestObserved", "cors"])
+                and (item["responseStatus"] is None or type(item["responseStatus"]) is int and 100 <= item["responseStatus"] <= 599)
+                and type(item["error"]) is str and item["error"] in NETWORK_ERRORS
+                and type(item["blocked"]) is str and item["blocked"] in NETWORK_BLOCKS, "network_projection_invalid")
     if "unixSocketControls" in report:
         require(type(report["unixSocketControls"]) is bool, "unix_socket_projection_invalid")
     if "desktopLogSummary" in report:
@@ -1343,7 +1399,8 @@ def execute(temp, company):
         network = cdp_probe(browser_ws, cdp_port,
                            "(async()=>({appLoopback:await fetch('http://127.0.0.1:" + str(port) +
                            "/',{mode:'no-cors',credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(2000)}).then(()=>true).catch(()=>false)}))()",
-                           target_id=target["id"])
+                           target_id=target["id"], diagnostic_url=f"http://127.0.0.1:{port}/")
+        report["networkDiagnostic"] = network.pop("networkDiagnostic")
         result = {**dom, **network}
         require(set(result) == {"visibleDom", "appLoopback"} and all(type(v) is bool for v in result.values()), "renderer_projection_invalid")
         report.update(result)

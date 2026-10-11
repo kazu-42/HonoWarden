@@ -191,6 +191,31 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(sock.commands[1]["id"], 2)
         self.assertEqual(sock.commands[1]["method"], "Runtime.evaluate")
 
+    def test_loopback_network_projection_ignores_foreign_requests_and_strips_payloads(self):
+        projection = p.LoopbackNetworkProjection("http://127.0.0.1:8123/")
+        projection.observe({"method": "Network.requestWillBeSent", "params": {
+            "requestId": "foreign", "request": {"url": "https://fictional.invalid", "headers": {"Secret": "FICTIONAL_SECRET"}}}})
+        projection.observe({"method": "Network.loadingFailed", "params": {"requestId": "foreign", "errorText": "net::ERR_ACCESS_DENIED"}})
+        self.assertFalse(projection.result["requestObserved"])
+        projection.observe({"method": "Network.requestWillBeSent", "params": {
+            "requestId": "owned", "request": {"url": "http://127.0.0.1:8123/"}}})
+        projection.observe({"method": "Network.loadingFailed", "params": {
+            "requestId": "owned", "errorText": "FICTIONAL_SECRET", "blockedReason": {}, "corsErrorStatus": {"failedParameter": "FICTIONAL_SECRET"}}})
+        self.assertTrue(projection.result["requestObserved"])
+        self.assertTrue(projection.result["cors"])
+        self.assertEqual(projection.result["error"], "other")
+        self.assertNotIn("FICTIONAL_SECRET", json.dumps(projection.result))
+        p.public_report({"authenticated": False, "credentialAdmission": False, "networkDiagnostic": projection.result})
+
+    def test_network_observation_does_not_promote_fetch_success(self):
+        sock = BrowserSocket()
+        with patch.object(p.socket, "create_connection", return_value=sock):
+            result = p.cdp_probe("ws://127.0.0.1:8123/devtools/browser/owned", 8123,
+                                 "({visibleDom:true})", target_id="selected-page", diagnostic_url="http://127.0.0.1:8124/")
+        self.assertEqual([row["method"] for row in sock.commands], ["Target.attachToTarget", "Network.enable", "Runtime.evaluate"])
+        self.assertFalse(result["networkDiagnostic"]["requestObserved"])
+        self.assertNotIn("appLoopback", result)
+
     def test_browser_transport_rejects_invalid_session_before_evaluation(self):
         for session in [None, "", "unexpected/value", "x" * 101]:
             with self.subTest(session=session):
