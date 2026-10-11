@@ -13,6 +13,14 @@ export type OrganizationView = {
   name: string
   role: Role
 }
+export type CompanySettingsView = {
+  name: string
+  defaultEmailDomain: string | null
+  expectedMemberCount: number | null
+  mailTestRecipient: string | null
+  revision: string | null
+  canEdit: boolean
+}
 export type CollectionView = {
   id: string
   organizationId: string
@@ -106,6 +114,12 @@ export type EmailCodeVerificationAttempt = {
   dispose(): void
 }
 export interface AdminClient {
+  getCompanySettings(orgId: string): Promise<CompanySettingsView>
+  requestCompanyTestMail(orgId: string, revision: string): Promise<void>
+  updateCompanySettings(
+    orgId: string,
+    input: Omit<CompanySettingsView, 'canEdit'>,
+  ): Promise<CompanySettingsView>
   getSession(): SessionView
   subscribe(listener: (state: SessionView) => void): () => void
   login(email: string, password: string): Promise<void>

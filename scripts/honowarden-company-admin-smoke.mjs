@@ -1411,6 +1411,7 @@ async function execute(options, packet) {
         HONOWARDEN_ORGANIZATION_INVITE_SECRET: secrets.invite,
         HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED: 'true',
         HONOWARDEN_INVITATION_REGISTRATION_ENABLED: 'true',
+        HONOWARDEN_COMPANY_SETTINGS_ENABLED: 'true',
         HONOWARDEN_ORGANIZATION_GROUPS_ENABLED: 'true',
         HONOWARDEN_ORGANIZATION_POLICIES_ENABLED: 'true',
         HONOWARDEN_ORGANIZATION_AUDIT_ENABLED: 'true',
@@ -1440,6 +1441,22 @@ async function execute(options, packet) {
           )
         },
         ORGANIZATION_MEMBERSHIP_MAILER: async (request) => {
+          if (
+            request.url ===
+            'https://organization-membership-mailer.internal/test'
+          ) {
+            invariant(request.method === 'POST', 'unexpected_test_mail_method')
+            const body = await request.json()
+            invariant(
+              Object.keys(body).length === 2 &&
+                body.recipientEmail === owner.email &&
+                /^[a-f0-9-]{36}$/.test(body.testId),
+              'unexpected_test_mail_recipient',
+            )
+            report.mail.testAcceptedCount =
+              (report.mail.testAcceptedCount ?? 0) + 1
+            return new Response(null, { status: 202 })
+          }
           invariant(
             request.url ===
               'https://organization-membership-mailer.internal/deliver' &&
@@ -1814,7 +1831,23 @@ async function execute(options, packet) {
               collectionId: company.collectionId,
             })
           }
+          const verifyCompanySettings = async () => {
+            const settings = await database
+              .prepare(
+                'SELECT default_email_domain, expected_member_count, mail_test_recipient FROM organization_company_settings WHERE organization_id = ?',
+              )
+              .bind(company.orgId)
+              .first()
+            invariant(
+              settings?.default_email_domain ===
+                recipient.email.split('@')[1] &&
+                settings.expected_member_count === 20 &&
+                settings.mail_test_recipient === owner.email,
+              'company_settings_restore_mismatch',
+            )
+          }
           await verifyGroupOnly()
+          await verifyCompanySettings()
           const bucket = await worker.getR2Bucket('VAULT_OBJECTS')
           invariant(
             Boolean(company.personal.attachment),
@@ -1869,6 +1902,7 @@ async function execute(options, packet) {
           }
           await restart()
           await verifyGroupOnly()
+          await verifyCompanySettings()
           const verifyDenied = async () => {
             await api(
               '/api/accounts/profile',
@@ -2016,6 +2050,7 @@ async function execute(options, packet) {
           await restart()
           report.restore.restartCount++
           await verifyGroupOnly()
+          await verifyCompanySettings()
           await nativeReadback(
             outsider,
             company.shared,
@@ -2353,6 +2388,59 @@ async function companyFlow(context) {
       await safeScreenshot(ownerPage, 'collections')
     },
   )
+  await check('ui_company_settings_persist_and_reopen', async () => {
+    await ownerPage
+      .getByRole('button', { name: '会社設定', exact: true })
+      .click()
+    const dialog = ownerPage.getByRole('dialog', {
+      name: '会社設定',
+      exact: true,
+    })
+    await dialog
+      .getByLabel('既定のメールドメイン', { exact: true })
+      .fill(recipient.email.split('@')[1])
+    await dialog.getByLabel('導入予定人数', { exact: true }).fill('20')
+    await dialog
+      .getByLabel('テストメールの送信先', { exact: true })
+      .fill(owner.email)
+    await dialog
+      .getByRole('button', { name: '設定を保存', exact: true })
+      .click()
+    await closeDialog(ownerPage)
+    await ownerPage
+      .getByText('会社設定を保存しました', { exact: true })
+      .waitFor()
+    await ownerPage
+      .getByRole('button', { name: '会社設定', exact: true })
+      .click()
+    const reopened = ownerPage.getByRole('dialog', {
+      name: '会社設定',
+      exact: true,
+    })
+    invariant(
+      (await reopened
+        .getByLabel('既定のメールドメイン', { exact: true })
+        .inputValue()) === recipient.email.split('@')[1] &&
+        (await reopened
+          .getByLabel('導入予定人数', { exact: true })
+          .inputValue()) === '20' &&
+        (await reopened
+          .getByLabel('テストメールの送信先', { exact: true })
+          .inputValue()) === owner.email,
+      'company_settings_ui_readback_failed',
+    )
+    await reopened
+      .getByRole('button', { name: '保存済みの宛先にテスト送信', exact: true })
+      .click()
+    await reopened
+      .getByText('送信サービスが受け付けました', { exact: true })
+      .waitFor()
+    invariant(report.mail.testAcceptedCount === 1, 'test_mail_ack_missing')
+    await reopened
+      .getByRole('button', { name: 'キャンセル', exact: true })
+      .click()
+    await closeDialog(ownerPage)
+  })
   await check(
     'ui_invite_delivery_capture_and_authenticated_acceptance',
     async () => {
@@ -2366,7 +2454,22 @@ async function companyFlow(context) {
       })
       await dialog
         .getByLabel('メールアドレス（20名まで）', { exact: true })
-        .fill(recipient.email)
+        .fill(recipient.email.split('@')[0])
+      await dialog
+        .getByRole('button', { name: '既定ドメインで補完', exact: true })
+        .click()
+      await dialog
+        .getByText(
+          'ドメインを補完しました。招待先を確認してから送信してください。',
+          { exact: true },
+        )
+        .waitFor()
+      invariant(
+        (await dialog
+          .getByLabel('メールアドレス（20名まで）', { exact: true })
+          .inputValue()) === recipient.email,
+        'invitation_domain_completion_failed',
+      )
       await dialog
         .getByLabel(collectionName + 'にアクセスを割り当てる', { exact: true })
         .check()

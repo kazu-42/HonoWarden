@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createOrganizationMembershipMailerDelivery } from '../src/organization-membership'
+import { createResendInvitationSender } from '../src/organization-invitation-resend'
 import {
   createOrganizationInvitationMailer,
   type OrganizationInvitationSender,
@@ -43,6 +44,88 @@ function request(body: unknown = delivery, url = address): Request {
 }
 
 describe('organization invitation mailer service', () => {
+  it('sends only a fixed permission-free test template to the validated saved recipient', async () => {
+    const { mailer, send } = fixture()
+    const response = await mailer.fetch(
+      request(
+        {
+          recipientEmail: delivery.recipientEmail,
+          testId: crypto.randomUUID(),
+        },
+        'https://organization-membership-mailer.internal/test',
+      ),
+    )
+    expect(response.status).toBe(202)
+    expect(await response.text()).toBe('')
+    expect(send).toHaveBeenCalledOnce()
+    expect(send.mock.calls[0]![0]).toMatchObject({
+      to: delivery.recipientEmail,
+      subject: 'HonoWarden delivery test',
+    })
+    expect(send.mock.calls[0]![0].text).not.toMatch(/https:|token=|password/)
+  })
+  it('uses a distinct provider idempotency key for each authorized test while preserving retry deduplication', async () => {
+    const keys: (string | null)[] = []
+    const mailer = createOrganizationInvitationMailer({
+      adminOrigin: 'https://vault.example.test',
+      senderEmail: 'invites@example.test',
+      send: createResendInvitationSender({
+        apiKey: 'synthetic-provider-key',
+        fetch: async (_url, init) => {
+          keys.push(new Headers(init.headers).get('idempotency-key'))
+          return Response.json({ id: 'synthetic-accepted' })
+        },
+      }),
+    })
+    const first = {
+      recipientEmail: delivery.recipientEmail,
+      testId: crypto.randomUUID(),
+    }
+    for (const body of [
+      first,
+      first,
+      { ...first, testId: crypto.randomUUID() },
+    ]) {
+      expect(
+        (
+          await mailer.fetch(
+            request(
+              body,
+              'https://organization-membership-mailer.internal/test',
+            ),
+          )
+        ).status,
+      ).toBe(202)
+    }
+    expect(keys[0]).toBeTruthy()
+    expect(keys[0]).toBe(keys[1])
+    expect(keys[2]).not.toBe(keys[0])
+  })
+  it.each([
+    null,
+    {},
+    { recipientEmail: delivery.recipientEmail, testId: 'caller supplied text' },
+    { recipientEmail: 'x\r\n@example.test' },
+    { recipientEmail: 'Member@example.test' },
+    { recipientEmail: delivery.recipientEmail, text: 'caller supplied text' },
+    delivery,
+  ])(
+    'rejects invalid test-mail input without a provider call',
+    async (body) => {
+      const { mailer, send } = fixture()
+      expect(
+        (
+          await mailer.fetch(
+            request(
+              body,
+              'https://organization-membership-mailer.internal/test',
+            ),
+          )
+        ).status,
+      ).toBe(400)
+      expect(send).not.toHaveBeenCalled()
+    },
+  )
   it('connects the existing internal adapter to an acknowledged provider using the admin fragment contract', async () => {
     const { mailer, send, log } = fixture()
     const binding = {

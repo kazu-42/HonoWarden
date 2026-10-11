@@ -357,6 +357,30 @@ export function normalizeInvitationEmails(value: string): string[] {
   return emails
 }
 
+export function completeInvitationDomain(
+  value: string,
+  domain: string | null,
+): string[] {
+  if (
+    !domain ||
+    domain.length > 253 ||
+    !domain.includes('.') ||
+    !domain
+      .split('.')
+      .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+  )
+    throw new AdminError('validation', 'company_domain_required')
+  return normalizeInvitationEmails(
+    value
+      .split(/[\n,;]+/)
+      .map((entry) => {
+        const email = entry.trim().toLowerCase()
+        return email && !email.includes('@') ? `${email}@${domain}` : email
+      })
+      .join('\n'),
+  )
+}
+
 type View =
   'overview' | 'members' | 'collections' | 'groups' | 'security' | 'audit'
 type Snapshot = {
@@ -399,6 +423,8 @@ const eventLabels: Record<string, string> = {
   'organization.group.delete': 'グループを削除',
   'organization.group.member.remove': 'グループからメンバーを削除',
   'organization.policy.update': '認証ポリシーを変更',
+  'organization.settings.update': '会社設定を変更',
+  'organization.mail_test.request': 'テストメールを要求',
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -1306,6 +1332,51 @@ export function mountAdminApp(
       '2',
     )
     const grants = grantEditor(collections, [])
+    const domainNotice = element('div')
+    domainNotice.setAttribute('aria-live', 'polite')
+    const completeDomain = button('既定ドメインで補完', () => {
+      if (completeDomain.disabled) return
+      const openedDialog = activeDialog
+      const original = emails.value
+      completeDomain.disabled = true
+      domainNotice.replaceChildren()
+      void client
+        .getCompanySettings(orgId)
+        .then((settings) => {
+          if (
+            !current(capturedEpoch, orgId) ||
+            activeDialog !== openedDialog ||
+            emails.value !== original
+          )
+            return
+          emails.value = completeInvitationDomain(
+            original,
+            settings.defaultEmailDomain,
+          ).join('\n')
+          domainNotice.textContent =
+            'ドメインを補完しました。招待先を確認してから送信してください。'
+        })
+        .catch((error: unknown) => {
+          if (!current(capturedEpoch, orgId) || activeDialog !== openedDialog)
+            return
+          domainNotice.replaceChildren(
+            noticeNode(
+              error instanceof AdminError &&
+                error.code === 'company_domain_required'
+                ? {
+                    title: '既定ドメインが未設定です',
+                    message:
+                      'オーナーが「会社設定」で保存するか、完全なメールアドレスを入力してください。',
+                    tone: 'warning',
+                  }
+                : formatUiError(error),
+            ),
+          )
+        })
+        .finally(() => {
+          completeDomain.disabled = false
+        })
+    })
     const content = element(
       'div',
       '',
@@ -1319,6 +1390,8 @@ export function mountAdminApp(
           'field-help',
           '1行に1名、またはカンマで区切ってください。重複したアドレスは送信できません。',
         ),
+        completeDomain,
+        domainNotice,
       ),
       role.root,
       element('h3', 'grant-title', '直接割り当てるコレクション'),
@@ -3118,6 +3191,156 @@ export function mountAdminApp(
     }
   }
 
+  async function companySettingsDialog(): Promise<void> {
+    const orgId = selectedOrganizationId
+    const capturedEpoch = epoch
+    if (!orgId || !owner()) return
+    closeDialog()
+    const generation = dialogGeneration
+    try {
+      const settings = await client.getCompanySettings(orgId)
+      if (!current(capturedEpoch, orgId) || generation !== dialogGeneration)
+        return
+      const name = field(
+        'company-settings-name',
+        '会社名',
+        'text',
+        settings.name,
+      )
+      const domain = field(
+        'company-settings-domain',
+        '既定のメールドメイン',
+        'text',
+        settings.defaultEmailDomain ?? '',
+      )
+      const count = field(
+        'company-settings-count',
+        '導入予定人数',
+        'number',
+        settings.expectedMemberCount?.toString() ?? '',
+      )
+      const mail = field(
+        'company-settings-test-email',
+        'テストメールの送信先',
+        'email',
+        settings.mailTestRecipient ?? '',
+      )
+      name.input.required = true
+      name.input.maxLength = 100
+      domain.input.maxLength = 253
+      domain.input.placeholder = 'example.co.jp'
+      count.input.min = '1'
+      count.input.max = '100000'
+      count.input.step = '1'
+      mail.input.maxLength = 254
+      const mailNotice = element('div')
+      mailNotice.setAttribute('aria-live', 'polite')
+      const testMail = button('保存済みの宛先にテスト送信', () => {
+        if (
+          testMail.disabled ||
+          !settings.canEdit ||
+          !settings.revision ||
+          !settings.mailTestRecipient ||
+          !current(capturedEpoch, orgId)
+        )
+          return
+        const openedDialog = activeDialog
+        testMail.disabled = true
+        mailNotice.replaceChildren()
+        void client
+          .requestCompanyTestMail(orgId, settings.revision)
+          .then(() => {
+            if (!current(capturedEpoch, orgId) || activeDialog !== openedDialog)
+              return
+            mailNotice.replaceChildren(
+              noticeNode({
+                title: '送信サービスが受け付けました',
+                message:
+                  '受信箱と迷惑メールフォルダで到達を確認してください。次のテスト送信は5分後から可能です。',
+                tone: 'success',
+              }),
+            )
+          })
+          .catch((error: unknown) => {
+            if (!current(capturedEpoch, orgId) || activeDialog !== openedDialog)
+              return
+            const uncertain =
+              !(error instanceof AdminError) ||
+              ['transport', 'unavailable'].includes(error.kind)
+            mailNotice.replaceChildren(
+              noticeNode(
+                uncertain
+                  ? {
+                      title: '受付結果を確認できません',
+                      message:
+                        'メールが届いている可能性があります。受信箱を確認し、5分以上待ってから再度お試しください。',
+                      tone: 'warning',
+                    }
+                  : formatUiError(error),
+              ),
+            )
+          })
+          .finally(() => {
+            testMail.disabled = false
+          })
+      })
+      testMail.disabled =
+        !settings.canEdit || !settings.revision || !settings.mailTestRecipient
+      showDialog(
+        '会社設定',
+        element(
+          'div',
+          '',
+          name.root,
+          domain.root,
+          count.root,
+          mail.root,
+          element(
+            'p',
+            'note',
+            settings.mailTestRecipient
+              ? `テスト送信先（保存済み）: ${settings.mailTestRecipient}`
+              : '送信先を保存してからテスト送信できます。',
+          ),
+          testMail,
+          mailNotice,
+          element(
+            'p',
+            'note',
+            '既定ドメインは招待先の入力補助です。ドメインの所有権や参加権限は付与しません。導入予定人数は計画用で、利用人数の上限ではありません。',
+          ),
+          element(
+            'p',
+            'note',
+            '管理者の追加・変更は「メンバー」から行います。送信先を保存するだけではメールは送信されません。',
+          ),
+        ),
+        '設定を保存',
+        async () => {
+          if (!current(capturedEpoch, orgId) || !settings.canEdit) return
+          const rawCount = count.input.value.trim()
+          if (rawCount && !/^[1-9]\d{0,5}$/.test(rawCount))
+            throw new AdminError('validation', 'invalid_request')
+          await mutate('会社設定を保存しました', () =>
+            client.updateCompanySettings(orgId, {
+              name: name.input.value.trim(),
+              defaultEmailDomain:
+                domain.input.value.trim().toLowerCase() || null,
+              expectedMemberCount: rawCount ? Number(rawCount) : null,
+              mailTestRecipient: mail.input.value.trim().toLowerCase() || null,
+              revision: settings.revision,
+            }),
+          )
+        },
+      )
+    } catch (error) {
+      if (current(capturedEpoch, orgId) && generation === dialogGeneration) {
+        outcomeNotice = formatUiError(error)
+        render()
+      }
+    }
+  }
+
   function createOrganizationDialog(): void {
     const capturedEpoch = epoch
     const name = field('organization-name', '組織名')
@@ -3290,6 +3513,16 @@ export function mountAdminApp(
         button('サインアウト', () => signOut(), 'quiet compact'),
       ),
     )
+    if (selectedOrganizationId && owner())
+      header.append(
+        button(
+          '会社設定',
+          () => {
+            void companySettingsDialog()
+          },
+          'quiet compact',
+        ),
+      )
     const main = element('main', 'main-content')
     main.id = 'main-content'
     main.tabIndex = -1

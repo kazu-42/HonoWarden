@@ -373,6 +373,30 @@
       ]
     },
     {
+      "lastReviewedAt": "2026-10-11",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/company-settings.test.ts",
+        "test/integration/company-settings-d1.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "organizations.company_settings",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "rationale": "Original dashboard company setup metadata. Owner updates require a current session, applicable MFA policy, revision match and an atomic audit write. The default email domain does not prove ownership or confer membership; expected member count is planning metadata.",
+      "covers": [
+        { "method": "GET", "path": "/api/organizations/:id/admin-settings" },
+        { "method": "PUT", "path": "/api/organizations/:id/admin-settings" },
+        {
+          "method": "POST",
+          "path": "/api/organizations/:id/admin-settings/test-mail"
+        }
+      ],
+      "migrations": ["0032_company_settings.sql"]
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
       "evidence": [
@@ -3066,7 +3090,8 @@
         "0028_organization_audit_scope_index.sql",
         "0029_organization_membership_mutation_marker.sql",
         "0030_organization_policy_mutation_marker.sql",
-        "0031_email_verification.sql"
+        "0031_email_verification.sql",
+        "0032_company_settings.sql"
       ]
     },
     {

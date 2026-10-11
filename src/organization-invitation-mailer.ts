@@ -25,6 +25,7 @@ type MailerOptions = {
 }
 
 const deliveryUrl = 'https://organization-membership-mailer.internal/deliver'
+const testUrl = 'https://organization-membership-mailer.internal/test'
 const maxBodyBytes = 4096
 const deliveryDeadlineMs = 10_000
 
@@ -40,7 +41,10 @@ export function createOrganizationInvitationMailer(options: MailerOptions): {
 
   return {
     async fetch(request) {
-      if (request.url !== deliveryUrl || request.method !== 'POST') {
+      if (
+        ![deliveryUrl, testUrl].includes(request.url) ||
+        request.method !== 'POST'
+      ) {
         return result(404)
       }
       if (
@@ -51,22 +55,35 @@ export function createOrganizationInvitationMailer(options: MailerOptions): {
         return result(400)
       }
       const body = await readBoundedJsonBody(request, maxBodyBytes)
-      const delivery = body.ok ? parseDelivery(body.value, now()) : null
-      if (!delivery) return result(400)
+      const isTest = request.url === testUrl
+      const delivery =
+        body.ok && !isTest ? parseDelivery(body.value, now()) : null
+      const testDelivery =
+        body.ok && isTest ? parseTestDelivery(body.value) : null
+      if (!delivery && !testDelivery) return result(400)
 
-      const message: OrganizationInvitationMail = {
-        from: senderEmail,
-        to: delivery.recipientEmail,
-        subject: 'HonoWarden organization invitation',
-        text: [
-          'You have been invited to a HonoWarden organization.',
-          'Open this link and sign in with the invited email address:',
-          `${adminOrigin}/admin/accept/${delivery.organizationId}/${delivery.membershipId}#token=${delivery.token}`,
-          `This single-use invitation expires at ${delivery.expiresAt}.`,
-          'An administrator must confirm your membership before you can access shared items.',
-          'If you were not expecting this invitation, ignore this message.',
-        ].join('\n\n'),
-      }
+      const message: OrganizationInvitationMail = delivery
+        ? {
+            from: senderEmail,
+            to: delivery.recipientEmail,
+            subject: 'HonoWarden organization invitation',
+            text: [
+              'You have been invited to a HonoWarden organization.',
+              'Open this link and sign in with the invited email address:',
+              `${adminOrigin}/admin/accept/${delivery.organizationId}/${delivery.membershipId}#token=${delivery.token}`,
+              `This single-use invitation expires at ${delivery.expiresAt}.`,
+              'An administrator must confirm your membership before you can access shared items.',
+              'If you were not expecting this invitation, ignore this message.',
+            ].join('\n\n'),
+          }
+        : {
+            from: senderEmail,
+            to: testDelivery!.recipientEmail,
+            subject: 'HonoWarden delivery test',
+            text:
+              'A HonoWarden organization owner requested this test message from company settings. Receiving this message confirms delivery to this mailbox. It does not create an account or grant organization access. If you did not expect this message, you may ignore it.' +
+              `\n\nTest reference: ${testDelivery!.testId}`,
+          }
       const controller = new AbortController()
       let timeout: ReturnType<typeof setTimeout> | undefined
       try {
@@ -92,6 +109,21 @@ export function createOrganizationInvitationMailer(options: MailerOptions): {
       }
     },
   }
+}
+
+function parseTestDelivery(
+  value: unknown,
+): { recipientEmail: string; testId: string } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const row = value as Record<string, unknown>
+  return Object.keys(row).length === 2 &&
+    normalizedEmail(row.recipientEmail) &&
+    typeof row.testId === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      row.testId,
+    )
+    ? { recipientEmail: row.recipientEmail, testId: row.testId }
+    : null
 }
 
 function deliveryFailure(

@@ -7,6 +7,15 @@ import { secureHeaders } from 'hono/secure-headers'
 import type { Bindings } from './bindings'
 import { registerAdminRoutes } from './admin-routes'
 import {
+  parseCompanySettings,
+  readCompanySettings,
+  updateCompanySettings,
+} from './company-settings'
+import {
+  parseCompanyTestMailRequest,
+  requestCompanyTestMail,
+} from './company-test-mail'
+import {
   createInvitedAccount,
   parseInvitedAccountRegistration,
 } from './invited-account-registration'
@@ -1830,6 +1839,179 @@ app.post('/api/organizations', async (c) => {
         c.get('requestId'),
         'database_unavailable',
         'Organization creation failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.on(['GET', 'PUT'], '/api/organizations/:id/admin-settings', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (c.env?.HONOWARDEN_COMPANY_SETTINGS_ENABLED !== 'true') return c.notFound()
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  const organizationId = c.req.param('id')
+  if (
+    !/^[A-Za-z0-9_-]{1,128}$/.test(organizationId) ||
+    Object.keys(c.req.queries()).length
+  )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Invalid company settings request.',
+      ),
+      400,
+    )
+  try {
+    const scope = { organizationId, actor: organizationActor(auth) }
+    if (c.req.method === 'GET') {
+      const settings = await readCompanySettings(c.env.DB, scope)
+      return settings
+        ? c.json(settings)
+        : c.json(organizationNotFoundError(c.get('requestId')), 404)
+    }
+    const body = await readBoundedJsonBody(c.req.raw, 2048)
+    const settings = body.ok ? parseCompanySettings(body.value) : null
+    if (!settings)
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'Invalid company settings.',
+        ),
+        400,
+      )
+    const result = await updateCompanySettings(c.env.DB, {
+      ...scope,
+      settings,
+      now: new Date().toISOString(),
+      requestId: c.get('requestId'),
+    })
+    if (result.status === 'success') return c.json(result.settings)
+    if (result.status === 'conflict')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'Company settings changed. Reload before saving.',
+        ),
+        409,
+      )
+    return c.json(organizationNotFoundError(c.get('requestId')), 404)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'company_settings_failed',
+        requestId: c.get('requestId'),
+        operation: c.req.method,
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Company settings could not be confirmed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/api/organizations/:id/admin-settings/test-mail', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (c.env?.HONOWARDEN_COMPANY_SETTINGS_ENABLED !== 'true') return c.notFound()
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  const organizationId = c.req.param('id')
+  const body = await readBoundedJsonBody(c.req.raw, 256)
+  const input = body.ok ? parseCompanyTestMailRequest(body.value) : null
+  if (
+    !input ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(organizationId) ||
+    Object.keys(c.req.queries()).length
+  )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Invalid test mail request.',
+      ),
+      400,
+    )
+  try {
+    if (!c.env.ORGANIZATION_MEMBERSHIP_MAILER) throw new Error('missing_mailer')
+    const result = await requestCompanyTestMail(
+      c.env.DB,
+      c.env.ORGANIZATION_MEMBERSHIP_MAILER,
+      {
+        ...input,
+        organizationId,
+        actor: organizationActor(auth),
+        now: new Date().toISOString(),
+        requestId: c.get('requestId'),
+      },
+    )
+    if (result === 'accepted')
+      return c.json(
+        {
+          object: 'companyTestMail',
+          status: 'accepted',
+          mailboxReceipt: false,
+        },
+        202,
+      )
+    if (result === 'not_found')
+      return c.json(organizationNotFoundError(c.get('requestId')), 404)
+    if (result === 'conflict')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'revision_conflict',
+          'Reload the saved company settings before sending.',
+        ),
+        409,
+      )
+    if (result === 'recipient_required')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'Save a test recipient before sending.',
+        ),
+        400,
+      )
+    if (result === 'rate_limited') {
+      c.header('Retry-After', '300')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'rate_limited',
+          'Wait five minutes before requesting another test message.',
+        ),
+        429,
+      )
+    }
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'test_mail_delivery_unknown',
+        'Mail acceptance could not be confirmed. Check the mailbox before retrying.',
+      ),
+      503,
+    )
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'company_test_mail_request_failed',
+        requestId: c.get('requestId'),
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'The test mail request could not be confirmed.',
       ),
       503,
     )
@@ -9594,6 +9776,7 @@ function apiError(
     | 'session_revocation_incomplete'
     | 'server_misconfigured'
     | 'storage_unavailable'
+    | 'test_mail_delivery_unknown'
     | 'user_key_rotation_conflict'
     | 'user_key_rotation_over_budget'
     | 'user_key_rotation_unsupported'

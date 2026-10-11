@@ -91,6 +91,8 @@ describe('organization audit query validation', () => {
       'organization.group.delete',
       'organization.group.member.remove',
       'organization.policy.update',
+      'organization.settings.update',
+      'organization.mail_test.request',
     ])
     expect(organizationAuditPolicy).toEqual({
       defaultLimit: 50,
