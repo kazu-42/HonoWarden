@@ -752,23 +752,25 @@ def read_frame(sock):
     return take(sock, length)
 
 
-def cdp_probe(url, expected_port, expression):
+def cdp_probe(url, expected_port, expression, target_id=None):
     # A discoverable Electron target can precede its WebSocket readiness. Only
     # retry before any Runtime.evaluate is sent; never replay a UI operation.
     for attempt in range(3):
         require(time_budget(3) > 0, "absolute_step_deadline")
         try:
-            return cdp_probe_once(url, expected_port, expression)
+            return cdp_probe_once(url, expected_port, expression, target_id=target_id)
         except Blocked as error:
             if str(error) != "cdp_upgrade_timeout" or attempt == 2:
                 raise
 
 
-def cdp_probe_once(url, expected_port, expression):
+def cdp_probe_once(url, expected_port, expression, target_id=None):
     parsed = urllib.parse.urlsplit(url)
     require(parsed.scheme == "ws" and parsed.hostname == "127.0.0.1" and parsed.port == expected_port,
             "cdp_websocket_not_loopback")
-    require(re.fullmatch(r"/devtools/page/[A-Za-z0-9_-]{1,100}", parsed.path) is not None
+    endpoint = "browser" if target_id is not None else "page"
+    require(target_id is None or type(target_id) is str and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", target_id), "cdp_target_invalid")
+    require(re.fullmatch(r"/devtools/" + endpoint + r"/[A-Za-z0-9_-]{1,100}", parsed.path) is not None
             and not parsed.query and not parsed.fragment and parsed.username is None, "cdp_websocket_invalid")
     with socket.create_connection(("127.0.0.1", expected_port), timeout=time_budget(3)) as sock:
         sock.settimeout(time_budget(5))
@@ -793,28 +795,42 @@ def cdp_probe_once(url, expected_port, expression):
                 fields[name.lower()] = value.strip()
         require(headers.startswith(b"HTTP/1.1 101 ") and fields.get(b"sec-websocket-accept") == accept,
                 "cdp_upgrade_invalid")
-        payload = json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {
+        session_id = None
+        if target_id is not None:
+            attached = cdp_call(sock, 1, "Target.attachToTarget", {"targetId": target_id, "flatten": True})
+            session_id = attached.get("sessionId")
+            require(type(session_id) is str and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", session_id), "cdp_session_invalid")
+        result = cdp_call(sock, 2 if session_id else 1, "Runtime.evaluate", {
             "expression": expression, "returnByValue": True, "awaitPromise": True,
-        }}).encode()
-        require(len(payload) < CAP, "cdp_send_limit")
-        mask = os.urandom(4)
-        length = bytes([len(payload) | 128]) if len(payload) < 126 else b"\xfe" + struct.pack("!H", len(payload))
-        sock.sendall(b"\x81" + length + mask + bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload)))
-        total, end = 0, time.monotonic() + 10
-        while True:
-            require(time.monotonic() < end, "cdp_deadline")
-            try:
-                frame = read_frame(sock)
-            except TimeoutError as error:
-                raise Blocked("cdp_evaluation_timeout") from error
-            total += len(frame)
-            require(total <= 2 * CAP, "cdp_total_limit")
-            result = json.loads(frame)
-            if result.get("id") == 1:
-                require("error" not in result and "exceptionDetails" not in result.get("result", {}), "cdp_evaluation_failed")
-                value = result.get("result", {}).get("result", {}).get("value")
-                require(isinstance(value, dict), "cdp_projection_invalid")
-                return value
+        }, session_id)
+        value = result.get("result", {}).get("value")
+        require(isinstance(value, dict), "cdp_projection_invalid")
+        return value
+
+
+def cdp_call(sock, identifier, method, params, session_id=None):
+    message = {"id": identifier, "method": method, "params": params}
+    if session_id is not None:
+        message["sessionId"] = session_id
+    payload = json.dumps(message).encode()
+    require(len(payload) < CAP, "cdp_send_limit")
+    mask = os.urandom(4)
+    length = bytes([len(payload) | 128]) if len(payload) < 126 else b"\xfe" + struct.pack("!H", len(payload))
+    sock.sendall(b"\x81" + length + mask + bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload)))
+    total, end = 0, time.monotonic() + time_budget(10)
+    while True:
+        require(time.monotonic() < end, "cdp_deadline")
+        try:
+            frame = read_frame(sock)
+        except TimeoutError as error:
+            raise Blocked("cdp_evaluation_timeout") from error
+        total += len(frame)
+        require(total <= 2 * CAP, "cdp_total_limit")
+        result = json.loads(frame)
+        if result.get("id") == identifier:
+            require("error" not in result and "exceptionDetails" not in result.get("result", {}), "cdp_evaluation_failed")
+            require(isinstance(result.get("result"), dict), "cdp_projection_invalid")
+            return result["result"]
 
 
 def sandbox_profile(port, cdp_port, root):
@@ -1286,13 +1302,21 @@ def execute(temp, company):
         report["desktopLogSummary"] = dict(desktop_log.summary)
         public_report(report)
         require(gui["onConsole"] and gui["appWindowCount"] >= 1, "native_window_not_visible")
-        dom = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
-                        "({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input')})")
+        # Use Electron's browser endpoint and explicitly attach the already
+        # verified application target. No default or newly created page is used.
+        version = bounded_http(cdp_port, "/json/version")
+        require(type(version) is dict and type(version.get("webSocketDebuggerUrl")) is str,
+                "cdp_browser_endpoint_missing")
+        browser_ws = version["webSocketDebuggerUrl"]
+        dom = cdp_probe(browser_ws, cdp_port,
+                        "({visibleDom:document.visibilityState==='visible'&&!!document.body&&!!document.querySelector('input')})",
+                        target_id=target["id"])
         require(set(dom) == {"visibleDom"} and type(dom["visibleDom"]) is bool, "renderer_projection_invalid")
         report.update(dom)
-        network = cdp_probe(target["webSocketDebuggerUrl"], cdp_port,
+        network = cdp_probe(browser_ws, cdp_port,
                            "(async()=>({appLoopback:await fetch('http://127.0.0.1:" + str(port) +
-                           "/',{mode:'no-cors',credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(2000)}).then(()=>true).catch(()=>false)}))()")
+                           "/',{mode:'no-cors',credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(2000)}).then(()=>true).catch(()=>false)}))()",
+                           target_id=target["id"])
         result = {**dom, **network}
         require(set(result) == {"visibleDom", "appLoopback"} and all(type(v) is bool for v in result.values()), "renderer_projection_invalid")
         report.update(result)

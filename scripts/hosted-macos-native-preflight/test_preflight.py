@@ -43,6 +43,28 @@ class FakeSocket:
         pass
 
 
+class BrowserSocket(FakeSocket):
+    def __init__(self, session="owned-session"):
+        super().__init__()
+        self.commands = []
+        self.session = session
+
+    def sendall(self, data):
+        if data.startswith(b"GET "):
+            key = data.split(b"Sec-WebSocket-Key: ", 1)[1].split(b"\r\n", 1)[0]
+            accept = base64.b64encode(hashlib.sha1(key + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest())
+            self.data.extend(b"HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: " + accept + b"\r\n\r\n")
+            return
+        offset = 4 if data[1] & 127 == 126 else 2
+        mask, payload = data[offset:offset + 4], data[offset + 4:]
+        command = json.loads(bytes(value ^ mask[index % 4] for index, value in enumerate(payload)))
+        self.commands.append(command)
+        result = {"sessionId": self.session} if command["method"] == "Target.attachToTarget" else {"result": {"value": {"visibleDom": True}}}
+        response = json.dumps({"id": command["id"], "result": result}).encode()
+        length = bytes([len(response)]) if len(response) < 126 else b"\x7e" + struct.pack("!H", len(response))
+        self.data.extend(b"\x81" + length + response)
+
+
 class PolicyTests(unittest.TestCase):
     def test_effective_client_identity_is_exact_frozen_receipt_identity(self):
         canonical = json.dumps(p.effective_client_identity(), sort_keys=True, separators=(",", ":")).encode()
@@ -158,6 +180,33 @@ class PolicyTests(unittest.TestCase):
                     "ws://127.0.0.1:8123/devtools/page/id?token=secret"]:
             with self.subTest(url=url), self.assertRaises(p.Blocked):
                 p.cdp_probe(url, 8123, "({})")
+
+    def test_browser_transport_attaches_only_the_selected_target(self):
+        sock = BrowserSocket()
+        with patch.object(p.socket, "create_connection", return_value=sock):
+            result = p.cdp_probe("ws://127.0.0.1:8123/devtools/browser/owned", 8123, "({visibleDom:true})", target_id="selected-page")
+        self.assertEqual(result, {"visibleDom": True})
+        self.assertEqual(sock.commands[0], {"id": 1, "method": "Target.attachToTarget", "params": {"targetId": "selected-page", "flatten": True}})
+        self.assertEqual(sock.commands[1]["sessionId"], "owned-session")
+        self.assertEqual(sock.commands[1]["id"], 2)
+        self.assertEqual(sock.commands[1]["method"], "Runtime.evaluate")
+
+    def test_browser_transport_rejects_invalid_session_before_evaluation(self):
+        for session in [None, "", "unexpected/value", "x" * 101]:
+            with self.subTest(session=session):
+                sock = BrowserSocket(session)
+                with patch.object(p.socket, "create_connection", return_value=sock), self.assertRaisesRegex(p.Blocked, "cdp_session_invalid"):
+                    p.cdp_probe("ws://127.0.0.1:8123/devtools/browser/owned", 8123, "({})", target_id="selected-page")
+                self.assertEqual(len(sock.commands), 1)
+
+    def test_browser_transport_does_not_accept_a_foreign_or_page_endpoint(self):
+        for url, target in [("ws://127.0.0.1:8124/devtools/browser/id", "selected"),
+                            ("ws://127.0.0.1:8123/devtools/page/id", "selected"),
+                            ("ws://127.0.0.1:8123/devtools/browser/id", "../foreign")]:
+            with self.subTest(url=url, target=target), patch.object(p.socket, "create_connection") as connect:
+                with self.assertRaises(p.Blocked):
+                    p.cdp_probe(url, 8123, "({})", target_id=target)
+                connect.assert_not_called()
 
     def test_no_authenticated_claim_allowed(self):
         with self.assertRaisesRegex(p.Blocked, "credential_claim_refused"):
