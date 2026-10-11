@@ -506,6 +506,34 @@ const vm = require('node:vm'), assert = require('node:assert/strict');
             self.assertFalse(marker.exists())
             cleanup.assert_called_once_with(root, state)
 
+    def test_failed_finisher_preserves_owned_state_and_the_first_finite_diagnosis(self):
+        for saved in [False, True]:
+            with self.subTest(saved=saved), tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
+                temp = Path(fixture)
+                root = temp / "hw-macos-preflight-fixture"
+                root.mkdir(mode=0o700)
+                marker = temp / "marker.json"
+                info = root.stat()
+                state = {"root": str(root), "uid": p.os.getuid(), "dev": info.st_dev, "ino": info.st_ino,
+                         "priorDefault": "/guest/original", "priorSearch": ["/guest/original"], "children": []}
+                p.write_private(marker, state)
+                if saved:
+                    p.write_private(temp / "marker-safe.json", {"schemaVersion": 1, "status": "pre_auth_blocked",
+                        "code": "tls_install_command_failed", "nativeExecuted": False,
+                        "authenticated": False, "credentialAdmission": False, "cleanupComplete": False})
+                output = io.StringIO()
+                with patch.object(p, "marker_path", return_value=marker), \
+                     patch.object(p, "cleanup", return_value=["tls_cleanup_failed", "tls_trust_restore_mismatch"]), \
+                     patch.object(p, "command") as command, patch.object(p.sys, "stdout", output):
+                    self.assertEqual(p.finish(temp), 1)
+                command.assert_not_called()
+                result = json.loads(output.getvalue())
+                self.assertEqual(result["status"], "cleanup_failed")
+                self.assertFalse(result["cleanupComplete"])
+                self.assertIs(result["nativeExecuted"], False if saved else None)
+                self.assertEqual(result["code"], "tls_install_command_failed" if saved else "finish_keychain_cleanup_failed")
+                self.assertTrue(root.exists() and marker.exists())
+
     def test_absolute_cli_lease_precedes_initial_guest_probe(self):
         with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
             captured = []

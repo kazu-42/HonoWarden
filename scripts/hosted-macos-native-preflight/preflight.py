@@ -67,6 +67,9 @@ CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", 
                                                 "keychain_readback_failed", "packet_filter_cleanup_failed", "tls_cleanup_failed", "cleanup_finalization_failed",
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
                                                  "cleanup_finalization_api_unavailable"}
+TLS_CLEANUP_CODES = {"tls_trust_restore_mismatch", "tls_remove_command_failed", "tls_trust_read_failed",
+                     "tls_export_not_owned", "tls_certificate_changed", "tls_record_invalid", "tls_hosted_guest_required", "tls_file_invalid"}
+CLEANUP_FAILURE_CODES |= TLS_CLEANUP_CODES
 WORKER_BINARY_PROOF = "pinned_darwin_arm64_version_verified"
 WORKERD_BINARY_SHA = "1b652bc9930d82924f9b416a384df910bc667f88cfb72972a0b39532c94a4cfe"
 WORKER_FAILURE_PHASES = {"module_setup", "dependency_import", "runtime_binary_probe", "state_prepare", "build", "runtime_construct",
@@ -1002,6 +1005,11 @@ def cleanup(root, state):
     if state.get("tls") is not None:
         try:
             TLS.restore(root, state["tls"], command)
+        except TLS.Blocked as error:
+            failures.append("tls_cleanup_failed")
+            code = error.args[0] if len(error.args) == 1 else None
+            if type(code) is str and code in TLS_CLEANUP_CODES:
+                failures.append(code)
         except Exception:
             failures.append("tls_cleanup_failed")
     actions = [["/usr/bin/security", "default-keychain", "-d", "user", "-s", state["priorDefault"]],
@@ -1553,7 +1561,21 @@ def finish(temp):
             (state["uid"], state["dev"], state["ino"], 0o700), "cleanup_root_identity_mismatch")
     # If execute was killed before its cleanup, restore exactly the known guest keychains.
     failures = cleanup(root, state)
-    require(not failures, "finish_keychain_cleanup_failed")
+    if failures:
+        # Keep the first attempt's finite diagnosis visible even when the
+        # independent cleanup itself fails. Never discard owned recovery state.
+        if safe.exists():
+            require(safe.is_file() and not safe.is_symlink() and safe.stat().st_uid == os.getuid(), "safe_report_not_owned")
+            report = public_report(json.loads(safe.read_text()))
+        else:
+            report = {"schemaVersion": 1, "nativeExecuted": None,
+                      "authenticated": False, "credentialAdmission": False}
+        validate_cleanup_codes(failures)
+        report.update(status="cleanup_failed", cleanupComplete=False,
+                      cleanupFailureCodes=list(dict.fromkeys([*report.get("cleanupFailureCodes", []), *failures])))
+        report.setdefault("code", "finish_keychain_cleanup_failed")
+        print(json.dumps(public_report(report), sort_keys=True))
+        return 1
     # Any remaining open file rooted in owned state blocks deletion rather than losing evidence.
     output, code = command(["/usr/sbin/lsof", "-nP", "+D", str(root)], timeout=15, ok=(0, 1))
     require(code == 1 and not output, "owned_state_still_open")

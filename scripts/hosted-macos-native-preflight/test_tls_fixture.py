@@ -41,7 +41,7 @@ class TLSFixtureTests(unittest.TestCase):
                 return b"", 0
             with patch.object(tls, "hosted_only"), patch.object(tls, "generate", return_value=digest), \
                  patch.object(tls, "trust_digest", return_value="b" * 64):
-                with self.assertRaises(TimeoutError):
+                with self.assertRaisesRegex(tls.Blocked, "tls_install_command_failed"):
                     tls.install(root, root / "owned.keychain-db", command, journal.append)
                 self.assertEqual(journal, [self.record(digest)])
                 tls.restore(root, journal[0], command)

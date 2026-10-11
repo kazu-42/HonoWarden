@@ -121,8 +121,11 @@ def install(root, keychain, run, remember):
     remember(record)
     # Only this one-day CA and the exact loopback SSL hostname are trusted in
     # the disposable guest. No expiration/hostname error exception is admitted.
-    run(["/usr/bin/sudo", "-n", "/usr/bin/security", "add-trusted-cert", "-d", "-r", "trustRoot",
-         "-p", "ssl", "-s", "127.0.0.1", "-k", str(keychain), str(Path(root) / "tls/ca.pem")], timeout=5)
+    try:
+        run(["/usr/bin/sudo", "-n", "/usr/bin/security", "add-trusted-cert", "-d", "-r", "trustRoot",
+             "-p", "ssl", "-s", "127.0.0.1", "-k", str(keychain), str(Path(root) / "tls/ca.pem")], timeout=5)
+    except Exception:
+        raise Blocked("tls_install_command_failed") from None
     return record
 
 
@@ -137,6 +140,9 @@ def restore(root, record, run):
     hosted_only()
     validate_record(record)
     require(digest_certificate(root) == record["certificateSha256"], "tls_certificate_changed")
-    run(["/usr/bin/sudo", "-n", "/usr/bin/security", "remove-trusted-cert", "-d", str(Path(root) / "tls/ca.pem")],
-        timeout=5, ok=(0, 1))
+    try:
+        run(["/usr/bin/sudo", "-n", "/usr/bin/security", "remove-trusted-cert", "-d", str(Path(root) / "tls/ca.pem")],
+            timeout=5, ok=(0, 1))
+    except Exception:
+        raise Blocked("tls_remove_command_failed") from None
     require(trust_digest(root, run, "after") == record["baselineSha256"], "tls_trust_restore_mismatch")
