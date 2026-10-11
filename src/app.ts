@@ -512,6 +512,19 @@ app.use(
         return origin
       }
 
+      // Opaque origins are not client identities. This opt-in only permits the
+      // native renderer to read API responses; bearer/session/MFA checks still
+      // authorize every protected request. Cookies never authenticate the vault.
+      if (
+        c.env?.HONOWARDEN_DESKTOP_CLIENTS_ENABLED === 'true' &&
+        (origin === 'null' || origin === 'bw-desktop-file://bundle') &&
+        ['/api/', '/identity/', '/notifications/'].some((prefix) =>
+          c.req.path.startsWith(prefix),
+        )
+      ) {
+        return origin
+      }
+
       return ''
     },
     allowHeaders: defaultCorsHeaders,
