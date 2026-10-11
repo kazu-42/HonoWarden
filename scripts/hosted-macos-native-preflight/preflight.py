@@ -1205,6 +1205,8 @@ def execute(temp, company):
         raise
     report = {"schemaVersion": 1, "status": "pre_auth_blocked", "nativeExecuted": False,
               "authenticated": False, "credentialAdmission": False, "assetSha256": ASSET_SHA, "companySha": COMPANY_SHA}
+    app_proc = None
+    desktop_log = None
     prior_term = signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(Blocked("run_cancelled")))
     try:
         # Initial probes consume the same lease; reserve cleanup within its original end.
@@ -1304,7 +1306,10 @@ def execute(temp, company):
         require(gui["onConsole"] and gui["appWindowCount"] >= 1, "native_window_not_visible")
         # Use Electron's browser endpoint and explicitly attach the already
         # verified application target. No default or newly created page is used.
-        version = bounded_http(cdp_port, "/json/version")
+        try:
+            version = bounded_http(cdp_port, "/json/version")
+        except TimeoutError as error:
+            raise Blocked("cdp_version_timeout") from error
         require(type(version) is dict and type(version.get("webSocketDebuggerUrl")) is str,
                 "cdp_browser_endpoint_missing")
         browser_ws = version["webSocketDebuggerUrl"]
@@ -1327,6 +1332,12 @@ def execute(temp, company):
     except BaseException as error:
         report["code"] = str(error) if isinstance(error, Blocked) else "preflight_runtime_failure"
         report["failureKind"] = failure_kind(error)
+        # Refresh the observations before cleanup kills the owned app. Earlier
+        # readiness is not evidence that it survived the later console/CDP checks.
+        if app_proc is not None and DESKTOP_DIAGNOSTIC_KEYS <= report.keys():
+            report.update(observe_desktop_process(app_proc))
+        if desktop_log is not None:
+            report["desktopLogSummary"] = dict(desktop_log.summary)
     finally:
         try:
             try:
