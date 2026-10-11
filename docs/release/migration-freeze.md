@@ -46,6 +46,7 @@ changes and update this document in the same change.
 | `migrations/0030_organization_policy_mutation_marker.sql`     | `b353368af866d30d546f83188dc5cf5642b56047de1a8a2161b09a91d2ee7858` |
 | `migrations/0031_email_verification.sql`                      | `0875c85363623e89329499fbcf7fd7e3b3907c51015a2f76b68adfcd6b6a358a` |
 | `migrations/0032_company_settings.sql`                        | `86560684688c3332de0685fe703b5faacb012365573f7e43b658279dbf645338` |
+| `migrations/0033_initial_setup.sql`                           | `43e83312712f1c28582f526fcfa45dfaddc87f845a5f44c925d9f4d0e2a6a93c` |
 
 Migration 0022 is a post-release, local-only source addition for nullable user-key
 ID metadata and old-writer invalidation. It has not been applied remotely. The
@@ -93,6 +94,12 @@ See [ADR 0017](../adr/0017-email-verification-protocol.md) and
 
 ## Required Tables At Freeze
 
+Migration 0033 adds a durable singleton first-account setup receipt. Apply it
+before enabling `HONOWARDEN_INITIAL_SETUP_ENABLED`; every tracked profile defaults
+to false. It has not been applied remotely. Retain the receipt on account deletion,
+application rollback and backup/restore so first-account setup cannot reopen.
+See [initial setup](../operations/initial-setup.md).
+
 Migration 0032 adds dashboard company metadata behind the default-off
 `HONOWARDEN_COMPANY_SETTINGS_ENABLED` flag. It has not been applied remotely.
 Apply it before activation and retain the populated table on application
@@ -101,6 +108,7 @@ claims; no inbox-delivery assertion is stored. See
 [company settings](../operations/company-settings.md).
 
 - `schema_migrations`
+- `initial_setup_receipt`
 - `users`
 - `devices`
 - `refresh_tokens`

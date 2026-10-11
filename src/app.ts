@@ -6,6 +6,7 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
 import { registerAdminRoutes } from './admin-routes'
+import { parseInitialSetup, createInitialAccount } from './initial-setup'
 import {
   parseCompanySettings,
   readCompanySettings,
@@ -2813,6 +2814,68 @@ app.patch('/api/devices/:id/keys', handleDeviceKeysUpdate)
 app.put('/api/devices/:id/trust', handleDeviceKeysUpdate)
 app.patch('/api/devices/:id/trust', handleDeviceKeysUpdate)
 app.post('/api/devices/update-trust', handleTrustedDevicesUpdate)
+
+app.post('/api/accounts/initial-setup', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const secret = c.env?.HONOWARDEN_BOOTSTRAP_TOKEN
+  const presented = c.req.header('X-HonoWarden-Bootstrap-Token')
+  const unavailable = () =>
+    c.json(
+      apiError(
+        c.get('requestId'),
+        'initial_setup_unavailable',
+        'Initial setup is unavailable or not authorized.',
+      ),
+      403,
+    )
+  if (
+    c.env?.HONOWARDEN_INITIAL_SETUP_ENABLED !== 'true' ||
+    !secret ||
+    !/^[!-~]{32,512}$/.test(secret) ||
+    !presented ||
+    presented.length > 512 ||
+    !verifyBootstrapToken(secret, presented)
+  )
+    return unavailable()
+  const body = await readBoundedJsonBody(c.req.raw, 98304)
+  const registration = body.ok ? parseInitialSetup(body.value) : null
+  if (!registration || Object.keys(c.req.queries()).length)
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'Invalid initial setup request.',
+      ),
+      400,
+    )
+  try {
+    if (
+      !(await createInitialAccount(
+        c.env.DB,
+        registration,
+        new Date().toISOString(),
+        c.get('requestId'),
+      ))
+    )
+      return unavailable()
+    return c.json({ object: 'accountRegistration', created: true }, 201)
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'initial_setup_failed',
+        requestId: c.get('requestId'),
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Initial setup could not be confirmed.',
+      ),
+      503,
+    )
+  }
+})
 
 app.post('/api/accounts/bootstrap', async (c) => {
   if (!isBootstrapEnabled(c.env?.HONOWARDEN_BOOTSTRAP_ENABLED)) {
@@ -9763,6 +9826,7 @@ function apiError(
     | 'device_not_found'
     | 'folder_not_found'
     | 'invalid_request'
+    | 'initial_setup_unavailable'
     | 'invalid_token'
     | 'lifecycle_unavailable'
     | 'missing_token'

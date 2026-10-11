@@ -44,7 +44,7 @@ reviewed protocol and retain the additive table for backup/forward recovery.
 Do not drop populated settings as rollback. Neither this feature nor local smoke
 evidence establishes production mail delivery or Desktop acceptance.
 
-The first operator account still uses the existing authorized bootstrap process.
-Dashboard company setup does not open public registration or remove bootstrap
-authorization. Invited users can create their account from their invitation link,
-then sign in and await Owner confirmation.
+On a new installation, the first account can use [authorized initial setup](initial-setup.md)
+in the dashboard. This is separate from the existing allowlisted bootstrap route
+and does not open public registration. Invited users can create their account from
+their invitation link, then sign in and await Owner confirmation.

@@ -22,9 +22,15 @@ verification. None of these local results proves hosted deployment, actual
 mailbox receipt, or authenticated Windows/macOS Desktop acceptance. Scoped
 Cloudflare readback is currently blocked by token authentication failure.
 
-The first operator account still uses authorized bootstrap; company settings
-do not open public registration. Later historical sections retain their original
-scope and evidence rather than describing the latest candidate.
+The follow-up initial-setup candidate lets the first operator create their account
+in the dashboard using an operator-issued setup code. It is default-off, requires
+an empty database, and atomically retains a singleton receipt with the account and
+audit event. Deleting the account does not reopen setup. Migration 0033 must precede
+activation and its receipt must survive rollback and restore. See
+[initial setup](operations/initial-setup.md). The first 31 focused registration,
+D1 atomicity and client crypto tests passed locally; full-suite and live browser
+verification are still in progress. Existing bootstrap and invitation authority
+remain separate. Later historical sections retain their original scope and evidence.
 
 ## 2026-10-04 Company Administration Source
 

@@ -3,6 +3,123 @@ import { describe, expect, it, vi } from 'vitest'
 import { createWrappedAccount } from '../admin/browser/crypto/account-registration'
 import { createAdminClient } from '../admin/browser/admin-client'
 
+describe('initial account client', () => {
+  const setupCode = 'public-initial-setup-authorization-32-bytes'
+  const wrapped = {
+    masterPasswordHash: 'derived-hash',
+    userKey: 'wrapped-user',
+    publicKey: 'spki',
+    privateKey: 'wrapped-private',
+  }
+  it('sends authorization only as a header, clears inputs, and remains signed out', async () => {
+    const requests: { path: string; init: RequestInit | undefined }[] = []
+    const dispose = vi.fn()
+    const client = createAdminClient({
+      lifecycle: false,
+      crypto: () => ({ call: async <T>() => wrapped as T, dispose }),
+      fetch: async (path, init) => {
+        requests.push({ path: String(path), init })
+        return Response.json(
+          { object: 'accountRegistration', created: true },
+          { status: 201 },
+        )
+      },
+    })
+    const input = {
+      email: ' FIRST@EXAMPLE.TEST ',
+      password: 'Public example password',
+      displayName: 'First owner',
+      setupCode,
+    }
+    await client.setupInitialAccount(input)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.path).toBe('/api/accounts/initial-setup')
+    const headers = new Headers(requests[0]!.init!.headers)
+    expect(headers.get('X-HonoWarden-Bootstrap-Token')).toBe(setupCode)
+    expect(headers.get('authorization')).toBeNull()
+    expect(JSON.parse(String(requests[0]!.init!.body))).toEqual({
+      email: 'first@example.test',
+      displayName: 'First owner',
+      ...wrapped,
+    })
+    expect(String(requests[0]!.init!.body)).not.toContain(setupCode)
+    expect(input.password).toBe('')
+    expect(input.setupCode).toBe('')
+    expect(client.getSession().phase).toBe('signedOut')
+    expect(JSON.stringify(client.getSession())).not.toContain(setupCode)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    client.dispose()
+  })
+  it('cancels late crypto results on logout and clears authorization on failure', async () => {
+    let resolve!: (value: unknown) => void
+    const deferred = new Promise<unknown>((done) => {
+      resolve = done
+    })
+    const fetch = vi.fn()
+    const client = createAdminClient({
+      lifecycle: false,
+      fetch,
+      crypto: () => ({
+        call: async <T>() => (await deferred) as T,
+        dispose: vi.fn(),
+      }),
+    })
+    const input = {
+      email: 'first@example.test',
+      password: 'Public example password',
+      displayName: 'First owner',
+      setupCode,
+    }
+    const pending = client.setupInitialAccount(input)
+    const assertion = expect(pending).rejects.toMatchObject({
+      code: 'operation_cancelled',
+    })
+    await client.logout()
+    resolve(wrapped)
+    await assertion
+    expect(fetch).not.toHaveBeenCalled()
+    expect(input.password).toBe('')
+    expect(input.setupCode).toBe('')
+    expect(client.getSession()).toEqual({ phase: 'signedOut' })
+    client.dispose()
+  })
+  it.each(['invitation', 'weak code'])(
+    'rejects %s before creating crypto or sending a request',
+    async (reason) => {
+      const fetch = vi.fn(),
+        crypto = vi.fn()
+      const client = createAdminClient({
+        lifecycle: false,
+        fetch,
+        crypto,
+        ...(reason === 'invitation'
+          ? {
+              invitation: {
+                organizationId: 'org',
+                membershipId: 'member',
+                token: 'A'.repeat(43),
+              },
+            }
+          : {}),
+      })
+      const input = {
+        email: 'first@example.test',
+        password: 'Public example password',
+        displayName: 'First owner',
+        setupCode: reason === 'weak code' ? 'weak' : setupCode,
+      }
+      await expect(client.setupInitialAccount(input)).rejects.toMatchObject({
+        code: 'initial_setup_unavailable',
+      })
+      expect(fetch).not.toHaveBeenCalled()
+      expect(crypto).not.toHaveBeenCalled()
+      expect(input.password).toBe('')
+      expect(input.setupCode).toBe('')
+      client.dispose()
+    },
+  )
+})
+
 describe('invited account creation', () => {
   it('produces interoperable encrypted account keys without returning raw key material', async () => {
     const email = 'new@example.test'

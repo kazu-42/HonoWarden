@@ -589,6 +589,66 @@ export function createAdminClient(
     return query.size ? `?${query}` : ''
   }
 
+  async function registerAccount(
+    input: { email: string; password: string; displayName: string },
+    current?: PendingInvitation,
+    setupCode?: string,
+  ) {
+    if (!['signedOut', 'expired'].includes(state.phase))
+      throw new AdminError('conflict', 'registration_unavailable')
+    const email = input.email.trim().toLowerCase()
+    const displayName = input.displayName.trim()
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      email.length > 254 ||
+      !displayName ||
+      displayName.length > 100 ||
+      input.password.length < 12 ||
+      input.password.length > 256
+    )
+      throw new AdminError('validation', 'registration_invalid')
+    reset('signedOut')
+    const expected = epoch
+    publish({ phase: 'authenticating', email })
+    try {
+      port = newCrypto()
+      const wrapped = await cryptoCall<WrappedAccountRegistration>({
+        action: 'createAccount',
+        email,
+        password: input.password,
+      })
+      input.password = ''
+      assertEpoch(expected)
+      const result = record(
+        (
+          await request(
+            setupCode
+              ? '/api/accounts/initial-setup'
+              : '/api/accounts/register-invited',
+            {
+              method: 'POST',
+              body: {
+                email,
+                displayName,
+                ...wrapped,
+                ...(current ? { invitation: current } : {}),
+              },
+              ...(setupCode ? { bootstrapToken: setupCode } : {}),
+            },
+            false,
+          )
+        ).value,
+      )
+      if (result.object !== 'accountRegistration' || result.created !== true)
+        throw new AdminError('unavailable', 'response_invalid')
+    } finally {
+      input.password = ''
+      if (epoch === expected) {
+        stopCrypto()
+        publish({ phase: 'signedOut', email })
+      }
+    }
+  }
   const client: AdminClient = {
     getSession: view,
     subscribe(listener) {
@@ -598,52 +658,16 @@ export function createAdminClient(
     },
     async registerInvitedAccount(input) {
       if (!invitation) throw new AdminError('validation', 'invitation_required')
-      if (!['signedOut', 'expired'].includes(state.phase))
-        throw new AdminError('conflict', 'registration_unavailable')
-      const email = input.email.trim().toLowerCase()
-      const displayName = input.displayName.trim()
-      if (
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-        email.length > 254 ||
-        !displayName ||
-        displayName.length > 100 ||
-        input.password.length < 12 ||
-        input.password.length > 256
-      )
-        throw new AdminError('validation', 'registration_invalid')
-      const current = invitation
-      reset('signedOut')
-      const expected = epoch
-      publish({ phase: 'authenticating', email })
+      return registerAccount(input, invitation)
+    },
+    async setupInitialAccount(input) {
       try {
-        port = newCrypto()
-        const wrapped = await cryptoCall<WrappedAccountRegistration>({
-          action: 'createAccount',
-          email,
-          password: input.password,
-        })
-        input.password = ''
-        assertEpoch(expected)
-        const result = record(
-          (
-            await request(
-              '/api/accounts/register-invited',
-              {
-                method: 'POST',
-                body: { email, displayName, ...wrapped, invitation: current },
-              },
-              false,
-            )
-          ).value,
-        )
-        if (result.object !== 'accountRegistration' || result.created !== true)
-          throw new AdminError('unavailable', 'response_invalid')
+        if (invitation || !/^[!-~]{32,512}$/.test(input.setupCode))
+          throw new AdminError('validation', 'initial_setup_unavailable')
+        await registerAccount(input, undefined, input.setupCode)
       } finally {
+        input.setupCode = ''
         input.password = ''
-        if (epoch === expected) {
-          stopCrypto()
-          publish({ phase: 'signedOut', email })
-        }
       }
     },
     async login(email, password) {

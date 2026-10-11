@@ -264,6 +264,17 @@ describe('administration safe input and copy', () => {
     ).not.toContain('削除されました')
   })
 
+  it('offers sign-in or operator setup recovery without claiming that an account exists', () => {
+    const notice = formatUiError(
+      new AdminError('authorization', 'initial_setup_unavailable', {
+        httpStatus: 403,
+      }),
+    )
+    expect(notice.title).toBe('初回セットアップを実行できません')
+    expect(notice.message).toContain('作成済みの場合')
+    expect(notice.message).toContain('運用担当者')
+  })
+
   it('distinguishes feature-disabled state from a successful empty list', () => {
     expect(
       formatUiError(
