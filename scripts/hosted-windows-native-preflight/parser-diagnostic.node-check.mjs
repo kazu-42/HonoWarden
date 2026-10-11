@@ -547,8 +547,8 @@ test('pre-auth runtime and bounded public control sources are independently pinn
   const parent = [
     [
       'preflight.ps1',
-      19515,
-      'f1c6d4467b510c0942ff0952731eb2c948ef22925d97e457ea1ac572a86fc224',
+      19695,
+      '77397ad06242f0c79134abf63bed25be60b4403e8e27dc5f2015f679c7d29a50',
     ],
     [
       'preflight.mjs',

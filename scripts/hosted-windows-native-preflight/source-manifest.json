@@ -4,8 +4,8 @@
   "files": [
     {
       "path": "preflight.ps1",
-      "bytes": 19515,
-      "sha256": "f1c6d4467b510c0942ff0952731eb2c948ef22925d97e457ea1ac572a86fc224"
+      "bytes": 19695,
+      "sha256": "77397ad06242f0c79134abf63bed25be60b4403e8e27dc5f2015f679c7d29a50"
     },
     {
       "path": "preflight.mjs",
@@ -70,7 +70,7 @@
     {
       "path": "parser-diagnostic.node-check.mjs",
       "bytes": 18428,
-      "sha256": "aafc12c05b3a0702df2fb2f6065b86baa2ffc2c834909efe629771b926af8fbf"
+      "sha256": "e97a65d7b5a0630799439894c42521d23ed8007715130bd711402644c342df8d"
     },
     {
       "path": "public-control-phases.mjs",

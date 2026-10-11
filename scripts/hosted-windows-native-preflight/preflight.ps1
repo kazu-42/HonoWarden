@@ -40,9 +40,11 @@ function Read-NativeTiming([string]$Attempt) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -gt 2048) { return }
     $raw=[IO.File]::ReadAllText($path)
     if (-not $raw.StartsWith('[') -or -not $raw.EndsWith(']')) { return }
-    $rows=@(ConvertFrom-Json -InputObject $raw)
+    # Windows PowerShell 5.1 writes the JSON root array as one pipeline object.
+    # Keep that array instead of wrapping it in a second array subexpression.
+    $rows=ConvertFrom-Json -InputObject $raw
     $allowed=@('not_started','bundle','worker_start','migration','d1_probe','r2_probe','worker_config','desktop_launch','desktop_attach','desktop_revalidate','window_proof','dom_probe','complete','cleanup')
-    if ($rows.Count -lt 1 -or $rows.Count -gt $allowed.Count) { return }
+    if ($rows -isnot [array] -or $rows.Count -lt 1 -or $rows.Count -gt $allowed.Count) { return }
     $seen=@();$previous=-1;$output=@()
     foreach ($row in $rows) {
       if ($null -eq $row -or @($row.PSObject.Properties).Count -ne 2 -or $allowed -cnotcontains $row.phase -or $seen -ccontains $row.phase -or ($row.elapsedMs -isnot [int] -and $row.elapsedMs -isnot [long]) -or $row.elapsedMs -lt 0 -or $row.elapsedMs -lt $previous -or $row.elapsedMs -gt 300000) { return }
