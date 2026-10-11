@@ -4182,7 +4182,7 @@ describe('HonoWarden app', () => {
     })
   })
 
-  it('returns a TOTP challenge instead of tokens after primary password succeeds', async () => {
+  it('returns a client-recognizable TOTP challenge instead of tokens after primary password succeeds', async () => {
     const encryptedSecret = await encryptTotpSecret(
       'test-totp-secret',
       'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
@@ -4217,15 +4217,14 @@ describe('HonoWarden app', () => {
 
     expect(response.status).toBe(400)
     const body = (await response.json()) as Record<string, unknown>
-    expect(body).toMatchObject({
-      error: 'invalid_grant',
-      TwoFactorToken: expect.any(String),
-      TwoFactorProviders: [
-        {
-          type: 'totp',
-        },
-      ],
+    expect(body.error).toBe('invalid_grant')
+    expect(body.ErrorModel).toEqual({
+      Message: 'TOTP verification is required.',
+      Object: 'error',
     })
+    expect(body.TwoFactorProviders).toEqual([0])
+    expect(body.TwoFactorProviders2).toEqual({ '0': {} })
+    expect(body.TwoFactorToken).toEqual(expect.any(String))
     expect(body).not.toHaveProperty('access_token')
     expect(body).not.toHaveProperty('refresh_token')
   })
@@ -4346,6 +4345,64 @@ describe('HonoWarden app', () => {
     })
   })
 
+  it.each(['invalid', 'reused'] as const)(
+    'rejects %s authenticator codes without issuing bearer or refresh tokens',
+    async (kind) => {
+      vi.setSystemTime(new Date('2026-10-06T00:00:15.000Z'))
+      const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+      const encryptedSecret = await encryptTotpSecret(
+        'test-totp-secret',
+        secret,
+      )
+      const step = Math.floor(Date.now() / 30000)
+      const validCodes = await Promise.all(
+        [step - 1, step, step + 1].map((counter) => hotp(secret, counter)),
+      )
+      let invalidCode = '000000'
+      while (validCodes.includes(invalidCode))
+        invalidCode = String(Number(invalidCode) + 1).padStart(6, '0')
+      const response = await app.request(
+        '/identity/connect/token',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Device-Identifier': 'fixture-device',
+          },
+          body: new URLSearchParams({
+            grant_type: 'password',
+            username: 'person@example.test',
+            password: 'synthetic-master-password-hash',
+            twoFactorProvider: '0',
+            twoFactorToken:
+              kind === 'invalid' ? invalidCode : await hotp(secret, step),
+          }),
+        },
+        {
+          DB: new FakeD1Database(null, [], {
+            authUser: {
+              ...authUserRecord(),
+              totpEnabled: true,
+              totpCredentialGeneration: 'synthetic-totp-generation',
+              totpEncryptedSecret: encryptedSecret,
+            },
+            userTotp: enabledTotpFixture(
+              encryptedSecret,
+              kind === 'reused' ? step : null,
+            ),
+          }),
+          HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+          HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
+        },
+      )
+      expect(response.status).toBe(400)
+      const body = (await response.json()) as Record<string, unknown>
+      expect(body.error).toBe('invalid_grant')
+      expect(body).not.toHaveProperty('access_token')
+      expect(body).not.toHaveProperty('refresh_token')
+    },
+  )
+
   it('rejects replayed TOTP challenges before issuing tokens', async () => {
     const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
     const encryptedSecret = await encryptTotpSecret('test-totp-secret', secret)
@@ -4391,9 +4448,10 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(400)
-    await expect(response.json()).resolves.toMatchObject({
-      error: 'invalid_grant',
-    })
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.error).toBe('invalid_grant')
+    expect(body).not.toHaveProperty('access_token')
+    expect(body).not.toHaveProperty('refresh_token')
   })
 
   it('rejects password grant when token secret is missing', async () => {
