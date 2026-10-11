@@ -86,6 +86,7 @@ class TLSFixtureTests(unittest.TestCase):
             root, _ = self.root_and_certificate(parent)
             def export(document):
                 def command(args, **_):
+                    self.assertEqual(args[:3], ["/usr/bin/security", "trust-settings-export", "-d"])
                     Path(args[-1]).write_bytes(plistlib.dumps(document))
                     return b"", 0
                 return command

@@ -89,7 +89,9 @@ def trust_digest(root, run, label):
     require(label in {"before", "after"}, "tls_projection_invalid")
     output = Path(root) / "tls" / ("trust-" + label + "-" + os.urandom(8).hex() + ".plist")
     require(not output.exists(), "tls_projection_exists")
-    raw, code = run(["/usr/bin/sudo", "-n", "/usr/bin/security", "trust-settings-export", "-d", str(output)],
+    # Reading the administrator trust domain needs no privilege elevation.
+    # Export as the runner so its private snapshot does not become root-owned.
+    raw, code = run(["/usr/bin/security", "trust-settings-export", "-d", str(output)],
                     timeout=5, ok=(0, 1))
     if code == 1:
         # An absent administrator trust domain is normal in a fresh guest. A
@@ -99,6 +101,7 @@ def trust_digest(root, run, label):
     else:
         require(output.is_file() and not output.is_symlink() and output.stat().st_size <= 65536,
                 "tls_trust_read_failed")
+        require(output.stat().st_uid == os.getuid(), "tls_export_not_owned")
         output.chmod(0o600)
         document = plistlib.loads(output.read_bytes())
         # Removing the last owned entry may leave an empty domain instead of
