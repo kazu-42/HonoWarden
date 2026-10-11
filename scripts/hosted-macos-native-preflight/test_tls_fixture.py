@@ -70,6 +70,19 @@ class TLSFixtureTests(unittest.TestCase):
                     tls.restore(root, {**self.record(digest), "certificatePath": "/foreign"}, None)
                 probe.assert_not_called()
 
+    def test_installed_trust_probe_cannot_substitute_explicit_anchor_for_system_trust(self):
+        calls = []
+        def command(args, **kwargs):
+            calls.append((args, kwargs))
+            self.assertNotIn("-r", args)
+            self.assertEqual(args.count("-c"), 2)
+            self.assertIn("-L", args)
+            return b"FICTIONAL_PRIVATE_DIAGNOSTIC", 0 if kwargs['env'] is None else 1
+        with patch.object(tls, "hosted_only"):
+            self.assertEqual(tls.verify_installed(Path('/fictional'), command, {'HOME': '/owned'}),
+                             {'runner': True, 'isolated': False})
+        self.assertEqual(len(calls), 2)
+
     def test_cleanup_command_errors_do_not_expose_arbitrary_error_messages(self):
         with tempfile.TemporaryDirectory() as parent:
             root, digest = self.root_and_certificate(parent)
@@ -135,6 +148,24 @@ class TLSFixtureTests(unittest.TestCase):
             self.assertIn(b"IP Address:127.0.0.1", text)
             self.assertNotIn(b"DNS:", text)
             self.assertIn(b"TLS Web Server Authentication", text)
+
+    @unittest.skipUnless(Path("/usr/bin/security").is_file(), "Apple Security verifier required")
+    def test_actual_apple_ssl_policy_with_explicit_fixture_anchor_and_no_keychain_search(self):
+        def command(args, timeout, **_):
+            self.assertEqual(args[0], "/usr/bin/openssl")
+            result = subprocess.run(args, capture_output=True, timeout=timeout)
+            self.assertEqual(result.returncode, 0)
+            return result.stdout, result.returncode
+        with tempfile.TemporaryDirectory() as parent:
+            root = Path(parent)
+            tls.generate(root, command)
+            # Pure evaluation: explicit public fixture root, no trust writes,
+            # no host keychain search and no network issuer retrieval.
+            for hostname, accepted in [("127.0.0.1", True), ("localhost", False)]:
+                result = subprocess.run(["/usr/bin/security", "verify-cert", "-c", str(root / "tls/leaf.pem"),
+                                         "-r", str(root / "tls/ca.pem"), "-p", "ssl", "-n", hostname, "-N", "-L"],
+                                        capture_output=True, timeout=5)
+                self.assertEqual(result.returncode == 0, accepted)
 
 
 if __name__ == "__main__":

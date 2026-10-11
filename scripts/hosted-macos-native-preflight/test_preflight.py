@@ -298,6 +298,14 @@ const vm = require('node:vm'), assert = require('node:assert/strict');
         with patch.object(p, "command", return_value=(b"public response", 0)):
             self.assertEqual(p.checked_fixture_curl(["https://127.0.0.1:8123/"], {}), b"public response")
 
+    def test_tls_trust_controls_only_allow_two_boolean_results(self):
+        base = {"authenticated": False, "credentialAdmission": False}
+        p.public_report({**base, "tlsTrustControls": {"runner": True, "isolated": False}})
+        for value in [{"runner": 1, "isolated": False}, {"runner": True},
+                      {"runner": True, "isolated": False, "output": "FICTIONAL_PRIVATE"}]:
+            with self.assertRaisesRegex(p.Blocked, "tls_control_projection_invalid"):
+                p.public_report({**base, "tlsTrustControls": value})
+
     def test_login_dom_never_retries_a_failed_protocol_operation(self):
         with patch.object(p, "cdp_probe", side_effect=p.Blocked("cdp_evaluation_failed")) as probe:
             with self.assertRaisesRegex(p.Blocked, "cdp_evaluation_failed"):

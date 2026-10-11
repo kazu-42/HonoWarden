@@ -1056,8 +1056,12 @@ def public_report(report):
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
             "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls",
             "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic", "fetchDiagnostic", "apiCorsProbe", "httpsFixture",
-            "tlsNegativeControl", "tlsNegativeError"} | DESKTOP_DIAGNOSTIC_KEYS
+            "tlsNegativeControl", "tlsNegativeError", "tlsTrustControls"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if "tlsTrustControls" in report:
+        item = report["tlsTrustControls"]
+        require(type(item) is dict and set(item) == {"runner", "isolated"}
+                and all(type(value) is bool for value in item.values()), "tls_control_projection_invalid")
     if "apiCorsProbe" in report:
         require(type(report["apiCorsProbe"]) is bool, "network_projection_invalid")
     if "httpsFixture" in report:
@@ -1428,6 +1432,8 @@ def execute(temp, company):
         except TLS.Blocked as error:
             raise Blocked(error.args[0]) from None
         report["httpsFixture"] = True
+        report["tlsTrustControls"] = TLS.verify_installed(root, command, env)
+        public_report(report)
         readiness = run_worker_differential(node, company, root, env, state,
                                            marker, report)
         port = readiness["port"]

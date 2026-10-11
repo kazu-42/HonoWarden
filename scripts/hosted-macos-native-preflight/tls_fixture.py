@@ -140,6 +140,19 @@ def validate_record(record):
                     for key in ["certificateSha256", "baselineSha256"]), "tls_record_invalid")
 
 
+def verify_installed(root, run, isolated_env):
+    hosted_only()
+    # The issuer is supplied, but deliberately not as an explicit trust anchor.
+    # This evaluates the real installed SSL trust in each execution environment.
+    args = ["/usr/bin/security", "verify-cert", "-c", str(Path(root) / "tls/leaf.pem"),
+            "-c", str(Path(root) / "tls/ca.pem"), "-p", "ssl", "-n", "127.0.0.1", "-L"]
+    result = {}
+    for name, env in [("runner", None), ("isolated", isolated_env)]:
+        _, code = run(args, timeout=3, env=env, ok=tuple(range(256)))
+        result[name] = code == 0
+    return result
+
+
 def restore(root, record, run):
     hosted_only()
     validate_record(record)
@@ -150,7 +163,7 @@ def restore(root, record, run):
         return
     try:
         _, code = run(["/usr/bin/sudo", "-n", "/usr/bin/security", "remove-trusted-cert", "-d", str(Path(root) / "tls/ca.pem")],
-                      timeout=5, ok=tuple(range(256)))
+                      timeout=12, ok=tuple(range(256)))
     except Exception as error:
         # Preserve finite supervisor failures, never subprocess output or paths.
         kind = error.args[0] if len(error.args) == 1 else None
