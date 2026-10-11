@@ -68,6 +68,7 @@ CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", 
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
                                                  "cleanup_finalization_api_unavailable"}
 TLS_CLEANUP_CODES = {"tls_trust_restore_mismatch", "tls_remove_command_failed", "tls_remove_nonzero_exit", "tls_trust_read_failed",
+                     "tls_remove_timeout", "tls_remove_output_limit", "tls_remove_process_permission", "tls_remove_process_unproved",
                      "tls_export_not_owned", "tls_certificate_changed", "tls_record_invalid", "tls_hosted_guest_required", "tls_file_invalid"}
 CLEANUP_FAILURE_CODES |= TLS_CLEANUP_CODES
 WORKER_BINARY_PROOF = "pinned_darwin_arm64_version_verified"

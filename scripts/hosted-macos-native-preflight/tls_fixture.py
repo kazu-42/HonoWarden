@@ -74,6 +74,10 @@ authorityKeyIdentifier=keyid,issuer
         require(path.is_file() and not path.is_symlink(), "tls_file_invalid")
         path.chmod(0o600)
     run([openssl, "verify", "-CAfile", str(directory / "ca.pem"), str(directory / "leaf.pem")], timeout=3)
+    # Supply the issuer as well as the leaf. The isolated client's HOME must
+    # not be required to locate the issuer bytes in another user's keychain.
+    private_write(directory / "chain.pem", (directory / "leaf.pem").read_text()
+                  + (directory / "ca.pem").read_text())
     return digest_certificate(root)
 
 
@@ -147,7 +151,15 @@ def restore(root, record, run):
     try:
         _, code = run(["/usr/bin/sudo", "-n", "/usr/bin/security", "remove-trusted-cert", "-d", str(Path(root) / "tls/ca.pem")],
                       timeout=5, ok=tuple(range(256)))
-    except Exception:
-        raise Blocked("tls_remove_command_failed") from None
+    except Exception as error:
+        # Preserve finite supervisor failures, never subprocess output or paths.
+        kind = error.args[0] if len(error.args) == 1 else None
+        code = {"command_deadline": "tls_remove_timeout",
+                "command_output_limit": "tls_remove_output_limit",
+                "process_group_term_permission_denied": "tls_remove_process_permission",
+                "process_group_kill_permission_denied": "tls_remove_process_permission",
+                "owned_process_stop_unproved": "tls_remove_process_unproved"}.get(
+                    kind if type(kind) is str else None, "tls_remove_command_failed")
+        raise Blocked(code) from None
     require(code == 0, "tls_remove_nonzero_exit")
     require(trust_digest(root, run, "after") == record["baselineSha256"], "tls_trust_restore_mismatch")

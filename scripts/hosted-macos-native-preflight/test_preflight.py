@@ -2472,7 +2472,7 @@ process.stdout.write(JSON.stringify({
         self.assertIs(options["value"], False)
         self.assertIs(options["https"], True)
         self.assertEqual(options["key"], "/fictional/tls/leaf.key")
-        self.assertEqual(options["cert"], "/fictional/tls/leaf.pem")
+        self.assertEqual(options["cert"], "/fictional/tls/chain.pem")
 
     def test_whole_options_object_inverse_preserves_source18(self):
         options = self.actual_options_source()
@@ -2487,7 +2487,7 @@ process.stdout.write(JSON.stringify({
         inverse = inverse.replace(desktop_binding, "")
         for line in ["    https: mode === 'company',\n",
                      "    httpsKeyPath: mode === 'company' ? join(root, 'tls/leaf.key') : undefined,\n",
-                     "    httpsCertPath: mode === 'company' ? join(root, 'tls/leaf.pem') : undefined,\n"]:
+                     "    httpsCertPath: mode === 'company' ? join(root, 'tls/chain.pem') : undefined,\n"]:
             self.assertEqual(inverse.count(line), 1)
             inverse = inverse.replace(line, "")
         self.assertEqual(

@@ -70,6 +70,18 @@ class TLSFixtureTests(unittest.TestCase):
                     tls.restore(root, {**self.record(digest), "certificatePath": "/foreign"}, None)
                 probe.assert_not_called()
 
+    def test_cleanup_command_errors_do_not_expose_arbitrary_error_messages(self):
+        with tempfile.TemporaryDirectory() as parent:
+            root, digest = self.root_and_certificate(parent)
+            for detail, expected in [("command_deadline", "tls_remove_timeout"),
+                                      ("process_group_term_permission_denied", "tls_remove_process_permission"),
+                                      ("FICTIONAL_PRIVATE_OUTPUT", "tls_remove_command_failed")]:
+                def command(*args, **kwargs):
+                    raise RuntimeError(detail)
+                with patch.object(tls, "hosted_only"), patch.object(tls, "trust_digest", return_value="c" * 64), \
+                     self.assertRaisesRegex(tls.Blocked, "^" + expected + "$"):
+                    tls.restore(root, self.record(digest), command)
+
     def test_trust_drift_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as parent:
             root, digest = self.root_and_certificate(parent)
@@ -115,6 +127,8 @@ class TLSFixtureTests(unittest.TestCase):
             root = Path(parent)
             digest = tls.generate(root, command)
             self.assertEqual(digest, tls.digest_certificate(root))
+            self.assertEqual((root / "tls/chain.pem").read_bytes(),
+                             (root / "tls/leaf.pem").read_bytes() + (root / "tls/ca.pem").read_bytes())
             for path in (root / "tls").iterdir():
                 self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             text, _ = command(["/usr/bin/openssl", "x509", "-in", str(root / "tls/leaf.pem"), "-noout", "-text"], 3)

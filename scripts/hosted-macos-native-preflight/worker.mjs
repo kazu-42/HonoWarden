@@ -422,7 +422,7 @@ async function startup() {
     port: 0,
     https: mode === 'company',
     httpsKeyPath: mode === 'company' ? join(root, 'tls/leaf.key') : undefined,
-    httpsCertPath: mode === 'company' ? join(root, 'tls/leaf.pem') : undefined,
+    httpsCertPath: mode === 'company' ? join(root, 'tls/chain.pem') : undefined,
     d1Databases: { DB: randomUUID() },
     r2Buckets: { VAULT_OBJECTS: randomUUID() },
     d1Persist: join(root, 'state/d1'),
