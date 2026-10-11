@@ -753,13 +753,25 @@ def read_frame(sock):
 
 
 def cdp_probe(url, expected_port, expression):
+    # A discoverable Electron target can precede its WebSocket readiness. Only
+    # retry before any Runtime.evaluate is sent; never replay a UI operation.
+    for attempt in range(3):
+        require(time_budget(3) > 0, "absolute_step_deadline")
+        try:
+            return cdp_probe_once(url, expected_port, expression)
+        except Blocked as error:
+            if str(error) != "cdp_upgrade_timeout" or attempt == 2:
+                raise
+
+
+def cdp_probe_once(url, expected_port, expression):
     parsed = urllib.parse.urlsplit(url)
     require(parsed.scheme == "ws" and parsed.hostname == "127.0.0.1" and parsed.port == expected_port,
             "cdp_websocket_not_loopback")
     require(re.fullmatch(r"/devtools/page/[A-Za-z0-9_-]{1,100}", parsed.path) is not None
             and not parsed.query and not parsed.fragment and parsed.username is None, "cdp_websocket_invalid")
-    with socket.create_connection(("127.0.0.1", expected_port), timeout=3) as sock:
-        sock.settimeout(5)
+    with socket.create_connection(("127.0.0.1", expected_port), timeout=time_budget(3)) as sock:
+        sock.settimeout(time_budget(5))
         key = base64.b64encode(os.urandom(16)).decode()
         request = (f"GET {parsed.path} HTTP/1.1\r\nHost: 127.0.0.1:{expected_port}\r\n"
                    f"Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"

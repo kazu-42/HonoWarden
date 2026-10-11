@@ -133,6 +133,25 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(result, {"visibleDom": True, "appLoopback": True})
         self.assertTrue(sock.sent[1][1] & 0x80)
 
+    def test_cdp_retries_only_an_unestablished_upgrade(self):
+        expected = {"visibleDom": True}
+        with patch.object(p, "cdp_probe_once", side_effect=[p.Blocked("cdp_upgrade_timeout"), expected]) as once:
+            self.assertEqual(p.cdp_probe("ws://127.0.0.1:8123/devtools/page/fixture", 8123, "({visibleDom:true})"), expected)
+        self.assertEqual(once.call_count, 2)
+
+    def test_cdp_upgrade_retries_are_finite(self):
+        with patch.object(p, "cdp_probe_once", side_effect=p.Blocked("cdp_upgrade_timeout")) as once:
+            with self.assertRaisesRegex(p.Blocked, "cdp_upgrade_timeout"):
+                p.cdp_probe("ws://127.0.0.1:8123/devtools/page/fixture", 8123, "({})")
+        self.assertEqual(once.call_count, 3)
+
+    def test_cdp_never_replays_evaluation_or_retries_invalid_handshake(self):
+        for code in ["cdp_evaluation_timeout", "cdp_upgrade_invalid", "cdp_upgrade_limit", "cdp_closed", "absolute_step_deadline"]:
+            with self.subTest(code=code), patch.object(p, "cdp_probe_once", side_effect=p.Blocked(code)) as once:
+                with self.assertRaisesRegex(p.Blocked, code):
+                    p.cdp_probe("ws://127.0.0.1:8123/devtools/page/fixture", 8123, "({})")
+                self.assertEqual(once.call_count, 1)
+
     def test_foreign_websocket_endpoint_is_rejected(self):
         for url in ["ws://127.0.0.1:8124/devtools/page/id", "ws://example.com:8123/devtools/page/id",
                     "ws://127.0.0.1:8123/devtools/browser/id", "ws://user@127.0.0.1:8123/devtools/page/id",
