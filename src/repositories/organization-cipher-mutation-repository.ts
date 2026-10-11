@@ -1,6 +1,11 @@
+import {
+  organizationAccessActorValues,
+  organizationCollectionAccessCte,
+  type OrganizationAccessContext,
+} from './organization-collection-access-sql'
 import type { CipherRecord } from './cipher-repository'
 
-export type OrganizationCipherUpdateInput = {
+export type OrganizationCipherUpdateInput = OrganizationAccessContext & {
   id: string
   userId: string
   type: number
@@ -26,24 +31,10 @@ type Database = Pick<D1Database, 'prepare'>
 const writableOrganizationCipherPredicate = `
   organization_id IS NOT NULL
   AND EXISTS (
-    SELECT 1
-    FROM organizations organization
-    INNER JOIN organization_users membership
-      ON membership.organization_id = organization.id
-    INNER JOIN collections collection
-      ON collection.organization_id = organization.id
-    INNER JOIN collection_users assignment
-      ON assignment.collection_id = collection.id
-      AND assignment.organization_user_id = membership.id
-    INNER JOIN collection_ciphers mapping
-      ON mapping.collection_id = collection.id
-    WHERE organization.id = ciphers.organization_id
-      AND organization.enabled = 1
-      AND membership.user_id = ?
-      AND membership.status = 2
-      AND membership.type IN (0, 1, 2)
-      AND assignment.read_only = 0
-      AND mapping.cipher_id = ciphers.id
+    SELECT 1 FROM accessible_organization_collections access
+    INNER JOIN collection_ciphers mapping ON mapping.collection_id = access.collectionId
+    WHERE access.organizationId = ciphers.organization_id
+      AND access.readOnly = 0 AND mapping.cipher_id = ciphers.id
   )
   AND NOT EXISTS (
     SELECT 1 FROM cipher_attachments attachment
@@ -55,7 +46,7 @@ type OrganizationCipherRow = Omit<OrganizationCipherRecord, 'favorite'> & {
   favorite: number | boolean
 }
 
-export type OrganizationCipherLifecycleInput = {
+export type OrganizationCipherLifecycleInput = OrganizationAccessContext & {
   id: string
   userId: string
   revisionDate: string
@@ -82,6 +73,7 @@ export async function updateOrganizationCipher(
   const row = await database
     .prepare(
       `
+      ${organizationCollectionAccessCte}
       UPDATE ciphers
       SET type = ?, favorite = ?, encrypted_json = ?,
         cipher_key = COALESCE(?, cipher_key),
@@ -96,6 +88,7 @@ export async function updateOrganizationCipher(
     `,
     )
     .bind(
+      ...organizationAccessActorValues(input.userId, input.actor),
       input.type,
       input.favorite ? 1 : 0,
       input.encryptedJson,
@@ -105,7 +98,6 @@ export async function updateOrganizationCipher(
       input.id,
       input.expectedRevisionDate,
       input.revisionDate,
-      input.userId,
     )
     .first<OrganizationCipherRow>()
 
@@ -128,6 +120,7 @@ export async function softDeleteOrganizationCipher(
   const row = await database
     .prepare(
       `
+      ${organizationCollectionAccessCte}
       UPDATE ciphers
       SET deleted_at = ?, revision_date = ?, updated_at = ?
       WHERE id = ? AND deleted_at IS NULL AND revision_date < ?
@@ -137,6 +130,7 @@ export async function softDeleteOrganizationCipher(
     `,
     )
     .bind(
+      ...organizationAccessActorValues(input.userId, input.actor),
       input.deletedAt,
       input.deletedAt,
       input.deletedAt,
@@ -144,7 +138,6 @@ export async function softDeleteOrganizationCipher(
       input.deletedAt,
       input.expectedRevisionDate ?? null,
       input.expectedRevisionDate ?? null,
-      input.userId,
     )
     .first<{ id: string }>()
 
@@ -166,6 +159,7 @@ export async function restoreOrganizationCipher(
   const row = await database
     .prepare(
       `
+      ${organizationCollectionAccessCte}
       UPDATE ciphers
       SET deleted_at = NULL, revision_date = ?, updated_at = ?
       WHERE id = ? AND deleted_at IS NOT NULL AND revision_date < ?
@@ -175,13 +169,13 @@ export async function restoreOrganizationCipher(
     `,
     )
     .bind(
+      ...organizationAccessActorValues(input.userId, input.actor),
       input.revisionDate,
       input.revisionDate,
       input.id,
       input.revisionDate,
       input.expectedRevisionDate ?? null,
       input.expectedRevisionDate ?? null,
-      input.userId,
     )
     .first<{ id: string }>()
 
@@ -198,6 +192,7 @@ export async function permanentlyDeleteOrganizationCipher(
   const row = await database
     .prepare(
       `
+      ${organizationCollectionAccessCte}
       DELETE FROM ciphers
       WHERE id = ? AND (? IS NULL OR revision_date = ?)
         AND ${writableOrganizationCipherPredicate}
@@ -205,10 +200,10 @@ export async function permanentlyDeleteOrganizationCipher(
     `,
     )
     .bind(
+      ...organizationAccessActorValues(input.userId, input.actor),
       input.id,
       input.expectedRevisionDate ?? null,
       input.expectedRevisionDate ?? null,
-      input.userId,
     )
     .first<{ id: string }>()
 
@@ -218,7 +213,11 @@ export async function permanentlyDeleteOrganizationCipher(
 
 async function mutationFailure(
   database: Database,
-  input: { id: string; userId: string; expectedRevisionDate?: string },
+  input: OrganizationAccessContext & {
+    id: string
+    userId: string
+    expectedRevisionDate?: string
+  },
   lifecyclePredicate: 'deleted_at IS NULL' | 'deleted_at IS NOT NULL' | '1 = 1',
 ): Promise<MutationFailure> {
   if (input.expectedRevisionDate === undefined) return { status: 'not_found' }
@@ -228,12 +227,13 @@ async function mutationFailure(
   const current = await database
     .prepare(
       `
+      ${organizationCollectionAccessCte}
       SELECT revision_date AS revisionDate FROM ciphers
       WHERE id = ? AND ${lifecyclePredicate}
         AND ${writableOrganizationCipherPredicate}
     `,
     )
-    .bind(input.id, input.userId)
+    .bind(...organizationAccessActorValues(input.userId, input.actor), input.id)
     .first<{ revisionDate: string }>()
 
   return current

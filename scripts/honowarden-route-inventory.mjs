@@ -203,6 +203,50 @@ export function observeMountedHonoRoutes(source, appPath) {
         `mounted route module must export ${exportName}(app, ...): ${moduleName}`,
       )
     }
+    const staticBases = new Map()
+    for (const statement of registration.body.statements) {
+      if (
+        !ts.isVariableStatement(statement) ||
+        !(statement.declarationList.flags & ts.NodeFlags.Const)
+      )
+        continue
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.initializer &&
+          (ts.isStringLiteral(declaration.initializer) ||
+            ts.isNoSubstitutionTemplateLiteral(declaration.initializer))
+        ) {
+          staticBases.set(declaration.name.text, declaration.initializer.text)
+        }
+      }
+    }
+    const resolveRoutePath = (node, call) => {
+      if (!node) return null
+      if (
+        ts.isStringLiteral(node) ||
+        ts.isNoSubstitutionTemplateLiteral(node)
+      ) {
+        return node.text
+      }
+      // Only direct registration statements may use function-local bases. Nested
+      // scopes could shadow them, so unresolved paths still fail closed.
+      if (
+        !ts.isExpressionStatement(call.parent) ||
+        call.parent.parent !== registration.body
+      )
+        return null
+      if (ts.isIdentifier(node)) return staticBases.get(node.text) ?? null
+      if (!ts.isTemplateExpression(node)) return null
+      let path = node.head.text
+      for (const span of node.templateSpans) {
+        if (!ts.isIdentifier(span.expression)) return null
+        const base = staticBases.get(span.expression.text)
+        if (base === undefined) return null
+        path += base + span.literal.text
+      }
+      return path
+    }
     const collectRoutes = (node) => {
       if (
         ts.isCallExpression(node) &&
@@ -217,13 +261,13 @@ export function observeMountedHonoRoutes(source, appPath) {
           )
         }
         if (/^(get|post|put|delete|patch|all|head|options)$/.test(method)) {
-          const path = node.arguments[0]
-          if (!path || !ts.isStringLiteral(path)) {
+          const path = resolveRoutePath(node.arguments[0], node)
+          if (path === null) {
             throw new Error(
               `mounted route module requires literal paths: ${moduleName}`,
             )
           }
-          const route = { method: method.toUpperCase(), path: path.text }
+          const route = { method: method.toUpperCase(), path }
           routes.set(`${route.method} ${route.path}`, route)
         }
       }
@@ -554,8 +598,8 @@ export function reconcileRouteInventory({
       (entry.covers ?? []).some(
         (cover) =>
           cover.method === route.method &&
-          !cover.path.includes('*') &&
-          pathMatches(cover.path, route.path),
+          (cover.path === route.path ||
+            (!cover.path.includes('*') && pathMatches(cover.path, route.path))),
       ),
     )
     if (

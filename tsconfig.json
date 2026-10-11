@@ -14,11 +14,13 @@
     "allowSyntheticDefaultImports": true,
     "isolatedModules": true
   },
+  "exclude": ["test/admin-*.test.ts"],
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
     "eslint.config.js",
     "vitest.config.ts",
+    "vite.admin.config.ts",
     "worker-configuration.d.ts"
   ]
 }

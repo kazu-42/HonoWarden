@@ -2,6 +2,7 @@ import type { AccountLifecycleTokenPurpose } from '../domain/account-lifecycle'
 import { fingerprintCredentialWrapper } from '../domain/account-credentials'
 import type { AuditEvent } from '../domain/audit'
 import { insertCredentialWrapperHistorySql } from './credential-wrapper-history-sql'
+import { organizationTotpEnrollmentAllowsSql } from './organization-policy-sql'
 
 type AccountLifecycleDatabase = Pick<D1Database, 'batch' | 'prepare'>
 const accountPurgeR2BatchSize = 1_000
@@ -21,6 +22,10 @@ const lastConfirmedOwnerMembershipSql = `
         AND other_owner.user_id IS NOT NULL
         AND other_owner.user_id <> ?
         AND other_user.disabled_at IS NULL
+        AND ${organizationTotpEnrollmentAllowsSql({
+          organizationId: 'current_owner.organization_id',
+          userId: 'other_owner.user_id',
+        })}
     )
 `
 
@@ -1544,6 +1549,14 @@ export async function finalizeAccountPurge(
       .bind(input.userId, ...sealedBindings),
     database
       .prepare(
+        `DELETE FROM organization_group_users
+        WHERE organization_user_id IN (
+          SELECT id FROM organization_users WHERE user_id = ?
+        ) AND EXISTS (${sealedGuard})`,
+      )
+      .bind(input.userId, ...sealedBindings),
+    database
+      .prepare(
         `
           UPDATE organization_users
           SET email = ?, org_key = NULL, permissions = NULL, updated_at = ?
@@ -1633,7 +1646,7 @@ export async function finalizeAccountPurge(
         ...tombstonedBindings,
       ),
   ])
-  if (results.length !== 16) {
+  if (results.length !== 17) {
     throw new Error(
       'account purge finalization batch returned an invalid count',
     )
@@ -1649,9 +1662,9 @@ export async function finalizeAccountPurge(
     return { status: 'conflict' }
   }
   const attachmentResult = results[2]
-  const userResult = results[13]
-  const deletionResult = results[14]
-  const auditResult = results[15]
+  const userResult = results[14]
+  const deletionResult = results[15]
+  const auditResult = results[16]
   const users = (userResult?.results ?? []) as Array<{ id: string }>
   if (
     sealedRows.length !== 1 ||

@@ -5,8 +5,26 @@ import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
+import { registerAdminRoutes } from './admin-routes'
 import { registerOrganizationMembershipRoutes } from './organization-membership-routes'
 import { createOrganizationMembershipMailerDelivery } from './organization-membership'
+import { registerOrganizationGroupsRoutes } from './organization-groups-routes'
+import { registerOrganizationPolicyRoutes } from './organization-policy-routes'
+import { registerOrganizationAuditRoutes } from './organization-audit-routes'
+import { projectOrganizationPolicy } from './domain/organization-policy'
+import type { OrganizationPolicyRecord } from './domain/organization-policy'
+import type { OrganizationPolicyActor } from './repositories/organization-policy-sql'
+import { listOrganizationPoliciesForUser } from './repositories/organization-policy-repository'
+import type { TotpSessionVerification } from './domain/mfa-session'
+import {
+  consumeTotpSessionStepUp,
+  createPendingTotpSetupForSession,
+  disableTotpSetupForSession,
+  enableTotpSetupForSession,
+  findSessionTotpAssurance,
+  promotePendingTotpChangeForSession,
+  startPendingTotpChangeForSession,
+} from './repositories/mfa-session-repository'
 import {
   resolveBuildProvenance,
   type BuildProvenance,
@@ -300,6 +318,7 @@ import {
   resetAuthFailureBucket,
   resetLoginDefenseState,
   revokeDeviceSession,
+  revokeCurrentDeviceSession,
   rotateRefreshToken,
   updateDeviceKeys,
   updateDeviceMetadata,
@@ -314,14 +333,8 @@ import type {
 import {
   consumeTotpChallenge,
   createTotpChallenge,
-  disableTotpSetup,
-  enableTotpSetup,
   findActiveTotpChallengeByHash,
   findTotpSetupByUserId,
-  promotePendingTotpChange,
-  recordAcceptedTotpStep,
-  startPendingTotpChange,
-  upsertPendingTotpSetup,
 } from './repositories/totp-repository'
 import {
   completeWebAuthnRegistration,
@@ -343,6 +356,18 @@ type Variables = {
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
 type ListResourceType = 'folder' | 'cipher'
+type OrganizationFeatures = { groups: boolean; policies: boolean }
+const disabledOrganizationFeatures: OrganizationFeatures = {
+  groups: false,
+  policies: false,
+}
+
+function organizationFeatures(c: AppContext): OrganizationFeatures {
+  return {
+    groups: c.env?.HONOWARDEN_ORGANIZATION_GROUPS_ENABLED === 'true',
+    policies: c.env?.HONOWARDEN_ORGANIZATION_POLICIES_ENABLED === 'true',
+  }
+}
 
 type ListCursor = {
   revisionDate: string
@@ -382,6 +407,7 @@ type AuthenticatedVaultRequest =
       ok: true
       user: AuthUserRecord
       deviceIdentifier: string
+      sessionId: string
       tokenIssuedAt: number
       authMethod: AccessTokenAuthMethod | null
     }
@@ -607,6 +633,20 @@ function isRequestQuotaBypass(c: AppContext): boolean {
   }
 
   const pathname = new URL(c.req.url).pathname
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return true
+  const companyFeature =
+    /^\/api\/organizations\/[^/]+\/(groups|policies|audit-events)(?:\/|$)/.exec(
+      pathname,
+    )?.[1]
+  if (
+    (companyFeature === 'groups' &&
+      c.env?.HONOWARDEN_ORGANIZATION_GROUPS_ENABLED !== 'true') ||
+    (companyFeature === 'policies' &&
+      c.env?.HONOWARDEN_ORGANIZATION_POLICIES_ENABLED !== 'true') ||
+    (companyFeature === 'audit-events' &&
+      c.env?.HONOWARDEN_ORGANIZATION_AUDIT_ENABLED !== 'true')
+  )
+    return true
 
   if (
     c.env?.HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED !== 'true' &&
@@ -1302,8 +1342,11 @@ app.get('/api/accounts/revision-date', async (c) => {
 
   try {
     const revisionDate =
-      (await getAccountRevisionDate(c.env.DB, auth.user.id)) ??
-      auth.user.revisionDate
+      (await getAccountRevisionDate(
+        c.env.DB,
+        auth.user.id,
+        organizationActor(auth),
+      )) ?? auth.user.revisionDate
 
     return c.json(revisionDate)
   } catch {
@@ -1329,7 +1372,11 @@ app.get('/api/accounts/profile', async (c) => {
   try {
     const [storage, organizations] = await Promise.all([
       getCipherAttachmentStorageUsage(c.env.DB, auth.user.id),
-      listConfirmedOrganizationMemberships(c.env.DB, auth.user.id),
+      listConfirmedOrganizationMemberships(
+        c.env.DB,
+        auth.user.id,
+        organizationActor(auth),
+      ),
     ])
     return c.json(
       buildAccountProfileResponse(
@@ -1337,6 +1384,7 @@ app.get('/api/accounts/profile', async (c) => {
         storage,
         isPremiumFeaturesEnabled(c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED),
         organizations,
+        organizationFeatures(c),
       ),
     )
   } catch (error) {
@@ -1737,6 +1785,7 @@ app.post('/api/organizations', async (c) => {
   try {
     const now = new Date().toISOString()
     const foundation = await createOrganizationFoundation(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId: crypto.randomUUID(),
       organizationUserId: crypto.randomUUID(),
       collectionId: crypto.randomUUID(),
@@ -1752,7 +1801,12 @@ app.post('/api/organizations', async (c) => {
       now,
     })
 
-    return c.json(buildOrganizationResponse(foundation.organization))
+    return c.json(
+      buildOrganizationResponse(
+        foundation.organization,
+        organizationFeatures(c),
+      ),
+    )
   } catch {
     return c.json(
       apiError(
@@ -1773,6 +1827,7 @@ app.get('/api/organizations/:id', async (c) => {
 
   try {
     const organization = await findOrganizationForConfirmedMember(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId: c.req.param('id'),
       userId: auth.user.id,
     })
@@ -1780,7 +1835,9 @@ app.get('/api/organizations/:id', async (c) => {
       return c.json(organizationNotFoundError(c.get('requestId')), 404)
     }
 
-    return c.json(buildOrganizationResponse(organization))
+    return c.json(
+      buildOrganizationResponse(organization, organizationFeatures(c)),
+    )
   } catch {
     return c.json(
       apiError(
@@ -1842,6 +1899,8 @@ registerOrganizationMembershipRoutes(app, {
           actor: {
             userId: auth.user.id,
             emailNormalized: auth.user.emailNormalized,
+            sessionId: auth.sessionId,
+            deviceIdentifier: auth.deviceIdentifier,
           },
         }
       : auth
@@ -1873,6 +1932,60 @@ registerOrganizationMembershipRoutes(app, {
   },
 })
 
+const companyRouteDependencies = {
+  authenticate: async (c: AppContext) => {
+    const auth = await authenticateVaultRequest(c)
+    return auth.ok
+      ? { ok: true as const, actor: organizationActor(auth) }
+      : auth
+  },
+  requestId: (c: AppContext) => c.get('requestId'),
+  reportFailure: (
+    c: AppContext,
+    failure: { code: string; operation: string },
+  ) => {
+    console.error(
+      JSON.stringify({
+        event: 'organization_administration_failed',
+        requestId: c.get('requestId'),
+        code: failure.code,
+        operation: failure.operation,
+      }),
+    )
+  },
+}
+
+registerOrganizationGroupsRoutes(app, {
+  ...companyRouteDependencies,
+  runtime: (c) => ({
+    enabled: c.env?.HONOWARDEN_ORGANIZATION_GROUPS_ENABLED === 'true',
+    database: c.env.DB,
+  }),
+})
+registerOrganizationPolicyRoutes(app, {
+  ...companyRouteDependencies,
+  runtime: (c) => ({
+    enabled: c.env?.HONOWARDEN_ORGANIZATION_POLICIES_ENABLED === 'true',
+    database: c.env.DB,
+  }),
+})
+registerOrganizationAuditRoutes(app, {
+  ...companyRouteDependencies,
+  runtime: (c) => {
+    const tokenRuntime = resolveAccessTokenRuntimeConfig(c.env)
+    return {
+      enabled: c.env?.HONOWARDEN_ORGANIZATION_AUDIT_ENABLED === 'true',
+      database: c.env.DB,
+      optionalAuditLoggingEnabled: isAuditLoggingEnabled(
+        c.env?.HONOWARDEN_AUDIT_LOGS,
+      ),
+      ...(tokenRuntime.ok
+        ? { cursorSecret: tokenRuntime.refreshTokenSecret }
+        : {}),
+    }
+  },
+})
+
 app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
 app.all('/api/sends', unsupportedPremiumFeature)
@@ -1888,6 +2001,7 @@ app.get('/api/collections', async (c) => {
     const collections = await listAccessibleOrganizationCollections(
       c.env.DB,
       auth.user.id,
+      organizationActor(auth),
     )
     return c.json(buildCollectionListResponse(collections))
   } catch {
@@ -2750,9 +2864,14 @@ app.post('/identity/connect/token', async (c) => {
 
     const accountKeyProjection = buildAccountKeyProjection(user)
 
+    let totpVerification: TotpSessionVerification | undefined
     if (user.totpEnabled) {
       const totpSecret = c.env?.HONOWARDEN_TOTP_SECRET
-      if (!totpSecret || !user.totpEncryptedSecret) {
+      if (
+        !totpSecret ||
+        !user.totpEncryptedSecret ||
+        !user.totpCredentialGeneration
+      ) {
         return c.json(
           apiError(
             c.get('requestId'),
@@ -2856,14 +2975,9 @@ app.post('/identity/connect/token', async (c) => {
         return await recordAccountFailure()
       }
 
-      const stepRecorded = await recordAcceptedTotpStep(c.env.DB, {
-        userId: user.id,
+      totpVerification = {
+        credentialGeneration: user.totpCredentialGeneration,
         acceptedStep: verification.timeStep,
-        now,
-      })
-
-      if (!stepRecorded) {
-        return await recordAccountFailure()
       }
     }
 
@@ -2881,6 +2995,9 @@ app.post('/identity/connect/token', async (c) => {
       userId: user.id,
       expectedMasterPasswordHash: user.masterPasswordHash,
       expectedSecurityStamp: user.securityStamp,
+      ...(totpVerification
+        ? { totpVerification }
+        : { requireTotpDisabled: true }),
       deviceIdentifier: device.identifier,
       deviceName: device.name,
       deviceType: device.type,
@@ -3394,13 +3511,31 @@ app.get('/api/sync', async (c) => {
       domainSettings,
       organizations,
       collections,
+      policies,
     ] = await Promise.all([
       listFoldersByUser(c.env.DB, auth.user.id),
-      listAccessibleCiphersByUser(c.env.DB, auth.user.id),
+      listAccessibleCiphersByUser(
+        c.env.DB,
+        auth.user.id,
+        organizationActor(auth),
+      ),
       listCipherAttachmentsByUser(c.env.DB, auth.user.id),
       getDomainSettingsForUser(c.env.DB, auth.user.id),
-      listConfirmedOrganizationMemberships(c.env.DB, auth.user.id),
-      listAccessibleOrganizationCollections(c.env.DB, auth.user.id),
+      listConfirmedOrganizationMemberships(
+        c.env.DB,
+        auth.user.id,
+        organizationActor(auth),
+      ),
+      listAccessibleOrganizationCollections(
+        c.env.DB,
+        auth.user.id,
+        organizationActor(auth),
+      ),
+      listOrganizationPoliciesForUser(
+        c.env.DB,
+        auth.user.id,
+        organizationActor(auth),
+      ),
     ])
 
     return c.json(
@@ -3413,6 +3548,8 @@ app.get('/api/sync', async (c) => {
         domainSettings,
         organizations,
         collections,
+        policies,
+        organizationFeatures(c),
       ),
     )
   } catch (error) {
@@ -5357,23 +5494,47 @@ function buildEmptyMasterPasswordPolicyResponse() {
   }
 }
 
-app.get('/api/policies', async (c) => {
+async function listCurrentOrganizationPoliciesRoute(
+  c: AppContext,
+): Promise<Response> {
+  c.header('Cache-Control', 'no-store')
   const auth = await authenticateVaultRequest(c)
   if (!auth.ok) {
     return auth.response
   }
 
-  return c.json(buildEmptyListResponse())
-})
-
-app.get('/api/policies/new', async (c) => {
-  const auth = await authenticateVaultRequest(c)
-  if (!auth.ok) {
-    return auth.response
+  try {
+    const policies = await listOrganizationPoliciesForUser(
+      c.env.DB,
+      auth.user.id,
+      organizationActor(auth),
+    )
+    return c.json({
+      object: 'list',
+      data: policies.map(projectOrganizationPolicy),
+      continuationToken: null,
+    })
+  } catch {
+    console.error(
+      JSON.stringify({
+        event: 'organization_policy_projection_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Organization policy lookup failed.',
+      ),
+      503,
+    )
   }
+}
 
-  return c.json(buildEmptyListResponse())
-})
+app.get('/api/policies', listCurrentOrganizationPoliciesRoute)
+app.get('/api/policies/new', listCurrentOrganizationPoliciesRoute)
 
 app.get('/api/domains', async (c) => {
   const auth = await authenticateVaultRequest(c)
@@ -5519,7 +5680,187 @@ app.put('/api/devices/identifier/:identifier/token', async (c) => {
   return c.body(null, 204)
 })
 
+function organizationActor(
+  auth: Extract<AuthenticatedVaultRequest, { ok: true }>,
+): OrganizationPolicyActor {
+  return {
+    userId: auth.user.id,
+    sessionId: auth.sessionId,
+    deviceIdentifier: auth.deviceIdentifier,
+  }
+}
+
+function reportMfaSessionFailure(c: AppContext, operation: string): void {
+  console.error(
+    JSON.stringify({
+      event: 'mfa_session_failed',
+      requestId: c.get('requestId'),
+      operation,
+      reason: 'database_error',
+    }),
+  )
+}
+
+app.get('/identity/accounts/totp/assurance', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  try {
+    return c.json({
+      object: 'totpSession',
+      verified: await findSessionTotpAssurance(
+        c.env.DB,
+        organizationActor(auth),
+      ),
+    })
+  } catch {
+    reportMfaSessionFailure(c, 'assurance')
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'TOTP session assurance lookup failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/identity/accounts/totp/step-up', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  const body = await readBoundedJsonBody(c.req.raw, 1024)
+  const payload =
+    body.ok &&
+    body.value !== null &&
+    typeof body.value === 'object' &&
+    !Array.isArray(body.value)
+      ? (body.value as Record<string, unknown>)
+      : null
+  if (
+    !payload ||
+    Object.keys(payload).length !== 1 ||
+    typeof payload.code !== 'string' ||
+    !/^\d{6}$/.test(payload.code)
+  ) {
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'invalid_request',
+        'A six-digit TOTP code is required.',
+      ),
+      400,
+    )
+  }
+  const wrappingSecret = c.env?.HONOWARDEN_TOTP_SECRET
+  if (!wrappingSecret)
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'server_misconfigured',
+        'TOTP session verification is not configured.',
+      ),
+      503,
+    )
+  const now = new Date()
+  try {
+    const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
+    if (!setup?.enabled || !setup.verifiedAt || !setup.credentialGeneration) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'Verified TOTP enrollment is required.',
+        ),
+        400,
+      )
+    }
+    const secretBase32 = await decryptTotpSecret(
+      wrappingSecret,
+      setup.encryptedSecret,
+    )
+    if (!secretBase32)
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'server_misconfigured',
+          'TOTP session verification is not configured.',
+        ),
+        503,
+      )
+    const verification = await verifyTotpCode({
+      secretBase32,
+      code: payload.code,
+      nowUnixSeconds: Math.floor(now.getTime() / 1000),
+      lastAcceptedStep: setup.lastAcceptedStep,
+    })
+    if (
+      !verification.ok ||
+      !(await consumeTotpSessionStepUp(c.env.DB, {
+        ...organizationActor(auth),
+        credentialGeneration: setup.credentialGeneration,
+        acceptedStep: verification.timeStep,
+        now: now.toISOString(),
+      }))
+    ) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP code is invalid.',
+        ),
+        400,
+      )
+    }
+    return c.json({ object: 'totpSession', verified: true })
+  } catch {
+    reportMfaSessionFailure(c, 'step-up')
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'TOTP session verification failed.',
+      ),
+      503,
+    )
+  }
+})
+
+app.post('/identity/accounts/logout', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const auth = await authenticateVaultRequest(c)
+  if (!auth.ok) return auth.response
+  try {
+    const revoked = await revokeCurrentDeviceSession(c.env.DB, {
+      ...organizationActor(auth),
+      revokedAt: new Date().toISOString(),
+    })
+    if (revoked.status !== 'revoked')
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_token',
+          'The access token is invalid.',
+        ),
+        401,
+      )
+    return c.json({ object: 'session', loggedOut: true })
+  } catch {
+    reportMfaSessionFailure(c, 'logout')
+    return c.json(
+      apiError(
+        c.get('requestId'),
+        'database_unavailable',
+        'Current session logout failed.',
+      ),
+      503,
+    )
+  }
+})
+
 app.post('/identity/accounts/totp/setup', async (c) => {
+  c.header('Cache-Control', 'no-store')
   const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
     return auth.response
@@ -5552,11 +5893,21 @@ app.post('/identity/accounts/totp/setup', async (c) => {
   const now = new Date().toISOString()
 
   try {
-    await upsertPendingTotpSetup(c.env.DB, {
-      userId: auth.user.id,
+    const started = await createPendingTotpSetupForSession(c.env.DB, {
+      ...organizationActor(auth),
       encryptedSecret: await encryptTotpSecret(totpSecret, secret),
       now,
     })
+    if (!started) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'TOTP setup could not be started.',
+        ),
+        400,
+      )
+    }
 
     return c.json({
       object: 'totpSetup',
@@ -5565,6 +5916,7 @@ app.post('/identity/accounts/totp/setup', async (c) => {
       enabled: false,
     })
   } catch {
+    reportMfaSessionFailure(c, 'setup')
     return c.json(
       apiError(
         c.get('requestId'),
@@ -5577,6 +5929,7 @@ app.post('/identity/accounts/totp/setup', async (c) => {
 })
 
 app.post('/identity/accounts/totp/setup/verify', async (c) => {
+  c.header('Cache-Control', 'no-store')
   const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
     return auth.response
@@ -5594,7 +5947,8 @@ app.post('/identity/accounts/totp/setup/verify', async (c) => {
     )
   }
 
-  const request = parseTotpVerifyRequestBody(await readJsonBody(c.req.raw))
+  const body = await readBoundedJsonBody(c.req.raw, 1024)
+  const request = parseTotpVerifyRequestBody(body.ok ? body.value : null)
   if (!request.ok) {
     return c.json(
       apiError(c.get('requestId'), 'invalid_request', 'TOTP code is required.'),
@@ -5651,17 +6005,12 @@ app.post('/identity/accounts/totp/setup/verify', async (c) => {
       )
     }
 
-    const stepRecorded = await recordAcceptedTotpStep(c.env.DB, {
-      userId: auth.user.id,
+    const enabled = await enableTotpSetupForSession(c.env.DB, {
+      ...organizationActor(auth),
+      expectedEncryptedSecret: setup.encryptedSecret,
       acceptedStep: verification.timeStep,
-      now: verifiedAtIso,
+      verifiedAt: verifiedAtIso,
     })
-    const enabled = stepRecorded
-      ? await enableTotpSetup(c.env.DB, {
-          userId: auth.user.id,
-          verifiedAt: verifiedAtIso,
-        })
-      : false
 
     if (!enabled) {
       return c.json(
@@ -5679,6 +6028,7 @@ app.post('/identity/accounts/totp/setup/verify', async (c) => {
       enabled: true,
     })
   } catch {
+    reportMfaSessionFailure(c, 'setup-verify')
     return c.json(
       apiError(
         c.get('requestId'),
@@ -5691,12 +6041,13 @@ app.post('/identity/accounts/totp/setup/verify', async (c) => {
 })
 
 app.post('/identity/accounts/totp/disable', async (c) => {
+  c.header('Cache-Control', 'no-store')
   const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
     return auth.response
   }
 
-  if (!auth.user.totpEnabled) {
+  if (!auth.user.totpEnabled || !auth.user.totpCredentialGeneration) {
     await emitAuditEvent(c, {
       name: 'totp.disable',
       outcome: 'failure',
@@ -5720,8 +6071,13 @@ app.post('/identity/accounts/totp/disable', async (c) => {
   }
 
   try {
-    const disabled = await disableTotpSetup(c.env.DB, {
-      userId: auth.user.id,
+    const now = new Date().toISOString()
+    const disabled = await disableTotpSetupForSession(c.env.DB, {
+      ...organizationActor(auth),
+      expectedCredentialGeneration: auth.user.totpCredentialGeneration,
+      now,
+      auditId: crypto.randomUUID(),
+      requestId: c.get('requestId'),
     })
 
     if (!disabled) {
@@ -5751,27 +6107,30 @@ app.post('/identity/accounts/totp/disable', async (c) => {
       )
     }
 
-    await emitAuditEvent(c, {
-      name: 'totp.disable',
-      outcome: 'success',
-      actor: {
-        userId: auth.user.id,
-        deviceIdentifier: auth.deviceIdentifier,
-      },
-      target: {
-        type: 'account',
-        id: auth.user.id,
-      },
-      context: {
-        enabled: false,
-      },
-    })
-
+    if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS)) {
+      console.info(
+        serializeAuditEvent(
+          buildAuditEvent({
+            name: 'totp.disable',
+            outcome: 'success',
+            requestId: c.get('requestId'),
+            occurredAt: now,
+            actor: {
+              userId: auth.user.id,
+              deviceIdentifier: auth.deviceIdentifier,
+            },
+            target: { type: 'account', id: auth.user.id },
+            context: { enabled: false },
+          }),
+        ),
+      )
+    }
     return c.json({
       object: 'totp',
       enabled: false,
     })
   } catch {
+    reportMfaSessionFailure(c, 'disable')
     return c.json(
       apiError(
         c.get('requestId'),
@@ -5784,6 +6143,7 @@ app.post('/identity/accounts/totp/disable', async (c) => {
 })
 
 app.post('/identity/accounts/totp/change', async (c) => {
+  c.header('Cache-Control', 'no-store')
   const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
     return auth.response
@@ -5801,7 +6161,8 @@ app.post('/identity/accounts/totp/change', async (c) => {
     )
   }
 
-  const request = parseTotpChangeRequestBody(await readJsonBody(c.req.raw))
+  const body = await readBoundedJsonBody(c.req.raw, 1024)
+  const request = parseTotpChangeRequestBody(body.ok ? body.value : null)
   if (!request.ok) {
     return c.json(
       apiError(c.get('requestId'), 'invalid_request', 'TOTP code is required.'),
@@ -5825,7 +6186,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
 
   try {
     const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
-    if (!setup?.enabled) {
+    if (!setup?.enabled || !setup.credentialGeneration) {
       await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
         reason: 'not_found',
       })
@@ -5877,29 +6238,11 @@ app.post('/identity/accounts/totp/change', async (c) => {
       )
     }
 
-    const stepRecorded = await recordAcceptedTotpStep(c.env.DB, {
-      userId: auth.user.id,
-      acceptedStep: currentVerification.timeStep,
-      now: nowIso,
-    })
-    if (!stepRecorded) {
-      await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
-        reason: 'replayed_current_code',
-      })
-
-      return c.json(
-        apiError(
-          c.get('requestId'),
-          'invalid_request',
-          'TOTP code is invalid.',
-        ),
-        400,
-      )
-    }
-
     const nextSecret = generateTotpSecret()
-    const started = await startPendingTotpChange(c.env.DB, {
-      userId: auth.user.id,
+    const started = await startPendingTotpChangeForSession(c.env.DB, {
+      ...organizationActor(auth),
+      credentialGeneration: setup.credentialGeneration,
+      acceptedStep: currentVerification.timeStep,
       encryptedSecret: await encryptTotpSecret(totpSecret, nextSecret),
       now: nowIso,
     })
@@ -5932,6 +6275,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
       pendingVerification: true,
     })
   } catch {
+    reportMfaSessionFailure(c, 'change')
     return c.json(
       apiError(
         c.get('requestId'),
@@ -5944,6 +6288,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
 })
 
 app.post('/identity/accounts/totp/change/verify', async (c) => {
+  c.header('Cache-Control', 'no-store')
   const auth = await authenticateRecentPasswordRequest(c)
   if (!auth.ok) {
     return auth.response
@@ -5961,7 +6306,8 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
     )
   }
 
-  const request = parseTotpVerifyRequestBody(await readJsonBody(c.req.raw))
+  const body = await readBoundedJsonBody(c.req.raw, 1024)
+  const request = parseTotpVerifyRequestBody(body.ok ? body.value : null)
   if (!request.ok) {
     return c.json(
       apiError(c.get('requestId'), 'invalid_request', 'TOTP code is required.'),
@@ -5974,7 +6320,11 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
 
   try {
     const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
-    if (!setup?.enabled || !setup.pendingEncryptedSecret) {
+    if (
+      !setup?.enabled ||
+      !setup.pendingEncryptedSecret ||
+      !setup.credentialGeneration
+    ) {
       await emitTotpChangeAuditEvent(c, auth, 'failure', 'verify', {
         reason: 'not_found',
       })
@@ -6026,8 +6376,10 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
       )
     }
 
-    const promoted = await promotePendingTotpChange(c.env.DB, {
-      userId: auth.user.id,
+    const promoted = await promotePendingTotpChangeForSession(c.env.DB, {
+      ...organizationActor(auth),
+      expectedCredentialGeneration: setup.credentialGeneration,
+      expectedPendingEncryptedSecret: setup.pendingEncryptedSecret,
       acceptedStep: verification.timeStep,
       verifiedAt: verifiedAtIso,
     })
@@ -6056,6 +6408,7 @@ app.post('/identity/accounts/totp/change/verify', async (c) => {
       enabled: true,
     })
   } catch {
+    reportMfaSessionFailure(c, 'change-verify')
     return c.json(
       apiError(
         c.get('requestId'),
@@ -6570,6 +6923,7 @@ async function createOrganizationCipherRoute(c: AppContext) {
     const hasCollectionAccess = await validateManagedOrganizationCollections(
       c.env.DB,
       {
+        actor: organizationActor(auth),
         userId: auth.user.id,
         organizationId: request.organizationId,
         collectionIds: request.collectionIds,
@@ -6582,6 +6936,7 @@ async function createOrganizationCipherRoute(c: AppContext) {
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     await createOrganizationCipher(c.env.DB, {
+      actor: organizationActor(auth),
       id,
       userId: auth.user.id,
       organizationId: request.organizationId,
@@ -6593,6 +6948,7 @@ async function createOrganizationCipherRoute(c: AppContext) {
       now,
     })
     const cipher = await findAccessibleCipherById(c.env.DB, {
+      actor: organizationActor(auth),
       id,
       userId: auth.user.id,
     })
@@ -6656,6 +7012,7 @@ async function sharePersonalCipherRoute(c: AppContext) {
     const hasCollectionAccess = await validateManagedOrganizationCollections(
       c.env.DB,
       {
+        actor: organizationActor(auth),
         userId: auth.user.id,
         organizationId: request.organizationId,
         collectionIds: request.collectionIds,
@@ -6666,6 +7023,7 @@ async function sharePersonalCipherRoute(c: AppContext) {
     }
 
     const result = await sharePersonalCipherWithOrganization(c.env.DB, {
+      actor: organizationActor(auth),
       id: cipherId,
       userId: auth.user.id,
       organizationId: request.organizationId,
@@ -6685,6 +7043,7 @@ async function sharePersonalCipherRoute(c: AppContext) {
     }
 
     const cipher = await findAccessibleCipherById(c.env.DB, {
+      actor: organizationActor(auth),
       id: cipherId,
       userId: auth.user.id,
     })
@@ -6753,6 +7112,7 @@ app.get('/api/ciphers', async (c) => {
   try {
     const [page, attachments] = await Promise.all([
       listAccessibleCiphersByUserPage(c.env.DB, {
+        actor: organizationActor(auth),
         userId: auth.user.id,
         ...pagination.value,
       }),
@@ -7116,6 +7476,7 @@ app.get('/api/ciphers/:id', async (c) => {
       c.env.DB,
       auth.user.id,
       c.req.param('id'),
+      organizationActor(auth),
     )
     if (!access.canRead) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
@@ -7123,6 +7484,7 @@ app.get('/api/ciphers/:id', async (c) => {
 
     const [cipher, attachments] = await Promise.all([
       findAccessibleCipherById(c.env.DB, {
+        actor: organizationActor(auth),
         id: c.req.param('id'),
         userId: auth.user.id,
       }),
@@ -7195,6 +7557,7 @@ app.put('/api/ciphers/:id', async (c) => {
       c.env.DB,
       auth.user.id,
       c.req.param('id'),
+      organizationActor(auth),
     )
     if (!access.canEdit) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
@@ -7236,6 +7599,7 @@ app.put('/api/ciphers/:id', async (c) => {
     const cipher =
       access.organizationId !== null
         ? await updateOrganizationCipher(c.env.DB, {
+            actor: organizationActor(auth),
             ...input,
             ...(typeof payload.key === 'string'
               ? { cipherKey: payload.key }
@@ -7268,6 +7632,7 @@ app.put('/api/ciphers/:id', async (c) => {
 
     if (access.organizationId !== null) {
       const accessibleCipher = await findAccessibleCipherById(c.env.DB, {
+        actor: organizationActor(auth),
         id: cipher.cipher.id,
         userId: auth.user.id,
       })
@@ -7318,7 +7683,12 @@ async function trashCipherById(c: AppContext) {
   const now = new Date().toISOString()
 
   try {
-    const access = await resolveCipherAccess(c.env.DB, auth.user.id, cipherId)
+    const access = await resolveCipherAccess(
+      c.env.DB,
+      auth.user.id,
+      cipherId,
+      organizationActor(auth),
+    )
     if (!access.canDelete) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
@@ -7329,7 +7699,10 @@ async function trashCipherById(c: AppContext) {
     }
     const result =
       access.organizationId !== null
-        ? await softDeleteOrganizationCipher(c.env.DB, input)
+        ? await softDeleteOrganizationCipher(c.env.DB, {
+            ...input,
+            actor: organizationActor(auth),
+          })
         : await softDeleteCipher(c.env.DB, input)
 
     if (result.status === 'not_found') {
@@ -7383,6 +7756,7 @@ app.put('/api/ciphers/:id/restore', async (c) => {
       c.env.DB,
       auth.user.id,
       c.req.param('id'),
+      organizationActor(auth),
     )
     if (!access.canEdit) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
@@ -7394,7 +7768,10 @@ app.put('/api/ciphers/:id/restore', async (c) => {
     }
     const result =
       access.organizationId !== null
-        ? await restoreOrganizationCipher(c.env.DB, input)
+        ? await restoreOrganizationCipher(c.env.DB, {
+            ...input,
+            actor: organizationActor(auth),
+          })
         : await restoreCipher(c.env.DB, input)
 
     if (result.status === 'not_found') {
@@ -7456,7 +7833,12 @@ async function permanentlyDeleteCipherById(c: AppContext) {
   const now = new Date().toISOString()
 
   try {
-    const access = await resolveCipherAccess(c.env.DB, auth.user.id, cipherId)
+    const access = await resolveCipherAccess(
+      c.env.DB,
+      auth.user.id,
+      cipherId,
+      organizationActor(auth),
+    )
     if (!access.canDelete) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
@@ -7482,7 +7864,10 @@ async function permanentlyDeleteCipherById(c: AppContext) {
     }
     const result =
       access.organizationId !== null
-        ? await permanentlyDeleteOrganizationCipher(c.env.DB, input)
+        ? await permanentlyDeleteOrganizationCipher(c.env.DB, {
+            ...input,
+            actor: organizationActor(auth),
+          })
         : await permanentlyDeleteCipher(c.env.DB, input)
 
     if (result.status === 'not_found') {
@@ -7521,6 +7906,21 @@ async function permanentlyDeleteCipherById(c: AppContext) {
     )
   }
 }
+
+registerAdminRoutes(app, {
+  runtime: (c) => ({
+    enabled: c.env?.HONOWARDEN_ADMIN_ENABLED === 'true',
+    assets: c.env?.ADMIN_ASSETS,
+  }),
+  reportFailure: (c) => {
+    console.error(
+      JSON.stringify({
+        event: 'admin_assets_unavailable',
+        requestId: c.get('requestId'),
+      }),
+    )
+  },
+})
 
 app.notFound((c) => {
   return c.json(
@@ -8029,6 +8429,8 @@ function buildSyncResponse(
   domainSettings: DomainSettings = emptyDomainSettings,
   organizations: readonly OrganizationMembershipRecord[] = [],
   collections: readonly OrganizationCollectionRecord[] = [],
+  policies: readonly OrganizationPolicyRecord[] = [],
+  features: OrganizationFeatures = disabledOrganizationFeatures,
 ) {
   const attachmentsByCipherId = buildAttachmentsByCipherId(attachments)
   const profile = buildSyncProfileResponse(
@@ -8036,6 +8438,7 @@ function buildSyncResponse(
     sumCipherAttachmentStorage(attachments),
     premiumFeaturesEnabled,
     organizations,
+    features,
   )
   const folderResponses = folders.map(buildFolderResponse)
   const cipherResponses = ciphers.map((cipher) =>
@@ -8051,8 +8454,8 @@ function buildSyncResponse(
     collections: collections.map(buildCollectionDetailsResponse),
     ciphers: cipherResponses,
     domains,
-    policies: [],
-    policiesNew: [],
+    policies: policies.map(projectOrganizationPolicy),
+    policiesNew: policies.map(projectOrganizationPolicy),
     sends: [],
     userDecryption,
   }
@@ -8315,18 +8718,22 @@ function requireAccountCredentialKdf(user: AuthUserRecord) {
   return kdf
 }
 
-function buildOrganizationResponse(organization: OrganizationRecord) {
+function buildOrganizationResponse(
+  organization: OrganizationRecord,
+  features: OrganizationFeatures = disabledOrganizationFeatures,
+) {
   return {
     Object: 'organization',
-    ...buildOrganizationFeatureResponse(organization),
+    ...buildOrganizationFeatureResponse(organization, features),
   }
 }
 
 function buildProfileOrganizationResponse(
   membership: OrganizationMembershipRecord,
+  features: OrganizationFeatures = disabledOrganizationFeatures,
 ) {
   return {
-    ...buildOrganizationFeatureResponse(membership),
+    ...buildOrganizationFeatureResponse(membership, features),
     Key: membership.orgKey,
     Status: 2,
     Type: membership.type,
@@ -8334,16 +8741,19 @@ function buildProfileOrganizationResponse(
   }
 }
 
-function buildOrganizationFeatureResponse(organization: OrganizationRecord) {
+function buildOrganizationFeatureResponse(
+  organization: OrganizationRecord,
+  features: OrganizationFeatures = disabledOrganizationFeatures,
+) {
   return {
     Id: organization.id,
     Name: organization.name,
     Enabled: organization.enabled,
-    UsePolicies: false,
+    UsePolicies: organization.enabled && features.policies,
     UseSso: false,
     UseKeyConnector: false,
     UseScim: false,
-    UseGroups: false,
+    UseGroups: organization.enabled && features.groups,
     UseMyItems: false,
     UseEvents: false,
     UseDirectory: false,
@@ -8447,6 +8857,7 @@ function buildAccountProfileResponse(
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
   organizations: readonly OrganizationMembershipRecord[] = [],
+  features: OrganizationFeatures = disabledOrganizationFeatures,
 ) {
   const masterPasswordUnlock = buildMasterPasswordUnlockResponse(user)
   const userDecryptionOptions = masterPasswordUnlock
@@ -8469,6 +8880,7 @@ function buildAccountProfileResponse(
       storageBytes,
       premiumFeaturesEnabled,
       organizations,
+      features,
     ),
     UserDecryptionOptions: userDecryptionOptions,
     userDecryptionOptions,
@@ -8509,11 +8921,12 @@ function buildSyncProfileResponse(
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
   organizations: readonly OrganizationMembershipRecord[] = [],
+  features: OrganizationFeatures = disabledOrganizationFeatures,
 ) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeyProjection = buildAccountKeyProjection(user)
-  const organizationResponses = organizations.map(
-    buildProfileOrganizationResponse,
+  const organizationResponses = organizations.map((membership) =>
+    buildProfileOrganizationResponse(membership, features),
   )
 
   return {
@@ -8548,11 +8961,12 @@ function buildProfileResponse(
   storageBytes: number,
   premiumFeaturesEnabled: boolean,
   organizations: readonly OrganizationMembershipRecord[] = [],
+  features: OrganizationFeatures = disabledOrganizationFeatures,
 ) {
   const name = user.displayName ?? user.emailNormalized
   const accountKeyProjection = buildAccountKeyProjection(user)
-  const organizationResponses = organizations.map(
-    buildProfileOrganizationResponse,
+  const organizationResponses = organizations.map((membership) =>
+    buildProfileOrganizationResponse(membership, features),
   )
 
   return {
@@ -9003,6 +9417,7 @@ async function listOrganizationCollectionsRoute(c: AppContext) {
   const organizationId = routeParam(c, 'id')
   try {
     const organization = await findOrganizationForConfirmedMember(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       userId: auth.user.id,
     })
@@ -9012,6 +9427,7 @@ async function listOrganizationCollectionsRoute(c: AppContext) {
 
     const collections =
       await listAccessibleOrganizationCollectionsByOrganization(c.env.DB, {
+        actor: organizationActor(auth),
         organizationId,
         userId: auth.user.id,
       })
@@ -9030,6 +9446,7 @@ async function listOrganizationCollectionDetailsRoute(c: AppContext) {
   const organizationId = routeParam(c, 'id')
   try {
     const owner = await findConfirmedOrganizationOwner(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       userId: auth.user.id,
     })
@@ -9039,12 +9456,14 @@ async function listOrganizationCollectionDetailsRoute(c: AppContext) {
 
     const collections =
       await listAccessibleOrganizationCollectionsByOrganization(c.env.DB, {
+        actor: organizationActor(auth),
         organizationId,
         userId: auth.user.id,
       })
     const usersByCollection = await Promise.all(
       collections.map((collection) =>
         listOrganizationCollectionUsersForOwner(c.env.DB, {
+          actor: organizationActor(auth),
           organizationId,
           collectionId: collection.id,
           userId: auth.user.id,
@@ -9078,6 +9497,7 @@ async function readOrganizationCollectionRoute(c: AppContext) {
 
   try {
     const collection = await findAccessibleOrganizationCollection(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId: routeParam(c, 'id'),
       collectionId: routeParam(c, 'collectionId'),
       userId: auth.user.id,
@@ -9102,6 +9522,7 @@ async function readOrganizationCollectionDetailsRoute(c: AppContext) {
   const collectionId = routeParam(c, 'collectionId')
   try {
     const collection = await findOwnerOrganizationCollection(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       collectionId,
       userId: auth.user.id,
@@ -9111,6 +9532,7 @@ async function readOrganizationCollectionDetailsRoute(c: AppContext) {
     }
 
     const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       collectionId,
       userId: auth.user.id,
@@ -9134,6 +9556,7 @@ async function listOrganizationCollectionUsersRoute(c: AppContext) {
   const collectionId = routeParam(c, 'collectionId')
   try {
     const collection = await findOwnerOrganizationCollection(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       collectionId,
       userId: auth.user.id,
@@ -9143,6 +9566,7 @@ async function listOrganizationCollectionUsersRoute(c: AppContext) {
     }
 
     const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       collectionId,
       userId: auth.user.id,
@@ -9162,6 +9586,7 @@ async function createOrganizationCollectionRoute(c: AppContext) {
   const organizationId = routeParam(c, 'id')
   try {
     const owner = await findConfirmedOrganizationOwner(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       userId: auth.user.id,
     })
@@ -9184,6 +9609,7 @@ async function createOrganizationCollectionRoute(c: AppContext) {
     }
 
     const collection = await createOrganizationCollection(c.env.DB, {
+      actor: organizationActor(auth),
       id: crypto.randomUUID(),
       organizationId,
       organizationUserId: owner.organizationUserId,
@@ -9213,10 +9639,12 @@ async function updateOrganizationCollectionRoute(c: AppContext) {
   try {
     const [owner, existing] = await Promise.all([
       findConfirmedOrganizationOwner(c.env.DB, {
+        actor: organizationActor(auth),
         organizationId,
         userId: auth.user.id,
       }),
       findOwnerOrganizationCollection(c.env.DB, {
+        actor: organizationActor(auth),
         organizationId,
         collectionId,
         userId: auth.user.id,
@@ -9245,6 +9673,7 @@ async function updateOrganizationCollectionRoute(c: AppContext) {
     }
 
     const collection = await updateOrganizationCollection(c.env.DB, {
+      actor: organizationActor(auth),
       id: collectionId,
       organizationId,
       userId: auth.user.id,
@@ -9257,6 +9686,7 @@ async function updateOrganizationCollectionRoute(c: AppContext) {
     }
 
     const users = await listOrganizationCollectionUsersForOwner(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId,
       collectionId,
       userId: auth.user.id,
@@ -9275,6 +9705,7 @@ async function deleteOrganizationCollectionRoute(c: AppContext) {
 
   try {
     const deleted = await deleteOrganizationCollection(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId: routeParam(c, 'id'),
       collectionId: routeParam(c, 'collectionId'),
       userId: auth.user.id,
@@ -9305,6 +9736,7 @@ async function deleteOrganizationCollectionsRoute(c: AppContext) {
 
   try {
     const deleted = await deleteOrganizationCollections(c.env.DB, {
+      actor: organizationActor(auth),
       organizationId: routeParam(c, 'id'),
       collectionIds: request.collectionIds,
       userId: auth.user.id,
@@ -11170,6 +11602,7 @@ async function authenticateVaultRequestWithAccessToken(
       ok: true,
       user,
       deviceIdentifier: verification.claims.device,
+      sessionId: verification.claims.sessionId,
       tokenIssuedAt: verification.claims.iat,
       authMethod: verification.claims.authMethod ?? null,
     }

@@ -60,6 +60,7 @@ type CompatAuthUserRecord = {
   totpEnabled: boolean
   totpEncryptedSecret: string | null
   totpLastAcceptedStep: string | null
+  totpCredentialGeneration?: string | null
 }
 
 type CompatFixtureDatabaseSeed = {

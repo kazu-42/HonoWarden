@@ -49,6 +49,10 @@ describe('resolveCipherAccess', () => {
 
   it('allows a confirmed member with managed collection access to an org cipher', async () => {
     const database = new FakeD1Database(null, [], {
+      authUsers: ['owner-user-id', 'unconfirmed-user-id', 'other-user-id'].map(
+        (id) => ({ id, disabledAt: null }),
+      ),
+      organizations: [{ id: 'organization-id', enabled: 1 }],
       ciphers: [
         {
           id: 'organization-cipher-id',
@@ -62,12 +66,14 @@ describe('resolveCipherAccess', () => {
           organizationId: 'organization-id',
           userId: 'owner-user-id',
           status: 2,
+          type: 2,
         },
         {
           id: 'unconfirmed-organization-user-id',
           organizationId: 'organization-id',
           userId: 'unconfirmed-user-id',
           status: 1,
+          type: 2,
         },
       ],
       collections: [

@@ -1,4 +1,7 @@
 import { accountCredentialKdfFromStoredGeneration } from '../domain/account-credentials'
+import { isValidTotpSessionVerification } from '../domain/mfa-session'
+import type { TotpSessionVerification } from '../domain/mfa-session'
+import type { MfaSessionActor } from '../domain/mfa-session'
 import type { PreloginKdfContext } from '../domain/prelogin'
 import { preloginKdfPolicy } from '../domain/prelogin'
 import { refreshTokenRetentionDays } from '../domain/tokens'
@@ -28,6 +31,7 @@ export type AuthUserRecord = {
   totpEnabled: boolean
   totpEncryptedSecret: string | null
   totpLastAcceptedStep: number | null
+  totpCredentialGeneration?: string | null
 }
 
 export type DeviceSessionInput = {
@@ -41,6 +45,8 @@ export type DeviceSessionInput = {
   refreshTokenHash: string
   refreshTokenExpiresAt: string
   now: string
+  totpVerification?: TotpSessionVerification
+  requireTotpDisabled?: boolean
 }
 
 export type CreatePasswordGrantSessionResult =
@@ -76,6 +82,10 @@ export type RotateRefreshTokenInput = {
 export type DeviceRevokeInput = {
   userId: string
   deviceId: string
+  revokedAt: string
+}
+
+export type CurrentDeviceSessionRevokeInput = MfaSessionActor & {
   revokedAt: string
 }
 
@@ -285,6 +295,7 @@ type AuthUserRow = {
   totpEnabled: number | boolean | null
   totpEncryptedSecret: string | null
   totpLastAcceptedStep: number | null
+  totpCredentialGeneration?: string | null
 }
 
 type PreloginKdfRow = {
@@ -332,6 +343,7 @@ type RefreshTokenSessionRow = {
   totpEnabled: number | boolean | null
   totpEncryptedSecret: string | null
   totpLastAcceptedStep: number | null
+  totpCredentialGeneration?: string | null
 }
 
 type FailedAuthAttemptCountRow = {
@@ -522,7 +534,8 @@ export async function findAuthUserByEmail(
           u.login_locked_until as loginLockedUntil,
           COALESCE(ut.enabled, 0) as totpEnabled,
           ut.encrypted_secret as totpEncryptedSecret,
-          ut.last_accepted_step as totpLastAcceptedStep
+          ut.last_accepted_step as totpLastAcceptedStep,
+          ut.credential_generation as totpCredentialGeneration
         FROM users u
         LEFT JOIN user_totp ut ON ut.user_id = u.id
         WHERE u.email_normalized = ?
@@ -567,7 +580,8 @@ export async function findAuthUserById(
           u.login_locked_until as loginLockedUntil,
           COALESCE(ut.enabled, 0) as totpEnabled,
           ut.encrypted_secret as totpEncryptedSecret,
-          ut.last_accepted_step as totpLastAcceptedStep
+          ut.last_accepted_step as totpLastAcceptedStep,
+          ut.credential_generation as totpCredentialGeneration
         FROM users u
         LEFT JOIN user_totp ut ON ut.user_id = u.id
         ${
@@ -604,7 +618,17 @@ export async function createPasswordGrantSession(
   database: AuthSessionDatabase,
   input: DeviceSessionInput,
 ): Promise<CreatePasswordGrantSessionResult> {
+  if (input.totpVerification) {
+    return createTotpPasswordGrantSession(
+      database,
+      input,
+      input.totpVerification,
+    )
+  }
   const deviceId = buildDeviceId(input.userId, input.deviceIdentifier)
+  const totpDisabledSql = input.requireTotpDisabled
+    ? 'AND NOT EXISTS (SELECT 1 FROM user_totp WHERE user_id = users.id AND enabled = 1)'
+    : ''
 
   const results = await database.batch([
     database
@@ -624,6 +648,7 @@ export async function createPasswordGrantSession(
             AND disabled_at IS NULL
             AND master_password_hash = ?
             AND security_stamp = ?
+            ${totpDisabledSql}
         `,
       )
       .bind(
@@ -647,7 +672,9 @@ export async function createPasswordGrantSession(
             last_seen_at = ?,
             revoked_at = NULL,
             updated_at = ?,
-            session_id = ?
+            session_id = ?,
+            mfa_totp_credential_generation = NULL,
+            mfa_verified_at = NULL
           WHERE id = ? AND user_id = ?
             AND EXISTS (
               SELECT 1
@@ -656,6 +683,7 @@ export async function createPasswordGrantSession(
                 AND disabled_at IS NULL
                 AND master_password_hash = ?
                 AND security_stamp = ?
+                ${totpDisabledSql}
             )
         `,
       )
@@ -688,12 +716,14 @@ export async function createPasswordGrantSession(
             AND disabled_at IS NULL
             AND master_password_hash = ?
             AND security_stamp = ?
+            ${totpDisabledSql}
             AND EXISTS (
               SELECT 1
               FROM devices
               WHERE id = ?
                 AND user_id = ?
                 AND revoked_at IS NULL
+                AND session_id = ?
             )
         `,
       )
@@ -709,6 +739,7 @@ export async function createPasswordGrantSession(
         input.expectedSecurityStamp,
         deviceId,
         input.userId,
+        input.refreshTokenId,
       ),
   ])
 
@@ -723,6 +754,116 @@ export async function createPasswordGrantSession(
     throw new Error('password session batch created an invalid token count')
   }
 
+  return { status: 'created' }
+}
+
+async function createTotpPasswordGrantSession(
+  database: AuthSessionDatabase,
+  input: DeviceSessionInput,
+  verification: TotpSessionVerification,
+): Promise<CreatePasswordGrantSessionResult> {
+  if (!isValidTotpSessionVerification(verification)) {
+    return { status: 'stale_generation' }
+  }
+  const deviceId = buildDeviceId(input.userId, input.deviceIdentifier)
+  const results = await database.batch([
+    database
+      .prepare(
+        `
+      UPDATE user_totp
+      SET last_accepted_step = ?, updated_at = ?
+      WHERE user_id = ? AND enabled = 1 AND verified_at IS NOT NULL
+        AND credential_generation = ?
+        AND (last_accepted_step IS NULL OR ? > last_accepted_step)
+        AND EXISTS (
+          SELECT 1 FROM users u WHERE u.id = user_totp.user_id
+            AND u.disabled_at IS NULL AND u.master_password_hash = ?
+            AND u.security_stamp = ?
+        )
+    `,
+      )
+      .bind(
+        verification.acceptedStep,
+        input.now,
+        input.userId,
+        verification.credentialGeneration,
+        verification.acceptedStep,
+        input.expectedMasterPasswordHash,
+        input.expectedSecurityStamp,
+      ),
+    // Keep this write adjacent to the consume UPDATE: matching stored replay
+    // state alone cannot distinguish a successful consume from a replay.
+    database
+      .prepare(
+        `
+      INSERT INTO devices (
+        id, user_id, identifier, name, type, last_seen_at, updated_at,
+        session_id, mfa_totp_credential_generation, mfa_verified_at
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name, type = excluded.type,
+        last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at,
+        revoked_at = NULL, session_id = excluded.session_id,
+        mfa_totp_credential_generation = excluded.mfa_totp_credential_generation,
+        mfa_verified_at = excluded.mfa_verified_at
+      WHERE devices.user_id = excluded.user_id
+        AND devices.identifier = excluded.identifier
+    `,
+      )
+      .bind(
+        deviceId,
+        input.userId,
+        input.deviceIdentifier,
+        input.deviceName,
+        input.deviceType,
+        input.now,
+        input.now,
+        input.refreshTokenId,
+        verification.credentialGeneration,
+        input.now,
+      ),
+    database
+      .prepare(
+        `
+      INSERT INTO refresh_tokens (
+        id, user_id, device_id, token_hash, expires_at, session_id
+      )
+      SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1
+        AND EXISTS (
+          SELECT 1 FROM devices d
+          WHERE d.id = ? AND d.user_id = ? AND d.identifier = ?
+            AND d.session_id = ? AND d.revoked_at IS NULL
+            AND d.mfa_totp_credential_generation = ?
+            AND d.mfa_verified_at IS NOT NULL
+        )
+    `,
+      )
+      .bind(
+        input.refreshTokenId,
+        input.userId,
+        deviceId,
+        input.refreshTokenHash,
+        input.refreshTokenExpiresAt,
+        input.refreshTokenId,
+        deviceId,
+        input.userId,
+        input.deviceIdentifier,
+        input.refreshTokenId,
+        verification.credentialGeneration,
+      ),
+  ])
+  if (results.length !== 3) {
+    throw new Error(
+      'TOTP password session batch returned an invalid result count',
+    )
+  }
+  const changes = results[2]?.meta.changes ?? 0
+  if (changes === 0) return { status: 'stale_generation' }
+  if (changes !== 1)
+    throw new Error(
+      'TOTP password session batch created an invalid token count',
+    )
   return { status: 'created' }
 }
 
@@ -758,6 +899,64 @@ export async function listDevicesByUser(
     .all<DeviceRow>()
 
   return result.results.map(deviceFromRow)
+}
+
+export async function revokeCurrentDeviceSession(
+  database: AuthSessionRevokeDatabase,
+  input: CurrentDeviceSessionRevokeInput,
+): Promise<DeviceRevokeResult> {
+  const results = await database.batch([
+    database
+      .prepare(
+        `
+      UPDATE refresh_tokens SET revoked_at = ?
+      WHERE user_id = ? AND session_id = ? AND revoked_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM devices d
+          WHERE d.id = refresh_tokens.device_id AND d.user_id = ?
+            AND d.identifier = ? AND d.session_id = ? AND d.revoked_at IS NULL
+        )
+    `,
+      )
+      .bind(
+        input.revokedAt,
+        input.userId,
+        input.sessionId,
+        input.userId,
+        input.deviceIdentifier,
+        input.sessionId,
+      ),
+    database
+      .prepare(
+        `
+      UPDATE devices SET revoked_at = ?, updated_at = ?,
+        mfa_totp_credential_generation = NULL, mfa_verified_at = NULL
+      WHERE user_id = ? AND identifier = ? AND session_id = ?
+        AND revoked_at IS NULL
+      RETURNING id
+    `,
+      )
+      .bind(
+        input.revokedAt,
+        input.revokedAt,
+        input.userId,
+        input.deviceIdentifier,
+        input.sessionId,
+      ),
+  ])
+  if (results.length !== 2)
+    throw new Error(
+      'Current session revocation batch returned an invalid result count.',
+    )
+  const devices = results[1]?.results as { id: string }[] | undefined
+  if (!devices?.length) return { status: 'not_found' }
+  if (devices.length !== 1 || !devices[0])
+    throw new Error('Current session revocation updated multiple devices.')
+  return {
+    status: 'revoked',
+    deviceId: devices[0].id,
+    revokedAt: input.revokedAt,
+  }
 }
 
 export async function findDeviceByIdentifier(
@@ -1086,7 +1285,8 @@ export async function findRefreshTokenSessionByHash(
           u.login_locked_until as loginLockedUntil,
           COALESCE(ut.enabled, 0) as totpEnabled,
           ut.encrypted_secret as totpEncryptedSecret,
-          ut.last_accepted_step as totpLastAcceptedStep
+          ut.last_accepted_step as totpLastAcceptedStep,
+          ut.credential_generation as totpCredentialGeneration
         FROM refresh_tokens rt
         INNER JOIN users u ON u.id = rt.user_id
         INNER JOIN devices d ON d.id = rt.device_id
@@ -1127,6 +1327,9 @@ export async function findRefreshTokenSessionByHash(
     totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
     totpEncryptedSecret: row.totpEncryptedSecret ?? null,
     totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
+    ...(row.totpCredentialGeneration === undefined
+      ? {}
+      : { totpCredentialGeneration: row.totpCredentialGeneration }),
   })
 
   return {
@@ -1736,6 +1939,9 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     totpEnabled: row.totpEnabled === 1 || row.totpEnabled === true,
     totpEncryptedSecret: row.totpEncryptedSecret ?? null,
     totpLastAcceptedStep: row.totpLastAcceptedStep ?? null,
+    ...(row.totpCredentialGeneration === undefined
+      ? {}
+      : { totpCredentialGeneration: row.totpCredentialGeneration }),
   })
 }
 

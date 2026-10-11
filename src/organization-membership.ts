@@ -28,6 +28,8 @@ import {
 export type OrganizationMembershipActor = {
   userId: string
   emailNormalized: string
+  sessionId?: string
+  deviceIdentifier?: string
 }
 export type OrganizationMembershipDelivery = {
   recipientEmail: string
@@ -94,6 +96,7 @@ export async function inviteOrganizationMembers(
   const result = await insertOrganizationMemberInvites(database, {
     organizationId: input.organizationId,
     actorUserId: input.actor.userId,
+    ...session(input.actor),
     now: input.now,
     type: request.value.type,
     collections: request.value.collections,
@@ -123,25 +126,27 @@ export async function reinviteOrganizationMember(
   database: D1Database,
   input: InvitationInput,
 ): Promise<OrganizationMembershipResult> {
-  const row = await database
-    .prepare(
-      'SELECT email AS emailNormalized FROM organization_users WHERE id = ? AND organization_id = ? AND status = 0',
-    )
-    .bind(input.membershipId, input.organizationId)
-    .first<{ emailNormalized: string }>()
-  if (!row) return { status: 'not_found' }
+  const recipient = await findOrganizationMemberForActor(database, {
+    organizationId: input.organizationId,
+    membershipId: input.membershipId,
+    actorUserId: input.actor.userId,
+    ...session(input.actor),
+  })
+  if (recipient.status !== 'success' || recipient.member.status !== 0)
+    return { status: 'not_found' }
+  const emailNormalized = recipient.member.emailNormalized
   const token = generateOrganizationMembershipInviteToken()
   const expiresAt = organizationMembershipInviteExpiresAt(input.now)
   const inviteTokenHash = await buildOrganizationMembershipInviteTokenHash({
     secret: input.inviteSecret,
     organizationId: input.organizationId,
     membershipId: input.membershipId,
-    emailNormalized: row.emailNormalized,
+    emailNormalized,
     token,
   })
   const result = await reinviteMember(database, {
     ...mutation(input),
-    emailNormalized: row.emailNormalized,
+    emailNormalized,
     inviteTokenHash,
     inviteExpiresAt: expiresAt,
     auditEvent: audit(
@@ -154,7 +159,7 @@ export async function reinviteOrganizationMember(
   if (result.status !== 'success') return result
   try {
     await input.delivery({
-      recipientEmail: row.emailNormalized,
+      recipientEmail: emailNormalized,
       token,
       organizationId: input.organizationId,
       membershipId: input.membershipId,
@@ -186,6 +191,7 @@ export async function acceptOrganizationMember(
     organizationId: input.organizationId,
     membershipId: input.membershipId,
     userId: input.actor.userId,
+    ...session(input.actor),
     emailNormalized: input.actor.emailNormalized,
     inviteTokenHash,
     now: input.now,
@@ -254,34 +260,42 @@ export async function removeOrganizationMember(
 
 export async function listOrganizationMembers(
   database: D1Database,
-  input: MembershipInput & { includeCollections: boolean },
+  input: MembershipInput & {
+    includeCollections: boolean
+    includeGroups?: boolean
+  },
 ): Promise<OrganizationMembershipResult> {
   const result = await listMembers(database, {
     organizationId: input.organizationId,
     actorUserId: input.actor.userId,
+    ...session(input.actor),
+    includeGroups: input.includeGroups === true,
   })
   if (result.status !== 'success') return result
   return {
     status: 'success',
     body: list(
-      result.members.map((member) =>
-        projectOrganizationMembershipMember({
+      result.members.map((member) => ({
+        ...projectOrganizationMembershipMember({
           ...member,
           collections: input.includeCollections ? member.collections : [],
         }),
-      ),
+        Groups: input.includeGroups ? (member.groups ?? []) : [],
+      })),
     ),
   }
 }
 
 export async function readOrganizationMember(
   database: D1Database,
-  input: MembershipInput,
+  input: MembershipInput & { includeGroups?: boolean },
 ): Promise<OrganizationMembershipResult> {
   const result = await findOrganizationMemberForActor(database, {
     organizationId: input.organizationId,
     membershipId: input.membershipId,
     actorUserId: input.actor.userId,
+    ...session(input.actor),
+    includeGroups: input.includeGroups === true,
   })
   if (result.status !== 'success') return result
   return {
@@ -289,6 +303,7 @@ export async function readOrganizationMember(
     body: {
       ...projectOrganizationMembershipMember(result.member),
       Object: 'organizationUserDetails',
+      Groups: input.includeGroups ? (result.member.groups ?? []) : [],
     },
   }
 }
@@ -299,6 +314,7 @@ export async function readOrganizationUserPublicKey(
 ): Promise<OrganizationMembershipResult> {
   const result = await findOrganizationUserPublicKeyForActor(database, {
     actorUserId: input.actor.userId,
+    ...session(input.actor),
     userId: input.userId,
   })
   if (result.status !== 'success') return result
@@ -321,6 +337,7 @@ export async function organizationMemberPublicKeys(
   const result = await listOrganizationMemberPublicKeys(database, {
     organizationId: input.organizationId,
     actorUserId: input.actor.userId,
+    ...session(input.actor),
     ids: request.value.ids,
   })
   if (result.status !== 'success') return result
@@ -358,7 +375,17 @@ function mutation(input: MembershipInput) {
     organizationId: input.organizationId,
     membershipId: input.membershipId,
     actorUserId: input.actor.userId,
+    ...session(input.actor),
     now: input.now,
+  }
+}
+
+function session(actor: OrganizationMembershipActor) {
+  return {
+    ...(actor.sessionId === undefined ? {} : { sessionId: actor.sessionId }),
+    ...(actor.deviceIdentifier === undefined
+      ? {}
+      : { deviceIdentifier: actor.deviceIdentifier }),
   }
 }
 
@@ -373,7 +400,12 @@ function audit(
     outcome: 'success',
     requestId: input.requestId,
     occurredAt: input.now,
-    actor: { userId: input.actor.userId },
+    actor: {
+      userId: input.actor.userId,
+      ...(input.actor.deviceIdentifier === undefined
+        ? {}
+        : { deviceIdentifier: input.actor.deviceIdentifier }),
+    },
     target: { type: 'organization_user', id: membershipId },
     context: { organizationId: input.organizationId, ...context },
   })

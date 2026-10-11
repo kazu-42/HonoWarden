@@ -158,18 +158,15 @@ export function registerOrganizationMembershipRoutes<E extends Env>(
               400,
             )
           }
-          if (c.req.query('includeGroups') === 'true') {
-            return error(
-              'unsupported_feature',
-              'Organization groups are unavailable on this server.',
-              501,
-            )
-          }
           result =
             operation === 'read'
-              ? await readOrganizationMember(runtime.database, input)
+              ? await readOrganizationMember(runtime.database, {
+                  ...input,
+                  includeGroups: c.req.query('includeGroups') === 'true',
+                })
               : await listOrganizationMembers(runtime.database, {
                   ...input,
+                  includeGroups: c.req.query('includeGroups') === 'true',
                   includeCollections:
                     c.req.query('includeCollections') === 'true',
                 })

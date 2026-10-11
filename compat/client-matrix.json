@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-09-22T05:32:22Z",
+  "checkedAt": "2026-10-04T08:21:50Z",
   "sourceKind": "official-upstream-release-metadata",
   "metadataRefresh": {
     "cadenceDays": 14,
@@ -10,9 +10,9 @@
   "entries": [
     {
       "surface": "browser_extension",
-      "version": "2026.9.1",
-      "releaseTag": "browser-v2026.9.1",
-      "releasePublishedAt": "2026-09-21T21:57:20Z",
+      "version": "2026.9.3",
+      "releaseTag": "browser-v2026.9.3",
+      "releasePublishedAt": "2026-10-01T18:08:55Z",
       "metadataSource": {
         "kind": "official-upstream-github-release",
         "repositoryRef": "client-apps",
@@ -50,16 +50,16 @@
         "webauthn_enrollment"
       ],
       "knownIssues": [
-        "No official Browser 2026.9.1 binary live smoke is recorded; this row is fixture-only.",
+        "No official Browser 2026.9.3 binary live smoke is recorded; this row is fixture-only.",
         "Browser 2026.6.1 live evidence was recorded post-tag and remains in historical evidence documents; it is not part of the sealed published-alpha snapshot and does not promote this exact version.",
-        "Fixture coverage verifies HonoWarden route and JSON contracts, not Browser 2026.9.1 execution or broad compatibility."
+        "Fixture coverage verifies HonoWarden route and JSON contracts, not Browser 2026.9.3 execution or broad compatibility."
       ]
     },
     {
       "surface": "desktop",
-      "version": "2026.9.0",
-      "releaseTag": "desktop-v2026.9.0",
-      "releasePublishedAt": "2026-09-17T13:52:45Z",
+      "version": "2026.9.1",
+      "releaseTag": "desktop-v2026.9.1",
+      "releasePublishedAt": "2026-10-01T19:35:06Z",
       "metadataSource": {
         "kind": "official-upstream-github-release",
         "repositoryRef": "client-apps",
@@ -97,7 +97,7 @@
         "webauthn_enrollment"
       ],
       "knownIssues": [
-        "No official Desktop 2026.9.0 binary live smoke is recorded; this row is fixture-only.",
+        "No official Desktop 2026.9.1 binary live smoke is recorded; this row is fixture-only.",
         "Desktop 2026.6.1 live evidence was recorded post-tag and remains in historical evidence documents; it is not part of the sealed published-alpha snapshot and does not promote this exact version.",
         "Item lifecycle, TOTP, and broad live regression remain unverified for this exact version."
       ]
@@ -152,10 +152,10 @@
     },
     {
       "surface": "mobile_ios",
-      "version": "2026.9.0",
-      "build": "3521",
-      "releaseTag": "v2026.9.0-bwpm",
-      "releasePublishedAt": "2026-09-18T13:26:07Z",
+      "version": "2026.9.1",
+      "build": "3533",
+      "releaseTag": "v2026.9.1-bwpm",
+      "releasePublishedAt": "2026-10-02T17:06:25Z",
       "metadataSource": {
         "kind": "official-upstream-github-release",
         "repositoryRef": "ios-mobile-apps",
@@ -193,35 +193,22 @@
         "webauthn_enrollment"
       ],
       "knownIssues": [
-        "No official iOS 2026.9.0 build 3521 live smoke is recorded; this row is fixture-only.",
+        "No official iOS 2026.9.1 build 3533 live smoke is recorded; this row is fixture-only.",
         "No physical-device or simulator live smoke is recorded for any exact iOS version in this repository.",
-        "Fixture coverage verifies HonoWarden route and JSON contracts, not iOS 2026.9.0 execution or broad compatibility."
+        "Fixture coverage verifies HonoWarden route and JSON contracts, not iOS 2026.9.1 execution or broad compatibility."
       ]
     },
     {
       "surface": "cli",
-      "version": "2026.9.0",
-      "releaseTag": "cli-v2026.9.0",
-      "releasePublishedAt": "2026-09-17T13:28:40Z",
+      "version": "2026.9.1",
+      "releaseTag": "cli-v2026.9.1",
+      "releasePublishedAt": "2026-10-01T19:23:43Z",
       "metadataSource": {
         "kind": "official-upstream-github-release",
         "repositoryRef": "client-apps",
         "releaseSelector": "latest non-draft, non-prerelease release whose tag starts with cli-v"
       },
-      "verificationLevel": "live_smoke",
-      "liveEvidence": {
-        "status": "passed",
-        "clientVersion": "2026.9.0",
-        "recordedAt": "2026-09-22T09:56:02Z",
-        "path": "docs/release/current-cli-2026-9-smoke.md",
-        "flows": [
-          "config",
-          "prelogin",
-          "password_grant",
-          "sync_with_items",
-          "direct_read"
-        ]
-      },
+      "verificationLevel": "fixture_only",
       "coveredFlows": [
         "config",
         "prelogin",
@@ -253,7 +240,7 @@
         "webauthn_enrollment"
       ],
       "knownIssues": [
-        "Official CLI 2026.9.0 passed isolated local synthetic login, key-ID backfill, populated sync, five-field decryption, lock/unlock, logout, and repeat login on 2026-09-22. Requires migration 0022 and the local-only user-key-ID flag. No staging/production activation or broad live regression is claimed.",
+        "No official CLI 2026.9.1 binary live smoke is recorded; this row is fixture-only. CLI 2026.9.0 local login, personal CRUD, and two-account sharing evidence is preserved separately and does not promote this exact version.",
         "The sealed published-alpha snapshot contains CLI 2026.6.0 login, sync, and item lifecycle evidence only; refresh and TOTP evidence is post-tag, and none of this historical evidence promotes this exact version.",
         "The remaining coveredFlows are fixture coverage, not current-client live evidence. Current CLI mutation, TOTP, credential rotation UI, session revoke, and broad compatibility remain unverified."
       ]

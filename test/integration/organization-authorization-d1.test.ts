@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { Miniflare } from 'miniflare'
@@ -195,7 +195,8 @@ describe('organization authorization on real local D1', () => {
     const db = await createDatabase()
     await db.batch([
       db.prepare(
-        "INSERT INTO ciphers (id, user_id, organization_id) VALUES ('shared', 'owner', 'org')",
+        `INSERT INTO ciphers (id, user_id, organization_id, type, encrypted_json, revision_date)
+          VALUES ('shared', 'owner', 'org', 1, '{"name":"2.shared"}', '${now}')`,
       ),
       db.prepare(
         "INSERT INTO collection_ciphers VALUES ('collection', 'shared')",
@@ -238,30 +239,39 @@ async function createDatabase(): Promise<D1Database> {
   })
   instances.push(instance)
   const db = (await instance.getD1Database('DB')) as unknown as D1Database
-  const foundation = [
-    'CREATE TABLE users (id TEXT PRIMARY KEY)',
-    'CREATE TABLE ciphers (id TEXT PRIMARY KEY, user_id TEXT NOT NULL)',
-    'CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)',
-    "INSERT INTO users VALUES ('owner')",
-  ]
-  const migration = readFileSync(
-    fileURLToPath(
-      new URL(
-        '../../migrations/0014_organizations.sql',
-        import.meta.url,
-      ).toString(),
-    ),
-    'utf8',
+  const root = fileURLToPath(
+    new URL('../../migrations', import.meta.url).toString(),
   )
-  await db.batch(
-    [
-      ...foundation,
-      ...migration
-        .split(';')
-        .map((sql) => sql.trim())
-        .filter(Boolean),
-    ].map((sql) => db.prepare(sql)),
-  )
+  for (const file of readdirSync(root)
+    .filter((name) => name.endsWith('.sql'))
+    .sort()) {
+    const lines: string[] = []
+    let inTrigger = false
+    for (const line of readFileSync(`${root}/${file}`, 'utf8').split('\n')) {
+      const trimmed = line.trim()
+      if (lines.length === 0 && !trimmed) continue
+      if (/^CREATE\s+TRIGGER\b/iu.test(trimmed)) inTrigger = true
+      lines.push(line)
+      if (inTrigger ? /^END;$/iu.test(trimmed) : trimmed.endsWith(';')) {
+        await db.prepare(lines.join('\n')).run()
+        lines.length = 0
+        inTrigger = false
+      }
+    }
+    if (lines.some((line) => line.trim()))
+      throw new Error(`Incomplete migration: ${file}`)
+  }
+  for (const userId of ['owner', 'outsider']) {
+    await db
+      .prepare(
+        `INSERT INTO users (
+      id, email, email_normalized, kdf_algorithm, kdf_iterations,
+      master_password_hash, user_key, security_stamp, revision_date
+    ) VALUES (?, ?, ?, 'pbkdf2-sha256', 600000, 'synthetic-hash', '2.wrapper', 'stamp', ?)`,
+      )
+      .bind(userId, `${userId}@example.test`, `${userId}@example.test`, now)
+      .run()
+  }
   await createOrganizationFoundation(db, {
     organizationId: scope.organizationId,
     organizationUserId: 'membership',

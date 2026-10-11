@@ -4206,6 +4206,7 @@ describe('HonoWarden app', () => {
           authUser: {
             ...authUserRecord(),
             totpEnabled: true,
+            totpCredentialGeneration: 'synthetic-totp-generation',
             totpEncryptedSecret: encryptedSecret,
           },
         }),
@@ -4255,8 +4256,10 @@ describe('HonoWarden app', () => {
           authUser: {
             ...authUserRecord(),
             totpEnabled: true,
+            totpCredentialGeneration: 'synthetic-totp-generation',
             totpEncryptedSecret: encryptedSecret,
           },
+          userTotp: enabledTotpFixture(encryptedSecret),
           totpChallenge: {
             id: 'totp-challenge-id',
             userId: 'user-id',
@@ -4315,8 +4318,10 @@ describe('HonoWarden app', () => {
           authUser: {
             ...authUserRecord(),
             totpEnabled: true,
+            totpCredentialGeneration: 'synthetic-totp-generation',
             totpEncryptedSecret: encryptedSecret,
           },
+          userTotp: enabledTotpFixture(encryptedSecret),
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
         HONOWARDEN_TOTP_SECRET: 'test-totp-secret',
@@ -4366,6 +4371,7 @@ describe('HonoWarden app', () => {
           authUser: {
             ...authUserRecord(),
             totpEnabled: true,
+            totpCredentialGeneration: 'synthetic-totp-generation',
             totpEncryptedSecret: encryptedSecret,
           },
           totpChallenge: {
@@ -5683,6 +5689,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: 'v1.encrypted-totp-secret',
       totpLastAcceptedStep: 59440320,
     }
@@ -5850,6 +5857,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: 'v1.encrypted-totp-secret',
       totpLastAcceptedStep: 59440320,
     }
@@ -5865,6 +5873,10 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          userTotp: enabledTotpFixture(
+            user.totpEncryptedSecret,
+            user.totpLastAcceptedStep,
+          ),
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -5881,6 +5893,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: 'v1.encrypted-totp-secret',
       totpLastAcceptedStep: 59440320,
     }
@@ -5993,6 +6006,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: 'v1.encrypted-totp-secret',
       totpLastAcceptedStep: 59440320,
     }
@@ -6009,6 +6023,10 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
+          userTotp: enabledTotpFixture(
+            user.totpEncryptedSecret,
+            user.totpLastAcceptedStep,
+          ),
         }),
         HONOWARDEN_AUDIT_LOGS: 'true',
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
@@ -6050,6 +6068,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: encryptedSecret,
       totpLastAcceptedStep: null,
     }
@@ -6073,6 +6092,7 @@ describe('HonoWarden app', () => {
             userId: 'user-id',
             encryptedSecret,
             enabled: 1,
+            credentialGeneration: 'synthetic-totp-generation',
             verifiedAt: '2026-07-06T00:01:00.000Z',
             lastAcceptedStep: null,
             pendingEncryptedSecret: null,
@@ -6105,6 +6125,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: encryptedSecret,
       totpLastAcceptedStep: null,
     }
@@ -6149,6 +6170,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: encryptedSecret,
       totpLastAcceptedStep: null,
     }
@@ -6173,6 +6195,7 @@ describe('HonoWarden app', () => {
             userId: 'user-id',
             encryptedSecret,
             enabled: 1,
+            credentialGeneration: 'synthetic-totp-generation',
             verifiedAt: '2026-07-06T00:01:00.000Z',
             lastAcceptedStep: null,
             pendingEncryptedSecret: null,
@@ -6205,6 +6228,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: 'v1.current-encrypted-secret',
       totpLastAcceptedStep: 59440320,
     }
@@ -6227,6 +6251,7 @@ describe('HonoWarden app', () => {
           userTotp: {
             userId: 'user-id',
             encryptedSecret: 'v1.current-encrypted-secret',
+            credentialGeneration: 'synthetic-totp-generation',
             enabled: 1,
             verifiedAt: '2026-07-06T00:01:00.000Z',
             lastAcceptedStep: 59440320,
@@ -6253,6 +6278,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: 'v1.current-encrypted-secret',
       totpLastAcceptedStep: 59440320,
     }
@@ -6276,6 +6302,7 @@ describe('HonoWarden app', () => {
           userTotp: {
             userId: 'user-id',
             encryptedSecret: 'v1.current-encrypted-secret',
+            credentialGeneration: 'synthetic-totp-generation',
             enabled: 1,
             verifiedAt: '2026-07-06T00:01:00.000Z',
             lastAcceptedStep: 59440320,
@@ -6861,13 +6888,15 @@ describe('HonoWarden app', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toBe('2026-07-06T00:08:00.000Z')
+    // Organization lifecycle revisions remain observable without collection access.
+    await expect(response.json()).resolves.toBe('2026-07-06T00:09:00.000Z')
   })
 
   it('returns account profile metadata for a valid access token', async () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
     }
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
@@ -7295,6 +7324,7 @@ describe('HonoWarden app', () => {
     const user = {
       ...authUserRecord(),
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
     }
     const accessToken = await accessTokenFor(user)
     const response = await app.request(
@@ -8810,6 +8840,7 @@ describe('HonoWarden app', () => {
       publicKey: 'synthetic-surviving-public-key',
       privateKey: null,
       totpEnabled: true,
+      totpCredentialGeneration: 'synthetic-totp-generation',
       totpEncryptedSecret: encryptedSecret,
     }
     const database = new FakeD1Database(null, [], { authUser: user })
@@ -16584,6 +16615,24 @@ function personalApiKeyTestEnv(
     HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
     HONOWARDEN_PERSONAL_API_KEYS_ENABLED: 'true',
     HONOWARDEN_API_KEY_SECRET: '0123456789abcdef0123456789abcdef',
+  }
+}
+
+function enabledTotpFixture(
+  encryptedSecret: string,
+  lastAcceptedStep: number | null = null,
+) {
+  return {
+    userId: 'user-id',
+    encryptedSecret,
+    enabled: 1,
+    credentialGeneration: 'synthetic-totp-generation',
+    verifiedAt: '2026-07-06T00:00:00.000Z',
+    lastAcceptedStep,
+    pendingEncryptedSecret: null,
+    pendingCreatedAt: null,
+    createdAt: '2026-07-06T00:00:00.000Z',
+    updatedAt: '2026-07-06T00:00:00.000Z',
   }
 }
 

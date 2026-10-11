@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["app.ts", "browser/**/*.ts"],
+  "exclude": ["browser/crypto.worker.ts"]
+}

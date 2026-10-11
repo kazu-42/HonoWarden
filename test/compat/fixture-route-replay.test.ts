@@ -65,6 +65,20 @@ const totpReplayUser = {
   ...replayUser,
   totpEnabled: true,
   totpEncryptedSecret: totpReplayEncryptedSecret,
+  totpCredentialGeneration: 'fixture-totp-credential-generation',
+}
+
+const totpReplaySetup = {
+  userId: totpReplayUser.id,
+  encryptedSecret: totpReplayEncryptedSecret,
+  enabled: 1,
+  verifiedAt: '1970-05-06T05:20:00.000Z',
+  lastAcceptedStep: null,
+  credentialGeneration: totpReplayUser.totpCredentialGeneration,
+  pendingEncryptedSecret: null,
+  pendingCreatedAt: null,
+  createdAt: '1970-05-06T05:20:00.000Z',
+  updatedAt: '1970-05-06T05:20:00.000Z',
 }
 
 const totpLoginReplayTime = new Date('1970-05-06T05:26:30.000Z')
@@ -202,6 +216,7 @@ const replayFixtures = [
     allowMutatingFixtures: true,
     database: {
       authUser: totpReplayUser,
+      userTotp: totpReplaySetup,
     },
   },
   {
@@ -210,6 +225,7 @@ const replayFixtures = [
     systemTime: totpLoginReplayTime,
     database: {
       authUser: totpReplayUser,
+      userTotp: totpReplaySetup,
       totpChallenge: totpLoginChallenge,
       totpChallengeUpdateChanges: 1,
     },

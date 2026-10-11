@@ -1,3 +1,8 @@
+import {
+  organizationAccessActorValues,
+  organizationCollectionAccessCtes,
+} from './organization-collection-access-sql'
+import type { OrganizationPolicyActor } from './organization-policy-sql'
 import type { BootstrapUserRecord } from '../domain/bootstrap'
 
 export type CreateBootstrapUserResult =
@@ -86,39 +91,26 @@ export async function createBootstrapUser(
   }
 }
 
+// Lifecycle revisions remain visible when policy blocks organization data, so
+// clients can observe policy activation and clear their previously synced keys.
 export async function getAccountRevisionDate(
   database: UserRepositoryDatabase,
   userId: string,
+  actor?: OrganizationPolicyActor,
 ): Promise<string | null> {
   const row = await database
     .prepare(
       `
-        WITH requested_user AS (
-          SELECT ? AS userId
-        ),
-        confirmed_memberships AS (
-          SELECT
-            membership.id as organizationUserId,
-            membership.organization_id as organizationId
+        WITH ${organizationCollectionAccessCtes},
+        requested_user AS (SELECT user_id AS userId FROM requested_actor),
+        lifecycle_memberships AS (
+          SELECT membership.organization_id AS organizationId
           FROM organization_users membership
-          INNER JOIN organizations organization
-            ON organization.id = membership.organization_id
+          INNER JOIN organizations organization ON organization.id = membership.organization_id
             AND organization.enabled = 1
-          INNER JOIN requested_user
-            ON requested_user.userId = membership.user_id
-          WHERE membership.status = 2
-            AND membership.type IN (0, 1, 2)
-        ),
-        accessible_organization_collections AS (
-          SELECT DISTINCT
-            collection.id as collectionId,
-            collection.organization_id as organizationId
-          FROM confirmed_memberships membership
-          INNER JOIN collection_users collection_user
-            ON collection_user.organization_user_id = membership.organizationUserId
-          INNER JOIN collections collection
-            ON collection.id = collection_user.collection_id
-            AND collection.organization_id = membership.organizationId
+          INNER JOIN active_organization_actor requested_actor
+            ON requested_actor.user_id = membership.user_id
+          WHERE membership.status = 2 AND membership.type IN (0, 1, 2)
         )
         SELECT MAX(revision_date) as revisionDate
         FROM (
@@ -140,7 +132,7 @@ export async function getAccountRevisionDate(
           UNION ALL
           SELECT organization.revision_date
           FROM organizations organization
-          INNER JOIN confirmed_memberships membership
+          INNER JOIN lifecycle_memberships membership
             ON membership.organizationId = organization.id
           UNION ALL
           SELECT cipher.revision_date
@@ -157,7 +149,7 @@ export async function getAccountRevisionDate(
         )
       `,
     )
-    .bind(userId)
+    .bind(...organizationAccessActorValues(userId, actor))
     .first<AccountRevisionRow>()
 
   return row?.revisionDate ?? null

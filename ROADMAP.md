@@ -12,6 +12,14 @@ criteria, and issue-capacity policy are maintained in
 schedule below remains the historical product roadmap; the implementation plan
 is authoritative for current delivery order.
 
+The October 2026 company continuation adds a limited organization administration
+interface, encrypted membership/sharing, groups, required TOTP, and a custom
+partial audit history. [ADR 0016](docs/adr/0016-company-administration.md)
+supersedes the historical API-only rule for that interface. SSO/SCIM, company
+account recovery, custom roles, and a full personal Web Vault remain follow-ups.
+The historical non-goals and calendar below describe the initial product plan,
+not a claim that the currently implemented team features are absent.
+
 ## Target For v0.1.0-alpha
 
 HonoWarden should let official upstream browser extension, desktop, and mobile clients connect to a self-hosted URL and use a minimal personal vault:
@@ -48,7 +56,7 @@ These are deferred because they expand the attack surface or require a separate 
 - Prefer official upstream client verification over curl-only verification once an endpoint is reachable by clients.
 - Fix compatibility regressions before adding new features.
 - Capture incoming and outgoing compatibility JSON as fixtures.
-- Keep the project API-only; do not add a Web Vault.
+- Keep vault item workflows in official clients; the separately scoped organization administration UI follows ADR 0016.
 - Put new risky features behind feature flags.
 - Check authorization, ownership, and revision state before persisting D1/R2 changes.
 - Unsupported feature surfaces should fail explicitly with `403` or `501`; they should not silently no-op.

@@ -1,8 +1,8 @@
 # HonoWarden
 
-A minimal, API-only encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2.
+A minimal encrypted vault sync server for Cloudflare Workers, built with Hono, D1, and R2, with an optional organization administration interface.
 
-HonoWarden focuses on personal and incrementally verified small-team vault sync using official clients for the upstream encrypted-vault protocol. The current source includes an organization foundation and owner-administered collection CRUD, while broader membership, role, organization-cipher, and policy workflows remain outside the supported boundary. It intentionally avoids Web Vault, public registration, and public file-sharing features in the initial scope to reduce attack surface.
+HonoWarden focuses on personal and incrementally verified small-team vault sync using official clients for the upstream encrypted-vault protocol. The source includes encrypted organization sharing, invitations and confirmation, Owner/Admin/User roles, direct and group collection grants, a required-TOTP policy, and a bounded organization audit API. The original browser interface at `/admin/` manages these organization functions; official clients remain the vault item interface. Management and browser-serving flags stay off in tracked configuration. Source implementation and local tests do not establish deployed readiness or complete official-client compatibility.
 
 ## Status
 
@@ -13,7 +13,7 @@ The first milestone is a narrow compatibility target:
 - official upstream clients can authenticate against a self-hosted endpoint
 - personal vault items can sync through the public client API surface needed for single-user and small-team use
 - encrypted vault data is stored in D1, with larger binary objects stored in R2 when required
-- server-side behavior stays API-only, with no bundled Web Vault
+- optional browser organization administration, with account keys held in a dedicated crypto worker and no persistent browser credentials
 
 ## Non-Goals
 
@@ -21,9 +21,9 @@ The first milestone is a narrow compatibility target:
 - hosted billing, paid subscriptions, and seat commerce
 - commercial licensing and provider/reseller portals
 - public account registration
-- broad organization administration and shared-cipher workflows
+- custom roles, SSO/SCIM, enterprise account recovery, and general enterprise policy parity
 - public file sharing
-- Web Vault
+- a full personal Web Vault
 - browser extension or mobile client forks
 
 ## Development
@@ -46,6 +46,7 @@ Run checks:
 pnpm check
 pnpm lint
 pnpm test
+pnpm admin:build
 ```
 
 Apply local D1 migrations:
@@ -59,6 +60,14 @@ Run locally with Wrangler:
 ```sh
 pnpm dev
 ```
+
+Build the administration assets with `pnpm admin:build` before local Worker
+startup. `pnpm admin:dev` serves the browser source on loopback port 5173 and
+proxies `/api` and `/identity` to the local Worker on port 8787. Configure the
+local feature profile and invitation mailer before exercising management;
+see [company administration](docs/operations/company-administration.md).
+The browser has no public registration flow and keeps unlocked secrets only in
+memory. Reloading or closing it requires a new login.
 
 Configure local prelogin allowlist in `wrangler.jsonc` before testing login-related endpoints:
 
@@ -103,7 +112,11 @@ bootstrap and deployment are currently stopped. Resource creation, migration,
 and runtime configuration require the separately reviewed execution protocol
 described in [Deploy Provenance](docs/operations/deploy-provenance-runbook.md).
 
-Local development uses Wrangler's local D1 store. After applying migrations, `GET /health/db` reports the active schema version and required table set.
+Local development uses Wrangler's local D1 store. After applying migrations,
+`GET /health/db` reports the latest recorded migration and required tables.
+It does not verify columns, indexes, triggers, or an exact migration manifest;
+the company source requires all migrations through 0030 even when management
+flags are off.
 
 ## Compatibility
 

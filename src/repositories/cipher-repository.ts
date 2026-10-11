@@ -1,3 +1,10 @@
+import {
+  organizationAccessActorValues,
+  organizationCollectionAccessCte,
+  type OrganizationAccessContext,
+} from './organization-collection-access-sql'
+import type { OrganizationPolicyActor } from './organization-policy-sql'
+
 export type CipherRecord = {
   id: string
   userId: string
@@ -73,7 +80,7 @@ export type AccessibleCipherListPage = {
   hasMore: boolean
 }
 
-export type OrganizationCipherWriteInput = {
+export type OrganizationCipherWriteInput = OrganizationAccessContext & {
   id: string
   userId: string
   organizationId: string
@@ -190,28 +197,6 @@ type AccessibleCipherRow = CipherRow & {
   canViewPassword: number | boolean
 }
 
-const accessibleOrganizationCollectionsCte = `
-  WITH accessible_organization_collections AS (
-    SELECT DISTINCT
-      collection.id as collectionId,
-      collection.organization_id as organizationId,
-      collection_user.read_only as readOnly,
-      collection_user.hide_passwords as hidePasswords
-    FROM organization_users membership
-    INNER JOIN organizations organization
-      ON organization.id = membership.organization_id
-      AND organization.enabled = 1
-    INNER JOIN collection_users collection_user
-      ON collection_user.organization_user_id = membership.id
-    INNER JOIN collections collection
-      ON collection.id = collection_user.collection_id
-      AND collection.organization_id = membership.organization_id
-    WHERE membership.user_id = ?
-      AND membership.status = 2
-      AND membership.type IN (0, 1, 2)
-  )
-`
-
 const accessibleCipherSelect = `
   SELECT
     cipher.id,
@@ -318,17 +303,18 @@ export async function listCiphersByUser(
 export async function listAccessibleCiphersByUser(
   database: CipherDatabase,
   userId: string,
+  actor?: OrganizationPolicyActor,
 ): Promise<AccessibleCipherRecord[]> {
   const result = await database
     .prepare(
       `
-        ${accessibleOrganizationCollectionsCte}
+        ${organizationCollectionAccessCte}
         ${accessibleCipherSelect}
         WHERE ${accessibleCipherPredicate}
         ORDER BY cipher.revision_date ASC, cipher.id ASC
       `,
     )
-    .bind(userId, userId)
+    .bind(...organizationAccessActorValues(userId, actor), userId)
     .all<AccessibleCipherRow>()
 
   return result.results.map(accessibleCipherFromRow)
@@ -384,7 +370,7 @@ export async function listCiphersByUserPage(
 
 export async function listAccessibleCiphersByUserPage(
   database: CipherDatabase,
-  input: CipherListPageInput,
+  input: CipherListPageInput & OrganizationAccessContext,
 ): Promise<AccessibleCipherListPage> {
   const cursorPredicate = input.cursor
     ? 'AND (cipher.revision_date > ? OR (cipher.revision_date = ? AND cipher.id > ?))'
@@ -392,7 +378,7 @@ export async function listAccessibleCiphersByUserPage(
   const result = await database
     .prepare(
       `
-        ${accessibleOrganizationCollectionsCte}
+        ${organizationCollectionAccessCte}
         ${accessibleCipherSelect}
         WHERE ${accessibleCipherPredicate}
           ${cursorPredicate}
@@ -401,7 +387,7 @@ export async function listAccessibleCiphersByUserPage(
       `,
     )
     .bind(
-      input.userId,
+      ...organizationAccessActorValues(input.userId, input.actor),
       input.userId,
       ...(input.cursor
         ? [
@@ -451,19 +437,23 @@ export async function findCipherById(
 
 export async function findAccessibleCipherById(
   database: CipherDatabase,
-  input: Pick<CipherRecord, 'id' | 'userId'>,
+  input: Pick<CipherRecord, 'id' | 'userId'> & OrganizationAccessContext,
 ): Promise<AccessibleCipherRecord | null> {
   const row = await database
     .prepare(
       `
-        ${accessibleOrganizationCollectionsCte}
+        ${organizationCollectionAccessCte}
         ${accessibleCipherSelect}
         WHERE cipher.id = ?
           AND ${accessibleCipherPredicate}
         LIMIT 1
       `,
     )
-    .bind(input.userId, input.id, input.userId)
+    .bind(
+      ...organizationAccessActorValues(input.userId, input.actor),
+      input.id,
+      input.userId,
+    )
     .first<AccessibleCipherRow>()
 
   return row ? accessibleCipherFromRow(row) : null
@@ -473,6 +463,7 @@ export async function resolveCipherAccess(
   database: CipherDatabase,
   callerUserId: string,
   cipherId: string,
+  actor?: OrganizationPolicyActor,
 ): Promise<CipherAccess> {
   const cipher = await database
     .prepare(
@@ -510,29 +501,19 @@ export async function resolveCipherAccess(
   const managedCollection = await database
     .prepare(
       `
-        SELECT COUNT(*) as hasManageAccess,
-          MIN(collection_user.read_only) as readOnly,
-          MIN(collection_user.hide_passwords) as hidePasswords
-        FROM organization_users membership
-        INNER JOIN organizations organization
-          ON organization.id = membership.organization_id
-          AND organization.enabled = 1
-        INNER JOIN collection_users collection_user
-          ON collection_user.organization_user_id = membership.id
-        INNER JOIN collections collection
-          ON collection.id = collection_user.collection_id
-          AND collection.organization_id = membership.organization_id
-        INNER JOIN collection_ciphers collection_cipher
-          ON collection_cipher.collection_id = collection.id
-        WHERE membership.user_id = ?
-          AND membership.status = 2
-          AND membership.type IN (0, 1, 2)
-          AND membership.organization_id = ?
-          AND collection.organization_id = ?
-          AND collection_cipher.cipher_id = ?
-      `,
+      ${organizationCollectionAccessCte}
+      SELECT COUNT(*) AS hasManageAccess, MIN(access.readOnly) AS readOnly,
+        MIN(access.hidePasswords) AS hidePasswords
+      FROM accessible_organization_collections access
+      INNER JOIN collection_ciphers mapping ON mapping.collection_id = access.collectionId
+      WHERE access.organizationId = ? AND mapping.cipher_id = ?
+    `,
     )
-    .bind(callerUserId, organizationId, organizationId, cipherId)
+    .bind(
+      ...organizationAccessActorValues(callerUserId, actor),
+      organizationId,
+      cipherId,
+    )
     .first<{
       hasManageAccess: number
       readOnly: number
@@ -565,29 +546,21 @@ function deniedCipherAccess(
   }
 }
 
-function managedOrganizationCollectionsSql(collectionIds: readonly string[]) {
+function managedOrganizationCollectionsSql() {
   return `
     FROM collections collection
-    INNER JOIN organizations organization
-      ON organization.id = collection.organization_id
-      AND organization.enabled = 1
-    INNER JOIN collection_users collection_user
-      ON collection_user.collection_id = collection.id
-      AND collection_user.read_only = 0
-    INNER JOIN organization_users membership
-      ON membership.id = collection_user.organization_user_id
-      AND membership.organization_id = collection.organization_id
-    WHERE membership.user_id = ?
-      AND membership.status = 2
-      AND membership.type IN (0, 1, 2)
-      AND membership.organization_id = ?
-      AND collection.id IN (${cipherIdPlaceholders(collectionIds)})
+    INNER JOIN accessible_organization_collections access
+      ON access.collectionId = collection.id
+      AND access.organizationId = collection.organization_id
+    WHERE access.readOnly = 0
+      AND collection.organization_id = ?
+      AND collection.id IN (SELECT value FROM json_each(?))
   `
 }
 
 export async function validateManagedOrganizationCollections(
   database: CipherDatabase,
-  input: {
+  input: OrganizationAccessContext & {
     userId: string
     organizationId: string
     collectionIds: readonly string[]
@@ -600,11 +573,16 @@ export async function validateManagedOrganizationCollections(
   const row = await database
     .prepare(
       `
+        ${organizationCollectionAccessCte}
         SELECT COUNT(DISTINCT collection.id) as count
-        ${managedOrganizationCollectionsSql(input.collectionIds)}
+        ${managedOrganizationCollectionsSql()}
       `,
     )
-    .bind(input.userId, input.organizationId, ...input.collectionIds)
+    .bind(
+      ...organizationAccessActorValues(input.userId, input.actor),
+      input.organizationId,
+      JSON.stringify(input.collectionIds),
+    )
     .first<CollectionCountRow>()
 
   return Number(row?.count ?? 0) === input.collectionIds.length
@@ -634,7 +612,7 @@ export async function createOrganizationCipher(
       SELECT ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?
       WHERE (
         SELECT COUNT(DISTINCT collection.id)
-        ${managedOrganizationCollectionsSql(input.collectionIds)}
+        ${managedOrganizationCollectionsSql()}
       ) = ?
     `,
     mutationValues: [
@@ -648,9 +626,8 @@ export async function createOrganizationCipher(
       input.now,
       input.organizationId,
       input.cipherKey,
-      input.userId,
       input.organizationId,
-      ...input.collectionIds,
+      JSON.stringify(input.collectionIds),
       input.collectionIds.length,
     ],
   })
@@ -695,7 +672,7 @@ export async function sharePersonalCipherWithOrganization(
         )
         AND (
           SELECT COUNT(DISTINCT collection.id)
-          ${managedOrganizationCollectionsSql(input.collectionIds)}
+          ${managedOrganizationCollectionsSql()}
         ) = ?
     `,
     mutationValues: [
@@ -709,9 +686,8 @@ export async function sharePersonalCipherWithOrganization(
       input.id,
       input.userId,
       input.expectedRevisionDate,
-      input.userId,
       input.organizationId,
-      ...input.collectionIds,
+      JSON.stringify(input.collectionIds),
       input.collectionIds.length,
     ],
   })
@@ -746,13 +722,19 @@ function organizationCipherTransitionStatements(
   mutation: { mutationSql: string; mutationValues: unknown[] },
 ): D1PreparedStatement[] {
   return [
-    database.prepare(mutation.mutationSql).bind(...mutation.mutationValues),
+    database
+      .prepare(`${organizationCollectionAccessCte}\n${mutation.mutationSql}`)
+      .bind(
+        ...organizationAccessActorValues(input.userId, input.actor),
+        ...mutation.mutationValues,
+      ),
     database
       .prepare(
         `
+          ${organizationCollectionAccessCte}
           INSERT INTO collection_ciphers (collection_id, cipher_id)
           SELECT DISTINCT collection.id, ?
-          ${managedOrganizationCollectionsSql(input.collectionIds)}
+          ${managedOrganizationCollectionsSql()}
             AND EXISTS (
               SELECT 1
               FROM ciphers transitioned_cipher
@@ -767,10 +749,10 @@ function organizationCipherTransitionStatements(
         `,
       )
       .bind(
+        ...organizationAccessActorValues(input.userId, input.actor),
         input.id,
-        input.userId,
         input.organizationId,
-        ...input.collectionIds,
+        JSON.stringify(input.collectionIds),
         input.id,
         input.userId,
         input.organizationId,
@@ -811,6 +793,7 @@ function assertOrganizationCipherInput(
 function hasUniqueCollectionIds(collectionIds: readonly string[]): boolean {
   return (
     collectionIds.length > 0 &&
+    collectionIds.length <= 100 &&
     collectionIds.every((id) => id.length > 0) &&
     new Set(collectionIds).size === collectionIds.length
   )

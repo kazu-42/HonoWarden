@@ -406,7 +406,9 @@ export async function consumeAuthRequestWithSession(
             last_seen_at = ?,
             revoked_at = NULL,
             updated_at = ?,
-            session_id = ?
+            session_id = ?,
+            mfa_totp_credential_generation = NULL,
+            mfa_verified_at = NULL
           WHERE id = ?
             AND user_id = ?
             AND EXISTS (

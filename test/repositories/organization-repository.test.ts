@@ -36,7 +36,13 @@ describe('updateOrganizationCollection', () => {
     expect(collectionUpdate?.query).toContain(
       'external_id = CASE WHEN ? = 1 THEN ? ELSE external_id END',
     )
-    expect(collectionUpdate?.values.slice(0, 3)).toEqual([
+    expect(collectionUpdate?.values.slice(0, 4)).toEqual([
+      'owner-user-id',
+      null,
+      null,
+      0,
+    ])
+    expect(collectionUpdate?.values.slice(4, 7)).toEqual([
       '2.renamed-collection',
       0,
       null,

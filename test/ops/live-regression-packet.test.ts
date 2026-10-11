@@ -105,7 +105,7 @@ describe('live regression packet', () => {
     expect(report.targetVerificationLevel).toBe('live_regression')
     expect(report.matrix).toMatchObject({
       surface: 'cli',
-      currentVerificationLevel: 'live_smoke',
+      currentVerificationLevel: 'fixture_only',
       currentVersion: currentCli.version,
     })
     expect(report.client).toMatchObject({

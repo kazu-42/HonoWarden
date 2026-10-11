@@ -4,6 +4,33 @@ import { getDatabaseHealth } from '../../src/infra/db-health'
 import { FakeD1Database, requiredTables } from '../support/fake-d1'
 
 describe('getDatabaseHealth', () => {
+  it('requires the company group and policy tables before serving company code', async () => {
+    const health = await getDatabaseHealth(
+      new FakeD1Database(
+        '0024',
+        requiredTables.filter(
+          (name) =>
+            ![
+              'organization_groups',
+              'organization_group_users',
+              'collection_groups',
+              'organization_policies',
+            ].includes(name),
+        ),
+      ),
+    )
+    expect(health).toMatchObject({
+      ok: false,
+      code: 'required_tables_missing',
+      missingTables: [
+        'organization_groups',
+        'organization_group_users',
+        'collection_groups',
+        'organization_policies',
+      ],
+    })
+  })
+
   it('returns ok when the schema metadata and required tables exist', async () => {
     const health = await getDatabaseHealth(
       new FakeD1Database('0001', [...requiredTables]),
