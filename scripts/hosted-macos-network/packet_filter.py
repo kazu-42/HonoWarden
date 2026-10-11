@@ -78,20 +78,73 @@ def pf(args, data=None):
     return result.stdout, result.stderr
 
 
+def install_for_desktop(uid, ports, remember):
+    """Journal before each effect; a later hosted finish step can undo our anchor."""
+    require_host(os.environ, sys.platform)
+    rules = filter_rules(uid, ports).encode()
+    before = {name: command(name) for name in ["rules", "status", "anchors", "interfaces"]}
+    baseline = project(before)
+    if uid != os.getuid() or baseline["packetFilterEnabled"] or not baseline["onlyAppleWildcardAnchor"] or baseline["loopbackSkip"]:
+        raise Blocked("packet_filter_baseline_unadmitted")
+    record = {"schema": "honowarden-owned-network-filter-v1", "uid": uid,
+              "anchor": "com.apple/honowarden-" + secrets.token_hex(12),
+              "baselineRulesSha256": baseline["mainRulesSha256"],
+              "rulesAttempted": False, "enableAttempted": False, "enableToken": None}
+    if pf(["-a", record["anchor"], "-sr"])[0].strip():
+        raise Blocked("packet_filter_anchor_occupied")
+    pf(["-n", "-a", record["anchor"], "-f", "-"], rules)
+    if command("rules") != before["rules"] or project({**before, "status": command("status")})["packetFilterEnabled"]:
+        raise Blocked("packet_filter_baseline_changed")
+    record["rulesAttempted"] = True
+    remember(dict(record))
+    pf(["-a", record["anchor"], "-f", "-"], rules)
+    record["enableAttempted"] = True
+    remember(dict(record))
+    out, err = pf(["-E"])
+    tokens = re.findall(rb"\bToken\s*:\s*([0-9]{1,20})\b", out + err)
+    if len(tokens) != 1:
+        raise Blocked("packet_filter_enable_token_unknown")
+    record["enableToken"] = tokens[0].decode()
+    remember(dict(record))
+    return record
+
+
+def validate_record(record, uid):
+    keys = {"schema", "uid", "anchor", "baselineRulesSha256", "rulesAttempted", "enableAttempted", "enableToken"}
+    if (type(record) is not dict or set(record) != keys or record["schema"] != "honowarden-owned-network-filter-v1"
+        or type(record["uid"]) is not int or record["uid"] != uid or not 500 <= uid <= 1000000
+        or type(record["anchor"]) is not str or re.fullmatch(r"com\.apple/honowarden-[a-f0-9]{24}", record["anchor"]) is None
+        or type(record["baselineRulesSha256"]) is not str or re.fullmatch(r"[a-f0-9]{64}", record["baselineRulesSha256"]) is None
+        or any(type(record[key]) is not bool for key in ["rulesAttempted", "enableAttempted"])
+        or record["enableToken"] is not None and (type(record["enableToken"]) is not str or re.fullmatch(r"[0-9]{1,20}", record["enableToken"]) is None)
+        or record["enableAttempted"] and not record["rulesAttempted"]
+        or record["enableToken"] is not None and not record["enableAttempted"]):
+        raise Blocked("packet_filter_record_invalid")
+
+
+def restore_record(record):
+    require_host(os.environ, sys.platform)
+    validate_record(record, os.getuid())
+    if record["rulesAttempted"]:
+        pf(["-a", record["anchor"], "-F", "rules"])
+        if pf(["-a", record["anchor"], "-sr"])[0].strip():
+            raise Blocked("packet_filter_cleanup_unproved")
+    status = command("status")
+    if re.search(r"^Status: Enabled\b", status, re.MULTILINE):
+        if record["enableToken"] is None:
+            raise Blocked("packet_filter_enable_token_unknown")
+        pf(["-X", record["enableToken"]])
+        status = command("status")
+    if (not re.search(r"^Status: Disabled\b", status, re.MULTILINE)
+        or hashlib.sha256(command("rules").strip().encode()).hexdigest() != record["baselineRulesSha256"]):
+        raise Blocked("packet_filter_restore_mismatch")
+
+
 def control():
     # This standalone control never launches an application or admits credentials.
     # It loads only an owned child anchor, never the main ruleset or other anchors.
     require_host(os.environ, sys.platform)
-    before = {name: command(name) for name in ["rules", "status", "anchors", "interfaces"]}
-    baseline = project(before)
-    if baseline["packetFilterEnabled"] or not baseline["onlyAppleWildcardAnchor"] or baseline["loopbackSkip"]:
-        raise Blocked("packet_filter_baseline_unadmitted")
-    anchor = "com.apple/honowarden-" + secrets.token_hex(12)
-    owned = pf(["-a", anchor, "-sr"])[0]
-    if owned.strip():
-        raise Blocked("packet_filter_anchor_occupied")
-    token = None
-    installed = False
+    journal = []
     receipt = {"schema": "honowarden-macos-network-control-v1", "desktopLaunched": False,
                "allowed": False, "denied": False, "cleanup": False, "passed": False}
     def alarm(*_):
@@ -107,21 +160,11 @@ def control():
             with socket.socket() as spare:
                 spare.bind(("127.0.0.1", 0))
                 second = spare.getsockname()[1]
-            rules = filter_rules(os.getuid(), [a, second]).encode()
             # Both owned listeners are reachable before installing the restriction.
             for port in [a, d]:
                 with socket.create_connection(("127.0.0.1", port), timeout=1):
                     pass
-            pf(["-n", "-a", anchor, "-f", "-"], rules)
-            if command("rules") != before["rules"] or project({**before, "status": command("status")})["packetFilterEnabled"]:
-                raise Blocked("packet_filter_baseline_changed")
-            installed = True
-            pf(["-a", anchor, "-f", "-"], rules)
-            out, err = pf(["-E"])
-            tokens = re.findall(rb"\bToken\s*:\s*([0-9]{1,20})\b", out + err)
-            if len(tokens) != 1:
-                raise Blocked("packet_filter_enable_token_unknown")
-            token = tokens[0].decode()
+            install_for_desktop(os.getuid(), [a, second], journal.append)
             with socket.create_connection(("127.0.0.1", a), timeout=1):
                 receipt["allowed"] = True
             try:
@@ -139,15 +182,8 @@ def control():
     finally:
         signal.alarm(15)
         try:
-            if installed:
-                pf(["-a", anchor, "-F", "rules"])
-                if pf(["-a", anchor, "-sr"])[0].strip():
-                    raise Blocked("packet_filter_cleanup_unproved")
-            if token is not None:
-                pf(["-X", token])
-            after = {name: command(name) for name in ["rules", "status", "anchors", "interfaces"]}
-            if after["rules"] != before["rules"] or project(after)["packetFilterEnabled"] != baseline["packetFilterEnabled"]:
-                raise Blocked("packet_filter_restore_mismatch")
+            if journal:
+                restore_record(journal[-1])
             receipt["cleanup"] = True
         except (Blocked, OSError, ValueError, subprocess.TimeoutExpired):
             receipt["cleanup"] = False

@@ -341,6 +341,35 @@ class PolicyTests(unittest.TestCase):
             self.assertTrue(all(timeout == 3 for _, timeout in calls))
             self.assertTrue(any("delete-keychain" in args for args, _ in calls))
 
+    def test_packet_filter_is_retained_when_an_owned_process_stop_is_unproved(self):
+        with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
+            state = {"children": [], "priorDefault": "/guest/original", "priorSearch": ["/guest/original"],
+                     "networkFilter": {"owned": "fixture"}}
+            with patch.object(p, "PROCESSES", [object()]), patch.object(p, "stop_group", side_effect=OSError()), \
+                 patch.object(p, "command", return_value=(b'"/guest/original"\n', 0)), \
+                 patch.object(p.NETWORK, "restore_record") as restore:
+                failures = p.cleanup(Path(fixture), state)
+            self.assertIn("packet_filter_cleanup_failed", failures)
+            restore.assert_not_called()
+
+    def test_packet_filter_restore_failure_is_visible_and_does_not_skip_keychain_cleanup(self):
+        with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
+            state = {"children": [], "priorDefault": "/guest/original", "priorSearch": ["/guest/original"],
+                     "networkFilter": {"owned": "fixture"}}
+            with patch.object(p, "PROCESSES", []), patch.object(p, "command", return_value=(b'"/guest/original"\n', 0)) as command, \
+                 patch.object(p.NETWORK, "restore_record", side_effect=p.NETWORK.Blocked("packet_filter_restore_mismatch")):
+                failures = p.cleanup(Path(fixture), state)
+            self.assertIn("packet_filter_cleanup_failed", failures)
+            self.assertGreater(command.call_count, 0)
+
+    def test_network_projection_identifies_backend_without_promoting_credentials(self):
+        report = {"authenticated": False, "credentialAdmission": False, "networkIsolationBackend": "owned_pf_anchor",
+                  "networkNegativeControl": True}
+        self.assertEqual(p.public_report(report), report)
+        for change in [{"networkIsolationBackend": "none"}, {"networkNegativeControl": "true"}, {"authenticated": True}]:
+            with self.assertRaises(p.Blocked):
+                p.public_report({**report, **change})
+
     def test_interrupted_finisher_has_unknown_execution_and_exact_fixture_cleanup(self):
         with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
             temp = Path(fixture)

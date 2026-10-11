@@ -5,6 +5,7 @@ import argparse
 import base64
 import contextlib
 import hashlib
+import importlib.util
 import json
 import os
 import plistlib
@@ -42,6 +43,9 @@ CODE_SIGN_REQUIREMENT = f'-R=anchor apple generic and identifier "{CLIENT_BUNDLE
 GIB = 1024**3
 CAP = 65536
 HERE = Path(__file__).resolve().parent
+NETWORK_SPEC = importlib.util.spec_from_file_location("honowarden_owned_packet_filter", HERE.parent / "hosted-macos-network/packet_filter.py")
+NETWORK = importlib.util.module_from_spec(NETWORK_SPEC)
+NETWORK_SPEC.loader.exec_module(NETWORK)
 PROCESSES = []
 STEP_END = None
 FAILURE_KINDS = {"blocked", "attribute_error", "permission_error", "timeout", "subprocess_timeout",
@@ -59,7 +63,7 @@ FINALIZATION_BLOCKED_CODES = PROCESS_BLOCKED_CODES | {"phase_deadline_exhausted"
 CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", "recorded_process_cleanup_failed",
                                                 "process_cleanup_permission_denied", "process_cleanup_timeout",
                                                 "process_cleanup_api_unavailable", "keychain_cleanup_failed",
-                                                "keychain_readback_failed", "cleanup_finalization_failed",
+                                                "keychain_readback_failed", "packet_filter_cleanup_failed", "cleanup_finalization_failed",
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
                                                  "cleanup_finalization_api_unavailable"}
 WORKER_BINARY_PROOF = "pinned_darwin_arm64_version_verified"
@@ -889,6 +893,13 @@ def cleanup(root, state):
             stop_recorded(row)
         except Exception as error:
             failures.append(process_cleanup_code(error, "recorded_process_cleanup_failed"))
+    if state.get("networkFilter") is not None:
+        try:
+            # Keep containment if any owned process may still be alive.
+            require(not failures, "packet_filter_cleanup_failed")
+            NETWORK.restore_record(state["networkFilter"])
+        except Exception:
+            failures.append("packet_filter_cleanup_failed")
     actions = [["/usr/bin/security", "default-keychain", "-d", "user", "-s", state["priorDefault"]],
                ["/usr/bin/security", "list-keychains", "-d", "user", "-s", *state["priorSearch"]]]
     if (root / "owned.keychain-db").exists():
@@ -930,8 +941,13 @@ def public_report(report):
             "keychainProbe", "sandboxNegativeControl", "appListenerOwned", "visibleDom", "appLoopback",
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
-            "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls"} | DESKTOP_DIAGNOSTIC_KEYS
+            "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls",
+            "networkIsolationBackend", "networkNegativeControl"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if "networkIsolationBackend" in report:
+        require(report["networkIsolationBackend"] == "owned_pf_anchor", "network_projection_invalid")
+    if "networkNegativeControl" in report:
+        require(type(report["networkNegativeControl"]) is bool, "network_projection_invalid")
     if "unixSocketControls" in report:
         require(type(report["unixSocketControls"]) is bool, "unix_socket_projection_invalid")
     if "desktopLogSummary" in report:
@@ -1264,26 +1280,32 @@ def execute(temp, company):
         port = readiness["port"]
         report.update(d1Ready=True, r2Ready=True, workerReady=True)
         cdp_port = free_port()
-        profile = root / "network.sb"
-        profile.write_text(sandbox_profile(port, cdp_port, root), encoding="utf-8")
-        os.chmod(profile, 0o600)
-        allowed, _ = command(["/usr/bin/sandbox-exec", "-f", str(profile), "/usr/bin/curl", "--silent",
+        def remember_filter(record):
+            state["networkFilter"] = record
+            update_private(marker, state)
+        try:
+            NETWORK.install_for_desktop(os.getuid(), [port, cdp_port], remember_filter)
+        except NETWORK.Blocked as error:
+            raise Blocked(error.args[0]) from None
+        report["networkIsolationBackend"] = "owned_pf_anchor"
+        allowed, _ = command(["/usr/bin/curl", "--silent",
                               "--fail", "--max-time", "2", f"http://127.0.0.1:{port}/"], env=env)
-        require(json.loads(allowed).get("name") == "HonoWarden", "sandbox_allowed_loopback_failed")
+        require(json.loads(allowed).get("name") == "HonoWarden", "filter_allowed_loopback_failed")
         # Use a live owned loopback listener outside the allowlist; never probe a third party.
         with socket.socket() as sentinel:
             sentinel.bind(("127.0.0.1", 0))
             sentinel.listen(1)
             forbidden = sentinel.getsockname()[1]
-            require(forbidden not in {port, cdp_port}, "sandbox_sentinel_port_collision")
+            require(forbidden not in {port, cdp_port}, "filter_sentinel_port_collision")
             probe = ("import socket,errno,sys;s=socket.socket();s.settimeout(2)\n"
                      f"try:s.connect(('127.0.0.1',{forbidden}))\n"
-                     "except OSError as e:sys.exit(0 if e.errno==errno.EPERM else 2)\nelse:sys.exit(3)")
-            command(["/usr/bin/sandbox-exec", "-f", str(profile), sys.executable, "-c", probe], env=env)
-        report["sandboxNegativeControl"] = True
-        prove_unix_socket_controls(root, profile, env)
-        report["unixSocketControls"] = True
-        app_proc = gated_launch(["/usr/bin/sandbox-exec", "-f", str(profile), str(executable),
+                     "except OSError as e:sys.exit(0 if isinstance(e,TimeoutError) or e.errno in (errno.EPERM,errno.EACCES,errno.ECONNREFUSED,errno.ETIMEDOUT) else 2)\nelse:sys.exit(3)")
+            command([sys.executable, "-c", probe], env=env)
+        report["networkNegativeControl"] = True
+        # Outer seatbelt profiles prevent Chromium from initializing its own
+        # sandbox. The owned OS filter blocks IP traffic while preserving that
+        # native sandbox and ordinary Unix-domain IPC in the disposable guest.
+        app_proc = gated_launch([str(executable),
                                  f"--remote-debugging-port={cdp_port}", "--remote-debugging-address=127.0.0.1",
                                  f"--user-data-dir={root / 'profile'}", "--lang=en", "--no-proxy-server", "--disable-gpu"],
                                 "desktop", desktop_environment(root, env), state, marker, subprocess.PIPE)
@@ -1370,8 +1392,10 @@ def finish(temp):
     require(marker.is_file() and not marker.is_symlink() and marker.stat().st_uid == os.getuid()
             and stat.S_IMODE(marker.stat().st_mode) == 0o600, "marker_not_owned")
     state = json.loads(marker.read_text())
-    require(set(state) == {"root", "uid", "dev", "ino", "priorDefault", "priorSearch", "children"}
+    require(set(state) - {"networkFilter"} == {"root", "uid", "dev", "ino", "priorDefault", "priorSearch", "children"}
             and isinstance(state["children"], list) and len(state["children"]) <= 2, "marker_schema_invalid")
+    if "networkFilter" in state:
+        NETWORK.validate_record(state["networkFilter"], os.getuid())
     root = Path(state["root"])
     require(root.parent == temp and root.name.startswith("hw-macos-preflight-") and not root.is_symlink(), "cleanup_root_invalid")
     root_stat = root.stat()

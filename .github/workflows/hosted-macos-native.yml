@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/hosted-macos-native.yml
       - scripts/hosted-macos-native-preflight/**
+      - scripts/hosted-macos-network/**
   workflow_dispatch:
     inputs:
       confirmation:
@@ -57,7 +58,9 @@ jobs:
           test "$(pnpm --version)" = "11.8.0"
           pnpm install --frozen-lockfile --ignore-scripts
       - name: Check pure preflight policy tests
-        run: python3 -m unittest discover -s "$PACKET" -p 'test_*.py' -v
+        run: |
+          python3 -m unittest discover -s "$PACKET" -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/hosted-macos-network -p 'test_*.py' -v
       - name: Run the finite native preflight in this disposable guest
         id: native
         timeout-minutes: 5

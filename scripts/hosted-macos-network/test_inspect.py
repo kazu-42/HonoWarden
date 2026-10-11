@@ -58,22 +58,31 @@ class InspectionTests(unittest.TestCase):
                 p.control()
             pf.assert_not_called()
 
-    def run_control(self, fail_enable=False, drift=False):
+    def run_control(self, fail_enable=False, drift=False, lost_enable=False):
         values = dict(rules='anchor "com.apple/*" all\n', status="Status: Disabled for 0 days\n",
                       anchors="com.apple\n", interfaces="lo0\n\tReferences: 0\n")
         events = []
         reads = []
+        enabled = False
         def read(operation):
             reads.append(operation)
             if drift and operation == "rules" and reads.count("rules") == 3:
                 return "block all\n"
+            if operation == "status" and enabled:
+                return "Status: Enabled for 0 days\n"
             return values[operation]
         def pf(args, data=None):
+            nonlocal enabled
             events.append(args)
             if args == ["-E"]:
                 if fail_enable:
                     raise p.Blocked("packet_filter_operation_failed")
+                enabled = True
+                if lost_enable:
+                    raise p.Blocked("packet_filter_operation_failed")
                 return b"", b"Token : 123\n"
+            if args == ["-X", "123"]:
+                enabled = False
             return b"", b""
         sockets = []
         for port in [8123, 8125, 8124]:
@@ -114,6 +123,24 @@ class InspectionTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertFalse(report["cleanup"])
         self.assertEqual(report["cleanupCode"], "packet_filter_cleanup_failed")
+
+    def test_lost_enable_response_never_disables_unowned_references(self):
+        code, report, events = self.run_control(lost_enable=True)
+        self.assertEqual(code, 1)
+        self.assertFalse(report["cleanup"])
+        self.assertFalse(any("-X" in row or "-d" in row for row in events))
+
+    def test_recovery_rejects_foreign_anchors_and_inconsistent_records_before_commands(self):
+        row = {"schema": "honowarden-owned-network-filter-v1", "uid": 501,
+               "anchor": "com.apple/honowarden-" + "a" * 24, "baselineRulesSha256": "b" * 64,
+               "rulesAttempted": True, "enableAttempted": True, "enableToken": "123"}
+        for changes in [{"anchor": "com.apple"}, {"anchor": "com.apple/honowarden-../foreign"},
+                        {"uid": 502}, {"enableToken": "123 -d"}, {"rulesAttempted": False},
+                        {"enableAttempted": False}, {"unknown": True}]:
+            with patch.object(p, "require_host"), patch.object(p.os, "getuid", return_value=501), patch.object(p, "pf") as pf:
+                with self.assertRaises(p.Blocked):
+                    p.restore_record({**row, **changes})
+                pf.assert_not_called()
 
 
 if __name__ == "__main__":
