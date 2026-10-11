@@ -25,3 +25,5 @@ jobs:
         run: python3 -m unittest discover -s scripts/hosted-macos-network -p 'test_*.py' -v
       - name: Inspect the disposable guest packet filter without changing it
         run: python3 scripts/hosted-macos-network/packet_filter.py
+      - name: Verify and remove an owned finite loopback filter in this disposable guest
+        run: python3 scripts/hosted-macos-network/packet_filter.py --control
