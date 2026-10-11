@@ -223,6 +223,49 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(probe.call_count, 2)
         self.assertIn("login-email-input", probe.call_args.args[2])
 
+    def test_renderer_fetch_projection_classifies_without_retaining_error_payloads(self):
+        expression = json.dumps(p.loopback_expression(8123))
+        script = """
+const vm = require('node:vm'), assert = require('node:assert/strict');
+(async()=>{
+  const rows=[];
+  for (const scenario of ['success','http_error','invalid_payload','TimeoutError','TypeError','unknown']) {
+    const result=await vm.runInNewContext(EXPRESSION, {
+      AbortSignal:{timeout(n){assert.equal(n,2000);return 'bounded';}},
+      fetch:async(url,options)=>{
+        assert.equal(url,'http://127.0.0.1:8123/api/config');
+        assert.equal(options.mode,'cors');assert.equal(options.credentials,'include');
+        assert.equal(options.signal,'bounded');
+        if (['TimeoutError','TypeError','unknown'].includes(scenario))
+          throw {name:scenario,message:'FICTIONAL_SECRET',url:'https://fictional.invalid/private'};
+        return {status:scenario==='http_error'?503:200,ok:scenario!=='http_error',
+          json:async()=>({object:scenario==='invalid_payload'?'unexpected':'config'})};
+      },
+    });
+    rows.push(result);
+  }
+  process.stdout.write(JSON.stringify(rows));
+})().catch(()=>process.exit(1));
+""".replace("EXPRESSION", expression)
+        result = p.subprocess.run([p.shutil.which("node"), "-e", script],
+                                  env={"PATH": "/usr/bin:/bin"}, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn(b"FICTIONAL_SECRET", result.stdout)
+        rows = json.loads(result.stdout)
+        self.assertEqual([row["fetchDiagnostic"]["outcome"] for row in rows],
+                         ["success", "http_error", "invalid_payload", "TimeoutError", "TypeError", "other"])
+        self.assertEqual([row["appLoopback"] for row in rows], [True, False, False, False, False, False])
+        self.assertEqual([row["fetchDiagnostic"]["status"] for row in rows], [200, 503, 200, None, None, None])
+        for row in rows:
+            p.public_report({**row, "authenticated": False, "credentialAdmission": False})
+
+    def test_fetch_report_rejects_open_metadata_and_invalid_status(self):
+        for value in [{"status": True, "outcome": "success"}, {"status": 0, "outcome": "http_error"},
+                      {"status": None, "outcome": "FICTIONAL_SECRET"},
+                      {"status": None, "outcome": "other", "message": "FICTIONAL_SECRET"}]:
+            with self.assertRaisesRegex(p.Blocked, "network_projection_invalid"):
+                p.public_report({"fetchDiagnostic": value, "authenticated": False, "credentialAdmission": False})
+
     def test_login_dom_never_retries_a_failed_protocol_operation(self):
         with patch.object(p, "cdp_probe", side_effect=p.Blocked("cdp_evaluation_failed")) as probe:
             with self.assertRaisesRegex(p.Blocked, "cdp_evaluation_failed"):

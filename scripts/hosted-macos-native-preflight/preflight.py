@@ -774,6 +774,17 @@ NETWORK_ERRORS = {"none", "other", "net::ERR_FAILED", "net::ERR_BLOCKED_BY_ORB",
                   "net::ERR_INTERNET_DISCONNECTED", "net::ERR_ACCESS_DENIED", "net::ERR_NETWORK_ACCESS_DENIED",
                   "net::ERR_CONNECTION_RESET", "net::ERR_ABORTED", "net::ERR_INVALID_URL"}
 NETWORK_BLOCKS = {"none", "other", "csp", "mixed-content", "origin", "inspector", "subresource-filter", "corp-not-same-origin"}
+FETCH_OUTCOMES = {"success", "http_error", "invalid_payload", "AbortError", "TimeoutError", "TypeError", "SyntaxError", "other"}
+
+
+def loopback_expression(port):
+    require(type(port) is int and 1024 <= port <= 65535, "network_probe_url_invalid")
+    return ("(async()=>{let status=null;try{const r=await fetch('http://127.0.0.1:" + str(port) +
+            "/api/config',{mode:'cors',credentials:'include',cache:'no-store',signal:AbortSignal.timeout(2000)});"
+            "status=r.status;const ok=r.ok&&(await r.json()).object==='config';"
+            "return {appLoopback:ok,fetchDiagnostic:{status,outcome:ok?'success':r.ok?'invalid_payload':'http_error'}};"
+            "}catch(e){return {appLoopback:false,fetchDiagnostic:{status,outcome:"
+            "['AbortError','TimeoutError','TypeError','SyntaxError'].includes(e?.name)?e.name:'other'}}}})()")
 
 
 class LoopbackNetworkProjection:
@@ -1005,8 +1016,14 @@ def public_report(report):
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
             "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls",
-            "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic"} | DESKTOP_DIAGNOSTIC_KEYS
+            "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic", "fetchDiagnostic"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if "fetchDiagnostic" in report:
+        item = report["fetchDiagnostic"]
+        require(type(item) is dict and set(item) == {"status", "outcome"}
+                and (item["status"] is None or type(item["status"]) is int and 100 <= item["status"] <= 599)
+                and type(item["outcome"]) is str and item["outcome"] in FETCH_OUTCOMES,
+                "network_projection_invalid")
     if "networkIsolationBackend" in report:
         require(report["networkIsolationBackend"] == "owned_pf_anchor", "network_projection_invalid")
     if "networkNegativeControl" in report:
@@ -1407,11 +1424,11 @@ def execute(temp, company):
         browser_ws = version["webSocketDebuggerUrl"]
         dom = await_login_dom(browser_ws, cdp_port, target["id"])
         report.update(dom)
-        network = cdp_probe(browser_ws, cdp_port,
-                           "(async()=>({appLoopback:await fetch('http://127.0.0.1:" + str(port) +
-                           "/api/config',{mode:'cors',credentials:'include',cache:'no-store',signal:AbortSignal.timeout(2000)}).then(async r=>r.ok&&(await r.json()).object==='config').catch(()=>false)}))()",
+        network = cdp_probe(browser_ws, cdp_port, loopback_expression(port),
                            target_id=target["id"], diagnostic_url=f"http://127.0.0.1:{port}/api/config")
         report["networkDiagnostic"] = network.pop("networkDiagnostic")
+        report["fetchDiagnostic"] = network.pop("fetchDiagnostic")
+        public_report(report)
         result = {**dom, **network}
         require(set(result) == {"visibleDom", "appLoopback"} and all(type(v) is bool for v in result.values()), "renderer_projection_invalid")
         report.update(result)
