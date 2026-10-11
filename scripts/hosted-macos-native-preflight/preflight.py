@@ -787,6 +787,26 @@ def loopback_expression(port):
             "['AbortError','TimeoutError','TypeError','SyntaxError'].includes(e?.name)?e.name:'other'}}}})()")
 
 
+def verify_public_api_response(raw):
+    require(type(raw) is bytes and len(raw) <= CAP, "api_cors_probe_invalid")
+    try:
+        head, body = raw.split(b"\r\n\r\n", 1)
+        status, *lines = head.decode("ascii").split("\r\n")
+        require(re.fullmatch(r"HTTP/1\.[01] 200(?: .*)?", status) is not None, "api_cors_probe_invalid")
+        headers = {}
+        for line in lines:
+            key, value = line.split(":", 1)
+            key = key.lower()
+            require(key not in headers, "api_cors_probe_invalid")
+            headers[key] = value.strip()
+        require(headers.get("access-control-allow-origin") == "null"
+                and headers.get("access-control-allow-credentials") == "true"
+                and "origin" in [x.strip().lower() for x in headers.get("vary", "").split(",")]
+                and json.loads(body).get("object") == "config", "api_cors_probe_invalid")
+    except (ValueError, AttributeError):
+        raise Blocked("api_cors_probe_invalid") from None
+
+
 class LoopbackNetworkProjection:
     def __init__(self, url):
         require(type(url) is str and re.fullmatch(r"http://127\.0\.0\.1:[0-9]{4,5}/(?:api/config)?", url), "network_probe_url_invalid")
@@ -1016,8 +1036,10 @@ def public_report(report):
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
             "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls",
-            "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic", "fetchDiagnostic"} | DESKTOP_DIAGNOSTIC_KEYS
+            "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic", "fetchDiagnostic", "apiCorsProbe"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
+    if "apiCorsProbe" in report:
+        require(type(report["apiCorsProbe"]) is bool, "network_projection_invalid")
     if "fetchDiagnostic" in report:
         item = report["fetchDiagnostic"]
         require(type(item) is dict and set(item) == {"status", "outcome"}
@@ -1378,6 +1400,10 @@ def execute(temp, company):
         allowed, _ = command(["/usr/bin/curl", "--silent",
                               "--fail", "--max-time", "2", f"http://127.0.0.1:{port}/"], env=env)
         require(json.loads(allowed).get("name") == "HonoWarden", "filter_allowed_loopback_failed")
+        api, _ = command(["/usr/bin/curl", "--silent", "--include", "--fail", "--max-time", "2",
+                          "--header", "Origin: null", f"http://127.0.0.1:{port}/api/config"], env=env)
+        verify_public_api_response(api)
+        report["apiCorsProbe"] = True
         # Use a live owned loopback listener outside the allowlist; never probe a third party.
         with socket.socket() as sentinel:
             sentinel.bind(("127.0.0.1", 0))

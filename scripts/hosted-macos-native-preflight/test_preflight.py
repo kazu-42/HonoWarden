@@ -266,6 +266,18 @@ const vm = require('node:vm'), assert = require('node:assert/strict');
             with self.assertRaisesRegex(p.Blocked, "network_projection_invalid"):
                 p.public_report({"fetchDiagnostic": value, "authenticated": False, "credentialAdmission": False})
 
+    def test_actual_curl_probe_requires_credentialed_config_response(self):
+        response = (b'HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: null\r\n'
+                    b'Access-Control-Allow-Credentials: true\r\nVary: accept-encoding, Origin\r\n'
+                    b'Content-Type: application/json\r\n\r\n{"object":"config"}')
+        p.verify_public_api_response(response)
+        for invalid in [response.replace(b'200 OK', b'503 Failed'), response.replace(b': null', b': *'),
+                        response.replace(b': true', b': false'), response.replace(b', Origin', b''),
+                        response.replace(b'"config"', b'"other"'),
+                        response.replace(b'Content-Type:', b'Access-Control-Allow-Origin: null\r\nContent-Type:')]:
+            with self.assertRaisesRegex(p.Blocked, "api_cors_probe_invalid"):
+                p.verify_public_api_response(invalid)
+
     def test_login_dom_never_retries_a_failed_protocol_operation(self):
         with patch.object(p, "cdp_probe", side_effect=p.Blocked("cdp_evaluation_failed")) as probe:
             with self.assertRaisesRegex(p.Blocked, "cdp_evaluation_failed"):
