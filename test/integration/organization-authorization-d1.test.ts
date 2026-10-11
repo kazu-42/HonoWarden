@@ -34,6 +34,120 @@ afterEach(async () => {
 })
 
 describe('organization authorization on real local D1', () => {
+  it('restricts additional organization creation to a confirmed Owner inside the insert', async () => {
+    const db = await createDatabase()
+    const foundation = (userId: string, organizationId: string) => ({
+      restrictCreation: true,
+      organizationId,
+      organizationUserId: `${organizationId}-owner`,
+      collectionId: `${organizationId}-collection`,
+      userId,
+      email: `${userId}@example.test`,
+      name: 'Next team',
+      billingEmail: null,
+      planType: 0,
+      orgKey: '2.wrapper',
+      publicKey: 'public',
+      privateKey: '2.private',
+      encryptedCollectionName: '2.collection',
+      now: next,
+    })
+    expect(
+      await createOrganizationFoundation(db, foundation('outsider', 'blocked')),
+    ).toBeNull()
+    expect(
+      await db
+        .prepare("SELECT id FROM organizations WHERE id='blocked'")
+        .first(),
+    ).toBeNull()
+    expect(
+      await createOrganizationFoundation(db, {
+        ...foundation('owner', 'stale-session'),
+        actor: {
+          userId: 'owner',
+          deviceIdentifier: 'desktop',
+          sessionId: 'stale',
+        },
+      }),
+    ).toBeNull()
+    expect(
+      (await createOrganizationFoundation(db, foundation('owner', 'allowed')))
+        ?.organization.id,
+    ).toBe('allowed')
+    await db
+      .prepare("UPDATE organization_users SET status=1 WHERE id='membership'")
+      .run()
+    expect(
+      await createOrganizationFoundation(
+        db,
+        foundation('outsider', 'blocked-again'),
+      ),
+    ).toBeNull()
+  })
+
+  it('requires the existing Owner to satisfy an enabled TOTP policy', async () => {
+    const db = await createDatabase()
+    await db
+      .prepare(
+        `INSERT INTO organization_policies
+      (id,organization_id,type,enabled,revision_date,created_at,updated_at)
+      VALUES ('required','org',0,1,?,?,?)`,
+      )
+      .bind(now, now, now)
+      .run()
+    expect(
+      await createOrganizationFoundation(db, {
+        restrictCreation: true,
+        organizationId: 'blocked-by-policy',
+        organizationUserId: 'blocked-owner',
+        collectionId: 'blocked-collection',
+        userId: 'owner',
+        email: 'owner@example.test',
+        name: 'Another company',
+        billingEmail: null,
+        planType: 0,
+        orgKey: '2.wrapper',
+        publicKey: 'public',
+        privateKey: '2.private',
+        encryptedCollectionName: '2.collection',
+        now: next,
+      }),
+    ).toBeNull()
+  })
+
+  it('admits at most one concurrent first organization creation', async () => {
+    const db = await createDatabase()
+    await db.prepare('DELETE FROM organizations').run()
+    const create = (userId: string) =>
+      createOrganizationFoundation(db, {
+        restrictCreation: true,
+        organizationId: `first-${userId}`,
+        organizationUserId: `first-${userId}-owner`,
+        collectionId: `first-${userId}-collection`,
+        userId,
+        email: `${userId}@example.test`,
+        name: 'First company',
+        billingEmail: null,
+        planType: 0,
+        orgKey: '2.wrapper',
+        publicKey: 'public',
+        privateKey: '2.private',
+        encryptedCollectionName: '2.collection',
+        now: next,
+      })
+    const results = await Promise.allSettled([
+      create('owner'),
+      create('outsider'),
+    ])
+    expect(
+      results.filter(
+        (result) => result.status === 'fulfilled' && result.value !== null,
+      ),
+    ).toHaveLength(1)
+    expect(
+      await db.prepare('SELECT COUNT(*) AS count FROM organizations').first(),
+    ).toEqual({ count: 1 })
+  })
   it('excludes disabled organizations from all membership and collection reads', async () => {
     const db = await createDatabase()
     await db.prepare('UPDATE organizations SET enabled = 0').run()

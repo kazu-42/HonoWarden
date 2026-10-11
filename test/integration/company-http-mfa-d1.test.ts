@@ -30,6 +30,113 @@ afterEach(async () => {
 })
 
 describe('central HTTP MFA integration on real local D1', () => {
+  it('counts repeated wrong step-up codes and revokes the exact family after three', async () => {
+    const db = await database()
+    await createPasswordGrantSession(db, {
+      userId: actor.userId,
+      expectedMasterPasswordHash: 'synthetic-hash',
+      expectedSecurityStamp: 'stamp',
+      deviceIdentifier: actor.deviceIdentifier,
+      deviceName: null,
+      deviceType: null,
+      refreshTokenId: actor.sessionId,
+      refreshTokenHash: 'synthetic-refresh-hash',
+      refreshTokenExpiresAt: '2100-01-01T00:00:00.000Z',
+      now,
+    })
+    const bearer = await signAccessToken(tokenSecret, {
+      sub: actor.userId,
+      email: 'owner@example.test',
+      device: actor.deviceIdentifier,
+      sessionId: actor.sessionId,
+      securityStamp: 'stamp',
+      iat: Date.parse(now) / 1000,
+      exp: Date.parse(now) / 1000 + 3600,
+      authMethod: 'password',
+    })
+    const correct = await hotp(factor, step)
+    const wrong = correct === '000000' ? '111111' : '000000'
+    for (let index = 0; index < 3; index++) {
+      expect(
+        (
+          await authenticated(
+            db,
+            '/identity/accounts/totp/step-up',
+            bearer,
+            'POST',
+            JSON.stringify({ code: wrong }),
+          )
+        ).status,
+      ).toBe(400)
+    }
+    expect(
+      await db
+        .prepare('SELECT login_failed_count AS count FROM users WHERE id=?')
+        .bind(actor.userId)
+        .first(),
+    ).toEqual({ count: 3 })
+    const device = await db
+      .prepare(
+        'SELECT revoked_at AS revokedAt FROM devices WHERE user_id=? AND identifier=?',
+      )
+      .bind(actor.userId, actor.deviceIdentifier)
+      .first<{ revokedAt: string | null }>()
+    expect(typeof device?.revokedAt).toBe('string')
+    expect(
+      (
+        await authenticated(
+          db,
+          '/identity/accounts/totp/step-up',
+          bearer,
+          'POST',
+          JSON.stringify({ code: correct }),
+        )
+      ).status,
+    ).toBe(401)
+  })
+
+  it('refuses a correct step-up code while the account login lock is active', async () => {
+    const db = await database()
+    await createPasswordGrantSession(db, {
+      userId: actor.userId,
+      expectedMasterPasswordHash: 'synthetic-hash',
+      expectedSecurityStamp: 'stamp',
+      deviceIdentifier: actor.deviceIdentifier,
+      deviceName: null,
+      deviceType: null,
+      refreshTokenId: actor.sessionId,
+      refreshTokenHash: 'synthetic-refresh-hash',
+      refreshTokenExpiresAt: '2100-01-01T00:00:00.000Z',
+      now,
+    })
+    await db
+      .prepare(
+        "UPDATE users SET login_locked_until='2026-10-04T00:15:00.000Z' WHERE id='owner'",
+      )
+      .run()
+    const bearer = await signAccessToken(tokenSecret, {
+      sub: actor.userId,
+      email: 'owner@example.test',
+      device: actor.deviceIdentifier,
+      sessionId: actor.sessionId,
+      securityStamp: 'stamp',
+      iat: Date.parse(now) / 1000,
+      exp: Date.parse(now) / 1000 + 3600,
+      authMethod: 'password',
+    })
+    expect(
+      (
+        await authenticated(
+          db,
+          '/identity/accounts/totp/step-up',
+          bearer,
+          'POST',
+          JSON.stringify({ code: await hotp(factor, step) }),
+        )
+      ).status,
+    ).toBe(400)
+    expect(await findSessionTotpAssurance(db, actor)).toBe(false)
+  })
   it('clears a verified device proof when an approved auth request starts a fresh family', async () => {
     const db = await database()
     await createPasswordGrantSession(db, {

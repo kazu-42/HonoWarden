@@ -53,15 +53,28 @@ const user: AuthUserRecord = {
   totpCredentialGeneration: 'generation',
 }
 const database = {
-  prepare: vi.fn(() => {
-    throw new Error('Unexpected D1 call')
+  prepare: vi.fn((query: string) => {
+    if (!query.startsWith('DELETE FROM auth_failure_buckets'))
+      throw new Error('Unexpected D1 call')
+    return { bind: () => ({ run: async () => ({ success: true }) }) }
   }),
 } as unknown as D1Database
 
 beforeEach(() => {
+  vi.mocked(database.prepare).mockClear()
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(now)
   vi.spyOn(authRepository, 'findAuthUserBySession').mockResolvedValue(user)
+  vi.spyOn(authRepository, 'findAuthFailureBucket').mockResolvedValue(null)
+  vi.spyOn(authRepository, 'recordAuthAttempt').mockResolvedValue()
+  vi.spyOn(authRepository, 'recordFailedLogin').mockResolvedValue()
+  vi.spyOn(authRepository, 'recordFailedAuthBucket').mockResolvedValue({
+    bucketKey: 'synthetic',
+    failedCount: 1,
+    windowStartedAt: now,
+    lockedUntil: null,
+    updatedAt: now,
+  })
   vi.spyOn(authRepository, 'revokeCurrentDeviceSession').mockResolvedValue({
     status: 'revoked',
     deviceId: 'owner:desktop',
@@ -261,6 +274,64 @@ describe('central company HTTP integration', () => {
       },
     )
     expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(database.prepare).toHaveBeenCalledWith(
+      'DELETE FROM auth_failure_buckets WHERE bucket_key = ?',
+    )
+  })
+
+  it('counts wrong step-up codes and revokes the presented family after three failures', async () => {
+    const logs = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(authRepository.recordFailedAuthBucket).mockResolvedValue({
+      bucketKey: 'synthetic',
+      failedCount: 3,
+      windowStartedAt: now,
+      lockedUntil: null,
+      updatedAt: now,
+    })
+    const response = await request(
+      '/identity/accounts/totp/step-up',
+      'POST',
+      JSON.stringify({ code: '000000' }),
+    )
+    expect(response.status).toBe(400)
+    expect(authRepository.recordFailedLogin).toHaveBeenCalled()
+    expect(authRepository.revokeCurrentDeviceSession).toHaveBeenCalledWith(
+      database,
+      {
+        ...actor,
+        revokedAt: now,
+      },
+    )
+    expect(logs.mock.calls.flat().join(' ')).not.toContain('000000')
+    vi.mocked(authRepository.findAuthUserBySession).mockResolvedValue(null)
+    const correct = await hotp(factor, Date.parse(now) / 30_000)
+    expect(
+      (
+        await request(
+          '/identity/accounts/totp/step-up',
+          'POST',
+          JSON.stringify({ code: correct }),
+        )
+      ).status,
+    ).toBe(401)
+  })
+
+  it('refuses a correct step-up code during account lockout', async () => {
+    vi.mocked(authRepository.findAuthFailureBucket).mockResolvedValue({
+      bucketKey: 'synthetic',
+      failedCount: 5,
+      windowStartedAt: now,
+      lockedUntil: '2026-10-04T00:15:00.000Z',
+      updatedAt: now,
+    })
+    const code = await hotp(factor, Date.parse(now) / 30_000)
+    const response = await request(
+      '/identity/accounts/totp/step-up',
+      'POST',
+      JSON.stringify({ code }),
+    )
+    expect(response.status).toBe(429)
+    expect(mfaRepository.consumeTotpSessionStepUp).not.toHaveBeenCalled()
   })
 
   it.each([

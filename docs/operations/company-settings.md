@@ -46,5 +46,11 @@ evidence establishes production mail delivery or Desktop acceptance.
 
 On a new installation, the first account can use [authorized initial setup](initial-setup.md)
 in the dashboard. This is separate from the existing allowlisted bootstrap route
-and does not open public registration. Invited users can create their account from
-their invitation link, then sign in and await Owner confirmation.
+and does not enable an unauthenticated registration route. When invitation
+registration is enabled, a confirmed Owner of an enabled organization may create
+another organization; any authenticated account may create the first organization
+only while none exists. An Owner or Administrator can invite external addresses,
+and a valid invitation can create a permanent account before acceptance or Owner
+confirmation. Treat invitation rights as account provisioning rights, review the
+organization audit, and restrict who receives those roles. The new account must
+sign in and await Owner confirmation before shared vault access.

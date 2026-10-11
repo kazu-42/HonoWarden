@@ -33,6 +33,19 @@ to the registration API. `POST /api/accounts/register-invited` requires both
 `HONOWARDEN_INVITATION_REGISTRATION_ENABLED` and
 `HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED` to be `true`, with the existing
 invitation secret configured. The new flag is default-off in all tracked profiles.
+With invitation registration enabled, only a confirmed Owner of an enabled
+organization may create another organization; when no organization exists, an
+authenticated account may create the first one. This check runs in the creation
+write and returns `403 organization_creation_restricted` when denied. A successful
+invited registration writes `organization.member.registration` in the same D1
+batch as the new account. A failed audit insert aborts registration.
+
+Invitation mail claims are checked in the same D1 write as each invitation or
+reinvitation, before token rotation and delivery: at most 50 mails per actor in
+one rolling hour, 200 per organization in 24 rolling hours, and one reinvitation
+per membership every 10 minutes. A refusal returns `429 invitation_rate_limited`
+without rotating a token, writing an action audit row, or sending mail. Ambiguous
+delivery still consumes the claim, so inspect member state before retrying.
 An atomic insertion requires the exact unexpired invitation, email, enabled
 organization, and pending unbound membership. Existing accounts are never
 overwritten, including concurrent submissions. The account is not automatically
@@ -265,6 +278,26 @@ The policy does not retroactively remove already downloaded ciphertext or keys.
 
 Use `GET /identity/accounts/totp/assurance` for the current family's assurance state
 and `POST /identity/accounts/totp/step-up` for bounded authenticated verification.
+Wrong step-up codes count toward the account login lockout (five failures in 15
+minutes) and revoke the presented session after three failures in that window.
+An account lock refuses even a correct code. Existing TOTP code verification for
+factor replacement uses the same account failure counter. Verification of a newly
+chosen secret during enrollment or replacement proves possession of that secret;
+it does not test an existing factor and has no brute-force counter.
+
+A confirmed member whose master password is phished can enroll an attacker's
+authenticator to satisfy a required-TOTP policy. Enrollment and replacement do
+not currently create a dedicated organization audit event. Owners should verify
+enrollment with the member by an independent channel before confirming shared
+access. This is a residual risk.
+
+An Administrator (type 1) can grant Users access to any collection in the
+organization, including collections the Administrator is not assigned to. This
+matches the upstream default. Any member with edit access to one of an
+item's collections can permanently delete that shared item, including from other
+collections the member cannot see. Recovery requires a database restore using
+D1 Time Travel; collection membership alone does not provide an undo path.
+
 TOTP setup and verification remain available from personal settings. A valid
 current TOTP login or step-up establishes proof for that exact family. An account
 having TOTP enabled is insufficient. API-key and auth-request login families start
@@ -306,9 +339,10 @@ The custom endpoints are `GET /api/organizations/{id}/audit-events` and
 Owner/Admin authority and exact-family policy evidence are rechecked for every
 page and export. A signed cursor does not preserve authority after offboarding.
 
-Coverage is twelve successful committed administration events: member invite,
-reinvite, accept, confirm, update, revoke, remove; group create, update, delete,
-member removal; and policy update. Mandatory events commit atomically with their
+Coverage includes successful member invite, reinvite, invited registration,
+accept, confirm, update, revoke, and remove; group create, update, delete, and
+member removal; policy and company settings updates; and test-mail requests.
+Mandatory events commit atomically with their
 mutations even when general audit logging is disabled. Failures roll back the
 business write, required event, and related revisions. Stored event-time organization
 scope allows a valid historical row to remain readable after its target is deleted.

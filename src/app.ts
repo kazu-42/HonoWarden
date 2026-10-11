@@ -1826,6 +1826,8 @@ app.post('/api/organizations', async (c) => {
     const now = new Date().toISOString()
     const foundation = await createOrganizationFoundation(c.env.DB, {
       actor: organizationActor(auth),
+      restrictCreation:
+        c.env?.HONOWARDEN_INVITATION_REGISTRATION_ENABLED === 'true',
       organizationId: crypto.randomUUID(),
       organizationUserId: crypto.randomUUID(),
       collectionId: crypto.randomUUID(),
@@ -1840,6 +1842,16 @@ app.post('/api/organizations', async (c) => {
       encryptedCollectionName: request.encryptedCollectionName,
       now,
     })
+
+    if (!foundation)
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'organization_creation_restricted',
+          'Organization creation is restricted.',
+        ),
+        403,
+      )
 
     return c.json(
       buildOrganizationResponse(
@@ -2507,6 +2519,7 @@ app.post('/api/accounts/register-invited', async (c) => {
         input,
         secret,
         new Date().toISOString(),
+        c.get('requestId'),
       ))
     ) {
       return c.json(
@@ -6258,6 +6271,9 @@ app.post('/identity/accounts/totp/step-up', async (c) => {
     )
   const now = new Date()
   try {
+    const defense = await checkCredentialProofDefense(c, auth.user)
+    if (!defense.allowed)
+      return invalidCredentialProofResponse(c, defense.rateLimited)
     const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
     if (!setup?.enabled || !setup.verifiedAt || !setup.credentialGeneration) {
       return c.json(
@@ -6297,6 +6313,32 @@ app.post('/identity/accounts/totp/step-up', async (c) => {
         now: now.toISOString(),
       }))
     ) {
+      await recordCredentialProofFailure(c, auth.user, defense.state, true)
+      const sessionKey = await buildAuthAttemptBucketKey(
+        'account',
+        `totp-step-up:${auth.user.id}:${auth.sessionId}`,
+      )
+      const sessionFailures = await recordFailedAuthBucket(c.env.DB, {
+        bucketKey: sessionKey,
+        failureLimit: 3,
+        failureWindowSeconds: loginDefensePolicy.accountFailureWindowSeconds,
+        lockoutSeconds: loginDefensePolicy.accountLockoutSeconds,
+        now: defense.state.now,
+      })
+      if (sessionFailures.failedCount >= 3) {
+        const revoked = await revokeCurrentDeviceSession(c.env.DB, {
+          ...organizationActor(auth),
+          revokedAt: defense.state.now,
+        })
+        if (revoked.status !== 'revoked')
+          throw new Error('Failed step-up session could not be revoked.')
+      }
+      console.error(
+        JSON.stringify({
+          event: 'totp_step_up_failed',
+          requestId: c.get('requestId'),
+        }),
+      )
       return c.json(
         apiError(
           c.get('requestId'),
@@ -6306,6 +6348,15 @@ app.post('/identity/accounts/totp/step-up', async (c) => {
         400,
       )
     }
+    const sessionKey = await buildAuthAttemptBucketKey(
+      'account',
+      `totp-step-up:${auth.user.id}:${auth.sessionId}`,
+    )
+    await c.env.DB.prepare(
+      'DELETE FROM auth_failure_buckets WHERE bucket_key = ?',
+    )
+      .bind(sessionKey)
+      .run()
     return c.json({ object: 'totpSession', verified: true })
   } catch {
     reportMfaSessionFailure(c, 'step-up')
@@ -6678,6 +6729,9 @@ app.post('/identity/accounts/totp/change', async (c) => {
   const nowIso = now.toISOString()
 
   try {
+    const defense = await checkCredentialProofDefense(c, auth.user)
+    if (!defense.allowed)
+      return invalidCredentialProofResponse(c, defense.rateLimited)
     const setup = await findTotpSetupByUserId(c.env.DB, auth.user.id)
     if (!setup?.enabled || !setup.credentialGeneration) {
       await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
@@ -6717,6 +6771,7 @@ app.post('/identity/accounts/totp/change', async (c) => {
     })
 
     if (!currentVerification.ok) {
+      await recordCredentialProofFailure(c, auth.user, defense.state, true)
       await emitTotpChangeAuditEvent(c, auth, 'failure', 'start', {
         reason: 'invalid_current_code',
       })
@@ -9845,6 +9900,7 @@ function apiError(
     | 'missing_token'
     | 'notification_unavailable'
     | 'organization_not_found'
+    | 'organization_creation_restricted'
     | 'rate_limited'
     | 'reauth_required'
     | 'registration_unavailable'

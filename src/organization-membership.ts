@@ -46,7 +46,11 @@ export type OrganizationMembershipResult =
   | { status: 'delivery_unavailable'; membershipIds: string[] }
   | {
       status:
-        'invalid_request' | 'unsupported_feature' | 'not_found' | 'conflict'
+        | 'invalid_request'
+        | 'unsupported_feature'
+        | 'not_found'
+        | 'conflict'
+        | 'rate_limited'
     }
 type MembershipInput = {
   actor: OrganizationMembershipActor

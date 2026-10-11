@@ -55,10 +55,11 @@ export function parseInvitedAccountRegistration(
 }
 
 export async function createInvitedAccount(
-  database: Pick<D1Database, 'prepare'>,
+  database: Pick<D1Database, 'prepare' | 'batch'>,
   input: Registration,
   inviteSecret: string,
   now: string,
+  requestId: string,
 ): Promise<boolean> {
   const inviteTokenHash = await buildOrganizationMembershipInviteTokenHash({
     secret: inviteSecret,
@@ -75,7 +76,7 @@ export async function createInvitedAccount(
   )
   // Eligibility is evaluated in the INSERT itself. No read/check/write gap can
   // create an account after revoke/expiry, and uniqueness never replaces keys.
-  const result = await database
+  const insertion = database
     .prepare(
       `
     INSERT OR IGNORE INTO users (id,email,email_normalized,display_name,kdf_algorithm,kdf_iterations,kdf_memory,kdf_parallelism,master_password_hash,user_key,public_key,private_key,security_stamp,revision_date)
@@ -107,6 +108,41 @@ export async function createInvitedAccount(
       inviteTokenHash,
       now,
     )
-    .first<{ id: string }>()
-  return result?.id === user.id
+
+  const auditId = crypto.randomUUID()
+  const statements = [
+    insertion,
+    database
+      .prepare(
+        `INSERT INTO audit_events (id,schema_version,name,outcome,request_id,occurred_at,actor_user_id,target_type,target_id,context_json)
+      SELECT ?,1,'organization.member.registration','success',?,?,?,'organization_user',?,json_object('organizationId',?)
+      WHERE EXISTS (SELECT 1 FROM users WHERE id=?)`,
+      )
+      .bind(
+        auditId,
+        requestId,
+        now,
+        user.id,
+        input.invitation.membershipId,
+        input.invitation.organizationId,
+        user.id,
+      ),
+    database
+      .prepare(
+        `SELECT CASE WHEN EXISTS (SELECT 1 FROM users WHERE id=?)
+      AND NOT EXISTS (SELECT 1 FROM audit_events WHERE id=? AND name='organization.member.registration')
+      THEN json('required invitation registration audit missing') ELSE 1 END AS valid`,
+      )
+      .bind(user.id, auditId),
+  ]
+  const results = await database.batch(statements)
+  if (
+    results.length !== statements.length ||
+    results.some((result) => !result.success)
+  )
+    throw new Error('Invited account registration batch was not confirmed.')
+  return (
+    (results[0]?.results[0] as { id?: unknown } | undefined)?.id === user.id &&
+    results[1]?.meta.changes === 1
+  )
 }

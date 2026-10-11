@@ -69,7 +69,7 @@ export function registerOrganizationMembershipRoutes<E extends Env>(
       const error = (
         code: string,
         message: string,
-        status: 400 | 404 | 409 | 501 | 503,
+        status: 400 | 404 | 409 | 429 | 501 | 503,
       ) =>
         c.json(
           {
@@ -270,6 +270,12 @@ export function registerOrganizationMembershipRoutes<E extends Env>(
               'membership_conflict',
               'Organization membership transition could not be applied.',
               409,
+            )
+          case 'rate_limited':
+            return error(
+              'invitation_rate_limited',
+              'Invitation mail limit reached.',
+              429,
             )
         }
       } catch {

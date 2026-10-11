@@ -1,4 +1,5 @@
 import type { AuditEvent } from '../domain/audit'
+import { organizationAuditScopeExpression } from './organization-audit-repository'
 import type {
   OrganizationMembershipCollectionGrant,
   OrganizationMembershipMemberRecord,
@@ -19,6 +20,64 @@ type Mutation = Scope & {
   auditEvent: AuditEvent
 }
 type Result = { status: 'success' } | { status: 'not_found' }
+type InvitationResult = Result | { status: 'rate_limited' }
+
+const invitationActorLimit = 50
+const invitationOrganizationLimit = 200
+const invitationActorWindowMs = 60 * 60 * 1000
+const invitationOrganizationWindowMs = 24 * invitationActorWindowMs
+const reinviteCooldownMs = 10 * 60 * 1000
+const invitationNames =
+  "event.name IN ('organization.member.invite','organization.member.reinvite')"
+const invitationLimitsSql = `
+  (SELECT COUNT(*) FROM audit_events event WHERE ${invitationNames}
+    AND event.actor_user_id = ? AND event.occurred_at > ?) + ? <= ${invitationActorLimit}
+  AND (SELECT COUNT(*) FROM audit_events event WHERE ${invitationNames}
+    AND ${organizationAuditScopeExpression} = ? AND event.occurred_at > ?) + ? <= ${invitationOrganizationLimit}`
+
+function invitationLimitValues(
+  input: Scope & { now: string },
+  count: number,
+): unknown[] {
+  return [
+    input.actorUserId,
+    new Date(Date.parse(input.now) - invitationActorWindowMs).toISOString(),
+    count,
+    input.organizationId,
+    new Date(
+      Date.parse(input.now) - invitationOrganizationWindowMs,
+    ).toISOString(),
+    count,
+  ]
+}
+
+async function invitationLimitReached(
+  database: Database,
+  input: Scope & { now: string; membershipId?: string },
+  count: number,
+): Promise<boolean> {
+  const cooldown = input.membershipId
+    ? ` OR EXISTS (SELECT 1 FROM audit_events event WHERE event.name = 'organization.member.reinvite'
+        AND event.target_id = ? AND ${organizationAuditScopeExpression} = ? AND event.occurred_at > ?)`
+    : ''
+  const row = await database
+    .prepare(
+      `SELECT CASE WHEN NOT (${invitationLimitsSql})${cooldown}
+    THEN 1 ELSE 0 END AS limited`,
+    )
+    .bind(
+      ...invitationLimitValues(input, count),
+      ...(input.membershipId
+        ? [
+            input.membershipId,
+            input.organizationId,
+            new Date(Date.parse(input.now) - reinviteCooldownMs).toISOString(),
+          ]
+        : []),
+    )
+    .first<{ limited: number }>()
+  return row?.limited === 1
+}
 
 const actorCte = `WITH requested_actor AS (
   SELECT ? AS user_id, ? AS session_id, ? AS device_identifier
@@ -260,7 +319,7 @@ export async function insertOrganizationMemberInvites(
     }[]
     auditEvents: AuditEvent[]
   },
-): Promise<Result | { status: 'conflict' }> {
+): Promise<InvitationResult | { status: 'conflict' }> {
   if (
     input.invites.length < 1 ||
     input.invites.length > 20 ||
@@ -294,6 +353,7 @@ export async function insertOrganizationMemberInvites(
         WHERE collection.id IS NULL)
       AND NOT EXISTS (SELECT 1 FROM organization_users existing JOIN json_each(?) candidate
         ON existing.email = json_extract(candidate.value, '$.emailNormalized') WHERE existing.organization_id = ?)
+      AND ${invitationLimitsSql}
   `,
     )
     .bind(
@@ -310,6 +370,7 @@ export async function insertOrganizationMemberInvites(
       input.organizationId,
       invitesJson,
       input.organizationId,
+      ...invitationLimitValues(input, input.invites.length),
     )
   const statements = [mutation]
   for (const [index, event] of input.auditEvents.entries()) {
@@ -375,9 +436,10 @@ export async function insertOrganizationMemberInvites(
       throw new Error('Organization invitation audit did not fully apply.')
     if (results[0]?.meta.changes === input.invites.length)
       return { status: 'success' }
-    return (await canRead(database, input))
-      ? { status: 'conflict' }
-      : { status: 'not_found' }
+    if (!(await canRead(database, input))) return { status: 'not_found' }
+    return (await invitationLimitReached(database, input, input.invites.length))
+      ? { status: 'rate_limited' }
+      : { status: 'conflict' }
   } catch (error) {
     if (String(error).includes('UNIQUE constraint failed: organization_users.'))
       return { status: 'conflict' }
@@ -556,13 +618,17 @@ export async function reinviteOrganizationMember(
     inviteExpiresAt: string
     emailNormalized: string
   },
-): Promise<Result> {
+): Promise<InvitationResult> {
   const mutationId = crypto.randomUUID()
   const mutation = database
     .prepare(
       `${actorCte} UPDATE organization_users SET status = 0, user_id = NULL, org_key = NULL,
     invite_token_hash = ?, invite_expires_at = ?, updated_at = ?, last_membership_mutation_id = ?
     WHERE id = ? AND organization_id = ? AND status = 0 AND email = ? AND ${manager}
+      AND ${invitationLimitsSql}
+      AND NOT EXISTS (SELECT 1 FROM audit_events event
+        WHERE event.name = 'organization.member.reinvite' AND event.target_id = ?
+          AND ${organizationAuditScopeExpression} = ? AND event.occurred_at > ?)
   `,
     )
     .bind(
@@ -576,8 +642,16 @@ export async function reinviteOrganizationMember(
       input.emailNormalized,
       input.organizationId,
       input.actorUserId,
+      ...invitationLimitValues(input, 1),
+      input.membershipId,
+      input.organizationId,
+      new Date(Date.parse(input.now) - reinviteCooldownMs).toISOString(),
     )
-  return runMutation(database, mutation, input, mutationId)
+  const result = await runMutation(database, mutation, input, mutationId)
+  if (result.status === 'success') return result
+  return (await invitationLimitReached(database, input, 1))
+    ? { status: 'rate_limited' }
+    : result
 }
 
 async function canRead(database: Database, input: Scope): Promise<boolean> {

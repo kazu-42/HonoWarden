@@ -81,6 +81,7 @@ describe('organization audit query validation', () => {
     expect(organizationAuditEventNames).toEqual([
       'organization.member.invite',
       'organization.member.reinvite',
+      'organization.member.registration',
       'organization.member.accept',
       'organization.member.confirm',
       'organization.member.update',
