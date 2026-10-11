@@ -89,6 +89,7 @@ const deviceRows = [
     userId: deviceReplayUser.id,
     identifier: 'fixture-device',
     name: 'CLI',
+    sessionId: 'synthetic-session-id',
     type: 8,
     lastSeenAt: '2026-07-06T00:10:00.000Z',
     createdAt: '2026-07-06T00:00:00.000Z',
@@ -98,6 +99,7 @@ const deviceRows = [
 
 const refreshSession = {
   tokenId: 'refresh-token-id',
+  sessionId: 'synthetic-session-id',
   userId: replayUser.id,
   deviceId: `${replayUser.id}:fixture-device`,
   deviceIdentifier: 'fixture-device',
@@ -432,6 +434,11 @@ const replayFixtures = [
     path: 'ciphers/trash-success.json',
     allowMutatingFixtures: true,
     database: {
+      ciphers: cipherRows.map((cipher) => ({
+        ...cipher,
+        organizationId: null,
+        deletedAt: null,
+      })),
       cipherSoftDeleteChanges: 1,
     },
   },
@@ -439,6 +446,11 @@ const replayFixtures = [
     path: 'ciphers/restore-success.json',
     allowMutatingFixtures: true,
     database: {
+      ciphers: cipherRows.map((cipher) => ({
+        ...cipher,
+        organizationId: null,
+        deletedAt: '2026-07-06T00:07:00.000Z',
+      })),
       cipherRestoreChanges: 1,
     },
   },

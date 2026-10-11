@@ -45,7 +45,6 @@ function buildPublishedPacket(options) {
   const releaseGate = runJson([
     process.execPath,
     repoPath('scripts/honowarden-release-gate.mjs'),
-    '--strict',
   ])
   const release = resolveReleaseState(targetCommit)
   const tagWorkflow = resolveTagWorkflow(options, targetCommit)
@@ -55,8 +54,8 @@ function buildPublishedPacket(options) {
     tagWorkflow.check,
     check(
       'release_gate_ready',
-      releaseGate.overall === 'ready',
-      `release gate overall is ${releaseGate.overall}`,
+      releaseGate.historicalEvidenceStatus === 'consistent',
+      `historical release evidence is ${releaseGate.historicalEvidenceStatus}`,
     ),
     release.stateCheck,
     release.bodyCheck,
@@ -67,6 +66,7 @@ function buildPublishedPacket(options) {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     status: ready ? 'ready' : 'not_ready',
+    currentReleaseReady: releaseGate.overall === 'ready',
     targetTag,
     targetVersion,
     targetCommit,

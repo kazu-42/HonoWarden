@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { releaseClockEnv } from '../support/release-clock'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const publishPacketScript = join(
@@ -41,7 +43,7 @@ type ReleasePublishPacketReport = {
 }
 
 describe('release publish packet', () => {
-  it('emits publish approval evidence without publishing a release', async () => {
+  it('withholds publication authority when current client metadata is stale', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
     const fakeBin = await createFakePublishBin({
@@ -70,14 +72,14 @@ describe('release publish packet', () => {
     const report = JSON.parse(result.stdout) as ReleasePublishPacketReport
 
     expect(report.schemaVersion).toBe(1)
-    expect(report.status).toBe('ready')
+    expect(report.status).toBe('not_ready')
     expect(report.targetTag).toBe('v0.1.0-alpha')
     expect(report.targetVersion).toBe('0.1.0-alpha')
     expect(report.targetCommit).toBe(targetCommit)
     expect(statusById(report, 'local_tag_context')).toBe('pass')
     expect(statusById(report, 'remote_tag_context')).toBe('pass')
     expect(statusById(report, 'tag_workflow_ci')).toBe('pass')
-    expect(statusById(report, 'release_gate_ready')).toBe('pass')
+    expect(statusById(report, 'release_gate_ready')).toBe('fail')
     expect(statusById(report, 'release_state')).toBe('pass')
     expect(statusById(report, 'release_body')).toBe('pass')
     expect(report.existingRelease).toMatchObject({
@@ -86,15 +88,11 @@ describe('release publish packet', () => {
       isPrerelease: true,
       targetCommitish: targetCommit,
     })
-    expect(report.commands.publishRelease).toBe(
-      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
-    )
+    expect(report.commands.publishRelease).toBeNull()
     expect(report.commands.viewRelease).toBe(
       'gh release view v0.1.0-alpha --repo kazu-42/HonoWarden',
     )
-    expect(report.publishApprovalText).toBe(
-      `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
-    )
+    expect(report.publishApprovalText).toBeNull()
     expect(report.limitations).toContain(
       'This packet does not publish, update, or delete a GitHub release.',
     )
@@ -266,7 +264,7 @@ function fakeEnv(fakeBin: {
   tagWorkflowUrl: string
 }) {
   return {
-    ...process.env,
+    ...releaseClockEnv('stale'),
     HONOWARDEN_TEST_HEAD_COMMIT: fakeBin.headCommit,
     HONOWARDEN_TEST_RELEASE_DRAFT: fakeBin.isDraft ? '1' : '0',
     HONOWARDEN_TEST_RELEASE_PRERELEASE: fakeBin.isPrerelease ? '1' : '0',

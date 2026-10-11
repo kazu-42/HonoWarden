@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
@@ -13,6 +13,10 @@ const deployBoundaryDocs = [
 
 const currentAuthorityDocs = [
   ...deployBoundaryDocs,
+  'README.md',
+  'docs/dogfood-runbook.md',
+  'docs/security/incident-response.md',
+  'docs/security/secrets-inventory.md',
   'docs/operations/access-token-key-rotation.md',
   'docs/operations/audit-events.md',
   'docs/operations/cloudflare-access-control.md',
@@ -31,6 +35,7 @@ const historicalAuthorityBanner =
   'HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.'
 
 const forbiddenCurrentCommandPatterns = [
+  /\bwrangler\s+(?:d1\s+create|r2\s+bucket\s+create)\b/u,
   /\bpnpm(?:\s+run)?\s+deploy\b/u,
   /scripts\/honowarden-deploy(?:\.mjs)?\b/u,
   /\b(?:(?:pnpm(?:\s+exec)?|npx)\s+)?wrangler\s+deploy\b/u,
@@ -51,6 +56,24 @@ const exactInquiryRepositoryCommands = [
 
 const exactHistoricalCommandRecords = new Map<string, readonly string[]>([
   [
+    'docs/release/cloudflare-resource-evidence.md',
+    [
+      'pnpm wrangler d1 create honowarden-staging --location apac',
+      'pnpm wrangler d1 create honowarden --location apac',
+      'pnpm wrangler r2 bucket create honowarden-staging-vault-objects --location apac',
+      'pnpm wrangler r2 bucket create honowarden-vault-objects --location apac',
+      "printf 'y\\n' | pnpm wrangler d1 migrations apply honowarden-staging --env staging --remote",
+      "printf 'y\\n' | pnpm exec wrangler d1 migrations apply DB --env production --remote",
+    ],
+  ],
+  [
+    'docs/release/website-live-evidence.md',
+    [
+      '- Deployment command: `pnpm deploy`',
+      'pnpm exec wrangler rollback eef4ab71-d6e8-401f-93c3-27e7bd2bcd91 --name honowarden-website --yes',
+    ],
+  ],
+  [
     'docs/operations/cloudflare-access-control.md',
     [
       '- `pnpm cloudflare:tokens -- apply --auth global --execute --expires-on 2026-10-07T23:59:59Z`',
@@ -59,6 +82,48 @@ const exactHistoricalCommandRecords = new Map<string, readonly string[]>([
 ])
 
 describe('build provenance operator runbooks', () => {
+  it('rejects unclassified mutation recipes across all operator documentation', () => {
+    const violations = ['README.md', ...markdownPaths('docs')].flatMap((path) =>
+      logicalLines(readFileSync(path, 'utf8'))
+        .filter(({ text }) => isUnclassifiedMutationRecipe(path, text))
+        .map(({ line, text }) => `${path}:${line}: ${text}`),
+    )
+
+    expect(violations).toEqual([])
+  })
+
+  it('defaults new documents to no mutation authority', () => {
+    expect(
+      isUnclassifiedMutationRecipe(
+        'docs/operations/new-runbook.md',
+        'pnpm exec wrangler deploy --env production',
+      ),
+    ).toBe(true)
+    expect(
+      isUnclassifiedMutationRecipe(
+        'docs/operations/new-runbook.md',
+        'pnpm exec wrangler deploy --dry-run',
+      ),
+    ).toBe(true)
+    expect(
+      isUnclassifiedMutationRecipe(
+        'docs/operations/new-runbook.md',
+        'pnpm exec wrangler d1 create new-production-db',
+      ),
+    ).toBe(true)
+  })
+
+  it.each([
+    'docs/release/cloudflare-resource-evidence.md',
+    'docs/release/website-live-evidence.md',
+    'docs/release/auth-request-staging-evidence.md',
+    'docs/release/durable-notification-staging-evidence.md',
+  ])('labels earlier staging evidence as historical in %s', (path) => {
+    expect(
+      readFileSync(path, 'utf8').split('\n').slice(0, 8).join('\n'),
+    ).toContain(historicalAuthorityBanner)
+  })
+
   it.each(deployBoundaryDocs)(
     'keeps current HonoWarden deploy authority stopped in %s',
     (path) => {
@@ -219,6 +284,12 @@ describe('build provenance operator runbooks', () => {
         '`wrangler deploy --env staging --dry-run && wrangler deploy --env production`',
       ),
     ).toBe(false)
+    expect(
+      isUnclassifiedMutationRecipe(
+        'docs/release/ops-rollback-evidence.md',
+        '`wrangler deploy --dry-run` then `wrangler secret put NAME`',
+      ),
+    ).toBe(true)
   })
 })
 
@@ -265,6 +336,30 @@ function normalizeWhitespace(value: string): string {
   return value.trim().replace(/\s+/gu, ' ')
 }
 
+function markdownPaths(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = `${directory}/${entry.name}`
+    if (entry.isDirectory()) return markdownPaths(path)
+    return entry.isFile() && entry.name.endsWith('.md') ? [path] : []
+  })
+}
+
+function isUnclassifiedMutationRecipe(path: string, text: string): boolean {
+  if (!forbiddenCurrentCommandPatterns.some((pattern) => pattern.test(text))) {
+    return false
+  }
+  if (isExactAllowedCommandRecord(path, text)) return false
+  const historicalDryRunDocs: readonly string[] = [
+    ...historicalWorkerEvidenceDocs,
+    'docs/current-state.md',
+    'docs/release/account-lifecycle-local-evidence.md',
+  ]
+  return !(
+    historicalDryRunDocs.includes(path) &&
+    containsOnlyHistoricalDeployDryRuns(text)
+  )
+}
+
 function isExactAllowedCommandRecord(path: string, text: string): boolean {
   if (
     path === 'docs/operations/operator-quickstart.md' &&
@@ -279,9 +374,8 @@ function isExactAllowedCommandRecord(path: string, text: string): boolean {
 }
 
 function containsOnlyHistoricalDeployDryRuns(text: string): boolean {
-  const deployCommands = [
-    ...text.matchAll(/\bwrangler\s+deploy\b(?<arguments>[^`|]*)(?:`|\||$)/gu),
-  ]
+  const deployPattern = /\bwrangler\s+deploy\b(?<arguments>[^`|]*)(?:`|\||$)/gu
+  const deployCommands = [...text.matchAll(deployPattern)]
 
   return (
     deployCommands.length > 0 &&
@@ -291,6 +385,9 @@ function containsOnlyHistoricalDeployDryRuns(text: string): boolean {
         commandArguments.includes('--dry-run') &&
         !/[;&]|\|\|/u.test(commandArguments)
       )
-    })
+    }) &&
+    !forbiddenCurrentCommandPatterns.some((pattern) =>
+      pattern.test(text.replace(deployPattern, '')),
+    )
   )
 }

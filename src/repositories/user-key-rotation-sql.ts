@@ -8,6 +8,7 @@ export const snapshotSummarySql = `
     users.kdf_parallelism as kdfParallelism,
     users.master_password_hash as masterPasswordHash,
     users.user_key as userKey,
+    users.user_key_id as userKeyId,
     users.public_key as publicKey,
     users.private_key as privateKey,
     users.security_stamp as securityStamp,
@@ -242,7 +243,8 @@ export const updateUserGenerationSql = `
     private_key = ?,
     security_stamp = ?,
     revision_date = ?,
-    updated_at = ?
+    updated_at = ?,
+    user_key_id = ?
   WHERE users.id = ?
     AND users.disabled_at IS NULL
     AND users.master_password_hash = ?

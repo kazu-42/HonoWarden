@@ -101,15 +101,18 @@ export async function getAccountRevisionDate(
             membership.id as organizationUserId,
             membership.organization_id as organizationId
           FROM organization_users membership
+          INNER JOIN organizations organization
+            ON organization.id = membership.organization_id
+            AND organization.enabled = 1
           INNER JOIN requested_user
             ON requested_user.userId = membership.user_id
           WHERE membership.status = 2
+            AND membership.type IN (0, 1, 2)
         ),
         accessible_organization_collections AS (
           SELECT DISTINCT
             collection.id as collectionId,
-            collection.organization_id as organizationId,
-            collection_user.manage
+            collection.organization_id as organizationId
           FROM confirmed_memberships membership
           INNER JOIN collection_users collection_user
             ON collection_user.organization_user_id = membership.organizationUserId
@@ -149,7 +152,6 @@ export async function getAccountRevisionDate(
               INNER JOIN accessible_organization_collections accessible_collection
                 ON accessible_collection.collectionId = mapping.collection_id
                 AND accessible_collection.organizationId = cipher.organization_id
-                AND accessible_collection.manage = 1
               WHERE mapping.cipher_id = cipher.id
             )
         )

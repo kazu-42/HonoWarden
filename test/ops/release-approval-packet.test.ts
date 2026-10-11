@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest'
 
 import { writePreTagGit } from '../support/release-git'
 
+import { releaseClockEnv } from '../support/release-clock'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const approvalPacketScript = join(
@@ -76,12 +78,12 @@ describe('release approval packet', () => {
     const report = JSON.parse(result.stdout) as ReleaseApprovalPacketReport
 
     expect(report.schemaVersion).toBe(1)
-    expect(report.status).toBe('ready')
+    expect(report.status).toBe('not_ready')
     expect(report.targetTag).toBe('v0.1.0-alpha')
     expect(report.targetVersion).toBe('0.1.0-alpha')
     expect(report.targetCommit).toMatch(/^[a-f0-9]{40}$/)
-    expect(statusById(report, 'release_gate_ready')).toBe('pass')
-    expect(statusById(report, 'tag_preflight_ready')).toBe('pass')
+    expect(statusById(report, 'release_gate_ready')).toBe('fail')
+    expect(statusById(report, 'tag_preflight_ready')).toBe('fail')
     expect(statusById(report, 'github_release_plan_ready')).toBe('pass')
     expect(statusById(report, 'ci_evidence')).toBe('pass')
     expect(statusById(report, 'commit_alignment')).toBe('pass')
@@ -146,7 +148,8 @@ process.stdout.write(JSON.stringify({
     )
     const report = JSON.parse(result.stdout) as ReleaseApprovalPacketReport
 
-    expect(report.status).toBe('ready')
+    expect(report.status).toBe('not_ready')
+    expect(statusById(report, 'release_gate_ready')).toBe('fail')
     expect(statusById(report, 'ci_evidence')).toBe('pass')
     expect(report.ci.verifiedRun).toMatchObject({
       databaseId: 12345,
@@ -186,7 +189,7 @@ function fakeEnv(
   options: { ciUrl?: string; headSha: string },
 ) {
   return {
-    ...process.env,
+    ...releaseClockEnv('stale'),
     ...(options.ciUrl ? { HONOWARDEN_TEST_CI_URL: options.ciUrl } : {}),
     HONOWARDEN_TEST_HEAD_SHA: options.headSha,
     PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,

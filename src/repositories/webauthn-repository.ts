@@ -367,11 +367,12 @@ export async function completeWebAuthnRegistration(
           updated_at
         )
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE (
-          SELECT COUNT(*)
-          FROM webauthn_credentials
-          WHERE user_id = ?
-        ) < ?
+        WHERE changes() = 1
+          AND (
+            SELECT COUNT(*)
+            FROM webauthn_credentials
+            WHERE user_id = ?
+          ) < ?
           AND EXISTS (
             SELECT 1
             FROM webauthn_challenges
@@ -419,6 +420,8 @@ export async function completeWebAuthnRegistration(
     )
 
   try {
+    // Keep these statements adjacent: changes() binds the insert to this
+    // batch's successful consume, not an earlier equal-timestamp consume.
     const results = await database.batch([consumeStatement, insertStatement])
     const consumed = (results[0]?.meta.changes ?? 0) === 1
     const created = (results[1]?.meta.changes ?? 0) === 1

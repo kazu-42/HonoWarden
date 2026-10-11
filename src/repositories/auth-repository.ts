@@ -15,6 +15,7 @@ export type AuthUserRecord = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string | null
+  userKeyId?: string | null
   publicKey: string | null
   privateKey: string | null
   securityStamp: string
@@ -47,6 +48,7 @@ export type CreatePasswordGrantSessionResult =
 
 export type RefreshTokenSession = {
   tokenId: string
+  sessionId: string | null
   userId: string
   deviceId: string
   deviceIdentifier: string
@@ -58,6 +60,7 @@ export type RefreshTokenSession = {
 
 export type RotateRefreshTokenInput = {
   currentTokenId: string
+  expectedSessionId: string
   userId: string
   deviceId: string
   expectedSecurityStamp: string
@@ -248,7 +251,7 @@ export type AuthDefenseCleanupResult = {
 
 type AuthLookupDatabase = Pick<D1Database, 'prepare'>
 type AuthSessionDatabase = Pick<D1Database, 'batch' | 'prepare'>
-type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare'>
+type AuthDeviceRevokeDatabase = Pick<D1Database, 'prepare' | 'batch'>
 type AuthSessionRevokeDatabase = Pick<D1Database, 'batch' | 'prepare'>
 type AuthDeviceReadDatabase = Pick<D1Database, 'prepare'>
 type AuthDeviceMetadataDatabase = Pick<D1Database, 'prepare'>
@@ -269,6 +272,7 @@ type AuthUserRow = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string | null
+  userKeyId?: string | null
   publicKey: string | null
   privateKey: string | null
   securityStamp: string
@@ -298,6 +302,7 @@ type PreloginKdfRow = {
 
 type RefreshTokenSessionRow = {
   tokenId: string
+  sessionId: string | null
   userId: string
   deviceId: string
   deviceIdentifier: string
@@ -314,6 +319,7 @@ type RefreshTokenSessionRow = {
   kdfParallelism: number | null
   masterPasswordHash: string
   userKey: string | null
+  userKeyId?: string | null
   publicKey: string | null
   privateKey: string | null
   securityStamp: string
@@ -504,6 +510,7 @@ export async function findAuthUserByEmail(
           u.kdf_parallelism as kdfParallelism,
           u.master_password_hash as masterPasswordHash,
           u.user_key as userKey,
+          u.user_key_id as userKeyId,
           u.public_key as publicKey,
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
@@ -531,6 +538,7 @@ export async function findAuthUserByEmail(
 export async function findAuthUserById(
   database: AuthLookupDatabase,
   userId: string,
+  session?: { deviceIdentifier: string; sessionId: string },
 ): Promise<AuthUserRecord | null> {
   const row = await database
     .prepare(
@@ -547,6 +555,7 @@ export async function findAuthUserById(
           u.kdf_parallelism as kdfParallelism,
           u.master_password_hash as masterPasswordHash,
           u.user_key as userKey,
+          u.user_key_id as userKeyId,
           u.public_key as publicKey,
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
@@ -561,14 +570,34 @@ export async function findAuthUserById(
           ut.last_accepted_step as totpLastAcceptedStep
         FROM users u
         LEFT JOIN user_totp ut ON ut.user_id = u.id
+        ${
+          session
+            ? `INNER JOIN devices auth_device
+          ON auth_device.user_id = u.id
+          AND auth_device.revoked_at IS NULL
+          AND auth_device.identifier = ?
+          AND auth_device.session_id = ?`
+            : ''
+        }
         WHERE u.id = ?
         LIMIT 1
       `,
     )
-    .bind(userId)
+    .bind(
+      ...(session
+        ? [session.deviceIdentifier, session.sessionId, userId]
+        : [userId]),
+    )
     .first<AuthUserRow>()
 
   return row ? authUserFromRow(row) : null
+}
+
+export function findAuthUserBySession(
+  database: AuthLookupDatabase,
+  input: { userId: string; deviceIdentifier: string; sessionId: string },
+): Promise<AuthUserRecord | null> {
+  return findAuthUserById(database, input.userId, input)
 }
 
 export async function createPasswordGrantSession(
@@ -617,7 +646,8 @@ export async function createPasswordGrantSession(
             type = ?,
             last_seen_at = ?,
             revoked_at = NULL,
-            updated_at = ?
+            updated_at = ?,
+            session_id = ?
           WHERE id = ? AND user_id = ?
             AND EXISTS (
               SELECT 1
@@ -634,6 +664,7 @@ export async function createPasswordGrantSession(
         input.deviceType,
         input.now,
         input.now,
+        input.refreshTokenId,
         deviceId,
         input.userId,
         input.userId,
@@ -648,9 +679,10 @@ export async function createPasswordGrantSession(
             user_id,
             device_id,
             token_hash,
-            expires_at
+            expires_at,
+            session_id
           )
-          SELECT ?, ?, ?, ?, ?
+          SELECT ?, ?, ?, ?, ?, ?
           FROM users
           WHERE id = ?
             AND disabled_at IS NULL
@@ -671,6 +703,7 @@ export async function createPasswordGrantSession(
         deviceId,
         input.refreshTokenHash,
         input.refreshTokenExpiresAt,
+        input.refreshTokenId,
         input.userId,
         input.expectedMasterPasswordHash,
         input.expectedSecurityStamp,
@@ -1024,6 +1057,7 @@ export async function findRefreshTokenSessionByHash(
       `
         SELECT
           rt.id as tokenId,
+          rt.session_id as sessionId,
           rt.user_id as userId,
           rt.device_id as deviceId,
           d.identifier as deviceIdentifier,
@@ -1040,6 +1074,7 @@ export async function findRefreshTokenSessionByHash(
           u.kdf_parallelism as kdfParallelism,
           u.master_password_hash as masterPasswordHash,
           u.user_key as userKey,
+          u.user_key_id as userKeyId,
           u.public_key as publicKey,
           u.private_key as privateKey,
           u.security_stamp as securityStamp,
@@ -1079,6 +1114,7 @@ export async function findRefreshTokenSessionByHash(
     kdfParallelism: row.kdfParallelism,
     masterPasswordHash: row.masterPasswordHash,
     userKey: row.userKey,
+    ...(row.userKeyId ? { userKeyId: row.userKeyId } : {}),
     publicKey: row.publicKey,
     privateKey: row.privateKey,
     securityStamp: row.securityStamp,
@@ -1095,6 +1131,7 @@ export async function findRefreshTokenSessionByHash(
 
   return {
     tokenId: row.tokenId,
+    sessionId: row.sessionId ?? null,
     userId: row.userId,
     deviceId: row.deviceId,
     deviceIdentifier: row.deviceIdentifier,
@@ -1418,9 +1455,10 @@ export async function rotateRefreshToken(
             device_id,
             token_hash,
             rotated_from_token_id,
-            expires_at
+            expires_at,
+            session_id
           )
-          SELECT ?, current.user_id, current.device_id, ?, current.id, ?
+          SELECT ?, current.user_id, current.device_id, ?, current.id, ?, current.session_id
           FROM refresh_tokens AS current
           INNER JOIN devices AS device
             ON device.id = current.device_id
@@ -1432,6 +1470,8 @@ export async function rotateRefreshToken(
             AND current.device_id = ?
             AND current.revoked_at IS NULL
             AND device.revoked_at IS NULL
+            AND current.session_id = ?
+            AND device.session_id = current.session_id
             AND owner.disabled_at IS NULL
             AND owner.security_stamp = ?
         `,
@@ -1443,6 +1483,7 @@ export async function rotateRefreshToken(
         input.currentTokenId,
         input.userId,
         input.deviceId,
+        input.expectedSessionId,
         input.expectedSecurityStamp,
       ),
     database
@@ -1525,6 +1566,7 @@ export async function rotateRefreshToken(
       input.userId,
       input.deviceId,
       input.now,
+      input.expectedSessionId,
     )
 
     return {
@@ -1542,6 +1584,7 @@ export async function invalidateRefreshTokenSession(
   userId: string,
   deviceId: string,
   now: string,
+  expectedSessionId?: string,
 ): Promise<void> {
   await database.batch([
     database
@@ -1550,18 +1593,31 @@ export async function invalidateRefreshTokenSession(
           UPDATE refresh_tokens
           SET revoked_at = ?
           WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL
+            ${expectedSessionId ? 'AND session_id = ?' : ''}
         `,
       )
-      .bind(now, userId, deviceId),
+      .bind(
+        now,
+        userId,
+        deviceId,
+        ...(expectedSessionId ? [expectedSessionId] : []),
+      ),
     database
       .prepare(
         `
           UPDATE devices
           SET revoked_at = ?, updated_at = ?
           WHERE id = ? AND user_id = ?
+            ${expectedSessionId ? 'AND session_id = ?' : ''}
         `,
       )
-      .bind(now, now, deviceId, userId),
+      .bind(
+        now,
+        now,
+        deviceId,
+        userId,
+        ...(expectedSessionId ? [expectedSessionId] : []),
+      ),
   ])
 }
 
@@ -1569,33 +1625,39 @@ export async function revokeDeviceSession(
   database: AuthDeviceRevokeDatabase,
   input: DeviceRevokeInput,
 ): Promise<DeviceRevokeResult> {
-  const deviceResult = await database
-    .prepare(
-      `
+  const results = await database.batch([
+    database
+      .prepare(
+        `
         UPDATE devices
         SET revoked_at = ?, updated_at = ?
         WHERE id = ? AND user_id = ? AND revoked_at IS NULL
       `,
-    )
-    .bind(input.revokedAt, input.revokedAt, input.deviceId, input.userId)
-    .run()
+      )
+      .bind(input.revokedAt, input.revokedAt, input.deviceId, input.userId),
+    // The batch prevents a fresh login from interleaving with revocation.
+    // changes() also keeps a not-found revoke from touching refresh families.
+    database
+      .prepare(
+        `
+        UPDATE refresh_tokens
+        SET revoked_at = ?
+        WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL
+          AND changes() = 1
+      `,
+      )
+      .bind(input.revokedAt, input.userId, input.deviceId),
+  ])
 
-  if (deviceResult.meta.changes !== 1) {
+  if (results.length !== 2 || results.some((result) => !result.success)) {
+    throw new Error('device revoke batch returned incomplete results')
+  }
+
+  if (results[0]?.meta.changes !== 1) {
     return {
       status: 'not_found',
     }
   }
-
-  await database
-    .prepare(
-      `
-        UPDATE refresh_tokens
-        SET revoked_at = ?
-        WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL
-      `,
-    )
-    .bind(input.revokedAt, input.userId, input.deviceId)
-    .run()
 
   return {
     status: 'revoked',
@@ -1661,6 +1723,7 @@ function authUserFromRow(row: AuthUserRow): AuthUserRecord {
     kdfParallelism: row.kdfParallelism,
     masterPasswordHash: row.masterPasswordHash,
     userKey: row.userKey,
+    ...(row.userKeyId ? { userKeyId: row.userKeyId } : {}),
     publicKey: row.publicKey,
     privateKey: row.privateKey,
     securityStamp: row.securityStamp,

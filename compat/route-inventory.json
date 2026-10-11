@@ -442,6 +442,31 @@
       "runtimeFlags": ["HONOWARDEN_USER_KEY_ROTATION_ENABLED"]
     },
     {
+      "lastReviewedAt": "2026-09-22",
+      "evidenceLevel": "local_official_client",
+      "evidence": [
+        "docs/release/current-cli-2026-9-smoke.md",
+        "test/integration/user-key-id-d1.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "accounts.user_key_id",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "protocol",
+      "ownerIssue": "HON-201",
+      "sourcePin": {
+        "repository": "github:46755185",
+        "commit": "8b5fea2e08cd9ace348d451bb448d92fa0afe302",
+        "path": "src/Api/KeyManagement/Controllers/AccountsKeyManagementController.cs"
+      },
+      "rationale": "Authenticated write-once key ID metadata with atomic audit and generation guards; local synthetic current-client evidence only, default-off in tracked environments.",
+      "covers": [
+        { "method": "GET", "path": "/api/accounts/key-management/user-key-id" },
+        { "method": "POST", "path": "/api/accounts/key-management/user-key-id" }
+      ],
+      "runtimeFlags": ["HONOWARDEN_USER_KEY_ID_ENABLED"]
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
       "evidence": ["test/app.test.ts"],
@@ -905,6 +930,47 @@
       "adrs": ["0010-organizations-team-vault-product-line.md"],
       "migrations": ["0014_organizations.sql"],
       "roadmapAnchors": ["Organizations"]
+    },
+    {
+      "lastReviewedAt": "2026-10-03",
+      "evidenceLevel": "local_api",
+      "evidence": ["test/app-organization-membership.test.ts"],
+      "supportClaim": false,
+      "id": "organizations.membership_administration",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "rationale": "Local company membership administration with default-off runtime activation. This records source routes and local API regression evidence, without promoting historical official-client compatibility or proving remote activation.",
+      "covers": [
+        { "method": "GET", "path": "/api/organizations/:id/users" },
+        { "method": "GET", "path": "/api/organizations/:id/users/:memberId" },
+        { "method": "GET", "path": "/api/users/:userId/public-key" },
+        { "method": "POST", "path": "/api/organizations/:id/users/invite" },
+        {
+          "method": "POST",
+          "path": "/api/organizations/:id/users/public-keys"
+        },
+        {
+          "method": "POST",
+          "path": "/api/organizations/:id/users/:memberId/accept"
+        },
+        {
+          "method": "POST",
+          "path": "/api/organizations/:id/users/:memberId/confirm"
+        },
+        {
+          "method": "POST",
+          "path": "/api/organizations/:id/users/:memberId/reinvite"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/organizations/:id/users/:memberId/revoke"
+        },
+        { "method": "PUT", "path": "/api/organizations/:id/users/:memberId" },
+        { "method": "DELETE", "path": "/api/organizations/:id/users/:memberId" }
+      ],
+      "runtimeFlags": ["HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED"],
+      "honowardenBehavior": "Owner-only invite, key lookup, confirmation, permission update, revocation, and removal; recipient-bound acceptance. HTTP 501 while runtime flag is off. No role expansion or official-client support claim."
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -2690,7 +2756,7 @@
       "classification": "implemented",
       "requirementKind": "operator",
       "ownerIssue": "HON-201",
-      "rationale": "Checked-in D1 migrations currently observed on main.",
+      "rationale": "Checked-in D1 migrations, including local-only post-release additions; inventory does not prove remote application.",
       "migrations": [
         "0001_initial_schema.sql",
         "0002_login_defenses.sql",
@@ -2714,7 +2780,10 @@
         "0018_text_sends.sql",
         "0019_send_files.sql",
         "0020_personal_api_keys.sql",
-        "0021_emergency_access.sql"
+        "0021_emergency_access.sql",
+        "0022_user_key_id.sql",
+        "0023_device_session_binding.sql",
+        "0024_organization_invitations.sql"
       ]
     },
     {

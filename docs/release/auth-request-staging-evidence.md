@@ -1,5 +1,9 @@
 # Auth Request Staging Evidence
 
+HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.
+The dated results below record the original operation. They do not authorize
+current secret changes, deployment, or reuse of the historical approval.
+
 Status: passed for the HTTP and token-grant lifecycle on 2026-07-11 JST.
 
 This evidence covers `HON-82` and `HON-83`: the feature-flagged
@@ -90,12 +94,14 @@ Hashed quota and login-defense metadata may remain until the bounded hourly
 retention cleanup. It contains no raw email, device identifier, client address,
 access code, or token.
 
-## Rollback
+## Historical Rollback Plan
 
-Set `HONOWARDEN_AUTH_REQUESTS_ENABLED=false` in staging and redeploy. This
-restores explicit 501 responses and disables auth-request cleanup queries. Do
-not delete or reopen consumed rows. Production remains disabled and was not
-deployed or migrated by this operation.
+The then-approved rollback plan was to disable
+`HONOWARDEN_AUTH_REQUESTS_ENABLED` and redeploy staging, restoring explicit
+501 responses and disabling cleanup queries. This historical plan conveys no
+current authority. A current recovery needs fresh readback and the separately
+reviewed deployment protocol. Consumed rows must not be deleted or reopened.
+Production was not deployed or migrated by this operation.
 
 ## Follow-Up Gates
 

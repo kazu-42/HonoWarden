@@ -16,11 +16,20 @@ This inventory extends [`docs/compatibility.md`](compatibility.md) and
 [`docs/compatibility-matrix.md`](compatibility-matrix.md). It does not replace
 fixture coverage or live-client rows.
 
+The 2026-09-22 local follow-up adds `accounts.user_key_id` and migration 0022
+to the inventory. This entry has its own fixed server-source commit and narrow
+official CLI 2026.9.0 local evidence; it does not re-pin the historical catalog
+or claim remote activation. See [the current CLI smoke evidence](release/current-cli-2026-9-smoke.md).
+
 ## What Is Observed
 
 The scanner extracts:
 
-- Hono routes from `src/app.ts`
+- Hono routes from `src/app.ts` and local named `register*Routes(app, ...)`
+  functions imported and called there. Only the mounted exported function body
+  contributes module routes; unrelated files and unused registration exports do
+  not imply support. A missing mounted source or unsupported registration shape
+  fails verification loudly.
 - token grants from identity token handling
 - config `featureStates` and profile/sync fields
 - D1 migrations and ADRs
@@ -31,6 +40,35 @@ The scanner extracts:
 
 CI fails on unclassified newly observed surfaces, stale support claims, orphan
 roadmap entries, or an enabled capability without evidence.
+
+Concrete routes added through a registered module require explicit method/path
+inventory coverage. Existing rejected `ALL /api/organizations/*` catch-alls
+cannot hide a newly registered membership action.
+
+## Company Membership Source Boundary
+
+The 2026-10-03 local company slice records eleven routes in
+`src/organization-membership-routes.ts`: member list and detail, invitation,
+bulk and individual public-key lookup, recipient acceptance, owner confirmation,
+reinvitation, permission update, revocation, and removal. Member detail
+`GET /api/organizations/:id/users/:memberId` and individual public-key lookup
+`GET /api/users/:userId/public-key` are guarded by the same default-off membership
+flag and same-organization administrative authorization. The
+`organizations.membership_administration` entry has `supportClaim: false` and
+local API regression evidence in `test/app-organization-membership.test.ts`.
+`HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED` stays default-off; HTTP `501`
+applies while disabled.
+
+This is an operator API source contract. The historical official catalog,
+fixtures, client pins, and unsupported-client fields remain unchanged. The
+inventory does not establish delivery of invitation email, multi-account
+official-client decryption, company policy coverage, or remote activation.
+
+Migration 0023 binds access sessions to device refresh credentials; migration
+0024 adds company membership invitation state. Both forward SQL files exist
+locally and are recorded in the inventory ledger. Neither ledger presence nor a
+local regression proves remote application; deployed schema and client
+acceptance require separate evidence.
 
 ## Classifications
 

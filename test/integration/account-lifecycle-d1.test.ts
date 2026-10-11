@@ -30,6 +30,13 @@ describe('account lifecycle on real local D1', () => {
   it('runs the pinned email-token, email-change, and verification routes without exposing raw tokens', async () => {
     const database = await createDatabase()
     await seedUser(database)
+    await database
+      .prepare(
+        `INSERT INTO devices (id, user_id, identifier, session_id, created_at, updated_at)
+        VALUES ('fixture-device-id', ?, 'fixture-device', 'synthetic-session-id', ?, ?)`,
+      )
+      .bind(userId, oldRevision, oldRevision)
+      .run()
     const deliveries: Array<Record<string, unknown>> = []
     const mailer = {
       fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -44,6 +51,7 @@ describe('account lifecycle on real local D1', () => {
       sub: userId,
       email: 'old@example.test',
       device: 'fixture-device',
+      sessionId: 'synthetic-session-id',
       securityStamp: 'old-security-stamp',
       iat: 1,
       exp: 4_102_444_800,
@@ -134,10 +142,19 @@ describe('account lifecycle on real local D1', () => {
       .prepare('UPDATE users SET email_verified_at = NULL WHERE id = ?')
       .bind(userId)
       .run()
+    // Email rotation revokes the old session; model a fresh authenticated login.
+    await database
+      .prepare(
+        `UPDATE devices SET session_id = 'synthetic-next-session-id', revoked_at = NULL
+        WHERE id = 'fixture-device-id' AND user_id = ?`,
+      )
+      .bind(userId)
+      .run()
     const nextAccessToken = await signAccessToken('test-token-secret', {
       sub: userId,
       email: 'next@example.test',
       device: 'fixture-device',
+      sessionId: 'synthetic-next-session-id',
       securityStamp: String(changed?.securityStamp),
       iat: 1,
       exp: 4_102_444_800,
@@ -1265,7 +1282,7 @@ const schemaStatements = [
     id TEXT PRIMARY KEY, email TEXT NOT NULL, email_normalized TEXT NOT NULL UNIQUE,
     email_verified_at TEXT, display_name TEXT, kdf_algorithm TEXT NOT NULL,
     kdf_iterations INTEGER NOT NULL, kdf_memory INTEGER, kdf_parallelism INTEGER,
-    master_password_hash TEXT NOT NULL, user_key TEXT, public_key TEXT, private_key TEXT,
+    master_password_hash TEXT NOT NULL, user_key TEXT, user_key_id TEXT, public_key TEXT, private_key TEXT,
     security_stamp TEXT NOT NULL, login_failed_count INTEGER NOT NULL DEFAULT 0,
     login_failed_at TEXT, login_locked_until TEXT,
     revision_date TEXT NOT NULL, disabled_at TEXT, created_at TEXT NOT NULL,
@@ -1283,11 +1300,13 @@ const schemaStatements = [
   )`,
   `CREATE TABLE devices (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, identifier TEXT NOT NULL,
+    session_id TEXT,
     revoked_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`,
   `CREATE TABLE refresh_tokens (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, device_id TEXT NOT NULL,
+    session_id TEXT,
     token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, revoked_at TEXT,
     created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id),
     FOREIGN KEY(device_id) REFERENCES devices(id)

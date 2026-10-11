@@ -5,6 +5,8 @@ import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
 
 import type { Bindings } from './bindings'
+import { registerOrganizationMembershipRoutes } from './organization-membership-routes'
+import { createOrganizationMembershipMailerDelivery } from './organization-membership'
 import {
   resolveBuildProvenance,
   type BuildProvenance,
@@ -52,6 +54,8 @@ import {
   parseAccountKeyInitializationBody,
 } from './domain/account-keys'
 import type { AccountKeyPair } from './domain/account-keys'
+import { isUserKeyIdEnabled, parseUserKeyIdBody } from './domain/user-key-id'
+import { registerUserKeyId } from './repositories/user-key-id-repository'
 import {
   accountCredentialKdfAlgorithmForType,
   accountCredentialKdfFromStoredGeneration,
@@ -229,6 +233,12 @@ import {
   updateCipher,
   validateManagedOrganizationCollections,
 } from './repositories/cipher-repository'
+import {
+  permanentlyDeleteOrganizationCipher,
+  restoreOrganizationCipher,
+  softDeleteOrganizationCipher,
+  updateOrganizationCipher,
+} from './repositories/organization-cipher-mutation-repository'
 import type {
   AccessibleCipherRecord,
   CipherRecord,
@@ -277,6 +287,7 @@ import {
   findPreloginKdfContext,
   findAuthUserByEmail,
   findAuthUserById,
+  findAuthUserBySession,
   findDeviceByIdentifier,
   findRefreshTokenSessionByHash,
   invalidateRefreshTokenSession,
@@ -598,6 +609,30 @@ function isRequestQuotaBypass(c: AppContext): boolean {
   const pathname = new URL(c.req.url).pathname
 
   if (
+    c.env?.HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED !== 'true' &&
+    isOrganizationMembershipRoute(pathname, c.req.method)
+  ) {
+    return true
+  }
+
+  if (c.req.method === 'POST') {
+    const needsInvitationDelivery =
+      /^\/api\/organizations\/[^/]+\/users\/invite$/.test(pathname) ||
+      /^\/api\/organizations\/[^/]+\/users\/[^/]+\/reinvite$/.test(pathname)
+    const acceptsInvitation =
+      /^\/api\/organizations\/[^/]+\/users\/[^/]+\/accept$/.test(pathname)
+    if (
+      (needsInvitationDelivery || acceptsInvitation) &&
+      (!c.env?.HONOWARDEN_ORGANIZATION_INVITE_SECRET ||
+        new TextEncoder().encode(c.env.HONOWARDEN_ORGANIZATION_INVITE_SECRET)
+          .byteLength < 32 ||
+        (needsInvitationDelivery && !c.env.ORGANIZATION_MEMBERSHIP_MAILER))
+    ) {
+      return true
+    }
+  }
+
+  if (
     accountLifecycleRoutePaths.has(pathname) &&
     !isAccountLifecycleEnabled(c.env?.HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED)
   ) {
@@ -635,6 +670,13 @@ function isRequestQuotaBypass(c: AppContext): boolean {
   }
 
   if (
+    pathname === '/api/accounts/key-management/user-key-id' &&
+    ['GET', 'HEAD', 'POST'].includes(c.req.method) &&
+    !isUserKeyIdEnabled(c.env?.HONOWARDEN_USER_KEY_ID_ENABLED)
+  ) {
+    return true
+  }
+  if (
     pathname === '/api/accounts/key-management/rotate-user-account-keys' &&
     (c.req.method === 'POST' || c.req.method === 'HEAD') &&
     !isUserKeyRotationEnabled(c.env?.HONOWARDEN_USER_KEY_ROTATION_ENABLED)
@@ -653,6 +695,40 @@ function isRequestQuotaBypass(c: AppContext): boolean {
   }
 
   return pathname === '/health' || pathname === '/healthz'
+}
+
+function isOrganizationMembershipRoute(
+  pathname: string,
+  method: string,
+): boolean {
+  if (/^\/api\/users\/[^/]+\/public-key$/.test(pathname)) {
+    return method === 'GET' || method === 'HEAD'
+  }
+  if (/^\/api\/organizations\/[^/]+\/users$/.test(pathname)) {
+    return method === 'GET' || method === 'HEAD'
+  }
+  if (
+    /^\/api\/organizations\/[^/]+\/users\/(invite|public-keys)$/.test(pathname)
+  ) {
+    return method === 'POST'
+  }
+  if (
+    /^\/api\/organizations\/[^/]+\/users\/[^/]+\/(accept|confirm|reinvite)$/.test(
+      pathname,
+    )
+  ) {
+    return method === 'POST'
+  }
+  if (/^\/api\/organizations\/[^/]+\/users\/[^/]+\/revoke$/.test(pathname)) {
+    return method === 'PUT'
+  }
+  return (
+    /^\/api\/organizations\/[^/]+\/users\/[^/]+$/.test(pathname) &&
+    (method === 'GET' ||
+      method === 'HEAD' ||
+      method === 'PUT' ||
+      method === 'DELETE')
+  )
 }
 
 function isPersonalApiKeyManagementPath(pathname: string): boolean {
@@ -1757,6 +1833,46 @@ app.all('/api/organizations/:id/license', unsupportedHostedCommerceFeature)
 app.all('/api/organizations/licenses', unsupportedHostedCommerceFeature)
 app.all('/api/organizations/licenses/*', unsupportedHostedCommerceFeature)
 
+registerOrganizationMembershipRoutes(app, {
+  authenticate: async (c) => {
+    const auth = await authenticateVaultRequest(c)
+    return auth.ok
+      ? {
+          ok: true as const,
+          actor: {
+            userId: auth.user.id,
+            emailNormalized: auth.user.emailNormalized,
+          },
+        }
+      : auth
+  },
+  runtime: (c) => ({
+    enabled: c.env?.HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED === 'true',
+    database: c.env.DB,
+    ...(c.env?.HONOWARDEN_ORGANIZATION_INVITE_SECRET
+      ? { inviteSecret: c.env.HONOWARDEN_ORGANIZATION_INVITE_SECRET }
+      : {}),
+    ...(c.env?.ORGANIZATION_MEMBERSHIP_MAILER
+      ? {
+          delivery: createOrganizationMembershipMailerDelivery(
+            c.env.ORGANIZATION_MEMBERSHIP_MAILER,
+          ),
+        }
+      : {}),
+  }),
+  requestId: (c) => c.get('requestId'),
+  reportFailure: (c, failure) => {
+    console.error(
+      JSON.stringify({
+        event: 'organization_membership_failed',
+        requestId: c.get('requestId'),
+        code: failure.code,
+        operation: failure.operation,
+      }),
+    )
+  },
+})
+
 app.all('/api/organizations', unsupportedAlphaFeature)
 app.all('/api/organizations/*', unsupportedAlphaFeature)
 app.all('/api/sends', unsupportedPremiumFeature)
@@ -1889,6 +2005,9 @@ app.post('/api/ciphers/:id/attachment', async (c) => {
     )
     if (pendingAttachment.status === 'quota_exceeded') {
       return c.json(attachmentStorageLimitError(c.get('requestId')), 413)
+    }
+    if (pendingAttachment.status === 'not_found') {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
     try {
@@ -2329,12 +2448,18 @@ app.post('/identity/connect/token', async (c) => {
       const issuedAt = Math.floor(Date.now() / 1000)
       const now = new Date(issuedAt * 1000).toISOString()
 
+      // Pre-migration refresh families cannot establish a bound session.
+      if (!session.sessionId) {
+        return c.json(tokenErrorResponse(invalidGrantError()), 400)
+      }
+
       if (session.tokenRevokedAt) {
         await invalidateRefreshTokenSession(
           c.env.DB,
           session.userId,
           session.deviceId,
           now,
+          session.sessionId,
         )
 
         return c.json(tokenErrorResponse(invalidGrantError()), 400)
@@ -2357,6 +2482,7 @@ app.post('/identity/connect/token', async (c) => {
       )
       const rotation = await rotateRefreshToken(c.env.DB, {
         currentTokenId: session.tokenId,
+        expectedSessionId: session.sessionId,
         userId: session.userId,
         deviceId: session.deviceId,
         expectedSecurityStamp: session.user.securityStamp,
@@ -2396,6 +2522,7 @@ app.post('/identity/connect/token', async (c) => {
         buildAccessTokenClaims({
           user: session.user,
           deviceIdentifier: session.deviceIdentifier,
+          sessionId: session.sessionId,
           issuedAt,
           expiresAt: issuedAt + accessTokenTtlSeconds,
           authMethod: 'refresh',
@@ -2749,6 +2876,7 @@ app.post('/identity/connect/token', async (c) => {
       resetAt: now,
     })
     await resetAuthFailureBucket(c.env.DB, accountBucketKey)
+    const refreshTokenId = crypto.randomUUID()
     const session = await createPasswordGrantSession(c.env.DB, {
       userId: user.id,
       expectedMasterPasswordHash: user.masterPasswordHash,
@@ -2756,7 +2884,7 @@ app.post('/identity/connect/token', async (c) => {
       deviceIdentifier: device.identifier,
       deviceName: device.name,
       deviceType: device.type,
-      refreshTokenId: crypto.randomUUID(),
+      refreshTokenId,
       refreshTokenHash,
       refreshTokenExpiresAt: new Date(
         (issuedAt + refreshTokenTtlSeconds) * 1000,
@@ -2772,6 +2900,7 @@ app.post('/identity/connect/token', async (c) => {
       buildAccessTokenClaims({
         user,
         deviceIdentifier: device.identifier,
+        sessionId: refreshTokenId,
         issuedAt,
         expiresAt,
         authMethod: 'password',
@@ -2996,6 +3125,7 @@ async function handlePersonalApiKeyTokenGrant(
       refreshToken,
     )
     await resetAuthFailureBucket(c.env.DB, accountBucketKey)
+    const refreshTokenId = crypto.randomUUID()
     const session = await createPasswordGrantSession(c.env.DB, {
       userId: user.id,
       expectedMasterPasswordHash: user.masterPasswordHash,
@@ -3003,7 +3133,7 @@ async function handlePersonalApiKeyTokenGrant(
       deviceIdentifier: device.identifier,
       deviceName: device.name,
       deviceType: device.type,
-      refreshTokenId: crypto.randomUUID(),
+      refreshTokenId,
       refreshTokenHash,
       refreshTokenExpiresAt: new Date(
         (issuedAt + refreshTokenTtlSeconds) * 1000,
@@ -3020,6 +3150,7 @@ async function handlePersonalApiKeyTokenGrant(
       buildAccessTokenClaims({
         user,
         deviceIdentifier: device.identifier,
+        sessionId: refreshTokenId,
         issuedAt,
         expiresAt: issuedAt + accessTokenTtlSeconds,
         authMethod: 'api_key',
@@ -3204,6 +3335,7 @@ async function handleAuthRequestTokenGrant(
         issuedAt,
         expiresAt: issuedAt + accessTokenTtlSeconds,
         authMethod: 'auth_request',
+        sessionId: refreshTokenId,
         premiumFeaturesEnabled: isPremiumFeaturesEnabled(
           c.env?.HONOWARDEN_PREMIUM_FEATURES_ENABLED,
         ),
@@ -3594,6 +3726,94 @@ app.post('/api/accounts/keys', async (c) => {
     )
   }
 })
+
+app.on(
+  ['GET', 'POST'],
+  '/api/accounts/key-management/user-key-id',
+  async (c) => {
+    c.header('Cache-Control', 'no-store')
+    if (!isUserKeyIdEnabled(c.env?.HONOWARDEN_USER_KEY_ID_ENABLED)) {
+      return unsupportedFeatureResponse(
+        c,
+        'User-key ID registration is not activated on this server.',
+        true,
+      )
+    }
+    if (c.req.method !== 'POST') {
+      c.header('Allow', 'POST')
+      return c.body(null, 405)
+    }
+    const auth = await authenticateVaultRequest(c)
+    if (!auth.ok) return auth.response
+    const body = await readBoundedJsonBody(c.req.raw, 1024)
+    const userKeyId = body.ok ? parseUserKeyIdBody(body.value) : null
+    if (!userKeyId || !hasWrappedUserKey(auth.user) || auth.user.userKeyId) {
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'invalid_request',
+          'Invalid or already registered user-key ID.',
+        ),
+        400,
+      )
+    }
+    try {
+      const nextRevisionDate = nextCredentialRevisionDate(
+        auth.user.revisionDate,
+        new Date().toISOString(),
+      )
+      const auditEvent = buildAuditEvent({
+        name: 'account.user_key_id.register',
+        outcome: 'success',
+        requestId: c.get('requestId'),
+        occurredAt: nextRevisionDate,
+        actor: {
+          userId: auth.user.id,
+          deviceIdentifier: auth.deviceIdentifier,
+        },
+        target: { type: 'account', id: auth.user.id },
+      })
+      const registered = await registerUserKeyId(c.env.DB, {
+        userId: auth.user.id,
+        userKeyId,
+        expectedUserKey: auth.user.userKey,
+        expectedSecurityStamp: auth.user.securityStamp,
+        expectedRevisionDate: auth.user.revisionDate,
+        nextRevisionDate,
+        auditEvent,
+      })
+      if (!registered) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'invalid_request',
+            'User-key ID registration conflicts with the current account generation.',
+          ),
+          400,
+        )
+      }
+      if (isAuditLoggingEnabled(c.env?.HONOWARDEN_AUDIT_LOGS))
+        console.info(serializeAuditEvent(auditEvent))
+      return c.body(null, 200)
+    } catch {
+      console.error(
+        JSON.stringify({
+          event: 'user_key_id_registration_failed',
+          requestId: c.get('requestId'),
+          reason: 'database_error',
+        }),
+      )
+      return c.json(
+        apiError(
+          c.get('requestId'),
+          'database_unavailable',
+          'User-key ID registration failed.',
+        ),
+        503,
+      )
+    }
+  },
+)
 
 app.get('/api/accounts/key-management/rotate-user-account-keys', (c) => {
   c.header('Cache-Control', 'no-store')
@@ -6937,9 +7157,8 @@ app.put('/api/ciphers/:id', async (c) => {
     return auth.response
   }
 
-  const cipherRequest = parseCipherUpdateRequestBody(
-    await readJsonBody(c.req.raw),
-  )
+  const body = await readJsonBody(c.req.raw)
+  const cipherRequest = parseCipherUpdateRequestBody(body)
   if (!cipherRequest.ok) {
     return c.json(
       apiError(
@@ -6981,7 +7200,29 @@ app.put('/api/ciphers/:id', async (c) => {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
-    const cipher = await updateCipher(c.env.DB, {
+    const payload = body as Record<string, unknown>
+    if (access.organizationId !== null) {
+      if (
+        (payload.organizationId !== undefined &&
+          payload.organizationId !== access.organizationId) ||
+        cipherRequest.cipher.folderId !== null ||
+        (payload.key !== undefined &&
+          (typeof payload.key !== 'string' ||
+            payload.key.length === 0 ||
+            new TextEncoder().encode(payload.key).byteLength > 65_536))
+      ) {
+        return c.json(
+          apiError(
+            c.get('requestId'),
+            'invalid_request',
+            'Organization cipher payload is invalid.',
+          ),
+          400,
+        )
+      }
+    }
+
+    const input = {
       id: c.req.param('id'),
       userId: auth.user.id,
       folderId: cipherRequest.cipher.folderId,
@@ -6991,7 +7232,16 @@ app.put('/api/ciphers/:id', async (c) => {
       expectedRevisionDate: cipherRequest.cipher.revisionDate,
       revisionDate: now,
       createdAt: now,
-    })
+    }
+    const cipher =
+      access.organizationId !== null
+        ? await updateOrganizationCipher(c.env.DB, {
+            ...input,
+            ...(typeof payload.key === 'string'
+              ? { cipherKey: payload.key }
+              : {}),
+          })
+        : await updateCipher(c.env.DB, input)
 
     if (cipher.status === 'not_found') {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
@@ -7016,6 +7266,16 @@ app.put('/api/ciphers/:id', async (c) => {
       },
     })
 
+    if (access.organizationId !== null) {
+      const accessibleCipher = await findAccessibleCipherById(c.env.DB, {
+        id: cipher.cipher.id,
+        userId: auth.user.id,
+      })
+      if (!accessibleCipher) {
+        return c.json(cipherNotFoundError(c.get('requestId')), 404)
+      }
+      return c.json(buildCipherResponse(accessibleCipher))
+    }
     return c.json(buildCipherResponse(cipher.cipher))
   } catch {
     return c.json(
@@ -7058,14 +7318,26 @@ async function trashCipherById(c: AppContext) {
   const now = new Date().toISOString()
 
   try {
-    const result = await softDeleteCipher(c.env.DB, {
+    const access = await resolveCipherAccess(c.env.DB, auth.user.id, cipherId)
+    if (!access.canDelete) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+    const input = {
       id: cipherId,
       userId: auth.user.id,
       deletedAt: now,
-    })
+    }
+    const result =
+      access.organizationId !== null
+        ? await softDeleteOrganizationCipher(c.env.DB, input)
+        : await softDeleteCipher(c.env.DB, input)
 
     if (result.status === 'not_found') {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    if (result.status === 'conflict') {
+      return c.json(revisionConflictError(c.get('requestId')), 409)
     }
 
     await emitVaultMutationAuditEvent(c, auth, {
@@ -7107,14 +7379,30 @@ app.put('/api/ciphers/:id/restore', async (c) => {
   const now = new Date().toISOString()
 
   try {
-    const result = await restoreCipher(c.env.DB, {
+    const access = await resolveCipherAccess(
+      c.env.DB,
+      auth.user.id,
+      c.req.param('id'),
+    )
+    if (!access.canEdit) {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+    const input = {
       id: c.req.param('id'),
       userId: auth.user.id,
       revisionDate: now,
-    })
+    }
+    const result =
+      access.organizationId !== null
+        ? await restoreOrganizationCipher(c.env.DB, input)
+        : await restoreCipher(c.env.DB, input)
 
     if (result.status === 'not_found') {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    if (result.status === 'conflict') {
+      return c.json(revisionConflictError(c.get('requestId')), 409)
     }
 
     await emitVaultMutationAuditEvent(c, auth, {
@@ -7173,26 +7461,36 @@ async function permanentlyDeleteCipherById(c: AppContext) {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
-    const attachments = await listCipherAttachmentObjectKeysForOwnedCiphers(
-      c.env.DB,
-      {
-        cipherIds: [cipherId],
-        userId: auth.user.id,
-      },
-    )
-    const attachmentObjectKeys = [
-      ...new Set(attachments.map((attachment) => attachment.objectKey)),
-    ]
-    await deleteR2Objects(c.env.VAULT_OBJECTS, attachmentObjectKeys)
+    if (access.organizationId === null) {
+      const attachments = await listCipherAttachmentObjectKeysForOwnedCiphers(
+        c.env.DB,
+        {
+          cipherIds: [cipherId],
+          userId: auth.user.id,
+        },
+      )
+      const attachmentObjectKeys = [
+        ...new Set(attachments.map((attachment) => attachment.objectKey)),
+      ]
+      await deleteR2Objects(c.env.VAULT_OBJECTS, attachmentObjectKeys)
+    }
 
-    const result = await permanentlyDeleteCipher(c.env.DB, {
+    const input = {
       id: cipherId,
       userId: auth.user.id,
       revisionDate: now,
-    })
+    }
+    const result =
+      access.organizationId !== null
+        ? await permanentlyDeleteOrganizationCipher(c.env.DB, input)
+        : await permanentlyDeleteCipher(c.env.DB, input)
 
     if (result.status === 'not_found') {
       return c.json(cipherNotFoundError(c.get('requestId')), 404)
+    }
+
+    if (result.status === 'conflict') {
+      return c.json(revisionConflictError(c.get('requestId')), 409)
     }
 
     await emitVaultMutationAuditEvent(c, auth, {
@@ -7428,6 +7726,7 @@ function buildTokenResponse(
 function buildAccessTokenClaims(input: {
   user: AuthUserRecord
   deviceIdentifier: string
+  sessionId: string
   issuedAt: number
   expiresAt: number
   authMethod: AccessTokenAuthMethod
@@ -7441,6 +7740,7 @@ function buildAccessTokenClaims(input: {
     premium: input.premiumFeaturesEnabled,
     amr: ['Application'],
     device: input.deviceIdentifier,
+    sessionId: input.sessionId,
     securityStamp: input.user.securityStamp,
     sstamp: input.user.securityStamp,
     iat: input.issuedAt,
@@ -7638,6 +7938,9 @@ function buildMasterPasswordUnlockResponse(user: AuthUserRecord) {
     MasterKeyEncryptedUserKey: user.userKey,
     masterKeyEncryptedUserKey: user.userKey,
     masterKeyWrappedUserKey: user.userKey,
+    ...(user.userKeyId
+      ? { ContainedKeyId: user.userKeyId, containedKeyId: user.userKeyId }
+      : {}),
   }
 }
 
@@ -7979,6 +8282,7 @@ function buildSyncUserDecryptionResponse(user: AuthUserRecord) {
   return masterPasswordUnlock
     ? {
         masterPasswordUnlock,
+        ...(user.userKeyId ? { userKeyId: user.userKeyId } : {}),
       }
     : null
 }
@@ -7998,6 +8302,7 @@ function buildSyncMasterPasswordUnlockResponse(user: AuthUserRecord) {
       parallelism: kdf.parallelism,
     },
     masterKeyEncryptedUserKey: user.userKey,
+    ...(user.userKeyId ? { containedKeyId: user.userKeyId } : {}),
   }
 }
 
@@ -8039,6 +8344,7 @@ function buildOrganizationFeatureResponse(organization: OrganizationRecord) {
     UseKeyConnector: false,
     UseScim: false,
     UseGroups: false,
+    UseMyItems: false,
     UseEvents: false,
     UseDirectory: false,
     UseTotp: organization.useTotp,
@@ -8379,8 +8685,8 @@ function buildCipherResponse(
           organizationId: accessibleCipher.organizationId,
           key: accessibleCipher.cipherKey,
           collectionIds: accessibleCipher.collectionIds,
-          edit: true,
-          viewPassword: true,
+          edit: accessibleCipher.canEdit,
+          viewPassword: accessibleCipher.canViewPassword,
         }
       : {
           organizationId: null,
@@ -8400,7 +8706,9 @@ function buildCipherResponse(
     type: cipher.type,
     favorite: cipher.favorite,
     organizationUseTotp: readBoolean(payload.organizationUseTotp, false),
-    permissions: normalizeCipherPermissions(payload.permissions),
+    permissions: accessibleCipher?.organizationId
+      ? { delete: accessibleCipher.canEdit, restore: accessibleCipher.canEdit }
+      : normalizeCipherPermissions(payload.permissions),
     revisionDate: normalizeApiTimestamp(cipher.revisionDate),
     creationDate: normalizeApiTimestamp(cipher.createdAt),
     deletedDate: normalizeNullableApiTimestamp(cipher.deletedAt),
@@ -9281,6 +9589,9 @@ async function createCipherAttachmentV2Route(c: AppContext) {
     )
     if (result.status === 'quota_exceeded') {
       return c.json(attachmentStorageLimitError(c.get('requestId')), 413)
+    }
+    if (result.status === 'not_found') {
+      return c.json(cipherNotFoundError(c.get('requestId')), 404)
     }
 
     const existingForCipher =
@@ -10816,7 +11127,7 @@ async function authenticateVaultRequestWithAccessToken(
     accessTokenConfig.verifier,
     accessToken,
   )
-  if (!verification.ok) {
+  if (!verification.ok || !verification.claims.sessionId) {
     return {
       ok: false,
       response: c.json(
@@ -10831,7 +11142,11 @@ async function authenticateVaultRequestWithAccessToken(
   }
 
   try {
-    const user = await findAuthUserById(c.env.DB, verification.claims.sub)
+    const user = await findAuthUserBySession(c.env.DB, {
+      userId: verification.claims.sub,
+      deviceIdentifier: verification.claims.device,
+      sessionId: verification.claims.sessionId,
+    })
 
     if (
       !user ||
@@ -10859,6 +11174,13 @@ async function authenticateVaultRequestWithAccessToken(
       authMethod: verification.claims.authMethod ?? null,
     }
   } catch {
+    console.error(
+      JSON.stringify({
+        event: 'vault_authentication_failed',
+        requestId: c.get('requestId'),
+        reason: 'database_error',
+      }),
+    )
     return {
       ok: false,
       response: c.json(

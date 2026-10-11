@@ -55,6 +55,12 @@ Do not commit real secret values to the repository.
 
 ## Rotation Notes
 
+Current HonoWarden Worker secret/config mutation status is **STOP**. The notes
+below explain effects and future recovery requirements. They are not current
+execution authority. Apply the separately reviewed
+[deployment and recovery protocol](../operations/deploy-provenance-runbook.md)
+before any runtime secret transition.
+
 - Formal multi-credential drill coverage is recorded in
   [Formal Secret Rotation Drill](../operations/secret-rotation-drill.md), with
   dry-run evidence in
@@ -85,8 +91,9 @@ Do not commit real secret values to the repository.
   15-minute active window drain, rotate, and then re-enable.
 - Bootstrap token should be short-lived operationally even if the route remains
   disabled by default.
-- Production secrets must be set with Wrangler secret commands, not
-  `wrangler.jsonc` vars.
+- A future admitted production protocol must use the provider secret store;
+  never place secret values in `wrangler.jsonc` vars. No secret-write command
+  is authorized by this inventory.
 
 ## Handling Rules
 

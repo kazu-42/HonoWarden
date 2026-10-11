@@ -283,6 +283,7 @@ describe('WebAuthn repository', () => {
     expect(query).toContain('UPDATE webauthn_challenges')
     expect(query).toContain('INSERT INTO webauthn_credentials')
     expect(query).toContain('challenge_hash = ?')
+    expect(query).toContain('WHERE changes() = 1')
     expect(query).toContain('NOT EXISTS')
     expect(database.batchCount).toBe(1)
     expect(database.boundValues).toContain('challenge-hash')

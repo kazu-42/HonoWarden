@@ -85,6 +85,7 @@ export type AccessTokenClaims = {
   premium?: boolean
   amr?: string[]
   device: string
+  sessionId?: string
   securityStamp: string
   sstamp?: string
   iat: number
@@ -471,6 +472,10 @@ function isAccessTokenClaims(value: unknown): value is AccessTokenClaims {
     typeof claims.sub === 'string' &&
     typeof claims.email === 'string' &&
     typeof claims.device === 'string' &&
+    (claims.sessionId === undefined ||
+      (typeof claims.sessionId === 'string' &&
+        claims.sessionId.length > 0 &&
+        claims.sessionId.length <= 128)) &&
     typeof claims.securityStamp === 'string' &&
     (claims.email_verified === undefined ||
       typeof claims.email_verified === 'boolean') &&

@@ -7,6 +7,14 @@ const allowedVerificationLevels = new Set([
   'live_regression',
 ])
 
+const requiredClientSurfaces = [
+  'browser_extension',
+  'desktop',
+  'cli',
+  'mobile_android',
+  'mobile_ios',
+]
+
 const requiredRegressionFlows = [
   'config',
   'prelogin',
@@ -27,6 +35,55 @@ const selectedAuthRegressionFlows = new Set([
   'revoke_all_other_sessions',
   'disabled_user_denied',
 ])
+
+export function inspectClientMatrixFreshness(
+  matrix,
+  asOf = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+) {
+  const invalid = { status: 'invalid', releaseReady: false }
+  const policy = matrix?.metadataRefresh
+  if (
+    !isCanonicalUtcInstant(asOf) ||
+    !isCanonicalUtcInstant(matrix?.checkedAt) ||
+    !isRecord(policy) ||
+    !Number.isSafeInteger(policy.cadenceDays) ||
+    policy.cadenceDays <= 0 ||
+    !Number.isSafeInteger(policy.staleAfterDays) ||
+    policy.staleAfterDays < policy.cadenceDays ||
+    typeof policy.requiredBeforeRelease !== 'boolean'
+  ) {
+    return invalid
+  }
+
+  const checkedAt = Date.parse(matrix.checkedAt)
+  const observedAt = Date.parse(asOf)
+  const refreshDueAt = checkedAt + policy.cadenceDays * 86_400_000
+  const staleAt = checkedAt + policy.staleAfterDays * 86_400_000
+  if (
+    observedAt < checkedAt ||
+    !Number.isFinite(new Date(refreshDueAt).getTime()) ||
+    !Number.isFinite(new Date(staleAt).getTime())
+  ) {
+    return invalid
+  }
+
+  const status =
+    observedAt >= staleAt
+      ? 'stale'
+      : observedAt >= refreshDueAt
+        ? 'refresh_due'
+        : 'fresh'
+  return {
+    status,
+    releaseReady:
+      status === 'fresh' ||
+      (status === 'refresh_due' && !policy.requiredBeforeRelease),
+    checkedAt: matrix.checkedAt,
+    asOf,
+    refreshDueAt: new Date(refreshDueAt).toISOString(),
+    staleAt: new Date(staleAt).toISOString(),
+  }
+}
 
 export function inspectClientMatrix(
   matrix,
@@ -231,6 +288,18 @@ function requireClientMatrixEntries(matrix) {
         `Client matrix structure is invalid: entry ${index} is malformed.`,
       )
     }
+  }
+
+  const surfaces = matrix.entries.map((entry) => entry.surface)
+  if (
+    surfaces.length !== requiredClientSurfaces.length ||
+    !requiredClientSurfaces.every(
+      (surface) => surfaces.filter((value) => value === surface).length === 1,
+    )
+  ) {
+    throw new Error(
+      'Client matrix structure is invalid: each required client surface must appear exactly once.',
+    )
   }
 
   return matrix.entries

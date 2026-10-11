@@ -405,7 +405,8 @@ export async function consumeAuthRequestWithSession(
             type = ?,
             last_seen_at = ?,
             revoked_at = NULL,
-            updated_at = ?
+            updated_at = ?,
+            session_id = ?
           WHERE id = ?
             AND user_id = ?
             AND EXISTS (
@@ -418,6 +419,7 @@ export async function consumeAuthRequestWithSession(
         input.deviceType,
         input.now,
         input.now,
+        input.refreshTokenId,
         input.deviceId,
         input.userId,
         ...eligibilityBindings,
@@ -430,9 +432,10 @@ export async function consumeAuthRequestWithSession(
             user_id,
             device_id,
             token_hash,
-            expires_at
+            expires_at,
+            session_id
           )
-          SELECT ?, ?, ?, ?, ?
+          SELECT ?, ?, ?, ?, ?, ?
           FROM auth_requests
           WHERE ${eligibility}
         `,
@@ -443,6 +446,7 @@ export async function consumeAuthRequestWithSession(
         input.deviceId,
         input.refreshTokenHash,
         input.refreshTokenExpiresAt,
+        input.refreshTokenId,
         ...eligibilityBindings,
       ),
     database

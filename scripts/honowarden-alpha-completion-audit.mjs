@@ -30,7 +30,6 @@ function buildCompletionAudit(options) {
   const releaseGate = runJsonCommand([
     process.execPath,
     repoPath('scripts/honowarden-release-gate.mjs'),
-    '--strict',
   ])
   const statusPacket = runJsonCommand([
     process.execPath,
@@ -51,7 +50,8 @@ function buildCompletionAudit(options) {
       : []),
   ])
   const releaseGateReady =
-    releaseGate.exitCode === 0 && releaseGate.report?.overall === 'ready'
+    releaseGate.exitCode === 0 &&
+    releaseGate.report?.historicalEvidenceStatus === 'consistent'
   const statusReady =
     statusPacket.exitCode === 0 && statusPacket.report?.status === 'ready'
   const phase = statusPacket.report?.phase ?? 'unknown'
@@ -76,6 +76,7 @@ function buildCompletionAudit(options) {
           }),
     releaseGate: {
       status: releaseGateReady ? 'ready' : 'not_ready',
+      currentReleaseReady: releaseGate.report?.overall === 'ready',
       exitCode: releaseGate.exitCode,
       failedChecks: failedGateChecks(releaseGate.report),
       error: releaseGate.error,
@@ -94,10 +95,9 @@ function buildCompletionAudit(options) {
       {
         id: 'release_gate_ready',
         status: releaseGateReady ? 'pass' : 'fail',
-        evidence:
-          releaseGate.report?.overall === 'ready'
-            ? ['release gate overall ready']
-            : failedGateChecks(releaseGate.report),
+        evidence: releaseGateReady
+          ? ['historical release evidence consistent']
+          : failedGateChecks(releaseGate.report),
       },
       {
         id: 'release_status_ready',
@@ -146,7 +146,10 @@ function failedGateChecks(report) {
   }
 
   return report.checks
-    .filter((check) => check.status !== 'pass')
+    .filter(
+      (check) =>
+        check.id !== 'current_client_matrix' && check.status !== 'pass',
+    )
     .map((check) => check.id)
 }
 

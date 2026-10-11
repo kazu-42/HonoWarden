@@ -1,10 +1,11 @@
 # Dependency Audit Evidence
 
-Last scanned: 2026-08-08.
+Last scanned: 2026-10-03 (fresh registry audit, exit 0).
 
-This is a point-in-time dependency audit snapshot for the repository state used
-by the Week 24 security review materials. Re-run the command before every
-release candidate and after dependency updates.
+This is a point-in-time dependency audit snapshot for the company-readiness
+candidate lockfile. Earlier dated sections preserve the Week 24 security review
+history. Re-run the command before every release candidate and after dependency
+updates.
 
 ## Command
 
@@ -17,6 +18,10 @@ pnpm audit --audit-level low
 ```text
 No known vulnerabilities found
 ```
+
+The JSON audit result contains an empty `advisories` object and zero low,
+moderate, high, and critical findings across 360 dependencies. The successful
+scan used pnpm 11.8.0 and corresponds to the lockfile digest recorded below.
 
 ## Sharp Advisory Remediation
 
@@ -105,11 +110,69 @@ selects a patched version and the same audit, static, test, local Worker, and
 release gates pass without it. This override does not authorize custom Nanoid
 generators with attacker-controlled sizes.
 
+## 2026-10-03 Advisory Remediation
+
+The fresh company-readiness baseline reported 27 affected package/advisory
+entries: 11 high, 13 moderate, and three low. The Vitest advisory appears once
+for `vitest` and once for `@vitest/mocker`. Four entries affect the direct
+production Hono dependency; the remaining paths are development tooling. The
+earlier dated remediation sections above record historical decisions, and their
+old version numbers are superseded by the pins in this section.
+
+| Package                 | Baseline version | Patched pin | Affected path                            |
+| ----------------------- | ---------------- | ----------- | ---------------------------------------- |
+| Hono                    | 4.12.34          | ~4.13.7     | Direct Worker dependency                 |
+| Vitest / @vitest/mocker | 4.1.10           | ^4.1.11     | Test runner and mocker                   |
+| sharp                   | 0.35.3           | 0.35.4      | Miniflare and Wrangler's Miniflare       |
+| undici                  | 7.29.0           | 7.29.1      | Miniflare and Wrangler's Miniflare       |
+| brace-expansion         | 5.0.9            | 5.0.12      | ESLint / typescript-eslint via minimatch |
+| fast-uri                | 3.1.5            | 3.1.8       | Ajv schema validation                    |
+| nanoid                  | 3.3.17           | 3.3.18      | Vitest via Vite / PostCSS                |
+
+Hono's updated minor line addresses `GHSA-gqvv-2mrq-wpjv`,
+`GHSA-g6gw-c38x-mqfc`, `GHSA-crvj-82cr-hjcx`, and
+[`GHSA-hxh3-vqpv-xpqv`](https://github.com/advisories/GHSA-hxh3-vqpv-xpqv).
+The project keeps the same major version and does not admit SSG, JSX rendering,
+or new parser inputs merely by upgrading the library. Vitest remains on major
+version 4, patched for
+[`GHSA-82fw-gwwq-j7x9`](https://github.com/advisories/GHSA-82fw-gwwq-j7x9).
+TypeScript 6 and SimpleWebAuthn 13 are retained; unrelated compiler, test-runner,
+and cryptographic-library major migrations are not part of this remediation.
+
+The existing temporary `overrides` policy advances the exact vulnerable parent
+edges without updating unrelated direct tooling. The highest required patched
+versions were verified against the registry audit and public advisory records:
+
+- sharp: [`GHSA-rgj7-g3m4-5g8c`](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c);
+- fast-uri: [`GHSA-hrr3-gc8f-f4qj`](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj),
+  plus `GHSA-5jgf-p345-68v8`, `GHSA-f65p-4m7j-42xc`,
+  `GHSA-fph4-wmhf-6fwf`, `GHSA-jqff-g426-hqxp`, and
+  `GHSA-qw65-cvwx-89v3`;
+- brace-expansion: [`GHSA-q2hr-2g5m-vwhr`](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr),
+  plus `GHSA-qhr7-859c-m2p7` and `GHSA-6j4f-fj2g-mc7p`;
+- nanoid: [`GHSA-2v37-7h3g-55p8`](https://github.com/advisories/GHSA-2v37-7h3g-55p8);
+- undici: [`GHSA-3wwx-pv8p-q78v`](https://github.com/advisories/GHSA-3wwx-pv8p-q78v),
+  plus `GHSA-pmjh-fq2x-6v4x`, `GHSA-r53p-7pc4-xj5r`,
+  `GHSA-rfgv-xxqx-mfg5`, `GHSA-3xpg-4rpp-hhhm`,
+  `GHSA-2jfj-6hjv-fm6j`, `GHSA-2gqq-gqf2-x968`,
+  `GHSA-w293-vg96-wgc3`, `GHSA-8436-99hf-9mmv`, and
+  `GHSA-rx4f-c7p8-82vq`.
+
+Miniflare still declares sharp `0.34.5`; the repository already used the
+`0.35` override line. This patch update passed native Sharp PNG encode/decode
+and resize with exact synthetic RGBA checks on darwin arm64. Real local
+Miniflare/workerd also passed synthetic D1 and R2 write/read/delete plus Worker
+dispatch across both bindings. No Images binding is configured, so this native
+smoke does not establish the complete image-transform contract. Keep the
+existing override removal gates above and rerun the audit, static checks, full
+tests, local Worker coverage, and release gate after any subsequent override
+change.
+
 ## Lockfile Evidence
 
 - lockfile: `pnpm-lock.yaml`
 - SHA-256:
-  `044b663442018f743e4964b9a1349a21f737d5421c91ae028f08870940fd7b64`
+  `2b3273b6dfe5d7b811236122f92d96378f439f71bb9f45fe07cdf0e930d2d569`
 
 ## Scope
 

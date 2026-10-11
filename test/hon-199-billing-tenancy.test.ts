@@ -201,7 +201,7 @@ describe('HON-199 hosted billing, licensing, provider, and tenancy boundary', ()
     }
 
     const [configResponse, profileResponse, syncResponse] = await Promise.all([
-      app.request('/api/config'),
+      app.request('/api/config', {}, { HONOWARDEN_ENV: 'development' }),
       app.request(
         '/api/accounts/profile',
         { headers: { Authorization: `Bearer ${accessToken}` } },
@@ -302,6 +302,7 @@ async function accessTokenFor(
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: 1,
     exp: 4_102_444_800,

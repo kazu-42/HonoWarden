@@ -182,6 +182,23 @@ describe('client compatibility matrix', () => {
   const matrix = readMatrix()
   const fixtureFlows = readFixtureFlows()
 
+  it.each([
+    ['empty', []],
+    ['missing surface', matrix.entries.slice(1)],
+    ['duplicate surface', [...matrix.entries, matrix.entries[0]]],
+    [
+      'unknown surface',
+      [
+        ...matrix.entries.slice(1),
+        { ...matrix.entries[0], surface: 'unknown' },
+      ],
+    ],
+  ])('rejects incomplete client surface coverage: %s', (_name, entries) => {
+    expect(() => inspectClientMatrix({ ...matrix, entries })).toThrow(
+      'Client matrix structure is invalid',
+    )
+  })
+
   it('records release metadata provenance', () => {
     expect(matrix.schemaVersion).toBe(1)
     expect(matrix.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
@@ -225,7 +242,7 @@ describe('client compatibility matrix', () => {
           clientVersion: entry.version,
         })
         for (const evidencePath of matrixLiveEvidencePaths(entry)) {
-          expect(evidencePath).toMatch(/^docs\/release\/[A-Za-z0-9/_-]+\.md$/)
+          expect(isSafeClientEvidencePath(evidencePath)).toBe(true)
         }
         expect(entry.liveEvidence?.recordedAt).toMatch(
           /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
@@ -260,8 +277,8 @@ describe('client compatibility matrix', () => {
     }
   })
 
-  it('pins the 2026-08-16 official latest releases conservatively', () => {
-    expect(matrix.checkedAt).toMatch(/^2026-08-16T/)
+  it('pins the 2026-09-22 official latest releases conservatively', () => {
+    expect(matrix.checkedAt).toMatch(/^2026-09-22T/)
     expect(
       Object.fromEntries(
         matrix.entries.map((entry) => [
@@ -277,44 +294,52 @@ describe('client compatibility matrix', () => {
       ),
     ).toEqual({
       browser_extension: {
-        version: '2026.7.0',
+        version: '2026.9.1',
         build: undefined,
-        releaseTag: 'browser-v2026.7.0',
-        releasePublishedAt: '2026-07-23T16:49:59Z',
+        releaseTag: 'browser-v2026.9.1',
+        releasePublishedAt: '2026-09-21T21:57:20Z',
         verificationLevel: 'fixture_only',
       },
       desktop: {
-        version: '2026.7.0',
+        version: '2026.9.0',
         build: undefined,
-        releaseTag: 'desktop-v2026.7.0',
-        releasePublishedAt: '2026-07-23T15:20:46Z',
+        releaseTag: 'desktop-v2026.9.0',
+        releasePublishedAt: '2026-09-17T13:52:45Z',
         verificationLevel: 'fixture_only',
       },
       mobile_android: {
-        version: '2026.7.1',
-        build: '21803',
-        releaseTag: 'v2026.7.1-bwpm',
-        releasePublishedAt: '2026-08-07T22:20:51Z',
+        version: '2026.9.0',
+        build: '21909',
+        releaseTag: 'v2026.9.0-bwpm',
+        releasePublishedAt: '2026-09-18T14:05:00Z',
         verificationLevel: 'fixture_only',
       },
       mobile_ios: {
-        version: '2026.7.1',
-        build: '3432',
-        releaseTag: 'v2026.7.1-bwpm',
-        releasePublishedAt: '2026-08-07T22:12:38Z',
+        version: '2026.9.0',
+        build: '3521',
+        releaseTag: 'v2026.9.0-bwpm',
+        releasePublishedAt: '2026-09-18T13:26:07Z',
         verificationLevel: 'fixture_only',
       },
       cli: {
-        version: '2026.7.0',
+        version: '2026.9.0',
         build: undefined,
-        releaseTag: 'cli-v2026.7.0',
-        releasePublishedAt: '2026-07-23T21:16:13Z',
-        verificationLevel: 'fixture_only',
+        releaseTag: 'cli-v2026.9.0',
+        releasePublishedAt: '2026-09-17T13:28:40Z',
+        verificationLevel: 'live_smoke',
       },
     })
 
     for (const entry of matrix.entries) {
-      expect(entry.liveEvidence).toBeUndefined()
+      if (entry.surface === 'cli') {
+        expect(entry.liveEvidence).toMatchObject({
+          status: 'passed',
+          clientVersion: '2026.9.0',
+          path: 'docs/release/current-cli-2026-9-smoke.md',
+        })
+      } else {
+        expect(entry.liveEvidence).toBeUndefined()
+      }
     }
   })
 
@@ -457,6 +482,7 @@ describe('client compatibility matrix', () => {
       throw new Error('CLI current row is required')
     }
     currentCli.verificationLevel = 'live_smoke'
+    delete currentCli.liveEvidence
 
     expect(
       inspectClientMatrix(evidenceFreePromotion, {
@@ -475,6 +501,7 @@ describe('client compatibility matrix', () => {
       throw new Error('Current and historical CLI rows are required')
     }
     staleCurrentCli.liveEvidence = structuredClone(historicalCli.liveEvidence)
+    staleCurrentCli.verificationLevel = 'fixture_only'
 
     expect(
       inspectClientMatrix(staleEvidenceOnFixtureRow, {
@@ -863,21 +890,23 @@ describe('client compatibility matrix', () => {
     )
 
     expect(androidEntry).toMatchObject({
-      version: '2026.7.1',
-      build: '21803',
-      releaseTag: 'v2026.7.1-bwpm',
-      releasePublishedAt: '2026-08-07T22:20:51Z',
+      version: '2026.9.0',
+      build: '21909',
+      releaseTag: 'v2026.9.0-bwpm',
+      releasePublishedAt: '2026-09-18T14:05:00Z',
       verificationLevel: 'fixture_only',
     })
     expect(androidEntry?.knownIssues.join('\n')).toContain(
-      'No official Android 2026.7.1 build 21803 live smoke is recorded',
+      'No official Android 2026.9.0 build 21909 live smoke is recorded',
     )
   })
 
-  it('keeps every current row fixture-only until exact-version live evidence exists', () => {
+  it('promotes only the current CLI with exact-version local smoke evidence', () => {
     for (const entry of matrix.entries) {
-      expect(entry.verificationLevel).toBe('fixture_only')
-      expect(entry.liveEvidence).toBeUndefined()
+      expect(entry.verificationLevel).toBe(
+        entry.surface === 'cli' ? 'live_smoke' : 'fixture_only',
+      )
+      if (entry.surface !== 'cli') expect(entry.liveEvidence).toBeUndefined()
     }
 
     const compatibilityMatrixDoc = readFileSync(

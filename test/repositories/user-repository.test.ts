@@ -100,7 +100,7 @@ describe('updateAccountProfile', () => {
 })
 
 describe('getAccountRevisionDate', () => {
-  it('derives the revision from confirmed membership and managed collection access', async () => {
+  it('derives the revision from enabled confirmed membership and assigned collection access', async () => {
     const database = new RecordingD1Database(1)
 
     await expect(
@@ -112,7 +112,7 @@ describe('getAccountRevisionDate', () => {
     expect(database.query).toContain(
       'collection.organization_id = membership.organizationId',
     )
-    expect(database.query).toContain('accessible_collection.manage = 1')
+    expect(database.query).toContain('organization.enabled = 1')
     expect(database.query).toContain('cipher.organization_id IS NULL')
     expect(database.values).toEqual(['user-id'])
   })

@@ -52,6 +52,7 @@ export type UserKeyRotationTrustedDevice = {
 }
 
 export type UserKeyRotationRequest = {
+  newUserKeyId?: string
   oldMasterKeyAuthenticationHash: string
   nextMasterKeyAuthenticationHash: string
   nextUserKey: string
@@ -74,6 +75,7 @@ export type UserKeyRotationParseResult =
 export type UserKeyRotationCredentialGeneration =
   AccountCredentialGeneration & {
     userKey: string | null
+    userKeyId?: string | null
     publicKey: string | null
     privateKey: string | null
   }

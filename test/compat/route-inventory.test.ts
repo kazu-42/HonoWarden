@@ -17,6 +17,7 @@ const {
   loadOfficialSurfaceCatalog,
   loadRouteInventory,
   observeRepository,
+  observeMountedHonoRoutes,
   reconcileRouteInventory,
   refreshOfficialCatalog,
   routeInventorySchemaVersion,
@@ -215,6 +216,119 @@ describe('route inventory closeout', () => {
           method: 'POST',
           path: '/api/accounts/key-management/rotate-user-account-keys',
         },
+      ]),
+    )
+  })
+
+  it('observes only the registration export mounted on the actual app', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'honowarden-routes-'))
+    const appPath = join(fixtureRoot, 'app.ts')
+    writeFileSync(
+      join(fixtureRoot, 'membership.ts'),
+      `export function registerMembershipRoutes(app) {
+        app.post('/api/organizations/:id/users/invite', handler)
+      }
+      export function registerUnusedRoutes(app) {
+        app.get('/unused', handler)
+      }`,
+    )
+    const source = `
+      import { registerMembershipRoutes as mountMembers } from './membership'
+      import { registerMissingRoutes } from './unmounted-missing'
+      mountMembers(app, dependencies)
+      // registerMissingRoutes(app)
+    `
+
+    expect(observeMountedHonoRoutes(source, appPath)).toEqual([
+      { method: 'POST', path: '/api/organizations/:id/users/invite' },
+    ])
+  })
+
+  it('fails loudly when a mounted registration source is missing', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'honowarden-routes-'))
+    expect(() =>
+      observeMountedHonoRoutes(
+        `import { registerMembershipRoutes } from './missing'
+         registerMembershipRoutes(app)`,
+        join(fixtureRoot, 'app.ts'),
+      ),
+    ).toThrow(/mounted route module.*missing/i)
+  })
+
+  it('does not let rejected catch-alls hide a newly mounted concrete route', () => {
+    const observed = observeRepository(defaultRouteInventoryPaths(repoRoot))
+    const added = {
+      method: 'POST',
+      path: '/api/organizations/:id/users/unreviewed-action',
+    }
+    const report = reconcileRouteInventory({
+      observed: {
+        ...observed,
+        routes: [...observed.routes, added],
+        registeredModuleRoutes: [added],
+      },
+      inventory,
+      catalog,
+    })
+
+    expect(report.unclassified).toContainEqual({
+      kind: 'route',
+      key: 'POST /api/organizations/:id/users/unreviewed-action',
+    })
+  })
+
+  it('fails instead of silently omitting dynamic mounted paths', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'honowarden-routes-'))
+    writeFileSync(
+      join(fixtureRoot, 'membership.ts'),
+      `export function registerMembershipRoutes(app) {
+        app.post(invitePath, handler)
+      }`,
+    )
+    expect(() =>
+      observeMountedHonoRoutes(
+        `import { registerMembershipRoutes } from './membership'
+         registerMembershipRoutes(app)`,
+        join(fixtureRoot, 'app.ts'),
+      ),
+    ).toThrow(/mounted route module requires literal paths/)
+  })
+
+  it('records mounted membership actions without promoting client support', () => {
+    const observed = observeRepository(defaultRouteInventoryPaths(repoRoot))
+    const membership = inventory.entries.find(
+      (entry: { id: string }) =>
+        entry.id === 'organizations.membership_administration',
+    )
+
+    expect(observed.registeredModuleRoutes).toHaveLength(11)
+    expect(observed.registeredModuleRoutes).toContainEqual({
+      method: 'POST',
+      path: '/api/organizations/:id/users/:memberId/reinvite',
+    })
+    expect(observed.registeredModuleRoutes).toContainEqual({
+      method: 'GET',
+      path: '/api/organizations/:id/users/:memberId',
+    })
+    expect(observed.registeredModuleRoutes).toContainEqual({
+      method: 'GET',
+      path: '/api/users/:userId/public-key',
+    })
+    expect(membership).toMatchObject({
+      classification: 'implemented',
+      requirementKind: 'operator',
+      evidenceLevel: 'local_api',
+      supportClaim: false,
+      runtimeFlags: ['HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED'],
+    })
+    expect(membership.covers).toHaveLength(11)
+    expect(membership.covers).toEqual(
+      expect.arrayContaining(observed.registeredModuleRoutes),
+    )
+    expect(observed.migrations).toEqual(
+      expect.arrayContaining([
+        '0023_device_session_binding.sql',
+        '0024_organization_invitations.sql',
       ]),
     )
   })

@@ -30,12 +30,10 @@ function buildApprovalPacket(options) {
   const releaseGate = runJson([
     process.execPath,
     repoPath('scripts/honowarden-release-gate.mjs'),
-    '--strict',
   ])
   const tagPreflight = runJson([
     process.execPath,
     repoPath('scripts/honowarden-alpha-tag-preflight.mjs'),
-    '--strict',
     '--check-remote',
     '--remote',
     options.remote,

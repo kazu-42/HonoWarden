@@ -6,6 +6,18 @@ export type ClientMatrixInspection = {
   rowsWithoutKnownIssues: string[]
 }
 
+export function inspectClientMatrixFreshness(
+  matrix: unknown,
+  asOf?: string,
+): {
+  status: 'fresh' | 'refresh_due' | 'stale' | 'invalid'
+  releaseReady: boolean
+  checkedAt?: string
+  asOf?: string
+  refreshDueAt?: string
+  staleAt?: string
+}
+
 export function inspectClientMatrix(
   matrix: unknown,
   options?: { evidenceIsRegularFile?: (path: string) => boolean },

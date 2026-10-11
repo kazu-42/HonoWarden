@@ -34,7 +34,10 @@ describe('security review materials', () => {
   it('pins temporary patched transitive dependencies', () => {
     const packageJson = JSON.parse(
       readFileSync(`${repoRoot}/package.json`, 'utf8'),
-    ) as { dependencies: Record<string, string> }
+    ) as {
+      dependencies: Record<string, string>
+      devDependencies: Record<string, string>
+    }
     const workspacePolicy = readFileSync(
       `${repoRoot}/pnpm-workspace.yaml`,
       'utf8',
@@ -42,13 +45,14 @@ describe('security review materials', () => {
     const dependencyAudit = readSecurityDoc('dependency-audit.md')
 
     expect(workspacePolicy).toContain('overrides:')
-    expect(workspacePolicy).toContain('sharp: 0.35.3')
-    expect(workspacePolicy).toContain("'brace-expansion@5.0.7': 5.0.9")
-    expect(workspacePolicy).toContain("'fast-uri@3.1.4': 3.1.5")
+    expect(workspacePolicy).toContain('sharp: 0.35.4')
+    expect(workspacePolicy).toContain("'brace-expansion@5.0.7': 5.0.12")
+    expect(workspacePolicy).toContain("'fast-uri@3.1.4': 3.1.8")
     expect(workspacePolicy).toContain("'postcss@8.5.19': 8.5.23")
-    expect(workspacePolicy).toContain("'nanoid@3.3.16': 3.3.17")
-    expect(workspacePolicy).toContain("'undici@7.28.0': 7.29.0")
-    expect(packageJson.dependencies.hono).toBe('~4.12.34')
+    expect(workspacePolicy).toContain("'nanoid@3.3.16': 3.3.18")
+    expect(workspacePolicy).toContain("'undici@7.28.0': 7.29.1")
+    expect(packageJson.dependencies.hono).toBe('~4.13.7')
+    expect(packageJson.devDependencies.vitest).toBe('^4.1.11')
     expect(workspacePolicy).toContain('docs/security/dependency-audit.md')
     expect(dependencyAudit).toContain('GHSA-f88m-g3jw-g9cj')
     expect(dependencyAudit).toContain('temporary `overrides` policy')
@@ -65,6 +69,12 @@ describe('security review materials', () => {
     expect(dependencyAudit).toContain('postcss` to `8.5.23')
     expect(dependencyAudit).toContain('nanoid` to `3.3.17')
     expect(dependencyAudit).toContain('undici` to `7.29.0')
+    expect(dependencyAudit).toContain('## 2026-10-03 Advisory Remediation')
+    expect(dependencyAudit).toContain('GHSA-hxh3-vqpv-xpqv')
+    expect(dependencyAudit).toContain('GHSA-82fw-gwwq-j7x9')
+    expect(dependencyAudit).toContain('GHSA-rgj7-g3m4-5g8c')
+    expect(dependencyAudit).toContain('GHSA-hrr3-gc8f-f4qj')
+    expect(dependencyAudit).toContain('GHSA-q2hr-2g5m-vwhr')
   })
 
   it('records critical security review sections', () => {

@@ -59,6 +59,8 @@ describe('attachment repository', () => {
       '2026-07-10T00:00:00.000Z',
       '2026-07-10T00:00:00.000Z',
       '2026-07-10T00:00:00.000Z',
+      'cipher-id',
+      'user-id',
     ])
     expect(database.queries.join('\n')).toContain(
       'INSERT INTO cipher_attachments',
@@ -156,7 +158,7 @@ describe('attachment repository', () => {
   })
 
   it('reports quota exhaustion when a pending insert changes no rows', async () => {
-    const database = new RecordingAttachmentD1Database([], {
+    const database = new RecordingAttachmentD1Database([{ found: 1 }], {
       insertChanges: 0,
     })
 

@@ -12,6 +12,7 @@ import { parse } from 'jsonc-parser'
 import {
   hasClientMatrixLiveEvidence,
   inspectClientMatrix,
+  inspectClientMatrixFreshness,
   isRegularRepositoryEvidenceFile,
   matrixLiveEvidencePaths as clientMatrixLiveEvidencePaths,
 } from './honowarden-client-matrix-policy.mjs'
@@ -107,6 +108,7 @@ function buildReleaseGateReport() {
     checkDependencyAuditEvidence(),
     checkWorkflowEvidence(),
     checkCompatibilityMatrix(),
+    checkCurrentClientMatrix(),
     checkLiveClientEvidence(),
     checkBackupRestoreDrillEvidence(),
     checkStagingDeployEvidence(),
@@ -127,6 +129,12 @@ function buildReleaseGateReport() {
     target: 'v0.1.0-alpha',
     scope: 'repository_release_evidence',
     evidenceStatus: summary.block > 0 ? 'inconsistent' : 'consistent',
+    historicalEvidenceStatus: checks.some(
+      (check) =>
+        check.id !== 'current_client_matrix' && check.status !== 'pass',
+    )
+      ? 'inconsistent'
+      : 'consistent',
     executionStatus: 'not_admitted',
     overall: summary.block > 0 ? 'not_ready' : 'ready',
     layers: {
@@ -342,6 +350,47 @@ function hasCiEvidence(checks) {
       (check.name === 'GitHub Actions CI' || isGhRunView)
     )
   })
+}
+
+function checkCurrentClientMatrix() {
+  const matrixPath = 'compat/client-matrix.json'
+  try {
+    const matrix = readJson(matrixPath)
+    const freshness = inspectClientMatrixFreshness(matrix)
+    const inspection = inspectClientMatrix(matrix, {
+      evidenceIsRegularFile: (path) =>
+        isRegularRepositoryEvidenceFile(repoRoot, path),
+    })
+    const valid =
+      freshness.releaseReady &&
+      inspection.invalidVerificationRows.length === 0 &&
+      inspection.fixtureOnlyRowsWithLiveEvidence.length === 0 &&
+      inspection.promotedRowsWithoutEvidence.length === 0 &&
+      inspection.rowsWithoutKnownIssues.length === 0
+    return {
+      id: 'current_client_matrix',
+      status: valid ? 'pass' : 'block',
+      title: 'Current client metadata is fresh and promotions have evidence',
+      evidence: [matrixPath],
+      details: { freshness, ...inspection },
+      ...(!valid
+        ? {
+            nextAction:
+              'Refresh official release metadata and verify exact-version evidence before current release acceptance; preserve the sealed alpha archive.',
+          }
+        : {}),
+    }
+  } catch {
+    return {
+      id: 'current_client_matrix',
+      status: 'block',
+      title: 'Current client metadata is fresh and promotions have evidence',
+      evidence: [matrixPath],
+      details: { reason: 'matrix_unreadable_or_invalid' },
+      nextAction:
+        'Restore valid current client metadata before release acceptance.',
+    }
+  }
 }
 
 function checkCompatibilityMatrix() {

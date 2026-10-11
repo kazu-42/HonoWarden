@@ -83,6 +83,9 @@ export type PendingCipherAttachmentCreateResult =
   | {
       status: 'quota_exceeded'
     }
+  | {
+      status: 'not_found'
+    }
 
 type AttachmentDatabase = Pick<D1Database, 'prepare'>
 type AttachmentBatchDatabase = Pick<D1Database, 'batch' | 'prepare'>
@@ -115,8 +118,8 @@ type CipherAttachmentObjectKeyRow = {
 export async function createCipherAttachment(
   database: AttachmentDatabase,
   input: CipherAttachmentCreateInput,
-): Promise<CipherAttachmentRecord> {
-  await database
+): Promise<CipherAttachmentRecord | null> {
+  const result = await database
     .prepare(
       `
         INSERT INTO cipher_attachments (
@@ -132,7 +135,12 @@ export async function createCipherAttachment(
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM ciphers
+          WHERE id = ? AND user_id = ?
+            AND organization_id IS NULL AND deleted_at IS NULL
+        )
       `,
     )
     .bind(
@@ -147,10 +155,12 @@ export async function createCipherAttachment(
       input.revisionDate,
       input.createdAt,
       input.updatedAt,
+      input.cipherId,
+      input.userId,
     )
     .run()
 
-  return input
+  return result.meta.changes === 1 ? input : null
 }
 
 export async function createPendingCipherAttachment(
@@ -178,7 +188,12 @@ export async function createPendingCipherAttachment(
           updated_at
         )
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE ? + COALESCE((
+        WHERE EXISTS (
+          SELECT 1 FROM ciphers
+          WHERE id = ? AND user_id = ?
+            AND organization_id IS NULL AND deleted_at IS NULL
+        )
+        AND ? + COALESCE((
           SELECT SUM(size)
           FROM cipher_attachments
           WHERE user_id = ?
@@ -204,6 +219,8 @@ export async function createPendingCipherAttachment(
       input.revisionDate,
       input.createdAt,
       input.updatedAt,
+      input.cipherId,
+      input.userId,
       input.size,
       input.userId,
       options.expiredBefore,
@@ -212,7 +229,18 @@ export async function createPendingCipherAttachment(
     .run()
 
   if (result.meta.changes !== 1) {
-    return { status: 'quota_exceeded' }
+    const cipher = await database
+      .prepare(
+        `
+      SELECT 1 as found FROM ciphers
+      WHERE id = ? AND user_id = ?
+        AND organization_id IS NULL AND deleted_at IS NULL
+      LIMIT 1
+    `,
+      )
+      .bind(input.cipherId, input.userId)
+      .first<{ found: number }>()
+    return { status: cipher ? 'quota_exceeded' : 'not_found' }
   }
 
   return { status: 'created', attachment: input }
@@ -284,6 +312,7 @@ export async function listCipherAttachmentObjectKeysForOwnedCiphers(
               AND cipher.user_id = attachment.user_id
             WHERE cipher.id IN (${cipherIds.map(() => '?').join(', ')})
               AND cipher.user_id = ?
+              AND cipher.organization_id IS NULL
               AND attachment.user_id = ?
             ORDER BY attachment.id ASC
           `,

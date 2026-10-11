@@ -281,6 +281,7 @@ export async function findOrganizationForConfirmedMember(
         INNER JOIN organization_users membership
           ON membership.organization_id = organization.id
         WHERE organization.id = ?
+          AND organization.enabled = 1
           AND membership.user_id = ?
           AND membership.status = 2
         LIMIT 1
@@ -319,6 +320,7 @@ export async function listConfirmedOrganizationMemberships(
           ON organization.id = membership.organization_id
         WHERE membership.user_id = ?
           AND membership.status = 2
+          AND organization.enabled = 1
         ORDER BY organization.id ASC
       `,
     )
@@ -358,6 +360,9 @@ export async function listAccessibleOrganizationCollections(
         INNER JOIN organization_users membership
           ON membership.id = collection_user.organization_user_id
           AND membership.organization_id = collection.organization_id
+        INNER JOIN organizations organization
+          ON organization.id = membership.organization_id
+          AND organization.enabled = 1
         WHERE membership.user_id = ?
           AND membership.status = 2
         ORDER BY collection.id ASC
@@ -381,6 +386,9 @@ export async function findConfirmedOrganizationOwner(
           membership.organization_id as organizationId,
           membership.user_id as userId
         FROM organization_users membership
+        INNER JOIN organizations organization
+          ON organization.id = membership.organization_id
+          AND organization.enabled = 1
         WHERE membership.organization_id = ?
           AND membership.user_id = ?
           AND membership.status = 2
@@ -415,6 +423,9 @@ export async function listAccessibleOrganizationCollectionsByOrganization(
         INNER JOIN organization_users membership
           ON membership.id = collection_user.organization_user_id
           AND membership.organization_id = collection.organization_id
+        INNER JOIN organizations organization
+          ON organization.id = membership.organization_id
+          AND organization.enabled = 1
         WHERE collection.organization_id = ?
           AND membership.user_id = ?
           AND membership.status = 2
@@ -450,6 +461,9 @@ export async function findAccessibleOrganizationCollection(
         INNER JOIN organization_users membership
           ON membership.id = collection_user.organization_user_id
           AND membership.organization_id = collection.organization_id
+        INNER JOIN organizations organization
+          ON organization.id = membership.organization_id
+          AND organization.enabled = 1
         WHERE collection.organization_id = ?
           AND collection.id = ?
           AND membership.user_id = ?
@@ -483,6 +497,9 @@ export async function findOwnerOrganizationCollection(
         FROM collections collection
         INNER JOIN organization_users membership
           ON membership.organization_id = collection.organization_id
+        INNER JOIN organizations organization
+          ON organization.id = membership.organization_id
+          AND organization.enabled = 1
         INNER JOIN collection_users collection_user
           ON collection_user.collection_id = collection.id
           AND collection_user.organization_user_id = membership.id
@@ -492,6 +509,7 @@ export async function findOwnerOrganizationCollection(
           AND membership.status = 2
           AND membership.type = 0
           AND collection_user.manage = 1
+          AND collection_user.read_only = 0
         LIMIT 1
       `,
     )
@@ -516,6 +534,9 @@ export async function listOrganizationCollectionUsersForOwner(
         FROM collections collection
         INNER JOIN organization_users owner_membership
           ON owner_membership.organization_id = collection.organization_id
+        INNER JOIN organizations organization
+          ON organization.id = owner_membership.organization_id
+          AND organization.enabled = 1
         INNER JOIN collection_users collection_user
           ON collection_user.collection_id = collection.id
         INNER JOIN organization_users assigned_membership
@@ -546,6 +567,7 @@ export async function createOrganizationCollection(
           UPDATE organizations
           SET revision_date = ?, updated_at = ?
           WHERE id = ?
+            AND enabled = 1
             AND EXISTS (
               SELECT 1
               FROM organization_users owner_membership
@@ -638,6 +660,7 @@ export async function updateOrganizationCollection(
           UPDATE organizations
           SET revision_date = ?, updated_at = ?
           WHERE id = ?
+            AND enabled = 1
             AND EXISTS (
               SELECT 1
               FROM collections candidate
@@ -652,6 +675,7 @@ export async function updateOrganizationCollection(
                 AND owner_membership.status = 2
                 AND owner_membership.type = 0
                 AND owner_access.manage = 1
+                AND owner_access.read_only = 0
             )
         `,
       )
@@ -733,6 +757,7 @@ export async function deleteOrganizationCollections(
           UPDATE organizations
           SET revision_date = ?, updated_at = ?
           WHERE id = ?
+            AND enabled = 1
             AND (
               SELECT COUNT(DISTINCT candidate.id)
               FROM collections candidate
@@ -745,6 +770,7 @@ export async function deleteOrganizationCollections(
                 AND owner_membership.status = 2
                 AND owner_membership.type = 0
                 AND owner_access.manage = 1
+                AND owner_access.read_only = 0
                 AND candidate.organization_id = organizations.id
                 AND candidate.id IN (${placeholders})
             ) = ?
@@ -784,18 +810,20 @@ export async function deleteOrganizationCollections(
         WHERE organization_id = ?
           AND id IN (${placeholders})
           AND changes() = 1
+        RETURNING id
       `,
       )
       .bind(input.organizationId, ...input.collectionIds),
   ]
   const results = await database.batch(statements)
 
+  // D1 meta.changes includes cascades; RETURNING counts only collection rows.
   return (
     results.length === statements.length &&
     results[0]?.success === true &&
     results[0].meta.changes === 1 &&
     results[1]?.success === true &&
-    results[1].meta.changes === input.collectionIds.length
+    results[1].results.length === input.collectionIds.length
   )
 }
 

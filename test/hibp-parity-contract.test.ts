@@ -190,6 +190,7 @@ describe('HON-200 HIBP, reports, and integrations decision', () => {
       sub: 'user-hibp',
       email: 'person@example.test',
       device: 'fixture-device',
+      sessionId: 'synthetic-session-id',
       securityStamp: 'stamp',
       iat: 1,
       exp: 4_102_444_800,

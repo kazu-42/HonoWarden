@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { releaseClockEnv } from '../support/release-clock'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const statusPacketScript = join(
@@ -59,7 +61,7 @@ type ReleaseStatusPacketReport = {
 }
 
 describe('release status packet', () => {
-  it('summarizes a draft release that is ready for publication approval', async () => {
+  it('blocks draft publication when current client metadata is stale', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
     const fakeBin = await createFakeStatusBin({
@@ -88,8 +90,8 @@ describe('release status packet', () => {
     const report = JSON.parse(result.stdout) as ReleaseStatusPacketReport
 
     expect(report.schemaVersion).toBe(1)
-    expect(report.status).toBe('ready')
-    expect(report.phase).toBe('draft_ready_for_publication')
+    expect(report.status).toBe('not_ready')
+    expect(report.phase).toBe('not_ready_for_publication')
     expect(report.targetTag).toBe('v0.1.0-alpha')
     expect(report.targetVersion).toBe('0.1.0-alpha')
     expect(report.targetCommit).toBe(targetCommit)
@@ -99,20 +101,17 @@ describe('release status packet', () => {
       isPrerelease: true,
       targetCommitish: targetCommit,
     })
-    expect(report.packets.publish.status).toBe('ready')
+    expect(report.packets.publish.status).toBe('not_ready')
+    expect(report.packets.publish.failedChecks).toContain('release_gate_ready')
     expect(report.packets.published.status).toBe('not_ready')
     expect(report.packets.published.failedChecks).toContain('release_state')
     expect(report.nextAction).toMatchObject({
-      id: 'request_publication_approval',
-      requiresExternalApproval: true,
-      postPublicationPendingChecks: ['release_state'],
+      id: 'resolve_publication_blockers',
+      requiresExternalApproval: false,
+      failedChecks: ['release_gate_ready'],
     })
-    expect(report.approvalText).toBe(
-      `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
-    )
-    expect(report.commands.publishRelease).toBe(
-      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
-    )
+    expect(report.approvalText).toBeNull()
+    expect(report.commands.publishRelease).toBeNull()
     expect(report.commands.verifyPublished).toContain(
       'pnpm release:published:packet -- --strict',
     )
@@ -138,8 +137,8 @@ describe('release status packet', () => {
     })
     const report = JSON.parse(result.stdout) as ReleaseStatusPacketReport
 
-    expect(report.status).toBe('ready')
-    expect(report.phase).toBe('draft_ready_for_publication')
+    expect(report.status).toBe('not_ready')
+    expect(report.phase).toBe('not_ready_for_publication')
     expect(report.commands.verifyPublished).toBe(
       'pnpm release:published:packet -- --strict --tag-workflow-run-id 28863312935 --tag-workflow-url https://github.com/kazu-42/HonoWarden/actions/runs/28863312935',
     )
@@ -359,7 +358,7 @@ function fakeEnv(fakeBin: {
   tagWorkflowUrl: string
 }) {
   return {
-    ...process.env,
+    ...releaseClockEnv('stale'),
     HONOWARDEN_TEST_HEAD_COMMIT: fakeBin.headCommit,
     HONOWARDEN_TEST_RELEASE_DRAFT: fakeBin.isDraft ? '1' : '0',
     HONOWARDEN_TEST_RELEASE_PRERELEASE: fakeBin.isPrerelease ? '1' : '0',

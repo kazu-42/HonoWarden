@@ -9,9 +9,11 @@ describe('runtime environment policy', () => {
     expect(resolveRuntimeEnvironment('production')).toBe('production')
   })
 
-  it('uses development only for missing or explicitly empty local values', () => {
-    expect(resolveRuntimeEnvironment(undefined)).toBe('development')
-    expect(resolveRuntimeEnvironment('')).toBe('development')
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+  ] as const)('rejects a %s environment value', (_name, value) => {
+    expect(resolveRuntimeEnvironment(value)).toBeNull()
   })
 
   it('rejects unknown non-empty environment labels', () => {

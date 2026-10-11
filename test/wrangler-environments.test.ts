@@ -332,7 +332,24 @@ describe('wrangler configuration scopes', () => {
     ).toBe('false')
   })
 
+  it('keeps organization membership mutation disabled in every tracked environment', () => {
+    for (const environment of [
+      config,
+      config.env.staging,
+      config.env.production,
+    ]) {
+      expect(environment.vars.HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED).toBe(
+        'false',
+      )
+    }
+  })
+
   it('keeps user-key rotation disabled in every tracked environment', () => {
+    expect(config.vars.HONOWARDEN_USER_KEY_ID_ENABLED).toBe('false')
+    expect(config.env.staging.vars.HONOWARDEN_USER_KEY_ID_ENABLED).toBe('false')
+    expect(config.env.production.vars.HONOWARDEN_USER_KEY_ID_ENABLED).toBe(
+      'false',
+    )
     expect(config.vars.HONOWARDEN_USER_KEY_ROTATION_ENABLED).toBe('false')
     expect(config.env.staging.vars.HONOWARDEN_USER_KEY_ROTATION_ENABLED).toBe(
       'false',

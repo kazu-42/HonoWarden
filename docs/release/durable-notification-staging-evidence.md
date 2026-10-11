@@ -1,5 +1,9 @@
 # Durable Notification Staging Evidence
 
+HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.
+The dated results below record the original operation. They do not authorize
+current secret changes, deployment, or reuse of the historical approval.
+
 Status: passed on 2026-07-11 JST.
 
 This evidence covers `HON-84`: durable login-with-device notification delivery
@@ -90,10 +94,12 @@ Notification delivery is a non-authoritative hint. Delivery errors are emitted
 as structured logs, approval/denial remains committed in D1, and clients can
 continue polling.
 
-To disable delivery, set
-`HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED=false` and redeploy. The Durable
-Object binding can remain configured; no D1 data migration or request rollback
-is required. Production remains disabled and was not deployed.
+The historical rollback plan disabled
+`HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED` and redeployed staging. It retained
+the Durable Object binding without a D1 migration or request rollback. This
+plan conveys no current execution authority; current recovery requires fresh
+readback and the separately reviewed deployment protocol. Production was not
+deployed by this operation.
 
 ## Follow-Up Gate
 

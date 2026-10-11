@@ -1,5 +1,10 @@
 # Cloudflare Resource Evidence
 
+> HISTORICAL EVIDENCE — NOT CURRENT EXECUTION AUTHORITY.
+> The commands below record the July 2026 resource creation only. They are not
+> a bootstrap recipe or permission to repeat remote writes. A new execution
+> boundary and explicit operator approval are required for future mutations.
+
 Target: `v0.1.0-alpha`.
 
 Date: 2026-07-07.

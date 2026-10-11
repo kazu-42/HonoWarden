@@ -64,6 +64,8 @@ export type AccessibleCipherRecord = CipherRecord & {
   organizationId: string | null
   cipherKey: string | null
   collectionIds: string[]
+  canEdit: boolean
+  canViewPassword: boolean
 }
 
 export type AccessibleCipherListPage = {
@@ -101,6 +103,7 @@ export type CipherAccess = {
   canRead: boolean
   canEdit: boolean
   canDelete: boolean
+  canViewPassword: boolean
   organizationId: string | null
 }
 
@@ -183,22 +186,29 @@ type AccessibleCipherRow = CipherRow & {
   organizationId: string | null
   cipherKey: string | null
   collectionIdsJson: string
+  canEdit: number | boolean
+  canViewPassword: number | boolean
 }
 
 const accessibleOrganizationCollectionsCte = `
   WITH accessible_organization_collections AS (
     SELECT DISTINCT
       collection.id as collectionId,
-      collection.organization_id as organizationId
+      collection.organization_id as organizationId,
+      collection_user.read_only as readOnly,
+      collection_user.hide_passwords as hidePasswords
     FROM organization_users membership
+    INNER JOIN organizations organization
+      ON organization.id = membership.organization_id
+      AND organization.enabled = 1
     INNER JOIN collection_users collection_user
       ON collection_user.organization_user_id = membership.id
-      AND collection_user.manage = 1
     INNER JOIN collections collection
       ON collection.id = collection_user.collection_id
       AND collection.organization_id = membership.organization_id
     WHERE membership.user_id = ?
       AND membership.status = 2
+      AND membership.type IN (0, 1, 2)
   )
 `
 
@@ -215,6 +225,32 @@ const accessibleCipherSelect = `
     cipher.deleted_at as deletedAt,
     cipher.organization_id as organizationId,
     cipher.cipher_key as cipherKey,
+    CASE
+      WHEN cipher.organization_id IS NULL THEN 1
+      WHEN EXISTS (
+        SELECT 1
+        FROM collection_ciphers writable_mapping
+        INNER JOIN accessible_organization_collections writable_collection
+          ON writable_collection.collectionId = writable_mapping.collection_id
+          AND writable_collection.organizationId = cipher.organization_id
+          AND writable_collection.readOnly = 0
+        WHERE writable_mapping.cipher_id = cipher.id
+      ) THEN 1
+      ELSE 0
+    END as canEdit,
+    CASE
+      WHEN cipher.organization_id IS NULL THEN 1
+      WHEN EXISTS (
+        SELECT 1
+        FROM collection_ciphers visible_mapping
+        INNER JOIN accessible_organization_collections visible_collection
+          ON visible_collection.collectionId = visible_mapping.collection_id
+          AND visible_collection.organizationId = cipher.organization_id
+          AND visible_collection.hidePasswords = 0
+        WHERE visible_mapping.cipher_id = cipher.id
+      ) THEN 1
+      ELSE 0
+    END as canViewPassword,
     CASE
       WHEN cipher.organization_id IS NULL THEN '[]'
       ELSE COALESCE((
@@ -403,7 +439,7 @@ export async function findCipherById(
           created_at as createdAt,
           deleted_at as deletedAt
         FROM ciphers
-        WHERE id = ? AND user_id = ?
+        WHERE id = ? AND user_id = ? AND organization_id IS NULL
         LIMIT 1
       `,
     )
@@ -466,6 +502,7 @@ export async function resolveCipherAccess(
       canRead: isOwner,
       canEdit: isOwner,
       canDelete: isOwner,
+      canViewPassword: isOwner,
       organizationId: null,
     }
   }
@@ -473,11 +510,15 @@ export async function resolveCipherAccess(
   const managedCollection = await database
     .prepare(
       `
-        SELECT 1 as hasManageAccess
+        SELECT COUNT(*) as hasManageAccess,
+          MIN(collection_user.read_only) as readOnly,
+          MIN(collection_user.hide_passwords) as hidePasswords
         FROM organization_users membership
+        INNER JOIN organizations organization
+          ON organization.id = membership.organization_id
+          AND organization.enabled = 1
         INNER JOIN collection_users collection_user
           ON collection_user.organization_user_id = membership.id
-          AND collection_user.manage = 1
         INNER JOIN collections collection
           ON collection.id = collection_user.collection_id
           AND collection.organization_id = membership.organization_id
@@ -485,21 +526,27 @@ export async function resolveCipherAccess(
           ON collection_cipher.collection_id = collection.id
         WHERE membership.user_id = ?
           AND membership.status = 2
+          AND membership.type IN (0, 1, 2)
           AND membership.organization_id = ?
           AND collection.organization_id = ?
           AND collection_cipher.cipher_id = ?
-        LIMIT 1
       `,
     )
     .bind(callerUserId, organizationId, organizationId, cipherId)
-    .first<{ hasManageAccess: number }>()
+    .first<{
+      hasManageAccess: number
+      readOnly: number
+      hidePasswords: number
+    }>()
   const hasManageAccess = Boolean(managedCollection?.hasManageAccess)
+  const canWrite = hasManageAccess && managedCollection?.readOnly === 0
 
   return {
     found: true,
     canRead: hasManageAccess,
-    canEdit: hasManageAccess,
-    canDelete: hasManageAccess,
+    canEdit: canWrite,
+    canDelete: canWrite,
+    canViewPassword: hasManageAccess && managedCollection?.hidePasswords === 0,
     organizationId,
   }
 }
@@ -513,6 +560,7 @@ function deniedCipherAccess(
     canRead: false,
     canEdit: false,
     canDelete: false,
+    canViewPassword: false,
     organizationId,
   }
 }
@@ -520,15 +568,18 @@ function deniedCipherAccess(
 function managedOrganizationCollectionsSql(collectionIds: readonly string[]) {
   return `
     FROM collections collection
+    INNER JOIN organizations organization
+      ON organization.id = collection.organization_id
+      AND organization.enabled = 1
     INNER JOIN collection_users collection_user
       ON collection_user.collection_id = collection.id
-      AND collection_user.manage = 1
+      AND collection_user.read_only = 0
     INNER JOIN organization_users membership
       ON membership.id = collection_user.organization_user_id
       AND membership.organization_id = collection.organization_id
     WHERE membership.user_id = ?
       AND membership.status = 2
-      AND membership.type = 0
+      AND membership.type IN (0, 1, 2)
       AND membership.organization_id = ?
       AND collection.id IN (${cipherIdPlaceholders(collectionIds)})
   `
@@ -844,7 +895,8 @@ export async function updateCipher(
           encrypted_json = ?,
           revision_date = ?,
           updated_at = ?
-        WHERE id = ? AND user_id = ? AND deleted_at IS NULL AND revision_date = ?
+        WHERE id = ? AND user_id = ? AND organization_id IS NULL
+          AND deleted_at IS NULL AND revision_date = ?
       `,
     )
     .bind(
@@ -899,7 +951,8 @@ export async function softDeleteCipher(
           deleted_at = ?,
           revision_date = ?,
           updated_at = ?
-        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ? AND organization_id IS NULL
+          AND deleted_at IS NULL
       `,
     )
     .bind(
@@ -937,7 +990,8 @@ export async function restoreCipher(
           deleted_at = NULL,
           revision_date = ?,
           updated_at = ?
-        WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL
+        WHERE id = ? AND user_id = ? AND organization_id IS NULL
+          AND deleted_at IS NOT NULL
       `,
     )
     .bind(input.revisionDate, input.revisionDate, input.id, input.userId)
@@ -964,13 +1018,14 @@ export async function permanentlyDeleteCipher(
     .prepare(
       `
         DELETE FROM ciphers
-        WHERE id = ? AND user_id = ?
+        WHERE id = ? AND user_id = ? AND organization_id IS NULL
+        RETURNING id
       `,
     )
     .bind(input.id, input.userId)
-    .run()
+    .first<{ id: string }>()
 
-  if (result.meta.changes !== 1) {
+  if (!result) {
     return {
       status: 'not_found',
     }
@@ -998,6 +1053,7 @@ export async function bulkMoveCiphers(
             updated_at = ?
           WHERE id IN (${cipherIdPlaceholders(ids)})
             AND user_id = ?
+            AND organization_id IS NULL
             AND deleted_at IS NULL
         `,
       )
@@ -1028,6 +1084,7 @@ export async function bulkSoftDeleteCiphers(
             updated_at = ?
           WHERE id IN (${cipherIdPlaceholders(ids)})
             AND user_id = ?
+            AND organization_id IS NULL
             AND deleted_at IS NULL
         `,
       )
@@ -1062,6 +1119,7 @@ export async function bulkRestoreCiphers(
             FROM ciphers
             WHERE id IN (${placeholders})
               AND user_id = ?
+              AND organization_id IS NULL
               AND deleted_at IS NOT NULL
           `,
         )
@@ -1076,6 +1134,7 @@ export async function bulkRestoreCiphers(
               updated_at = ?
             WHERE id IN (${placeholders})
               AND user_id = ?
+              AND organization_id IS NULL
               AND deleted_at IS NOT NULL
           `,
         )
@@ -1105,6 +1164,7 @@ export async function bulkPermanentlyDeleteCiphers(
           DELETE FROM ciphers
           WHERE id IN (${cipherIdPlaceholders(ids)})
             AND user_id = ?
+            AND organization_id IS NULL
         `,
       )
       .bind(...ids, input.userId),
@@ -1175,6 +1235,8 @@ function accessibleCipherFromRow(
       organizationId: null,
       cipherKey: null,
       collectionIds: [],
+      canEdit: true,
+      canViewPassword: true,
     }
   }
 
@@ -1205,6 +1267,8 @@ function accessibleCipherFromRow(
     organizationId,
     cipherKey: row.cipherKey,
     collectionIds,
+    canEdit: row.canEdit === 1 || row.canEdit === true,
+    canViewPassword: row.canViewPassword === 1 || row.canViewPassword === true,
   }
 }
 
@@ -1217,7 +1281,8 @@ async function findActiveCipherRevision(
       `
         SELECT revision_date as revisionDate
         FROM ciphers
-        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ? AND organization_id IS NULL
+          AND deleted_at IS NULL
         LIMIT 1
       `,
     )
@@ -1236,7 +1301,8 @@ async function findActiveCipherCreatedAt(
       `
         SELECT created_at as createdAt
         FROM ciphers
-        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ? AND organization_id IS NULL
+          AND deleted_at IS NULL
         LIMIT 1
       `,
     )

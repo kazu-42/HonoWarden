@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { releaseClockEnv } from '../support/release-clock'
+
 const execFileAsync = promisify(execFile)
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url).toString())
 const completionAuditScript = join(
@@ -48,7 +50,7 @@ type CompletionAuditReport = {
 }
 
 describe('alpha completion audit', () => {
-  it('reports incomplete when the draft is ready but publication approval is still required', async () => {
+  it('reports incomplete when stale metadata blocks draft publication', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
     const fakeBin = await createFakeReleaseBin({
@@ -75,7 +77,7 @@ describe('alpha completion audit', () => {
 
     expect(report.schemaVersion).toBe(1)
     expect(report.completion).toBe('incomplete')
-    expect(report.blockingReason).toBe('release_publication_approval_required')
+    expect(report.blockingReason).toBe('release_publication_not_ready')
     expect(report.targetTag).toBe('v0.1.0-alpha')
     expect(report.targetVersion).toBe('0.1.0-alpha')
     expect(report.targetCommit).toBe(targetCommit)
@@ -84,20 +86,18 @@ describe('alpha completion audit', () => {
       failedChecks: [],
     })
     expect(report.releaseStatus).toMatchObject({
-      status: 'ready',
-      phase: 'draft_ready_for_publication',
-      approvalText: `${targetCommit} の v0.1.0-alpha draft prerelease を公開してよい`,
+      status: 'not_ready',
+      phase: 'not_ready_for_publication',
+      approvalText: null,
     })
-    expect(report.releaseStatus.commands?.publishRelease).toBe(
-      'gh release edit v0.1.0-alpha --draft=false --prerelease --verify-tag --repo kazu-42/HonoWarden',
-    )
+    expect(report.releaseStatus.commands?.publishRelease).toBeNull()
     expect(statusById(report, 'published_prerelease_verified')).toBe('fail')
     expect(report.limitations).toContain(
       'Strict mode only succeeds after published prerelease verification passes.',
     )
   })
 
-  it('fails strict mode while publication approval is still required', async () => {
+  it('fails strict mode while current publication evidence is not ready', async () => {
     const targetCommit = '1234567890abcdef1234567890abcdef12345678'
     const tagWorkflowUrl = 'https://example.invalid/actions/runs/54321'
     const fakeBin = await createFakeReleaseBin({
@@ -124,7 +124,7 @@ describe('alpha completion audit', () => {
       ),
     ).rejects.toMatchObject({
       stderr: expect.stringContaining(
-        'alpha completion audit is incomplete: release_publication_approval_required',
+        'alpha completion audit is incomplete: release_publication_not_ready',
       ),
       stdout: expect.stringContaining('"completion": "incomplete"'),
     })
@@ -312,7 +312,7 @@ function fakeEnv(fakeBin: {
   tagWorkflowUrl: string
 }) {
   return {
-    ...process.env,
+    ...releaseClockEnv('stale'),
     HONOWARDEN_TEST_HEAD_COMMIT: fakeBin.headCommit,
     HONOWARDEN_TEST_RELEASE_DRAFT: fakeBin.isDraft ? '1' : '0',
     HONOWARDEN_TEST_RELEASE_PRERELEASE: fakeBin.isPrerelease ? '1' : '0',

@@ -120,11 +120,15 @@ describe('HonoWarden app', () => {
   })
 
   it('returns a health response', async () => {
-    const response = await app.request('/health', {
-      headers: {
-        'X-Request-Id': 'health-request',
+    const response = await app.request(
+      '/health',
+      {
+        headers: {
+          'X-Request-Id': 'health-request',
+        },
       },
-    })
+      { HONOWARDEN_ENV: 'development' },
+    )
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({
@@ -187,6 +191,7 @@ describe('HonoWarden app', () => {
       {
         DB: database,
         HONOWARDEN_GLOBAL_REQUEST_QUOTA: 'true',
+        HONOWARDEN_ENV: 'development',
       },
     )
 
@@ -270,11 +275,15 @@ describe('HonoWarden app', () => {
   })
 
   it('keeps the healthz alias for infrastructure probes', async () => {
-    const response = await app.request('/healthz', {
-      headers: {
-        'X-Request-Id': 'healthz-request',
+    const response = await app.request(
+      '/healthz',
+      {
+        headers: {
+          'X-Request-Id': 'healthz-request',
+        },
       },
-    })
+      { HONOWARDEN_ENV: 'development' },
+    )
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
@@ -739,6 +748,7 @@ describe('HonoWarden app', () => {
               id: buildDevicePathId('fixture-device'),
               userId: 'user-id',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'CLI',
               type: 8,
               lastSeenAt: '2026-07-06T00:10:00.000Z',
@@ -2330,6 +2340,7 @@ describe('HonoWarden app', () => {
           id: 'approver-device-id',
           userId: user.id,
           identifier: 'fixture-device',
+          sessionId: 'synthetic-session-id',
           name: 'Approver',
           type: 8,
           encryptedUserKey: null,
@@ -3941,7 +3952,12 @@ describe('HonoWarden app', () => {
       expect(response.status).toBe(200)
       const body = (await response.json()) as { access_token: string }
 
-      return decodeJwtPayload(body.access_token)
+      const claims = decodeJwtPayload(body.access_token)
+      expect(claims.sessionId).toEqual(expect.any(String))
+      // Each independent login must create its own session generation.
+      const stableClaims = { ...claims }
+      delete stableClaims.sessionId
+      return stableClaims
     }
 
     const absentClaims = await claimsForFlag(undefined)
@@ -3962,6 +3978,8 @@ describe('HonoWarden app', () => {
 
   it('atomically consumes an approved auth request for one device-bound session', async () => {
     const user = authUserRecord()
+    const devices: Record<string, unknown>[] = []
+    const refreshTokens: Record<string, unknown>[] = []
     const secret = '0123456789abcdef0123456789abcdef'
     const accessCode = 'high-entropy-access-code'
     const row = {
@@ -3979,6 +3997,8 @@ describe('HonoWarden app', () => {
     const database = new FakeD1Database(null, [], {
       authUser: user,
       authRequests: [row],
+      devices,
+      refreshTokens,
       requestQuotaBucket: unblockedRequestQuotaBucket(),
     })
     const env = {
@@ -4022,6 +4042,26 @@ describe('HonoWarden app', () => {
       premium: true,
     })
     expect(row.status).toBe('consumed')
+    const claims = decodeJwtPayload(body.access_token)
+    expect(claims.sessionId).toEqual(expect.any(String))
+    expect(devices).toEqual([
+      expect.objectContaining({
+        userId: user.id,
+        identifier: 'requester-device',
+        sessionId: claims.sessionId,
+      }),
+    ])
+    expect(refreshTokens).toEqual([
+      expect.objectContaining({ userId: user.id, sessionId: claims.sessionId }),
+    ])
+    const sync = await app.request(
+      '/api/sync',
+      {
+        headers: { Authorization: `Bearer ${body.access_token}` },
+      },
+      env,
+    )
+    expect(sync.status).toBe(200)
 
     const replay = await app.request(
       '/identity/connect/token',
@@ -5102,6 +5142,7 @@ describe('HonoWarden app', () => {
         sub: user.id,
         email: user.emailNormalized,
         device: 'fixture-device',
+        sessionId: 'synthetic-session-id',
         securityStamp: user.securityStamp,
         iat: 1,
         exp: 4_102_444_800,
@@ -6967,6 +7008,7 @@ describe('HonoWarden app', () => {
       sub: user.id,
       email: user.emailNormalized,
       device: 'fixture-device',
+      sessionId: 'synthetic-session-id',
       securityStamp: user.securityStamp,
       iat: 1,
       exp: 4_102_444_800,
@@ -7394,6 +7436,7 @@ describe('HonoWarden app', () => {
               id: buildDevicePathId('fixture-device'),
               userId: 'user-id',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'CLI',
               type: 8,
               lastSeenAt: '2026-07-06T00:10:00.000Z',
@@ -7404,6 +7447,7 @@ describe('HonoWarden app', () => {
               id: 'other-user:fixture-device',
               userId: 'other-user',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'Other User Device',
               type: 8,
               lastSeenAt: '2026-07-06T00:30:00.000Z',
@@ -7494,6 +7538,7 @@ describe('HonoWarden app', () => {
               id: buildDevicePathId('fixture-device'),
               userId: 'user-id',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'CLI',
               type: 8,
               lastSeenAt: '2026-07-06T00:10:00.000Z',
@@ -7504,6 +7549,7 @@ describe('HonoWarden app', () => {
               id: 'other-user:fixture-device',
               userId: 'other-user',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'Other User Device',
               type: 8,
               lastSeenAt: '2026-07-06T00:30:00.000Z',
@@ -7545,7 +7591,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
-          devices: [],
+          devices: [deviceRecord()],
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -7646,6 +7692,7 @@ describe('HonoWarden app', () => {
               id: deviceId,
               userId: 'user-id',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'CLI',
               type: 8,
               lastSeenAt: '2026-07-06T00:10:00.000Z',
@@ -7703,6 +7750,7 @@ describe('HonoWarden app', () => {
               id: buildDevicePathId('fixture-device'),
               userId: 'user-id',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'CLI',
               type: 8,
               encryptedUserKey: null,
@@ -7765,6 +7813,7 @@ describe('HonoWarden app', () => {
               id: deviceId,
               userId: 'user-id',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'CLI',
               type: 8,
               encryptedUserKey: null,
@@ -7828,6 +7877,7 @@ describe('HonoWarden app', () => {
               id: buildDevicePathId('fixture-device'),
               userId: 'user-id',
               identifier: 'fixture-device',
+              sessionId: 'synthetic-session-id',
               name: 'CLI',
               type: 8,
               encryptedUserKey: null,
@@ -8011,7 +8061,7 @@ describe('HonoWarden app', () => {
       {
         DB: new FakeD1Database(null, [], {
           authUser: user,
-          devices: [],
+          devices: [deviceRecord()],
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -8517,7 +8567,12 @@ describe('HonoWarden app', () => {
       privateKey: null,
     }
     const devices = [
-      { id: 'current-device', userId: user.id },
+      {
+        id: 'current-device',
+        userId: user.id,
+        identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
+      },
       { id: 'other-device', userId: user.id },
     ]
     const refreshTokens = [
@@ -9023,6 +9078,7 @@ describe('HonoWarden app', () => {
         id: buildDevicePathId('fixture-device'),
         userId: user.id,
         identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
       },
       {
         id: buildDevicePathId('other-device'),
@@ -9239,7 +9295,14 @@ describe('HonoWarden app', () => {
   it('keeps the complete KDF generation state-free on proof and D1 failure', async () => {
     for (const failure of ['proof', 'audit'] as const) {
       const user = authUserRecord()
-      const devices = [{ id: 'device-id', userId: user.id }]
+      const devices = [
+        {
+          id: 'device-id',
+          userId: user.id,
+          identifier: 'fixture-device',
+          sessionId: 'synthetic-session-id',
+        },
+      ]
       const refreshTokens = [{ id: 'token-id', userId: user.id }]
       const database = new FakeD1Database(null, [], {
         authUser: user,
@@ -9332,7 +9395,14 @@ describe('HonoWarden app', () => {
 
   it('returns conflict without partial KDF or session changes', async () => {
     const user = authUserRecord()
-    const devices = [{ id: 'device-id', userId: user.id }]
+    const devices = [
+      {
+        id: 'device-id',
+        userId: user.id,
+        identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
+      },
+    ]
     const refreshTokens = [{ id: 'token-id', userId: user.id }]
     const database = new FakeD1Database(null, [], {
       authUser: user,
@@ -9574,6 +9644,7 @@ describe('HonoWarden app', () => {
         id: buildDevicePathId('fixture-device'),
         userId: user.id,
         identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
       },
       {
         id: buildDevicePathId('other-device'),
@@ -9805,7 +9876,14 @@ describe('HonoWarden app', () => {
 
   it('returns a conflict without partial password or session changes', async () => {
     const user = authUserRecord()
-    const devices = [{ id: 'device-id', userId: user.id }]
+    const devices = [
+      {
+        id: 'device-id',
+        userId: user.id,
+        identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
+      },
+    ]
     const refreshTokens = [{ id: 'token-id', userId: user.id }]
     const database = new FakeD1Database(null, [], {
       authUser: user,
@@ -9842,7 +9920,14 @@ describe('HonoWarden app', () => {
   it('rolls password and sessions back when mandatory audit persistence fails', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
     const user = authUserRecord()
-    const devices = [{ id: 'device-id', userId: user.id }]
+    const devices = [
+      {
+        id: 'device-id',
+        userId: user.id,
+        identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
+      },
+    ]
     const refreshTokens = [{ id: 'token-id', userId: user.id }]
     const database = new FakeD1Database(null, [], {
       authUser: user,
@@ -10029,6 +10114,7 @@ describe('HonoWarden app', () => {
         id: buildDevicePathId('fixture-device'),
         userId: user.id,
         identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
       },
       {
         id: buildDevicePathId('other-device'),
@@ -10414,6 +10500,7 @@ describe('HonoWarden app', () => {
         id: buildDevicePathId('fixture-device'),
         userId: user.id,
         identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
       },
     ]
     const refreshTokens = [{ id: 'current-token', userId: user.id }]
@@ -10514,6 +10601,7 @@ describe('HonoWarden app', () => {
         id: buildDevicePathId('fixture-device'),
         userId: user.id,
         identifier: 'fixture-device',
+        sessionId: 'synthetic-session-id',
       },
     ]
     const refreshTokens = [{ id: 'current-token', userId: user.id }]
@@ -11774,7 +11862,13 @@ describe('HonoWarden app', () => {
     { name: 'invited membership', status: 0, manage: 1, mapped: true },
     { name: 'accepted membership', status: 1, manage: 1, mapped: true },
     { name: 'revoked membership', status: -1, manage: 1, mapped: true },
-    { name: 'non-manage assignment', status: 2, manage: 0, mapped: true },
+    {
+      name: 'missing collection assignment',
+      status: 2,
+      manage: 0,
+      mapped: true,
+      assigned: false,
+    },
     { name: 'missing cipher mapping', status: 2, manage: 1, mapped: false },
     {
       name: 'cross-organization collection',
@@ -11785,7 +11879,7 @@ describe('HonoWarden app', () => {
     },
   ])(
     'hides organization ciphers for a $name',
-    async ({ status, manage, mapped, collectionOrganizationId }) => {
+    async ({ status, manage, mapped, collectionOrganizationId, assigned }) => {
       const user = authUserRecord()
       const accessToken = await accessTokenFor(user)
       const organizationId = 'organization-id'
@@ -11831,15 +11925,18 @@ describe('HonoWarden app', () => {
               revisionDate: '2026-07-06T00:02:00.000Z',
             },
           ],
-          collectionUsers: [
-            {
-              collectionId: 'collection-id',
-              organizationUserId: 'organization-user-id',
-              readOnly: 0,
-              hidePasswords: 0,
-              manage,
-            },
-          ],
+          collectionUsers:
+            assigned === false
+              ? []
+              : [
+                  {
+                    collectionId: 'collection-id',
+                    organizationUserId: 'organization-user-id',
+                    readOnly: 0,
+                    hidePasswords: 0,
+                    manage,
+                  },
+                ],
           collectionCiphers: mapped
             ? [
                 {
@@ -12371,18 +12468,18 @@ describe('HonoWarden app', () => {
         },
       },
       {
-        name: 'confirmed non-owner membership',
+        name: 'unsupported custom membership',
         requestedCollectionId: null,
         mutate(
           records: ReturnType<
             typeof organizationCipherAccessFixture
           >['records'],
         ) {
-          records.organizationUsers[0]!.type = 1
+          records.organizationUsers[0]!.type = 4
         },
       },
       {
-        name: 'collection without manage access',
+        name: 'read-only collection assignment',
         requestedCollectionId: null,
         mutate(
           records: ReturnType<
@@ -12390,6 +12487,7 @@ describe('HonoWarden app', () => {
           >['records'],
         ) {
           records.collectionUsers[0]!.manage = 0
+          records.collectionUsers[0]!.readOnly = 1
         },
       },
       {
@@ -15566,6 +15664,7 @@ describe('HonoWarden app', () => {
           authUser: user,
           cipherPermanentDeleteChanges: 0,
           cipherSoftDeleteChanges: 1,
+          cipher: cipherRecord(),
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -15810,6 +15909,7 @@ describe('HonoWarden app', () => {
         DB: new FakeD1Database(null, [], {
           authUser: user,
           cipherRestoreChanges: 1,
+          cipher: { ...cipherRecord(), deletedAt: '2026-07-06T00:06:00.000Z' },
         }),
         HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
       },
@@ -16107,7 +16207,11 @@ describe('HonoWarden app', () => {
   })
 
   it('returns a minimal upstream-compatible server config', async () => {
-    const response = await app.request('https://vault.example.test/api/config')
+    const response = await app.request(
+      'https://vault.example.test/api/config',
+      {},
+      { HONOWARDEN_ENV: 'development' },
+    )
 
     expect(response.status).toBe(200)
     expect(response.headers.get('Cache-Control')).toBe('no-store')
@@ -16130,7 +16234,11 @@ describe('HonoWarden app', () => {
 
   it('keeps both server config aliases out of shared caches', async () => {
     for (const path of ['/api/config', '/config']) {
-      const response = await app.request(path)
+      const response = await app.request(
+        path,
+        {},
+        { HONOWARDEN_ENV: 'development' },
+      )
 
       expect(response.status, path).toBe(200)
       expect(response.headers.get('Cache-Control'), path).toBe('no-store')
@@ -16396,11 +16504,15 @@ describe('HonoWarden app', () => {
   })
 
   it('keeps forwarded HTTPS origins in server config URLs', async () => {
-    const response = await app.request('http://vault.example.test/api/config', {
-      headers: {
-        'X-Forwarded-Proto': 'https',
+    const response = await app.request(
+      'http://vault.example.test/api/config',
+      {
+        headers: {
+          'X-Forwarded-Proto': 'https',
+        },
       },
-    })
+      { HONOWARDEN_ENV: 'development' },
+    )
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
@@ -16414,11 +16526,15 @@ describe('HonoWarden app', () => {
   })
 
   it('keeps Cloudflare visitor HTTPS origins in server config URLs', async () => {
-    const response = await app.request('http://vault.example.test/api/config', {
-      headers: {
-        'CF-Visitor': JSON.stringify({ scheme: 'https' }),
+    const response = await app.request(
+      'http://vault.example.test/api/config',
+      {
+        headers: {
+          'CF-Visitor': JSON.stringify({ scheme: 'https' }),
+        },
       },
-    })
+      { HONOWARDEN_ENV: 'development' },
+    )
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
@@ -16618,6 +16734,7 @@ function passwordGrantRequest(
 function refreshTokenSessionRecord() {
   return {
     tokenId: 'refresh-token-id',
+    sessionId: 'synthetic-session-id',
     userId: 'user-id',
     deviceId: 'device-id',
     deviceIdentifier: 'fixture-device',
@@ -16653,6 +16770,7 @@ function deviceRecord() {
     id: 'approver-device-id',
     userId: 'user-id',
     identifier: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     name: 'Approver',
     type: 8,
     encryptedUserKey: null,
@@ -16753,6 +16871,7 @@ function organizationFeatureShape(input: {
     UseKeyConnector: false,
     UseScim: false,
     UseGroups: false,
+    UseMyItems: false,
     UseEvents: false,
     UseDirectory: false,
     UseTotp: true,
@@ -16986,6 +17105,7 @@ async function accessTokenFor(
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: 1,
     exp: 4_102_444_800,
@@ -17004,6 +17124,7 @@ async function recentPasswordAccessTokenFor(
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: issuedAt,
     exp: issuedAt + 3600,
@@ -17023,6 +17144,7 @@ async function stalePasswordAccessTokenFor(
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: issuedAt,
     exp: issuedAt + 3600,
@@ -17042,6 +17164,7 @@ async function refreshAccessTokenFor(
     sub: user.id,
     email: user.emailNormalized,
     device: 'fixture-device',
+    sessionId: 'synthetic-session-id',
     securityStamp: user.securityStamp,
     iat: issuedAt,
     exp: issuedAt + 3600,

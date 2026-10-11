@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanupTransientAuthData } from '../../src/maintenance/retention-cleanup'
 import {
   cleanupExpiredWebAuthnChallenges,
+  completeWebAuthnRegistration,
   consumeWebAuthnChallenge,
   createWebAuthnCredential,
   deleteWebAuthnCredential,
@@ -28,6 +29,160 @@ afterEach(async () => {
 })
 
 describe('WebAuthn persistence on real local D1', () => {
+  it('rejects same-millisecond registration replay without inserting another credential', async () => {
+    const database = await createDatabase()
+    const consume = await issueRegistrationChallenge(database)
+    const credential = credentialFixture()
+    await expect(
+      completeWebAuthnRegistration(database, { consume, credential }),
+    ).resolves.toEqual({ status: 'created', credential })
+
+    for (const index of [1, 2]) {
+      await expect(
+        completeWebAuthnRegistration(database, {
+          consume,
+          credential: credentialFixture({
+            id: `replay-${index}`,
+            credentialId: `replay-credential-${index}`,
+          }),
+        }),
+      ).resolves.toEqual({ status: 'not_consumed' })
+    }
+    const rows = await database
+      .prepare('SELECT id FROM webauthn_credentials')
+      .all()
+    expect(rows.results).toEqual([{ id: credential.id }])
+  })
+
+  it('allows one same-millisecond registration winner across concurrent batches', async () => {
+    const database = await createDatabase()
+    const consume = await issueRegistrationChallenge(database)
+    const attempts = await Promise.all(
+      [0, 1, 2, 3].map((index) =>
+        completeWebAuthnRegistration(database, {
+          consume,
+          credential: credentialFixture({
+            id: `concurrent-${index}`,
+            credentialId: `concurrent-credential-${index}`,
+          }),
+        }),
+      ),
+    )
+    const winners = attempts.filter((result) => result.status === 'created')
+    expect(winners).toHaveLength(1)
+    expect(
+      attempts.filter((result) => result.status === 'not_consumed'),
+    ).toHaveLength(3)
+    const rows = await database
+      .prepare('SELECT id FROM webauthn_credentials')
+      .all()
+    expect(rows.results).toEqual([{ id: winners[0]?.credential.id }])
+  })
+
+  it('rolls back challenge consumption when credential insertion fails', async () => {
+    const database = await createDatabase()
+    const consume = await issueRegistrationChallenge(database)
+    await database
+      .prepare(
+        `CREATE TRIGGER reject_registration BEFORE INSERT ON webauthn_credentials
+      BEGIN SELECT RAISE(ABORT, 'synthetic credential insertion failure'); END`,
+      )
+      .run()
+    await expect(
+      completeWebAuthnRegistration(database, {
+        consume,
+        credential: credentialFixture(),
+      }),
+    ).rejects.toThrow('synthetic credential insertion failure')
+    const challenge = await database
+      .prepare('SELECT consumed_at FROM webauthn_challenges WHERE id = ?')
+      .bind('registration-challenge')
+      .first()
+    expect(challenge).toEqual({ consumed_at: null })
+    const rows = await database
+      .prepare('SELECT id FROM webauthn_credentials')
+      .all()
+    expect(rows.results).toEqual([])
+    await database.prepare('DROP TRIGGER reject_registration').run()
+    expect(
+      (
+        await completeWebAuthnRegistration(database, {
+          consume,
+          credential: credentialFixture(),
+        })
+      ).status,
+    ).toBe('created')
+  })
+
+  it.each([
+    ['foreign owner', { userId: foreignUserId }],
+    ['wrong purpose', { purpose: 'authentication' as const }],
+    ['wrong relying party', { rpId: 'other.example.com' }],
+    ['wrong origin policy', { originPolicyVersion: 'other-policy' }],
+    ['wrong challenge', { challengeHash: 'other-challenge' }],
+    ['expired challenge', { now: '2026-07-06T00:07:00.000Z' }],
+  ])(
+    'leaves both tables unchanged after failed consume: %s',
+    async (_name, overrides) => {
+      const database = await createDatabase()
+      const consume = await issueRegistrationChallenge(database)
+      const before = await database
+        .prepare('SELECT * FROM webauthn_challenges')
+        .all()
+      await expect(
+        completeWebAuthnRegistration(database, {
+          consume: { ...consume, ...overrides },
+          credential: credentialFixture(),
+        }),
+      ).resolves.toEqual({ status: 'not_consumed' })
+      expect(
+        (await database.prepare('SELECT id FROM webauthn_credentials').all())
+          .results,
+      ).toEqual([])
+      expect(
+        (await database.prepare('SELECT * FROM webauthn_challenges').all())
+          .results,
+      ).toEqual(before.results)
+    },
+  )
+
+  it('preserves an unconsumed registration challenge at duplicate and count limits', async () => {
+    const database = await createDatabase()
+    const consume = await issueRegistrationChallenge(database)
+    const credential = credentialFixture()
+    await createWebAuthnCredential(database, credential)
+    await expect(
+      completeWebAuthnRegistration(database, { consume, credential }),
+    ).resolves.toEqual({ status: 'duplicate_credential' })
+    for (const index of [1, 2, 3, 4]) {
+      await createWebAuthnCredential(
+        database,
+        credentialFixture({
+          id: `existing-${index}`,
+          credentialId: `existing-credential-${index}`,
+        }),
+      )
+    }
+    await expect(
+      completeWebAuthnRegistration(database, {
+        consume,
+        credential: credentialFixture({
+          id: 'sixth',
+          credentialId: 'sixth-credential',
+        }),
+      }),
+    ).resolves.toEqual({ status: 'limit_reached' })
+    expect(
+      (await database.prepare('SELECT id FROM webauthn_credentials').all())
+        .results,
+    ).toHaveLength(5)
+    expect(
+      await database
+        .prepare('SELECT consumed_at FROM webauthn_challenges')
+        .first(),
+    ).toEqual({ consumed_at: null })
+  })
+
   it('isolates owner credentials and rejects a sixth registration', async () => {
     const database = await createDatabase()
     for (let index = 0; index < 5; index += 1) {
@@ -268,6 +423,34 @@ describe('WebAuthn persistence on real local D1', () => {
     ).resolves.toBeNull()
   })
 })
+
+async function issueRegistrationChallenge(database: D1Database) {
+  await issueWebAuthnChallenge(database, {
+    id: 'registration-challenge',
+    tokenHash: 'registration-token-hash',
+    challengeHash: 'registration-challenge-hash',
+    purpose: 'registration',
+    userId: ownerUserId,
+    credentialId: null,
+    rpId: 'example.com',
+    originPolicyVersion: 'origin-policy',
+    expiresAt: '2026-07-06T00:07:00.000Z',
+    consumedAt: null,
+    createdAt: now,
+    retentionDeleteAfter: '2026-07-07T00:07:00.000Z',
+  })
+  return {
+    tokenHash: 'registration-token-hash',
+    challengeHash: 'registration-challenge-hash',
+    purpose: 'registration' as const,
+    userId: ownerUserId,
+    credentialId: null,
+    rpId: 'example.com',
+    originPolicyVersion: 'origin-policy',
+    consumedAt: now,
+    now,
+  }
+}
 
 function credentialFixture(
   overrides: Partial<WebAuthnCredentialRecord> = {},

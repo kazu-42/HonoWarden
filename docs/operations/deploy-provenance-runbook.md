@@ -37,11 +37,24 @@ The Worker runtime still resolves one consistent build identity for:
 - `GET /api/config`
 - `GET /config`
 
-The response contract distinguishes the opaque `workerVersionId` from the
-reviewed source commit. In staging and production:
+The public response schema distinguishes the opaque `workerVersionId` from
+`build.gitSha`. `CF_VERSION_METADATA.tag` is a config-bound claimed source SHA
+supplied by an external deployment configuration. Runtime validation does not
+cryptographically bind the deployed Worker bytes to that Git tree. The value is
+therefore a well-formed claim to cross-check against external build and platform
+evidence, not a standalone attestation.
 
-- `build.gitSha` must be the exact lowercase, non-zero, 40-character reviewed
-  Git commit;
+In every environment:
+
+- `HONOWARDEN_ENV` must be present and exactly `development`, `staging`, or
+  `production`; a missing, empty, or unknown value is a secret-safe `503`;
+- local execution remains usable only when the tracked top-level Wrangler
+  configuration or a direct test fixture supplies `development` explicitly.
+
+In staging and production:
+
+- `build.gitSha` must be the exact lowercase, non-zero, 40-character claimed
+  Git commit from `CF_VERSION_METADATA.tag`;
 - `createdAt` must be a canonical UTC instant;
 - `environment` must match the explicit Wrangler environment;
 - `/api/config.gitHash` and `/config.gitHash` must equal
@@ -55,17 +68,21 @@ success does not imply migration, binding, route, cron, secret, or data health.
 ## Post-deployment acceptance ceiling
 
 These checks describe acceptance after a separately authorized external
-deployment. They do not authorize one.
+deployment. They do not authorize one. Acceptance needs an external build/deploy
+record plus independent version and traffic readback; the metadata tag alone
+cannot establish source-to-byte provenance.
 
 GO requires all of the following on the same target and observed version:
 
 1. exact traffic/deployment identity readback;
-2. `/health` and `/healthz` with matching environment, version ID,
-   `createdAt`, and reviewed `build.gitSha`;
-3. `/api/config.gitHash` equal to that same SHA;
-4. `/health/db` green against the intended database;
-5. an authorized synthetic login/sync smoke;
-6. explicit confirmation that route, binding, migration, cron, observability,
+2. an independently captured build/deploy record binding the reviewed source
+   SHA and immutable build inputs/output digest to the observed Worker version;
+3. `/health` and `/healthz` with matching environment, version ID,
+   `createdAt`, and claimed `build.gitSha`;
+4. `/api/config.gitHash` equal to that same SHA;
+5. `/health/db` green against the intended database;
+6. an authorized synthetic login/sync smoke;
+7. explicit confirmation that route, binding, migration, cron, observability,
    tag, tail-consumer, and other non-versioned settings match the reviewed
    intent.
 
@@ -79,6 +96,8 @@ review. At minimum it must provide:
 
 - a trusted executable and closed credential/environment boundary;
 - exact account, environment, source, config, and dependency identity;
+- an independently verifiable binding between reviewed source, immutable build
+  inputs, built artifact digest, and uploaded Worker version;
 - explicit first-Worker bootstrap semantics;
 - non-serving upload separated from traffic activation;
 - pre/post capture of traffic and every mutable non-versioned setting;
