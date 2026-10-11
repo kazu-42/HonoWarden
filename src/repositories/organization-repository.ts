@@ -5,6 +5,7 @@ import {
   type OrganizationAccessContext,
 } from './organization-collection-access-sql'
 import type { OrganizationPolicyActor } from './organization-policy-sql'
+import { organizationPolicyAllowsSql } from './organization-policy-sql'
 
 export type OrganizationRecord = {
   id: string
@@ -71,6 +72,7 @@ export type OrganizationCollectionUpdateInput = OrganizationAccessContext & {
 }
 
 export type OrganizationFoundationInput = OrganizationAccessContext & {
+  restrictCreation?: boolean
   organizationId: string
   organizationUserId: string
   collectionId: string
@@ -129,7 +131,7 @@ type OrganizationCollectionUserRow = Omit<
 export async function createOrganizationFoundation(
   database: OrganizationDatabase,
   input: OrganizationFoundationInput,
-): Promise<OrganizationFoundation> {
+): Promise<OrganizationFoundation | null> {
   const statements = [
     database
       .prepare(
@@ -150,6 +152,17 @@ export async function createOrganizationFoundation(
           )
           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (SELECT 1 FROM active_organization_actor)
+            AND (? = 0 OR NOT EXISTS (SELECT 1 FROM organizations)
+              OR EXISTS (SELECT 1 FROM organization_users owner
+                JOIN organizations existing ON existing.id = owner.organization_id AND existing.enabled = 1
+                JOIN active_organization_actor actor ON actor.user_id = owner.user_id
+                WHERE owner.user_id = ? AND owner.status = 2 AND owner.type = 0
+                  AND ${organizationPolicyAllowsSql({
+                    organizationId: 'existing.id',
+                    userId: 'owner.user_id',
+                    sessionId: 'actor.session_id',
+                    deviceIdentifier: 'actor.device_identifier',
+                  })}))
         `,
       )
       .bind(
@@ -165,6 +178,8 @@ export async function createOrganizationFoundation(
         input.now,
         input.now,
         input.now,
+        input.restrictCreation ? 1 : 0,
+        input.userId,
       ),
     database
       .prepare(
@@ -301,10 +316,17 @@ export async function createOrganizationFoundation(
 
   if (
     results.length !== statements.length ||
-    results.some((result) => !result.success || result.meta.changes !== 1)
+    results.some((result) => !result.success)
   ) {
     throw new Error('Organization foundation batch did not fully apply.')
   }
+  if (input.restrictCreation && results[0]?.meta.changes === 0) {
+    if (results.slice(1).some((result) => result.meta.changes !== 0))
+      throw new Error('Restricted organization foundation changed state.')
+    return null
+  }
+  if (results.some((result) => result.meta.changes !== 1))
+    throw new Error('Organization foundation batch did not fully apply.')
 
   return {
     organization: {

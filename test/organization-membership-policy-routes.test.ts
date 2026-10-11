@@ -5,6 +5,7 @@ import {
   acceptOrganizationMember,
   listOrganizationMembers,
   readOrganizationMember,
+  reinviteOrganizationMember,
 } from '../src/organization-membership'
 
 vi.mock('../src/organization-membership', async (original) => ({
@@ -18,6 +19,7 @@ vi.mock('../src/organization-membership', async (original) => ({
     body: { Object: 'organizationUserDetails', Groups: [] },
   })),
   acceptOrganizationMember: vi.fn(async () => ({ status: 'success' })),
+  reinviteOrganizationMember: vi.fn(async () => ({ status: 'rate_limited' })),
 }))
 
 const actor = {
@@ -66,6 +68,18 @@ describe('membership trusted actor and group projection route contract', () => {
       membershipId: 'membership',
     })
   })
+
+  it('returns a fixed 429 for a refused reinvitation', async () => {
+    const response = await app().request(
+      '/api/organizations/org/users/membership/reinvite',
+      { method: 'POST' },
+    )
+    expect(response.status).toBe(429)
+    expect(await response.json()).toMatchObject({
+      error: { code: 'invitation_rate_limited' },
+    })
+    expect(reinviteOrganizationMember).toHaveBeenCalledOnce()
+  })
 })
 
 function app() {
@@ -76,6 +90,7 @@ function app() {
       enabled: true,
       database: {} as D1Database,
       inviteSecret: 'synthetic-organization-invite-secret',
+      delivery: vi.fn(async () => {}),
     }),
     requestId: () => 'membership-proof-test',
     reportFailure: vi.fn(),

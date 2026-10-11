@@ -1,6 +1,7 @@
 export const organizationAuditEventNames = [
   'organization.member.invite',
   'organization.member.reinvite',
+  'organization.member.registration',
   'organization.member.accept',
   'organization.member.confirm',
   'organization.member.update',
@@ -24,6 +25,7 @@ export const organizationAuditEventTargets: Record<
 > = {
   'organization.member.invite': 'organization_user',
   'organization.member.reinvite': 'organization_user',
+  'organization.member.registration': 'organization_user',
   'organization.member.accept': 'organization_user',
   'organization.member.confirm': 'organization_user',
   'organization.member.update': 'organization_user',

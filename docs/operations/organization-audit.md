@@ -40,6 +40,7 @@ The supported durable event names are:
 
 - `organization.member.invite`
 - `organization.member.reinvite`
+- `organization.member.registration`
 - `organization.member.accept`
 - `organization.member.confirm`
 - `organization.member.update`
@@ -50,13 +51,16 @@ The supported durable event names are:
 - `organization.group.delete`
 - `organization.group.member.remove`
 - `organization.policy.update`
+- `organization.settings.update`
+- `organization.mail_test.request`
 
 Each supported successful membership mutation commits its required audit row
 atomically in the same D1 batch, even when optional audit logging is false.
+Invited account registration also commits its required audit row with the account.
 Group and required-TOTP policy mutations follow the same mandatory transaction
 boundary. Event and target types must match exactly: member events target
-`organization_user`, group events target `organization_group`, and policy
-updates target `organization`.
+`organization_user`, group events target `organization_group`, and policy,
+settings, and test-mail events target `organization`.
 An invite/reinvite event proves persisted invitation state, not successful mail
 delivery. Acceptance identifies the recipient as actor. Refused transitions do
 not produce these successful events. Update events do not contain a complete

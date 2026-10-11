@@ -59,6 +59,112 @@ afterEach(async () => {
 })
 
 describe('organization memberships on real D1 with every tracked migration', () => {
+  it.each([
+    ['actor', 50],
+    ['organization', 200],
+  ] as const)(
+    'atomically refuses an invitation at the %s mail cap',
+    async (scopeName, limit) => {
+      const db = await database()
+      for (let index = 0; index < limit; index++) {
+        await db
+          .prepare(
+            `INSERT INTO audit_events
+        (id,schema_version,name,outcome,request_id,occurred_at,actor_user_id,target_type,target_id,context_json)
+        VALUES (?,1,'organization.member.invite','success',?,?,?,'organization_user',?,?)`,
+          )
+          .bind(
+            `old-${index}`,
+            `request-${index}`,
+            now,
+            scopeName === 'actor' ? 'owner' : 'other-manager',
+            `old-member-${index}`,
+            JSON.stringify({ organizationId: 'org' }),
+          )
+          .run()
+      }
+      const before = await count(db, 'audit_events')
+      expect(
+        await insertOrganizationMemberInvites(db, {
+          ...scope,
+          now: later,
+          type: 2,
+          collections: [],
+          invites: [
+            {
+              id: 'blocked-member',
+              emailNormalized: 'blocked@example.test',
+              inviteTokenHash: 'synthetic',
+              inviteExpiresAt: expiry,
+            },
+          ],
+          auditEvents: [
+            buildAuditEvent({
+              name: 'organization.member.invite',
+              outcome: 'success',
+              requestId: 'blocked',
+              occurredAt: later,
+              actor: { userId: 'owner' },
+              target: { type: 'organization_user', id: 'blocked-member' },
+              context: { organizationId: 'org' },
+            }),
+          ],
+        }),
+      ).toEqual({ status: 'rate_limited' })
+      expect(await count(db, 'audit_events')).toBe(before)
+      expect(
+        await db
+          .prepare(
+            "SELECT id FROM organization_users WHERE id='blocked-member'",
+          )
+          .first(),
+      ).toBeNull()
+    },
+  )
+
+  it('keeps a reinvite token and audit unchanged during the ten-minute cooldown', async () => {
+    const db = await database()
+    await invite(db)
+    const first = {
+      ...mutation(),
+      emailNormalized: 'recipient@example.test',
+      inviteTokenHash: 'first-rotation',
+      inviteExpiresAt: expiry,
+      auditEvent: buildAuditEvent({
+        name: 'organization.member.reinvite',
+        outcome: 'success',
+        requestId: 'first',
+        occurredAt: later,
+        actor: { userId: 'owner' },
+        target: { type: 'organization_user', id: 'member' },
+        context: { organizationId: 'org' },
+      }),
+    }
+    expect(await reinviteOrganizationMember(db, first)).toEqual({
+      status: 'success',
+    })
+    expect(
+      await reinviteOrganizationMember(db, {
+        ...first,
+        inviteTokenHash: 'second-rotation',
+        now: '2026-10-03T00:01:00.000Z',
+      }),
+    ).toEqual({ status: 'rate_limited' })
+    expect(
+      await db
+        .prepare(
+          "SELECT invite_token_hash AS hash FROM organization_users WHERE id='member'",
+        )
+        .first(),
+    ).toEqual({ hash: 'first-rotation' })
+    expect(
+      await db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM audit_events WHERE name='organization.member.reinvite'",
+        )
+        .first(),
+    ).toEqual({ count: 1 })
+  })
   it('returns one sanitized organization-scoped member and only a managed recipient public key', async () => {
     const db = await database()
     await invite(db)

@@ -101,6 +101,15 @@ describe('invited account registration on real D1', () => {
     expect(response.status).toBe(201)
     expect(
       await DB.prepare(
+        "SELECT name,target_id AS targetId,context_json AS context FROM audit_events WHERE name='organization.member.registration'",
+      ).first(),
+    ).toEqual({
+      name: 'organization.member.registration',
+      targetId: 'member',
+      context: JSON.stringify({ organizationId: 'org' }),
+    })
+    expect(
+      await DB.prepare(
         'SELECT email_normalized AS email,kdf_iterations AS iterations,email_verified_at AS verified,master_password_hash AS hash,user_key AS wrapped FROM users',
       ).first(),
     ).toEqual({
@@ -119,6 +128,17 @@ describe('invited account registration on real D1', () => {
     expect(
       await DB.prepare('SELECT COUNT(*) AS count FROM users').first(),
     ).toEqual({ count: 1 })
+  })
+  it('rolls back account creation when the required organization audit is ignored', async () => {
+    const { DB, register } = await fixture()
+    await DB.prepare(
+      `CREATE TRIGGER ignore_registration_audit BEFORE INSERT ON audit_events
+      WHEN NEW.name = 'organization.member.registration' BEGIN SELECT RAISE(IGNORE); END;`,
+    ).run()
+    expect((await register()).status).toBe(503)
+    expect(
+      await DB.prepare('SELECT COUNT(*) AS count FROM users').first(),
+    ).toEqual({ count: 0 })
   })
   it.each([
     'expired',
