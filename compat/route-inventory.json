@@ -153,6 +153,42 @@
       ]
     },
     {
+      "lastReviewedAt": "2026-10-04",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "src/email-verification-routes.ts",
+        "src/domain/email-verification.ts",
+        "src/email-verification.ts",
+        "src/repositories/email-verification-repository.ts",
+        "test/email-verification-routes.test.ts",
+        "test/domain/email-verification.test.ts",
+        "test/email-verification-network.test.ts",
+        "test/email-verification-service.test.ts",
+        "test/integration/email-verification-d1.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "email_verification.evp_relying_party",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "optional_integration",
+      "ownerIssue": "HON-201",
+      "rationale": "Experimental strict relying-party subset of the individual Internet-Draft draft-hardt-email-verification-02, not an RFC or an upstream client protocol requirement. Authenticated current-account email proof is bound to the current refresh family, security stamp, audience, nonce, and reviewed issuer trust. It changes persisted email verification metadata only, with no login, MFA, organization, or key authority. Synthetic local evidence does not prove actual browser/issuer interoperability or deployment.",
+      "honowardenBehavior": "501 unsupported_feature while disabled; fail-closed 503 for invalid runtime trust configuration or issuer infrastructure failure; verified account email only after atomic consume, metadata update, and required audit.",
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/identity/accounts/email-verification/challenge"
+        },
+        {
+          "method": "POST",
+          "path": "/identity/accounts/email-verification/verify"
+        }
+      ],
+      "runtimeFlags": ["HONOWARDEN_EMAIL_VERIFICATION_ENABLED"],
+      "migrations": ["0031_email_verification.sql"],
+      "adrs": ["0017-email-verification-protocol.md"]
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "live_smoke",
       "evidence": [
@@ -1617,7 +1653,7 @@
       "rationale": "Duo is a hosted identity integration, not a self-hosted protocol requirement."
     },
     {
-      "lastReviewedAt": "2026-09-02",
+      "lastReviewedAt": "2026-10-04",
       "evidenceLevel": "fixture",
       "evidence": ["compat/fixtures/config/server-config-success.json"],
       "supportClaim": false,
@@ -1634,7 +1670,7 @@
         "path": "src/Api/Controllers/ConfigController.cs"
       },
       "honowardenValue": false,
-      "rationale": "Account lifecycle can verify email behind a default-off flag; config remains false."
+      "rationale": "Account lifecycle and the separately classified default-off EVP relying-party integration can verify account email locally; the upstream email-verification feature state remains false and does not advertise EVP client support."
     },
     {
       "lastReviewedAt": "2026-09-02",
@@ -3004,7 +3040,8 @@
         "0027_session_mfa_assurance.sql",
         "0028_organization_audit_scope_index.sql",
         "0029_organization_membership_mutation_marker.sql",
-        "0030_organization_policy_mutation_marker.sql"
+        "0030_organization_policy_mutation_marker.sql",
+        "0031_email_verification.sql"
       ]
     },
     {
@@ -3034,7 +3071,8 @@
         "0013-emergency-access-product-line.md",
         "0014-hosted-billing-licensing-tenancy.md",
         "0015-hibp-reports-integrations-scope.md",
-        "0016-company-administration.md"
+        "0016-company-administration.md",
+        "0017-email-verification-protocol.md"
       ]
     }
   ]

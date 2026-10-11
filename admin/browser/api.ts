@@ -34,6 +34,7 @@ const errorCodes = new Set([
   'totp_code_invalid',
   'totp_unavailable',
   'authentication_required',
+  'email_verification_unavailable',
 ])
 export function record(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value))

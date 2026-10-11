@@ -1,5 +1,5 @@
 import { argon2id } from 'hash-wasm'
-import { AdminError } from '../contracts'
+import { AdminError } from '../errors'
 import type { KdfSettings } from './kdf'
 
 export async function deriveArgon2(

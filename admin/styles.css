@@ -366,6 +366,9 @@ small {
 .panel-body {
   padding: 24px;
 }
+.email-verification-state {
+  margin: 16px 0;
+}
 .panel + .panel {
   margin-top: 22px;
 }

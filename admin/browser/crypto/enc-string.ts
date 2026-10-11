@@ -1,4 +1,4 @@
-import { AdminError } from '../contracts'
+import { AdminError } from '../errors'
 import { bytes, concat, decodeBase64, encodeBase64 } from './encoding'
 
 function fail(): never {

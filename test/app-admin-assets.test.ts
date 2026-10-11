@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it, vi } from 'vitest'
 import { registerAdminRoutes } from '../src/admin-routes'
+import workerApp from '../src/app'
 
 function fixture(options: { enabled?: boolean; assets?: Fetcher } = {}) {
   const app = new Hono()
@@ -21,6 +22,76 @@ function assets(response: Response) {
 }
 
 describe('organization administration asset boundary', () => {
+  it.each([
+    {
+      flag: 'true',
+      issuers: true,
+      origin: 'https://vault.example.com',
+      expected: true,
+    },
+    {
+      flag: 'false',
+      issuers: true,
+      origin: 'https://vault.example.com',
+      expected: false,
+    },
+    {
+      flag: 'true',
+      issuers: false,
+      origin: 'https://vault.example.com',
+      expected: false,
+    },
+    {
+      flag: 'true',
+      issuers: true,
+      origin: 'https://other.example.com',
+      expected: false,
+    },
+  ])(
+    'wires trial delivery only for the configured enabled RP: %j',
+    async (case_) => {
+      const binding = assets(
+        new Response('<!doctype html>', {
+          headers: { 'Content-Type': 'text/html' },
+        }),
+      )
+      const response = await workerApp.request(
+        `${case_.origin}/admin/`,
+        {
+          headers: {
+            Origin: 'https://vault.example.com',
+            'X-Forwarded-Host': 'vault.example.com',
+            'X-Forwarded-Proto': 'https',
+          },
+        },
+        {
+          ADMIN_ASSETS: binding,
+          HONOWARDEN_ADMIN_ENABLED: 'true',
+          HONOWARDEN_EMAIL_VERIFICATION_ENABLED: case_.flag,
+          HONOWARDEN_EMAIL_VERIFICATION_RP_ORIGIN: 'https://vault.example.com',
+          HONOWARDEN_EMAIL_VERIFICATION_ISSUERS: JSON.stringify(
+            case_.issuers
+              ? [
+                  {
+                    emailDomain: 'example.com',
+                    issuer: 'https://issuer.example.com',
+                    jwksUri: 'https://issuer.example.com/jwks',
+                  },
+                ]
+              : [],
+          ),
+          HONOWARDEN_EMAIL_VERIFICATION_ORIGIN_TRIAL_TOKEN: 'AQIDBA==',
+        },
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Origin-Trial')).toBe(
+        case_.expected ? 'AQIDBA==' : null,
+      )
+      expect(binding.fetch).toHaveBeenCalledOnce()
+    },
+  )
+
   it('does not fetch assets while the feature is off', async () => {
     const binding = assets(new Response('not served'))
     const { app } = fixture({ enabled: false, assets: binding })

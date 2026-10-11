@@ -44,6 +44,7 @@ changes and update this document in the same change.
 | `migrations/0028_organization_audit_scope_index.sql`          | `02f5c6b141b23c170843787bc114053caec9b505c288206e5132bc832a41c45f` |
 | `migrations/0029_organization_membership_mutation_marker.sql` | `bb7878e639689caba48825b914e0db21d8f8b83810a0037e0a4fb7f98b853b88` |
 | `migrations/0030_organization_policy_mutation_marker.sql`     | `b353368af866d30d546f83188dc5cf5642b56047de1a8a2161b09a91d2ee7858` |
+| `migrations/0031_email_verification.sql`                      | `0875c85363623e89329499fbcf7fd7e3b3907c51015a2f76b68adfcd6b6a358a` |
 
 Migration 0022 is a post-release, local-only source addition for nullable user-key
 ID metadata and old-writer invalidation. It has not been applied remotely. The
@@ -72,6 +73,22 @@ lifecycle statements reference the schema independently of route gates.
 Keep additive schema and committed policy, group, audit, and session state on
 recovery. Do not use an older build that ignores those authorization conditions.
 See [company administration](../operations/company-administration.md).
+
+Migration 0031 is a post-release, local-only source addition for the experimental
+EVP relying-party challenge store. It has not been applied remotely. Apply all
+tracked migrations through 0031 before deploying this source. The default-off
+`HONOWARDEN_EMAIL_VERIFICATION_ENABLED` route guard returns `501` before
+challenge-table or network work; it does not replace schema-first rollout. Tracked RP origin
+and reviewed issuer registry remain empty. The table binds a nonce digest to
+the authenticated account email, security stamp, current refresh family, device,
+audience, and expiry. It stores neither the raw nonce nor a signed proof.
+Consumption, email verification metadata, account revision, and required audit
+commit in one batch. Keep the additive table and committed account state on
+application rollback; do not unconsume a challenge or reconstruct a proof.
+Local source and synthetic tests do not establish actual browser/issuer
+interoperability or authorize remote migration or activation.
+See [ADR 0017](../adr/0017-email-verification-protocol.md) and
+[email verification operations](../operations/email-verification.md).
 
 ## Required Tables At Freeze
 
@@ -105,6 +122,7 @@ See [company administration](../operations/company-administration.md).
 - `account_kdf_population`
 - `user_key_rotation_wrapper_history`
 - `account_lifecycle_tokens`
+- `email_verification_challenges`
 - `account_deletions`
 - `sends`
 - `webauthn_credentials`

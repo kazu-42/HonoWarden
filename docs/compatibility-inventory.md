@@ -1,6 +1,6 @@
 # Compatibility Surface Inventory
 
-Local company source boundary reviewed: 2026-10-04. The official catalog and
+Local company and email-verification source boundaries reviewed: 2026-10-04. The official catalog and
 historical client pins remain the 2026-09-02 snapshot.
 
 HON-201 maintains a machine-checked map from pinned official client and server
@@ -122,11 +122,52 @@ Audit query activation also requires the dedicated cursor-signing configuration.
 Migration 0025 adds groups; 0026 adds the Type 0 policy store; 0027 binds session
 MFA proof to credential generations; 0028 indexes scoped audit history; 0029 adds
 the atomic membership mutation marker; 0030 adds the atomic policy mutation marker.
-The ledger records all 32 checked-in SQL files through 0030 and all 16 existing
-ADRs. These counts include earlier additive
-suffix migrations and prove source presence only. The pinned official catalog and
+The company schema ends at 0030. The ledger includes later source additions and
+earlier additive suffix migrations; it proves source presence only. The pinned official catalog and
 fixture corpus are unchanged; new company behavior has no Browser/Desktop or
 remote deployment support claim in this inventory.
+
+## Email Verification Source Boundary
+
+The 2026-10-04 optional EVP relying-party slice mounts
+`POST /identity/accounts/email-verification/challenge` and
+`POST /identity/accounts/email-verification/verify` from
+`src/email-verification-routes.ts`. The
+`email_verification.evp_relying_party` entry is `implemented` with
+`evidenceLevel: local_api` and `supportClaim: false`. It has no upstream catalog
+ID or invented official source pin: `draft-hardt-email-verification-02` is an
+individual Internet-Draft, not an RFC or an upstream vault-client requirement.
+
+The endpoints require an already authenticated account and bind proof to its
+current email, refresh family, device, security stamp, RP origin, and expiring
+nonce. A reviewed issuer registry, exact DNS delegation, issuer metadata and
+JWKS, and both issuer and holder signatures are required. Migration 0031 stores
+only the nonce digest and challenge scope; the signed proof is not persisted.
+Challenge consumption, persisted email verification metadata, revision, and
+required audit commit atomically. This creates no authentication grant, MFA
+assurance, organization privilege, account recovery, or vault-key authority.
+
+Tracked root, staging, and production configuration keep
+`HONOWARDEN_EMAIL_VERIFICATION_ENABLED=false`,
+`HONOWARDEN_EMAIL_VERIFICATION_RP_ORIGIN=""`, and
+`HONOWARDEN_EMAIL_VERIFICATION_ISSUERS="[]"`. Disabled requests return `501`
+before authentication, D1, or network work; an enabled but invalid trust
+configuration returns `503`. There is no assumed provider support or broad
+draft-format compatibility. The upstream config feature state
+`email-verification` remains false.
+
+Source, synthetic route/service/crypto/network tests, and authored local D1
+tests are separate from actual browser/issuer interoperability and remote
+application of migration 0031. The administration form uses a hidden
+`autocomplete="email-verification-token"` input, a challenge `nonce` attribute,
+and reads its `.value` during normal form submission. DOM tests do not establish
+that a browser or mail provider supplies a proof. No official client matrix row
+or sealed alpha evidence is promoted by this slice.
+
+The ledger now records all 33 checked-in SQL files through 0031 and all 17
+existing ADRs. [ADR 0017](adr/0017-email-verification-protocol.md) and the
+[operator contract](operations/email-verification.md) define the bounded proof,
+schema-first rollout, failure handling, and separate interoperability gate.
 
 ## Classifications
 

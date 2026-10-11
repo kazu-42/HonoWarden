@@ -1,4 +1,4 @@
-import { AdminError } from './contracts'
+import { AdminError } from './errors'
 import type { CryptoCommand } from './crypto-client'
 import { derivePasswordMaterial, type PasswordMaterial } from './crypto/kdf'
 import { Keyring } from './crypto/keyring'

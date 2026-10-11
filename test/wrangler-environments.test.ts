@@ -332,6 +332,23 @@ describe('wrangler configuration scopes', () => {
     ).toBe('false')
   })
 
+  it('keeps EVP disabled with an empty issuer registry in every tracked environment', () => {
+    for (const environment of [
+      config,
+      config.env.staging,
+      config.env.production,
+    ]) {
+      expect(environment.vars.HONOWARDEN_EMAIL_VERIFICATION_ENABLED).toBe(
+        'false',
+      )
+      expect(environment.vars.HONOWARDEN_EMAIL_VERIFICATION_RP_ORIGIN).toBe('')
+      expect(environment.vars.HONOWARDEN_EMAIL_VERIFICATION_ISSUERS).toBe('[]')
+      expect(
+        environment.vars.HONOWARDEN_EMAIL_VERIFICATION_ORIGIN_TRIAL_TOKEN,
+      ).toBe('')
+    }
+  })
+
   it('keeps organization membership mutation disabled in every tracked environment', () => {
     for (const environment of [
       config,

@@ -128,6 +128,32 @@ integrations as non-goals unless a later privacy/security ADR replaces the
 guard. This source audit and route contract add no live
 client evidence and do not change any verification level in the matrix.
 
+## 2026-10-04 Email Verification Source Boundary
+
+The optional EVP relying-party implementation exposes authenticated challenge
+and verification endpoints and an original administration form. It implements
+a strict subset of the individual Internet-Draft
+`draft-hardt-email-verification-02`; this draft is not an RFC or an upstream
+vault-client API requirement. The route inventory records local source and
+synthetic API/crypto/network evidence with `supportClaim: false`.
+
+Proof is restricted to the current account email and refresh family. It updates
+email verification metadata and audit atomically; it supplies no login grant,
+MFA assurance, organization privilege, account recovery, or vault-key authority.
+All tracked environments keep the writer off, RP origin empty, and reviewed
+issuer registry empty. The upstream `email-verification` feature state remains
+false.
+
+The browser form uses a hidden `autocomplete="email-verification-token"` input,
+the server challenge as its `nonce` attribute, and the input's `.value` on normal
+submission. Synthetic DOM tests do not prove actual browser or issuer support.
+There is no presumed mail-provider implementation, EVP `coveredFlows` entry,
+official browser/Desktop evidence, or client-row promotion. The current matrix,
+fixture manifest, and sealed alpha snapshot retain their existing evidence.
+See [ADR 0017](adr/0017-email-verification-protocol.md) and the
+[operator contract](operations/email-verification.md) for exact trust and
+interoperability requirements.
+
 ## Metadata Refresh Policy
 
 - Refresh cadence: every 14 days and before every release candidate.
