@@ -4,14 +4,15 @@ import {
   type AccountMailQueue,
 } from './account-lifecycle-mail-queue'
 import { consumeAccountLifecycleMail } from './account-lifecycle-mail-consumer'
-import { createResendInvitationSender } from './organization-invitation-resend'
+import { createCloudflareEmailSender } from './cloudflare-email-sender'
+import { normalizedEmail } from './organization-invitation-mailer'
 
 export type AccountLifecycleMailBindings = {
   ACCOUNT_LIFECYCLE_DELIVERY_QUEUE?: AccountMailQueue
   HONOWARDEN_ACCOUNT_MAIL_ACTIVE_KEY_ID?: string
   HONOWARDEN_ACCOUNT_MAIL_ENCRYPTION_KEYS?: string
   HONOWARDEN_ACCOUNT_MAIL_SENDER_EMAIL?: string
-  HONOWARDEN_ACCOUNT_MAIL_RESEND_API_KEY?: string
+  EMAIL?: SendEmail
 }
 
 function codec(env: AccountLifecycleMailBindings) {
@@ -29,8 +30,12 @@ export default {
     env: AccountLifecycleMailBindings,
   ): Promise<Response> | Response {
     try {
-      if (!env.ACCOUNT_LIFECYCLE_DELIVERY_QUEUE)
+      if (
+        !env.ACCOUNT_LIFECYCLE_DELIVERY_QUEUE ||
+        !normalizedEmail(env.HONOWARDEN_ACCOUNT_MAIL_SENDER_EMAIL)
+      )
         throw new Error('missing_queue')
+      createCloudflareEmailSender(env.EMAIL)
       return createAccountLifecycleMailReceiver({
         codec: codec(env),
         queue: env.ACCOUNT_LIFECYCLE_DELIVERY_QUEUE,
@@ -50,8 +55,12 @@ export default {
     env: AccountLifecycleMailBindings,
   ): Promise<void> {
     let envelopeCodec
+    let send
     try {
       envelopeCodec = codec(env)
+      send = createCloudflareEmailSender(env.EMAIL)
+      if (!normalizedEmail(env.HONOWARDEN_ACCOUNT_MAIL_SENDER_EMAIL))
+        throw new Error('missing_sender')
     } catch {
       console.error(
         JSON.stringify({ event: 'account_mail_configuration_failed' }),
@@ -63,11 +72,7 @@ export default {
     await consumeAccountLifecycleMail(batch.messages, {
       codec: envelopeCodec,
       senderEmail: env.HONOWARDEN_ACCOUNT_MAIL_SENDER_EMAIL ?? '',
-      // Reuse the reviewed bounded plain-text transport, with a separate key.
-      send: (message, signal) =>
-        createResendInvitationSender({
-          apiKey: env.HONOWARDEN_ACCOUNT_MAIL_RESEND_API_KEY ?? '',
-        })(message, signal),
+      send,
     })
   },
 } satisfies ExportedHandler<AccountLifecycleMailBindings>

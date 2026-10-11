@@ -1,10 +1,10 @@
 import { createOrganizationInvitationMailer } from './organization-invitation-mailer'
-import { createResendInvitationSender } from './organization-invitation-resend'
+import { createCloudflareEmailSender } from './cloudflare-email-sender'
 
 export type OrganizationInvitationServiceBindings = {
   HONOWARDEN_INVITATION_ADMIN_ORIGIN?: string
   HONOWARDEN_INVITATION_SENDER_EMAIL?: string
-  HONOWARDEN_INVITATION_RESEND_API_KEY?: string
+  EMAIL?: SendEmail
 }
 
 // A separate, service-binding-only Worker entrypoint. It must have no public
@@ -18,9 +18,7 @@ export default {
       return createOrganizationInvitationMailer({
         adminOrigin: env.HONOWARDEN_INVITATION_ADMIN_ORIGIN ?? '',
         senderEmail: env.HONOWARDEN_INVITATION_SENDER_EMAIL ?? '',
-        send: createResendInvitationSender({
-          apiKey: env.HONOWARDEN_INVITATION_RESEND_API_KEY ?? '',
-        }),
+        send: createCloudflareEmailSender(env.EMAIL),
       }).fetch(request)
     } catch {
       console.error(

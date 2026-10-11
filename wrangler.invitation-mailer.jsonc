@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "honowarden-invitation-mailer-local",
+  "main": "src/organization-invitation-service.ts",
+  "compatibility_date": "2026-07-06",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "send_email": [
+    { "name": "EMAIL", "allowed_sender_addresses": ["invites@example.test"] },
+  ],
+  "vars": {
+    "HONOWARDEN_INVITATION_SENDER_EMAIL": "invites@example.test",
+    "HONOWARDEN_INVITATION_ADMIN_ORIGIN": "https://vault.example.test",
+  },
+  "env": {
+    "staging": {
+      "name": "honowarden-invitation-mailer-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "observability": { "enabled": true, "head_sampling_rate": 1 },
+      "send_email": [
+        {
+          "name": "EMAIL",
+          "allowed_sender_addresses": ["no-reply-staging@mail.honowarden.com"],
+        },
+      ],
+      "vars": {
+        "HONOWARDEN_INVITATION_SENDER_EMAIL": "no-reply-staging@mail.honowarden.com",
+        "HONOWARDEN_INVITATION_ADMIN_ORIGIN": "https://vault-staging.honowarden.com",
+      },
+    },
+    "production": {
+      "name": "honowarden-invitation-mailer",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "observability": { "enabled": true, "head_sampling_rate": 1 },
+      "send_email": [
+        {
+          "name": "EMAIL",
+          "allowed_sender_addresses": ["no-reply@mail.honowarden.com"],
+        },
+      ],
+      "vars": {
+        "HONOWARDEN_INVITATION_SENDER_EMAIL": "no-reply@mail.honowarden.com",
+        "HONOWARDEN_INVITATION_ADMIN_ORIGIN": "https://vault.honowarden.com",
+      },
+    },
+  },
+}

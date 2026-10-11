@@ -86,6 +86,16 @@
   "env": {
     "staging": {
       "name": "honowarden-staging",
+      "services": [
+        {
+          "binding": "ORGANIZATION_MEMBERSHIP_MAILER",
+          "service": "honowarden-invitation-mailer-staging",
+        },
+        {
+          "binding": "ACCOUNT_LIFECYCLE_MAILER",
+          "service": "honowarden-account-mailer-staging",
+        },
+      ],
       "assets": {
         "directory": "./dist/admin",
         "binding": "ADMIN_ASSETS",
@@ -174,6 +184,16 @@
     },
     "production": {
       "name": "honowarden",
+      "services": [
+        {
+          "binding": "ORGANIZATION_MEMBERSHIP_MAILER",
+          "service": "honowarden-invitation-mailer",
+        },
+        {
+          "binding": "ACCOUNT_LIFECYCLE_MAILER",
+          "service": "honowarden-account-mailer",
+        },
+      ],
       "assets": {
         "directory": "./dist/admin",
         "binding": "ADMIN_ASSETS",

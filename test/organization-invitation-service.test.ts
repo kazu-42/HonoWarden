@@ -25,11 +25,8 @@ it('fails closed with sanitized telemetry and no fetch when invitation-specific 
   )
 })
 
-it('connects an explicitly configured private receiver to the concrete sender with synthetic provider acceptance', async () => {
-  const fetch = vi.fn(async () =>
-    Response.json({ id: 'synthetic-provider-id' }),
-  )
-  vi.stubGlobal('fetch', fetch)
+it('connects an explicitly configured private receiver to the email binding', async () => {
+  const send = vi.fn(async () => ({ messageId: 'synthetic-provider-id' }))
   const response = await service.fetch(
     new Request('https://organization-membership-mailer.internal/deliver', {
       method: 'POST',
@@ -45,12 +42,17 @@ it('connects an explicitly configured private receiver to the concrete sender wi
     {
       HONOWARDEN_INVITATION_ADMIN_ORIGIN: 'https://vault.example.test',
       HONOWARDEN_INVITATION_SENDER_EMAIL: 'invites@example.test',
-      HONOWARDEN_INVITATION_RESEND_API_KEY: 're_synthetic_invitation_only',
+      EMAIL: { send },
     },
   )
   expect(response.status).toBe(202)
   expect(await response.text()).toBe('')
-  expect(fetch).toHaveBeenCalledOnce()
+  expect(send).toHaveBeenCalledExactlyOnceWith({
+    from: 'invites@example.test',
+    to: 'member@example.test',
+    subject: 'HonoWarden organization invitation',
+    text: expect.stringContaining('#token=' + 's'.repeat(43)),
+  })
 })
 
 it('does not fall back to the separate inquiry mail credential', async () => {

@@ -7,7 +7,7 @@ this document. Existing tracked membership and EVP flags remain unchanged.
 The vault API already sends committed invitations through
 `ORGANIZATION_MEMBERSHIP_MAILER` to the fixed internal `/deliver` destination.
 The separate entrypoint `src/organization-invitation-service.ts` connects a
-bounded receiver to the Resend sender. It has no database, vault keys, or inquiry
+bounded receiver to the Cloudflare Email Service sender. It has no database, vault keys, or inquiry
 workflow authority. Account lifecycle mail remains a separate integration.
 
 ## Message And Failure Contract
@@ -22,18 +22,18 @@ from browser history before parsing. Only the authenticated invited recipient
 can consume it; acceptance remains single-use and does not replace manager
 confirmation or key wrapping.
 
-The sender makes one HTTPS request to Resend, disallows redirects, propagates
-the receiver's abort signal, and requires a successful status with a bounded JSON
-`id` acknowledgement. The response body limit is 4,096 bytes, including streaming
-responses without a length header. Error responses are discarded without reading.
-Neither provider responses, recipient addresses, tokens, nor credentials appear
-in failure responses or logs. Receiver telemetry contains only the fixed event
-and `delivery_failed`, `delivery_rejected`, or `delivery_timeout` code.
+The sender calls the native `EMAIL.send` binding once with a single recipient and
+plain text. It requires a nonempty, control-free `messageId` of at most 512
+characters and discards it. Provider errors are sanitized; telemetry contains
+only a documented Cloudflare error code or `unknown`, `timeout`, or `invalid_ack`.
+Neither provider text, recipient addresses, tokens, nor message bodies appear in
+failure responses or logs. Receiver telemetry contains only its fixed event and
+`delivery_failed`, `delivery_rejected`, or `delivery_timeout` code.
 
-The receiver allows ten seconds for the sender, including response parsing.
-An abort stops local work; it cannot retract a message already accepted remotely.
+The receiver allows ten seconds for the sender, including provider acknowledgement.
+An abort stops local waiting; it cannot retract a message already accepted remotely.
 No layer automatically retries. HTTP `202` means provider acceptance, not inbox
-receipt. The provider id is checked and discarded, not persisted or exposed.
+receipt. The provider message ID is checked and discarded, not persisted or exposed.
 
 Invitations commit in D1 before outbound delivery. A sender failure preserves the
 existing route's `503 invitation_delivery_unavailable`, `persisted: true`, and
@@ -42,67 +42,44 @@ invited member. Reinvitation rotates the verifier before sending, so any delayed
 old email is unusable. Accepted memberships cannot be reinvited. Do not repeat the
 original invitation batch or claim exactly-once inbox delivery.
 
-Identical provider payloads produce the same SHA-256-derived idempotency key;
-token rotation changes the key. Resend documents a 24-hour idempotency window,
-which is shorter than the invitation's five-day lifetime. That window is a
-duplicate-delivery aid, not the token's replay defense. The fixed endpoint,
-structured message fields, acknowledgement and idempotency behavior follow the
-[Resend Send Email API](https://resend.com/docs/api-reference/emails/send-email),
-read on 2026-10-06.
+Cloudflare Email Service has no idempotency key. Invitations still have no
+automatic retry. A later manual reinvitation rotates the token; a delayed old
+message remains unusable. Provider acceptance is not mailbox receipt.
 
 ## Isolated Service Configuration
 
-Prepare a separate Worker configuration for review; this example is not applied
+The tracked `wrangler.invitation-mailer.jsonc` defines local, staging, and
+production Workers. It is not applied
 to any environment. The internal hostname check is routing validation and is not
 authentication. Keep this Worker reachable only through authorized service
 bindings, with no public route or preview URL.
 
-```toml
-name = "honowarden-organization-invitation-mailer"
-main = "src/organization-invitation-service.ts"
-compatibility_date = "2026-07-06"
-workers_dev = false
-preview_urls = false
-routes = []
+Local `example.test` values are synthetic. Staging uses
+`no-reply-staging@mail.honowarden.com` and `https://vault-staging.honowarden.com`;
+production uses `no-reply@mail.honowarden.com` and
+`https://vault.honowarden.com`. Each `EMAIL` binding allows only its configured
+sender. The Worker has no vault D1, R2, token secrets, or inquiry database.
 
-[vars]
-HONOWARDEN_INVITATION_ADMIN_ORIGIN = "https://vault.example.test"
-HONOWARDEN_INVITATION_SENDER_EMAIL = "invites@example.test"
-```
-
-Use the exact approved HTTPS origin, with no path or trailing slash, and a
-normalized sender address in the reviewed verified sending domain. These example
-values are synthetic. Supply `HONOWARDEN_INVITATION_RESEND_API_KEY` as a separate
-secret only to this Worker. It must be dedicated to invitation delivery, with
-`sending_access` and a restriction to the chosen sending domain. Resend documents
-the permission in [Create API key](https://resend.com/docs/api-reference/api-keys/create-api-key)
-and domain restrictions in [Manage API keys](https://resend.com/docs/dashboard/api-keys/introduction),
-both read on 2026-10-06. Do not reuse the inquiry reply credential or its
-human-approval workflow. Do not add the vault D1, R2, token secrets, or inquiry
-database to the invitation Worker.
-
-The vault Worker's environment-specific service binding, prepared separately,
-would target that reviewed service:
-
-```toml
-[[services]]
-binding = "ORGANIZATION_MEMBERSHIP_MAILER"
-service = "honowarden-organization-invitation-mailer"
-```
+The tracked vault `wrangler.jsonc` binds staging to
+`honowarden-invitation-mailer-staging` and production to
+`honowarden-invitation-mailer`.
 
 No vault `src/app.ts` change is required: the existing binding adapter is already
 wired into invitation and reinvitation. `HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED`
 and `HONOWARDEN_ORGANIZATION_INVITE_SECRET` remain separate prerequisites. This
-packet does not enable either flag or add a live binding.
+packet does not enable either flag or deploy a live binding.
 
 ## Operator Inputs And Runtime Acceptance
 
-Before activation, establish the exact sender/domain, approved admin origin,
-dedicated credential scope, receiving test account, and target service/environment.
-Read back current sender verification and domain authentication, disabled tracking
-and URL rewriting, provider content retention, and service exposure. The mail
-provider necessarily receives the recipient and token-bearing message; approval
-of this data flow is part of selecting that provider.
+Cloudflare Email Service is beta and requires Workers Paid for arbitrary recipients.
+Onboard `mail.honowarden.com` in the dashboard before deployment. Onboarding
+creates cf-bounce MX/SPF/DKIM and DMARC records under that subdomain; leave apex
+Email Routing MX/SPF, Resend `send.` records, and apex `_dmarc` untouched. New
+domains default to Email preview ON: turn it OFF before sending token-bearing
+mail, since preview otherwise retains message bodies in dashboard activity for
+about a week. Read back sender verification, subdomain DNS, preview state, and
+private service exposure. Cloudflare receives the recipient and token-bearing
+message.
 
 Use synthetic data to verify provider acceptance and actual receipt separately,
 then follow the link in Brave, verify fragment scrubbing, recipient authentication,
@@ -119,7 +96,7 @@ verification fallback, or EVP provider discovery.
 
 ## EVP Is Independent
 
-Resend transport does not establish a company's Microsoft EVP issuer or browser
+Cloudflare email transport does not establish a company's Microsoft EVP issuer or browser
 interoperability. The existing EVP implementation remains pinned to its documented
 protocol, disabled with an empty issuer registry until delegation, issuer metadata
 and keys, the exact browser/origin eligibility, and an actual synthetic signed
