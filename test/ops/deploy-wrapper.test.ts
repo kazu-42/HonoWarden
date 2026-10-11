@@ -13,8 +13,10 @@ const deployScript = fileURLToPath(
 
 const stopMessage =
   'REAL WORKER/VERSION/TRAFFIC WRITE STOP: deploy, dry-run, and automated recovery are disabled pending a separately reviewed execution boundary.'
+const packageStopMessage =
+  'REAL WORKER/VERSION/TRAFFIC WRITE STOP: use pnpm release:cf with explicit target confirmation.'
 const packageStop =
-  "deploy_stop() { printf '%s\\n' 'REAL WORKER/VERSION/TRAFFIC WRITE STOP: deploy, dry-run, and automated recovery are disabled pending a separately reviewed execution boundary.' >&2; return 1; }; deploy_stop"
+  "deploy_stop() { printf '%s\\n' 'REAL WORKER/VERSION/TRAFFIC WRITE STOP: use pnpm release:cf with explicit target confirmation.' >&2; return 1; }; deploy_stop"
 
 describe('HonoWarden deploy entrypoint', () => {
   it.each([
@@ -79,7 +81,7 @@ describe('HonoWarden deploy entrypoint', () => {
     expect(result).toEqual({
       code: 1,
       stdout: '',
-      stderr: `${stopMessage}\n`,
+      stderr: `${packageStopMessage}\n`,
     })
   })
 })
