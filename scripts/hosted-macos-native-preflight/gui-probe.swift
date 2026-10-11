@@ -3,9 +3,14 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
+func isConsoleSession(_ session: [String: Any]?) -> Bool {
+    // The SDK constant's value differs from its symbol name.
+    session?[kCGSessionOnConsoleKey as String] as? Bool ?? false
+}
+
 let pid = Int32(CommandLine.arguments[1])!
 let session = CGSessionCopyCurrentDictionary() as? [String: Any]
-let onConsole = session?["kCGSessionOnConsoleKey"] as? Bool ?? false
+let onConsole = isConsoleSession(session)
 let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
 let appWindows = windows.filter {
     ($0[kCGWindowOwnerPID as String] as? Int32) == pid &&
