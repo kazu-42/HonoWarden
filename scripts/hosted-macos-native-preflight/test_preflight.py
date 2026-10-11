@@ -233,7 +233,7 @@ const vm = require('node:vm'), assert = require('node:assert/strict');
     const result=await vm.runInNewContext(EXPRESSION, {
       AbortSignal:{timeout(n){assert.equal(n,2000);return 'bounded';}},
       fetch:async(url,options)=>{
-        assert.equal(url,'http://127.0.0.1:8123/api/config');
+        assert.equal(url,'https://127.0.0.1:8123/api/config');
         assert.equal(options.mode,'cors');assert.equal(options.credentials,'include');
         assert.equal(options.signal,'bounded');
         if (['TimeoutError','TypeError','unknown'].includes(scenario))
@@ -265,6 +265,15 @@ const vm = require('node:vm'), assert = require('node:assert/strict');
                       {"status": None, "outcome": "other", "message": "FICTIONAL_SECRET"}]:
             with self.assertRaisesRegex(p.Blocked, "network_projection_invalid"):
                 p.public_report({"fetchDiagnostic": value, "authenticated": False, "credentialAdmission": False})
+
+    def test_tls_negative_probe_is_closed_to_the_same_loopback_listener(self):
+        self.assertIn("https://localhost:8123/api/config", p.loopback_expression(8123, bad_certificate=True))
+        self.assertIn("https://127.0.0.1:8123/api/config", p.loopback_expression(8123))
+        p.LoopbackNetworkProjection("https://localhost:8123/api/config")
+        for url in ["https://localhost.evil:8123/api/config", "https://foreign.invalid:8123/api/config",
+                    "https://localhost:8123/api/config?secret=value", "http://localhost:8123/api/config"]:
+            with self.assertRaisesRegex(p.Blocked, "network_probe_url_invalid"):
+                p.LoopbackNetworkProjection(url)
 
     def test_actual_curl_probe_requires_credentialed_config_response(self):
         response = (b'HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: null\r\n'
@@ -462,6 +471,16 @@ const vm = require('node:vm'), assert = require('node:assert/strict');
         for change in [{"networkIsolationBackend": "none"}, {"networkNegativeControl": "true"}, {"authenticated": True}]:
             with self.assertRaises(p.Blocked):
                 p.public_report({**report, **change})
+
+    def test_tls_restore_failure_is_reported_without_losing_keychain_cleanup(self):
+        with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
+            state = {"children": [], "priorDefault": "/guest/original", "priorSearch": ["/guest/original"],
+                     "tls": {"owned": "fixture"}}
+            with patch.object(p, "PROCESSES", []), patch.object(p, "command", return_value=(b'"/guest/original"\n', 0)) as command, \
+                 patch.object(p.TLS, "restore", side_effect=p.TLS.Blocked("tls_trust_restore_mismatch")):
+                failures = p.cleanup(Path(fixture), state)
+            self.assertIn("tls_cleanup_failed", failures)
+            self.assertGreater(command.call_count, 0)
 
     def test_interrupted_finisher_has_unknown_execution_and_exact_fixture_cleanup(self):
         with tempfile.TemporaryDirectory(dir=p.HERE) as fixture:
@@ -2256,7 +2275,7 @@ class CFMetadataIsolationTests(unittest.TestCase):
     CF_HARNESS = r"""
 const vm = require('node:vm');
 const optionContext = {
-  scriptPath: '/fictional/worker.mjs', root: '/fictional',
+  scriptPath: '/fictional/worker.mjs', root: '/fictional', mode: 'company',
   join: (...parts) => parts.join('/'), randomUUID: () => 'fictional-uuid',
   randomBytes: () => ({toString: () => '0'.repeat(64)}),
   Log: class { constructor(level) { this.level = level; } },
@@ -2394,7 +2413,7 @@ if (cfg.kind === 'string') cf = '/fictional/custom-cf.json';
         return self.run_pure_node("""
 const vm = require('node:vm');
 const context = {
-  scriptPath: '/fictional/worker.mjs', root: '/fictional',
+  scriptPath: '/fictional/worker.mjs', root: '/fictional', mode: 'company',
   join: (...parts) => parts.join('/'), randomUUID: () => 'fictional-uuid',
   randomBytes: () => ({toString: () => '0'.repeat(64)}),
   Log: class { constructor(level) { this.level = level; } },
@@ -2404,6 +2423,7 @@ const options = vm.runInNewContext('(' + """ + expression + """ + ')',
   context, {timeout: 1000});
 process.stdout.write(JSON.stringify({
   ownsCf: Object.hasOwn(options, 'cf'), value: options.cf ?? null,
+  https: options.https, key: options.httpsKeyPath, cert: options.httpsCertPath,
 }));
 """)
 
@@ -2411,6 +2431,9 @@ process.stdout.write(JSON.stringify({
         options = self.actual_options()
         self.assertTrue(options["ownsCf"])
         self.assertIs(options["value"], False)
+        self.assertIs(options["https"], True)
+        self.assertEqual(options["key"], "/fictional/tls/leaf.key")
+        self.assertEqual(options["cert"], "/fictional/tls/leaf.pem")
 
     def test_whole_options_object_inverse_preserves_source18(self):
         options = self.actual_options_source()
@@ -2423,6 +2446,11 @@ process.stdout.write(JSON.stringify({
         # Preserve the historic complete-options digest; only the explicit
         # reviewed Desktop compatibility binding is new in this fixture.
         inverse = inverse.replace(desktop_binding, "")
+        for line in ["    https: mode === 'company',\n",
+                     "    httpsKeyPath: mode === 'company' ? join(root, 'tls/leaf.key') : undefined,\n",
+                     "    httpsCertPath: mode === 'company' ? join(root, 'tls/leaf.pem') : undefined,\n"]:
+            self.assertEqual(inverse.count(line), 1)
+            inverse = inverse.replace(line, "")
         self.assertEqual(
             hashlib.sha256(inverse.encode()).hexdigest(), self.OPTIONS18_SHA
         )

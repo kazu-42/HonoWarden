@@ -26,6 +26,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+import tls_fixture as TLS
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
@@ -63,7 +64,7 @@ FINALIZATION_BLOCKED_CODES = PROCESS_BLOCKED_CODES | {"phase_deadline_exhausted"
 CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", "recorded_process_cleanup_failed",
                                                 "process_cleanup_permission_denied", "process_cleanup_timeout",
                                                 "process_cleanup_api_unavailable", "keychain_cleanup_failed",
-                                                "keychain_readback_failed", "packet_filter_cleanup_failed", "cleanup_finalization_failed",
+                                                "keychain_readback_failed", "packet_filter_cleanup_failed", "tls_cleanup_failed", "cleanup_finalization_failed",
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
                                                  "cleanup_finalization_api_unavailable"}
 WORKER_BINARY_PROOF = "pinned_darwin_arm64_version_verified"
@@ -771,15 +772,19 @@ def cdp_probe(url, expected_port, expression, target_id=None, diagnostic_url=Non
 NETWORK_ERRORS = {"none", "other", "net::ERR_FAILED", "net::ERR_BLOCKED_BY_ORB", "net::ERR_CONNECTION_REFUSED", "net::ERR_ADDRESS_UNREACHABLE",
                   "net::ERR_TIMED_OUT", "net::ERR_BLOCKED_BY_CLIENT", "net::ERR_BLOCKED_BY_RESPONSE",
                   "net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin",
+                  "net::ERR_CERT_AUTHORITY_INVALID", "net::ERR_CERT_COMMON_NAME_INVALID", "net::ERR_CERT_DATE_INVALID",
                   "net::ERR_INTERNET_DISCONNECTED", "net::ERR_ACCESS_DENIED", "net::ERR_NETWORK_ACCESS_DENIED",
                   "net::ERR_CONNECTION_RESET", "net::ERR_ABORTED", "net::ERR_INVALID_URL"}
 NETWORK_BLOCKS = {"none", "other", "csp", "mixed-content", "origin", "inspector", "subresource-filter", "corp-not-same-origin"}
 FETCH_OUTCOMES = {"success", "http_error", "invalid_payload", "AbortError", "TimeoutError", "TypeError", "SyntaxError", "other"}
+CERTIFICATE_ERRORS = {"net::ERR_CERT_AUTHORITY_INVALID", "net::ERR_CERT_COMMON_NAME_INVALID", "net::ERR_CERT_DATE_INVALID"}
 
 
-def loopback_expression(port):
+def loopback_expression(port, *, bad_certificate=False):
     require(type(port) is int and 1024 <= port <= 65535, "network_probe_url_invalid")
-    return ("(async()=>{let status=null;try{const r=await fetch('http://127.0.0.1:" + str(port) +
+    require(type(bad_certificate) is bool, "network_probe_url_invalid")
+    host = "localhost" if bad_certificate else "127.0.0.1"
+    return ("(async()=>{let status=null;try{const r=await fetch('https://" + host + ":" + str(port) +
             "/api/config',{mode:'cors',credentials:'include',cache:'no-store',signal:AbortSignal.timeout(2000)});"
             "status=r.status;const ok=r.ok&&(await r.json()).object==='config';"
             "return {appLoopback:ok,fetchDiagnostic:{status,outcome:ok?'success':r.ok?'invalid_payload':'http_error'}};"
@@ -809,7 +814,7 @@ def verify_public_api_response(raw):
 
 class LoopbackNetworkProjection:
     def __init__(self, url):
-        require(type(url) is str and re.fullmatch(r"http://127\.0\.0\.1:[0-9]{4,5}/(?:api/config)?", url), "network_probe_url_invalid")
+        require(type(url) is str and re.fullmatch(r"(?:https?://127\.0\.0\.1|https://localhost):[0-9]{4,5}/(?:api/config)?", url), "network_probe_url_invalid")
         self.url = url
         self.identifiers = set()
         self.result = dict(requestObserved=False, responseStatus=None, error="none", blocked="none", cors=False)
@@ -994,6 +999,11 @@ def cleanup(root, state):
             NETWORK.restore_record(state["networkFilter"])
         except Exception:
             failures.append("packet_filter_cleanup_failed")
+    if state.get("tls") is not None:
+        try:
+            TLS.restore(root, state["tls"], command)
+        except Exception:
+            failures.append("tls_cleanup_failed")
     actions = [["/usr/bin/security", "default-keychain", "-d", "user", "-s", state["priorDefault"]],
                ["/usr/bin/security", "list-keychains", "-d", "user", "-s", *state["priorSearch"]]]
     if (root / "owned.keychain-db").exists():
@@ -1036,10 +1046,18 @@ def public_report(report):
             "gui", "cleanupComplete", "failureKind", "cleanupFailureCodes",
             "workerFailurePhase", "workerFailureKind", "workerBinaryProof",
             "minimalWorkerControl", "desktopTargetSummary", "desktopLogSummary", "unixSocketControls",
-            "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic", "fetchDiagnostic", "apiCorsProbe"} | DESKTOP_DIAGNOSTIC_KEYS
+            "networkIsolationBackend", "networkNegativeControl", "networkDiagnostic", "fetchDiagnostic", "apiCorsProbe", "httpsFixture",
+            "tlsNegativeControl", "tlsNegativeError"} | DESKTOP_DIAGNOSTIC_KEYS
     require(set(report) <= keys, "report_unknown_field")
     if "apiCorsProbe" in report:
         require(type(report["apiCorsProbe"]) is bool, "network_projection_invalid")
+    if "httpsFixture" in report:
+        require(type(report["httpsFixture"]) is bool, "network_projection_invalid")
+    if "tlsNegativeControl" in report:
+        require(type(report["tlsNegativeControl"]) is bool, "network_projection_invalid")
+    if "tlsNegativeError" in report:
+        require(type(report["tlsNegativeError"]) is str and report["tlsNegativeError"] in NETWORK_ERRORS,
+                "network_projection_invalid")
     if "fetchDiagnostic" in report:
         item = report["fetchDiagnostic"]
         require(type(item) is dict and set(item) == {"status", "outcome"}
@@ -1384,6 +1402,14 @@ def execute(temp, company):
         command(["/usr/bin/security", "delete-generic-password", "-a", "synthetic-public", "-s", service, keychain])
         require(command(["/usr/bin/security", "find-generic-password", "-a", "synthetic-public", "-s", service, keychain], ok=(44,))[1] == 44, "keychain_probe_remains")
         report["keychainProbe"] = True
+        def remember_tls(record):
+            state["tls"] = dict(record)
+            update_private(marker, state)
+        try:
+            TLS.install(root, keychain, command, remember_tls)
+        except TLS.Blocked as error:
+            raise Blocked(error.args[0]) from None
+        report["httpsFixture"] = True
         readiness = run_worker_differential(node, company, root, env, state,
                                            marker, report)
         port = readiness["port"]
@@ -1398,10 +1424,10 @@ def execute(temp, company):
             raise Blocked(error.args[0]) from None
         report["networkIsolationBackend"] = "owned_pf_anchor"
         allowed, _ = command(["/usr/bin/curl", "--silent",
-                              "--fail", "--max-time", "2", f"http://127.0.0.1:{port}/"], env=env)
+                              "--fail", "--max-time", "2", f"https://127.0.0.1:{port}/"], env=env)
         require(json.loads(allowed).get("name") == "HonoWarden", "filter_allowed_loopback_failed")
         api, _ = command(["/usr/bin/curl", "--silent", "--include", "--fail", "--max-time", "2",
-                          "--header", "Origin: null", f"http://127.0.0.1:{port}/api/config"], env=env)
+                          "--header", "Origin: null", f"https://127.0.0.1:{port}/api/config"], env=env)
         verify_public_api_response(api)
         report["apiCorsProbe"] = True
         # Use a live owned loopback listener outside the allowlist; never probe a third party.
@@ -1451,7 +1477,7 @@ def execute(temp, company):
         dom = await_login_dom(browser_ws, cdp_port, target["id"])
         report.update(dom)
         network = cdp_probe(browser_ws, cdp_port, loopback_expression(port),
-                           target_id=target["id"], diagnostic_url=f"http://127.0.0.1:{port}/api/config")
+                           target_id=target["id"], diagnostic_url=f"https://127.0.0.1:{port}/api/config")
         report["networkDiagnostic"] = network.pop("networkDiagnostic")
         report["fetchDiagnostic"] = network.pop("fetchDiagnostic")
         public_report(report)
@@ -1459,6 +1485,17 @@ def execute(temp, company):
         require(set(result) == {"visibleDom", "appLoopback"} and all(type(v) is bool for v in result.values()), "renderer_projection_invalid")
         report.update(result)
         require(result["visibleDom"] and result["appLoopback"], "native_ui_loopback_not_ready")
+        # The same listener serves a certificate for 127.0.0.1 only. The native
+        # client must reject the localhost hostname without disabling TLS checks.
+        invalid_tls = cdp_probe(browser_ws, cdp_port, loopback_expression(port, bad_certificate=True),
+                                target_id=target["id"], diagnostic_url=f"https://localhost:{port}/api/config")
+        report["tlsNegativeError"] = invalid_tls["networkDiagnostic"]["error"]
+        report["tlsNegativeControl"] = (invalid_tls.get("appLoopback") is False
+            and invalid_tls.get("fetchDiagnostic") == {"status": None, "outcome": "TypeError"}
+            and invalid_tls["networkDiagnostic"]["requestObserved"] is True
+            and report["tlsNegativeError"] in CERTIFICATE_ERRORS)
+        public_report(report)
+        require(report["tlsNegativeControl"], "native_tls_negative_control_unproved")
         require(any((root / "profile").iterdir()), "owned_profile_not_used")
         require(not (Path(os.path.expanduser("~")) / "Library/Application Support" / CLIENT_VENDOR).exists(), "guest_default_profile_used")
         report["status"] = "pre_auth_capability_passed"
@@ -1503,10 +1540,12 @@ def finish(temp):
     require(marker.is_file() and not marker.is_symlink() and marker.stat().st_uid == os.getuid()
             and stat.S_IMODE(marker.stat().st_mode) == 0o600, "marker_not_owned")
     state = json.loads(marker.read_text())
-    require(set(state) - {"networkFilter"} == {"root", "uid", "dev", "ino", "priorDefault", "priorSearch", "children"}
+    require(set(state) - {"networkFilter", "tls"} == {"root", "uid", "dev", "ino", "priorDefault", "priorSearch", "children"}
             and isinstance(state["children"], list) and len(state["children"]) <= 2, "marker_schema_invalid")
     if "networkFilter" in state:
         NETWORK.validate_record(state["networkFilter"], os.getuid())
+    if "tls" in state:
+        TLS.validate_record(state["tls"])
     root = Path(state["root"])
     require(root.parent == temp and root.name.startswith("hw-macos-preflight-") and not root.is_symlink(), "cleanup_root_invalid")
     root_stat = root.stat()
