@@ -28,6 +28,7 @@ import { validateKdf, type KdfSettings } from './crypto/kdf'
 import type { WrappedAccount, WrappedOrganization } from './crypto/keyring'
 import { consumeInvitation, type PendingInvitation } from './invitation'
 import { prepareEmailVerification } from './email-verification'
+import type { WrappedAccountRegistration } from './crypto/account-registration'
 
 export type AdminClientOptions = {
   fetch?: FetchPort
@@ -202,6 +203,7 @@ export function createAdminClient(
     path: string,
     input: Omit<ApiRequest, 'signal' | 'token'> = {},
     authenticated = true,
+    signal?: AbortSignal,
   ) => {
     const expected = epoch
     const controller = new AbortController()
@@ -213,13 +215,19 @@ export function createAdminClient(
     try {
       const result = await api(path, {
         ...input,
-        signal: controller.signal,
+        signal: signal
+          ? AbortSignal.any([controller.signal, signal])
+          : controller.signal,
         ...(authenticated && tokens ? { token: tokens.access } : {}),
       })
       assertEpoch(expected)
+      if (signal?.aborted)
+        throw new AdminError('cancelled', 'operation_cancelled')
       return result
     } catch (error) {
       assertEpoch(expected)
+      if (signal?.aborted)
+        throw new AdminError('cancelled', 'operation_cancelled')
       if (
         error instanceof AdminError &&
         (error.code === 'mfa_required' ||
@@ -559,6 +567,56 @@ export function createAdminClient(
       listener(view())
       return () => listeners.delete(listener)
     },
+    async registerInvitedAccount(input) {
+      if (!invitation) throw new AdminError('validation', 'invitation_required')
+      if (!['signedOut', 'expired'].includes(state.phase))
+        throw new AdminError('conflict', 'registration_unavailable')
+      const email = input.email.trim().toLowerCase()
+      const displayName = input.displayName.trim()
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        email.length > 254 ||
+        !displayName ||
+        displayName.length > 100 ||
+        input.password.length < 12 ||
+        input.password.length > 256
+      )
+        throw new AdminError('validation', 'registration_invalid')
+      const current = invitation
+      reset('signedOut')
+      const expected = epoch
+      publish({ phase: 'authenticating', email })
+      try {
+        port = newCrypto()
+        const wrapped = await cryptoCall<WrappedAccountRegistration>({
+          action: 'createAccount',
+          email,
+          password: input.password,
+        })
+        input.password = ''
+        assertEpoch(expected)
+        const result = record(
+          (
+            await request(
+              '/api/accounts/register-invited',
+              {
+                method: 'POST',
+                body: { email, displayName, ...wrapped, invitation: current },
+              },
+              false,
+            )
+          ).value,
+        )
+        if (result.object !== 'accountRegistration' || result.created !== true)
+          throw new AdminError('unavailable', 'response_invalid')
+      } finally {
+        input.password = ''
+        if (epoch === expected) {
+          stopCrypto()
+          publish({ phase: 'signedOut', email })
+        }
+      }
+    },
     async login(email, password) {
       const keptInvitation = invitation
       reset('signedOut')
@@ -736,6 +794,115 @@ export function createAdminClient(
       if (result.enabled !== true)
         throw new AdminError('unavailable', 'response_invalid')
       await mutationReadback(sync)
+    },
+    prepareEmailCodeVerification() {
+      unlocked()
+      retireEmailVerification()
+      const expected = epoch
+      const accountId = id(profile?.Id)
+      const email = string(profile?.Email, 254)
+      const controller = new AbortController()
+      let active = true
+      let busy = false
+      const assertCurrent = () => {
+        assertEpoch(expected)
+        if (
+          !active ||
+          state.phase !== 'unlocked' ||
+          profile?.Id !== accountId ||
+          profile?.Email !== email
+        )
+          throw new AdminError('cancelled', 'operation_cancelled')
+      }
+      const dispose = () => {
+        if (!active) return
+        active = false
+        controller.abort(new AdminError('cancelled', 'operation_cancelled'))
+        emailVerificationAttempts.delete(dispose)
+      }
+      emailVerificationAttempts.add(dispose)
+      const perform = async (
+        path: string,
+        input: Omit<ApiRequest, 'signal' | 'token'> = {},
+      ) => {
+        assertCurrent()
+        await ensureToken()
+        assertCurrent()
+        try {
+          const result = await request(path, input, true, controller.signal)
+          assertCurrent()
+          return result.value
+        } catch (error) {
+          assertCurrent()
+          if (error instanceof AdminError && error.httpStatus === 401)
+            reset('expired')
+          throw error
+        }
+      }
+      const run = async <T>(operation: () => Promise<T>): Promise<T> => {
+        assertCurrent()
+        if (busy) throw new AdminError('validation', 'operation_in_progress')
+        busy = true
+        try {
+          return await operation()
+        } finally {
+          busy = false
+        }
+      }
+      const readback = async (requireVerified: boolean): Promise<boolean> => {
+        try {
+          return await mutationReadback(async () => {
+            const current = record(await perform('/api/accounts/profile'))
+            assertCurrent()
+            if (
+              current.Id !== accountId ||
+              current.Email !== email ||
+              typeof current.EmailVerified !== 'boolean' ||
+              (requireVerified && current.EmailVerified !== true)
+            )
+              throw new AdminError('unavailable', 'response_invalid')
+            // Email ownership never imports account keys, memberships, or MFA proof.
+            emailVerificationReadVersion++
+            profile = { ...profile, EmailVerified: current.EmailVerified }
+            publish({ ...state, emailVerified: current.EmailVerified })
+            return current.EmailVerified
+          })
+        } catch (error) {
+          assertCurrent()
+          throw error
+        }
+      }
+      return {
+        dispose,
+        requestCode: () =>
+          run(async () => {
+            const result = await perform('/api/accounts/verify-email', {
+              method: 'POST',
+            })
+            if (result !== null)
+              throw new AdminError('unavailable', 'response_invalid')
+          }),
+        readback: () => run(() => readback(false)),
+        submit: (code) =>
+          run(async () => {
+            const token = code.trim()
+            code = ''
+            if (!/^[A-Za-z0-9_-]{43}$/.test(token))
+              throw new AdminError(
+                'validation',
+                'email_verification_code_invalid',
+              )
+            const result = await perform('/api/accounts/verify-email-token', {
+              method: 'POST',
+              body: { userId: accountId, token },
+            })
+            if (result !== null)
+              throw new AdminError('unavailable', 'response_invalid')
+            await readback(true)
+            dispose()
+            return { status: 'verified' as const }
+          }),
+      }
     },
     async prepareEmailVerification(input) {
       unlocked()

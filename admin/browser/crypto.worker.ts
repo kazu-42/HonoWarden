@@ -2,6 +2,7 @@ import { AdminError } from './errors'
 import type { CryptoCommand } from './crypto-client'
 import { derivePasswordMaterial, type PasswordMaterial } from './crypto/kdf'
 import { Keyring } from './crypto/keyring'
+import { createWrappedAccount } from './crypto/account-registration'
 
 const keyring = new Keyring()
 let material: PasswordMaterial | undefined
@@ -15,6 +16,10 @@ scope.addEventListener(
       try {
         let value: unknown
         switch (command.action) {
+          case 'createAccount':
+            value = await createWrappedAccount(command.email, command.password)
+            command.password = ''
+            break
           case 'derive':
             material?.masterKey.fill(0)
             material?.stretchedKey.fill(0)
@@ -59,7 +64,8 @@ scope.addEventListener(
         }
         scope.postMessage({ id, ok: true, value })
       } catch (error) {
-        if (command.action === 'derive') command.password = ''
+        if (command.action === 'derive' || command.action === 'createAccount')
+          command.password = ''
         scope.postMessage({
           id,
           ok: false,

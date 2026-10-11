@@ -26,11 +26,73 @@ and bounded administration audit. It uses the authenticated `/api/` and
 `/identity/` APIs. The user selected email, master password, and TOTP first, with
 SSO later, and acceptance in the current pinned Browser extension and Desktop.
 
+Invited users can choose account creation on the invitation landing page. Their
+browser Worker derives PBKDF2 with 600,000 iterations and creates the encrypted
+user and RSA private-key envelopes; plaintext passwords and keys are never sent
+to the registration API. `POST /api/accounts/register-invited` requires both
+`HONOWARDEN_INVITATION_REGISTRATION_ENABLED` and
+`HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED` to be `true`, with the existing
+invitation secret configured. The new flag is default-off in all tracked profiles.
+An atomic insertion requires the exact unexpired invitation, email, enabled
+organization, and pending unbound membership. Existing accounts are never
+overwritten, including concurrent submissions. The account is not automatically
+email-verified, enrolled in TOTP, signed in, or granted organization keys. The
+recipient must sign in, satisfy any required TOTP policy, and accept the invitation;
+the manager then confirms the wrapped organization key. An ambiguous registration
+transport failure must not automatically replay creation: try signing in with the
+chosen credentials to establish whether it committed.
+
 The company browser is not a full personal Web Vault. IdP/SSO, SCIM, custom roles,
 every vendor policy, passkey authentication, organization takeover, and recovery-key
 envelopes are deferred. Existing WebAuthn enrollment endpoints do not establish
 passkey login support. The browser has no plaintext vault-secret download.
 Audit CSV contains a bounded metadata projection only.
+
+The user's launch requirements include the Brave browser extension and both
+Windows and macOS Desktop. CLI acceptance does not replace either Desktop target.
+Company name, membership, administrator assignment, and onboarding values belong
+in the dashboard setup flow rather than an operator questionnaire. The existing
+organization creation and invitation UI now includes invitation-bound new-account
+registration. Editable company settings and the initial operator setup still need
+their own tested source and runtime evidence before the complete self-service
+flow can be called ready.
+
+On 2026-10-11 JST, a fresh synthetic Brave run created the recipient through that
+registration UI and passed all 16 company flows, including approval, shared-key
+decryption, TOTP remediation, offboarding, audit export, and a fresh D1/R2 restore.
+The unmodified CLI 2026.9.1 decrypted personal attachments and the surviving
+group-only member's shared data across three restored Worker restarts. The
+173-file runtime source fingerprint was
+`c4286f437b70fdd9c788a608b6ffa7f6b665f15f2a2108fbfc9da1611063b095`;
+the before/after fingerprints matched and all owned processes closed. This is
+local synthetic evidence, with private invitation delivery captured in memory;
+it does not establish real mailbox receipt, deployed configuration, browser
+extension acceptance, or either required Desktop client's acceptance.
+
+## Personal Attachment Downloads
+
+Official CLI 2026.9.1 requests JSON metadata from
+`GET /api/ciphers/:id/attachment/:attachmentId`, then fetches its absolute `url`
+without a vault Authorization header. The pinned upstream source at tag
+`cli-v2026.9.1` defines this in `apps/cli/src/commands/get.command.ts` and
+`apps/cli/src/commands/download.command.ts`.
+
+The metadata route requires the normal authenticated session. Its URL contains a
+purpose-specific HMAC capability expiring after 120 seconds, scoped to one origin,
+personal cipher, attachment revision, user, device, session family, and credential
+generation. Fetching the binary rechecks that session, active account, personal
+cipher ownership, non-trashed state, and attachment metadata. Revoked sessions and
+deleted attachments cannot continue downloading with a previously issued URL.
+This capability is not an access token and cannot authenticate vault APIs.
+Both responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+Encrypted bytes are always served as an attachment with an octet-stream type.
+
+Use the access-token keyring's active and previous keys for rotation; the download
+MAC has a separate purpose domain. Removing a key invalidates its outstanding
+URLs. A client can request new metadata after expiry or key retirement. Keep full
+download URLs, query strings, and response bodies out of operator logs and error
+reports: the URL is a short-lived capability. Missing R2 objects remain explicit
+storage failures. Organization-owned attachments remain outside this contract.
 
 ## Required Schema And Runtime Profile
 

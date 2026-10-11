@@ -352,6 +352,27 @@
       ]
     },
     {
+      "lastReviewedAt": "2026-10-11",
+      "evidenceLevel": "local_api",
+      "evidence": [
+        "test/integration/invited-account-registration-d1.test.ts",
+        "test/admin-account-registration.test.ts"
+      ],
+      "supportClaim": false,
+      "id": "accounts.invited_registration",
+      "kind": "route",
+      "classification": "implemented",
+      "requirementKind": "operator",
+      "ownerIssue": "HON-201",
+      "rationale": "Original dashboard invitation onboarding. A live invitation permits only creation of a new personal account with client-wrapped keys; normal login, membership acceptance and Owner confirmation remain separate. Default-off and not upstream public registration.",
+      "covers": [
+        {
+          "method": "POST",
+          "path": "/api/accounts/register-invited"
+        }
+      ]
+    },
+    {
       "lastReviewedAt": "2026-09-02",
       "evidenceLevel": "local_api",
       "evidence": [
@@ -823,6 +844,10 @@
         {
           "method": "*",
           "path": "/api/ciphers/:id/attachment/:attachmentId/renew"
+        },
+        {
+          "method": "GET",
+          "path": "/api/ciphers/:id/attachment/:attachmentId/data"
         },
         {
           "method": "ALL",

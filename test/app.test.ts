@@ -13936,7 +13936,7 @@ describe('HonoWarden app', () => {
     auditLog.mockRestore()
   })
 
-  it('downloads encrypted attachment bytes for the owning cipher', async () => {
+  it('returns official attachment metadata and a scoped download URL', async () => {
     const user = authUserRecord()
     const accessToken = await accessTokenFor(user)
     const bucket = new FakeR2Bucket()
@@ -13946,6 +13946,15 @@ describe('HonoWarden app', () => {
       },
     })
 
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        authUser: user,
+        cipher: cipherRecord(),
+        attachments: [attachmentRecord()],
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      VAULT_OBJECTS: bucket as unknown as R2Bucket,
+    }
     const response = await app.request(
       '/api/ciphers/cipher-id/attachment/attachment-id',
       {
@@ -13953,21 +13962,134 @@ describe('HonoWarden app', () => {
           Authorization: `Bearer ${accessToken}`,
         },
       },
-      {
-        DB: new FakeD1Database(null, [], {
-          authUser: user,
-          attachments: [attachmentRecord()],
-        }),
-        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
-        VAULT_OBJECTS: bucket as unknown as R2Bucket,
-      },
+      env,
     )
 
     expect(response.status).toBe(200)
-    expect(response.headers.get('Content-Type')).toBe(
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    const metadata = (await response.json()) as { url: string }
+    expect(metadata).toMatchObject({
+      object: 'attachment',
+      id: 'attachment-id',
+    })
+    const url = new URL(metadata.url)
+    expect(url.origin).toBe('http://localhost')
+    expect(url.pathname).toBe(
+      '/api/ciphers/cipher-id/attachment/attachment-id/data',
+    )
+    expect(url.search).not.toContain(accessToken)
+    const download = await app.request(metadata.url, {}, env)
+    expect(download.status).toBe(200)
+    expect(download.headers.get('Cache-Control')).toBe('no-store')
+    expect(download.headers.get('Referrer-Policy')).toBe('no-referrer')
+    expect(download.headers.get('Content-Type')).toBe(
       'application/octet-stream',
     )
-    await expect(response.text()).resolves.toBe('encrypted-bytes')
+    await expect(download.text()).resolves.toBe('encrypted-bytes')
+  })
+
+  it.each([
+    'logout',
+    'new session',
+    'disabled user',
+    'rotated credentials',
+    'removed attachment',
+    'changed attachment',
+    'trashed cipher',
+    'changed cipher owner',
+    'expired ticket',
+    'wrong path',
+    'wrong origin',
+    'tampered ticket',
+    'bearer as ticket',
+  ])(
+    'rejects attachment download after %s before R2 access',
+    async (change) => {
+      const user: Record<string, unknown> = authUserRecord()
+      const devices = [
+        {
+          userId: user.id,
+          identifier: 'fixture-device',
+          sessionId: 'synthetic-session-id',
+          revokedAt: null as string | null,
+        },
+      ]
+      const cipher: Record<string, unknown> = cipherRecord()
+      const attachments = [attachmentRecord()]
+      const bucket = new FakeR2Bucket()
+      const env = {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          devices,
+          ciphers: [cipher],
+          attachments,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+        VAULT_OBJECTS: bucket as unknown as R2Bucket,
+      }
+      const accessToken = await accessTokenFor(authUserRecord())
+      const metadata = await app.request(
+        '/api/ciphers/cipher-id/attachment/attachment-id',
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+        env,
+      )
+      expect(metadata.status).toBe(200)
+      const body = (await metadata.json()) as { url: string }
+      const url = new URL(body.url)
+      const get = vi.spyOn(bucket, 'get')
+      if (change === 'logout') devices[0]!.revokedAt = new Date().toISOString()
+      if (change === 'new session')
+        devices[0]!.sessionId = 'replacement-session'
+      if (change === 'disabled user') user.disabledAt = new Date().toISOString()
+      if (change === 'rotated credentials') user.securityStamp = 'changed'
+      if (change === 'removed attachment') attachments.splice(0)
+      if (change === 'changed attachment')
+        attachments[0]!.revisionDate = 'new-revision'
+      if (change === 'trashed cipher')
+        cipher.deletedAt = new Date().toISOString()
+      if (change === 'changed cipher owner') cipher.userId = 'other-user'
+      if (change === 'expired ticket')
+        vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 120_000)
+      if (change === 'wrong path')
+        url.pathname = url.pathname.replace('attachment-id', 'another-id')
+      if (change === 'wrong origin') url.hostname = 'other.example.test'
+      if (change === 'tampered ticket')
+        url.searchParams.set('ticket', `${url.searchParams.get('ticket')}x`)
+      if (change === 'bearer as ticket')
+        url.searchParams.set('ticket', accessToken)
+      const download = await app.request(url.href, {}, env)
+      expect(download.status).toBe(404)
+      expect(download.headers.get('Cache-Control')).toBe('no-store')
+      expect(get).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects a download ticket as vault authentication', async () => {
+    const user = authUserRecord()
+    const env = {
+      DB: new FakeD1Database(null, [], {
+        authUser: user,
+        cipher: cipherRecord(),
+        attachments: [attachmentRecord()],
+      }),
+      HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+    }
+    const response = await app.request(
+      '/api/ciphers/cipher-id/attachment/attachment-id',
+      { headers: { Authorization: `Bearer ${await accessTokenFor(user)}` } },
+      env,
+    )
+    const { url } = (await response.json()) as { url: string }
+    const auth = await app.request(
+      '/api/sync',
+      {
+        headers: {
+          Authorization: `Bearer ${new URL(url).searchParams.get('ticket')}`,
+        },
+      },
+      env,
+    )
+    expect(auth.status).toBe(401)
   })
 
   it('does not download cross-user attachment metadata', async () => {

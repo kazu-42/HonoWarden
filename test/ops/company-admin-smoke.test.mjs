@@ -44,6 +44,12 @@ function absentProcess() {
 }
 
 describe('company administration acceptance execution boundary', () => {
+  it('requires the pinned native client for current-company restore acceptance', () => {
+    expect(parseOptions(['plan', '--restore']).restore).toBe(true)
+    expect(() =>
+      parseOptions(['plan', '--restore', '--without-native']),
+    ).toThrow('restore_requires_native_client')
+  })
   it('allows only exact owned-profile bootstrap bytes on the first version action', () => {
     const path = '/owned/private/profile/data.json'
     const notice = Buffer.from(
@@ -85,6 +91,33 @@ describe('company administration acceptance execution boundary', () => {
       'configure_server',
     )
     assert.equal(nativeCommandAction(['eval', 'private-canary']), 'unsupported')
+    assert.equal(
+      nativeCommandAction([
+        'create',
+        'attachment',
+        '--file',
+        '/owned/synthetic.bin',
+        '--itemid',
+        'synthetic-item',
+      ]),
+      'create_attachment',
+    )
+    assert.equal(
+      nativeCommandAction([
+        'get',
+        'attachment',
+        'synthetic-attachment',
+        '--itemid',
+        'synthetic-item',
+        '--output',
+        '/owned/download.bin',
+      ]),
+      'get_attachment',
+    )
+    assert.equal(
+      nativeCommandAction(['get', 'password', 'private-canary']),
+      'unsupported',
+    )
   })
 
   it('bootstrap readback rejects public files and symlinks', async () => {
@@ -735,6 +768,26 @@ describe('company administration acceptance execution boundary', () => {
       [start, now + 32 * 86400000],
     ])
       assert.throws(() => auditRunWindow(value, at), /audit_run_window_invalid/)
+  })
+
+  it('audit fills use canonical datetime-local values without changing millisecond bounds', async () => {
+    for (const [start, end] of [
+      ['2026-10-06T08:55:21.530Z', '2026-10-06T08:56:55.100Z'],
+      ['2026-10-06T08:55:00.000Z', '2026-10-06T08:56:55.000Z'],
+    ]) {
+      const restore = stubClock(Date.parse(end))
+      try {
+        const fixture = auditUi()
+        const query = await searchRunAuditFromUi(fixture.page, start)
+        for (const key of ['from', 'to']) {
+          assert.equal(new Date(fixture.fields[key]).toISOString(), query[key])
+          assert.ok(!/\.\d*0$/.test(fixture.fields[key]))
+          assert.ok(!/:\d\d:00$/.test(fixture.fields[key]))
+        }
+      } finally {
+        restore()
+      }
+    }
   })
 
   it('audit HTTP failures and minute-only UI fields cannot pass or reach the table assertion', async () => {

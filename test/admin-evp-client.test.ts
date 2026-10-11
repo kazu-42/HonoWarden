@@ -154,6 +154,44 @@ function fixture(
 }
 
 describe('browser Email Verification Protocol facade', () => {
+  it('retires browser proof material when ordinary email code verification is opened', async () => {
+    const elements = inputs()
+    const { client, calls } = fixture()
+    await client.login(email, 'Public password')
+    const browserAttempt = await client.prepareEmailVerification(elements)
+    elements.proofInput.value = browserProof
+    const codeAttempt = client.prepareEmailCodeVerification()
+    expect(elements.proofInput.value).toBe('')
+    expect(elements.proofInput.getAttribute('nonce')).toBeNull()
+    await expect(browserAttempt.submit()).rejects.toMatchObject({
+      kind: 'cancelled',
+    })
+    expect(
+      calls.some(
+        ({ path }) => path === '/identity/accounts/email-verification/verify',
+      ),
+    ).toBe(false)
+    await expect(codeAttempt.requestCode()).resolves.toBeUndefined()
+  })
+
+  it('retires an ordinary code attempt when browser proof preparation starts', async () => {
+    const elements = inputs()
+    const { client, calls } = fixture()
+    await client.login(email, 'Public password')
+    const codeAttempt = client.prepareEmailCodeVerification()
+    const browserAttempt = await client.prepareEmailVerification(elements)
+    await expect(codeAttempt.submit('a'.repeat(43))).rejects.toMatchObject({
+      kind: 'cancelled',
+    })
+    expect(
+      calls.some(({ path }) => path === '/api/accounts/verify-email-token'),
+    ).toBe(false)
+    elements.proofInput.value = browserProof
+    await expect(browserAttempt.submit()).resolves.toEqual({
+      status: 'verified',
+    })
+  })
+
   it('consumes the browser hidden value before network and reports success only after canonical profile readback', async () => {
     const elements = inputs()
     const { client, calls, cryptoCalls } = fixture((path) => {

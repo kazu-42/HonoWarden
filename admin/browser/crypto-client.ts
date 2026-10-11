@@ -3,6 +3,7 @@ import type { KdfSettings } from './crypto/kdf'
 import type { WrappedAccount, WrappedOrganization } from './crypto/keyring'
 
 export type CryptoCommand =
+  | { action: 'createAccount'; email: string; password: string }
   | { action: 'derive'; email: string; password: string; settings: KdfSettings }
   | { action: 'unlock'; account: WrappedAccount }
   | { action: 'organizations'; organizations: WrappedOrganization[] }
