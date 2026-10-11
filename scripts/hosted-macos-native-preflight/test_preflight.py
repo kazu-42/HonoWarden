@@ -287,6 +287,17 @@ const vm = require('node:vm'), assert = require('node:assert/strict');
             with self.assertRaisesRegex(p.Blocked, "api_cors_probe_invalid"):
                 p.verify_public_api_response(invalid)
 
+    def test_fixture_curl_distinguishes_tls_timeout_and_http_without_output(self):
+        for code, expected in [(60, "fixture_tls_untrusted"), (28, "fixture_http_timeout"),
+                               (22, "fixture_http_error"), (35, "fixture_tls_handshake_failed"),
+                               (7, "fixture_connect_failed"), (77, "fixture_ca_read_failed"),
+                               (255, "fixture_curl_failed")]:
+            with patch.object(p, "command", return_value=(b"FICTIONAL_PRIVATE_OUTPUT", code)), \
+                 self.assertRaisesRegex(p.Blocked, "^" + expected + "$"):
+                p.checked_fixture_curl(["https://127.0.0.1:8123/"], {})
+        with patch.object(p, "command", return_value=(b"public response", 0)):
+            self.assertEqual(p.checked_fixture_curl(["https://127.0.0.1:8123/"], {}), b"public response")
+
     def test_login_dom_never_retries_a_failed_protocol_operation(self):
         with patch.object(p, "cdp_probe", side_effect=p.Blocked("cdp_evaluation_failed")) as probe:
             with self.assertRaisesRegex(p.Blocked, "cdp_evaluation_failed"):

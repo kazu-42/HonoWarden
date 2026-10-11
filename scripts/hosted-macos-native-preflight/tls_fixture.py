@@ -140,9 +140,14 @@ def restore(root, record, run):
     hosted_only()
     validate_record(record)
     require(digest_certificate(root) == record["certificateSha256"], "tls_certificate_changed")
+    # The independent finish step may run after execute already removed trust.
+    # Prove the baseline first; removing an absent entry is not a recovery action.
+    if trust_digest(root, run, "after") == record["baselineSha256"]:
+        return
     try:
-        run(["/usr/bin/sudo", "-n", "/usr/bin/security", "remove-trusted-cert", "-d", str(Path(root) / "tls/ca.pem")],
-            timeout=5, ok=(0, 1))
+        _, code = run(["/usr/bin/sudo", "-n", "/usr/bin/security", "remove-trusted-cert", "-d", str(Path(root) / "tls/ca.pem")],
+                      timeout=5, ok=tuple(range(256)))
     except Exception:
         raise Blocked("tls_remove_command_failed") from None
+    require(code == 0, "tls_remove_nonzero_exit")
     require(trust_digest(root, run, "after") == record["baselineSha256"], "tls_trust_restore_mismatch")

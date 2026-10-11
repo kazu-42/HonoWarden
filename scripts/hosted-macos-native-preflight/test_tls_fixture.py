@@ -40,7 +40,7 @@ class TLSFixtureTests(unittest.TestCase):
                     raise TimeoutError()
                 return b"", 0
             with patch.object(tls, "hosted_only"), patch.object(tls, "generate", return_value=digest), \
-                 patch.object(tls, "trust_digest", return_value="b" * 64):
+                 patch.object(tls, "trust_digest", side_effect=["b" * 64, "c" * 64, "b" * 64, "b" * 64]):
                 with self.assertRaisesRegex(tls.Blocked, "tls_install_command_failed"):
                     tls.install(root, root / "owned.keychain-db", command, journal.append)
                 self.assertEqual(journal, [self.record(digest)])
@@ -49,8 +49,16 @@ class TLSFixtureTests(unittest.TestCase):
             self.assertEqual(calls[0][-1], str(root / "tls/ca.pem"))
             self.assertIn("127.0.0.1", calls[0])
             self.assertNotIn("-e", calls[0])
-            self.assertEqual(calls[1], calls[2])
+            self.assertEqual(len(calls), 2)
             self.assertIn("remove-trusted-cert", calls[1])
+
+    def test_already_restored_trust_is_not_removed_again(self):
+        with tempfile.TemporaryDirectory() as parent:
+            root, digest = self.root_and_certificate(parent)
+            with patch.object(tls, "hosted_only"), patch.object(tls, "trust_digest", return_value="b" * 64), \
+                 patch.object(tls, "generate") as command:
+                tls.restore(root, self.record(digest), command)
+                command.assert_not_called()
 
     def test_changed_certificate_and_foreign_record_cannot_remove_trust(self):
         with tempfile.TemporaryDirectory() as parent:
@@ -68,7 +76,7 @@ class TLSFixtureTests(unittest.TestCase):
             calls = []
             with patch.object(tls, "hosted_only"), patch.object(tls, "trust_digest", return_value="c" * 64):
                 with self.assertRaisesRegex(tls.Blocked, "tls_trust_restore_mismatch"):
-                    tls.restore(root, self.record(digest), lambda args, **_: calls.append(args))
+                    tls.restore(root, self.record(digest), lambda args, **_: (calls.append(args) or b"", 0))
             self.assertEqual(len(calls), 1)
             self.assertIn("remove-trusted-cert", calls[0])
             self.assertNotIn("trust-settings-import", calls[0])

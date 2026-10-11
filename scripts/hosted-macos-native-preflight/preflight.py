@@ -67,7 +67,7 @@ CLEANUP_FAILURE_CODES = FINALIZATION_BLOCKED_CODES | {"process_cleanup_failed", 
                                                 "keychain_readback_failed", "packet_filter_cleanup_failed", "tls_cleanup_failed", "cleanup_finalization_failed",
                                                 "cleanup_finalization_permission_denied", "cleanup_finalization_timeout",
                                                  "cleanup_finalization_api_unavailable"}
-TLS_CLEANUP_CODES = {"tls_trust_restore_mismatch", "tls_remove_command_failed", "tls_trust_read_failed",
+TLS_CLEANUP_CODES = {"tls_trust_restore_mismatch", "tls_remove_command_failed", "tls_remove_nonzero_exit", "tls_trust_read_failed",
                      "tls_export_not_owned", "tls_certificate_changed", "tls_record_invalid", "tls_hosted_guest_required", "tls_file_invalid"}
 CLEANUP_FAILURE_CODES |= TLS_CLEANUP_CODES
 WORKER_BINARY_PROOF = "pinned_darwin_arm64_version_verified"
@@ -1330,6 +1330,15 @@ def run_worker_differential(node, company, root, env, state, marker, report):
         STEP_END = previous
 
 
+def checked_fixture_curl(args, env):
+    output, code = command(["/usr/bin/curl", "--silent", "--fail", "--max-time", "2", *args],
+                           env=env, ok=tuple(range(256)))
+    reasons = {7: "fixture_connect_failed", 22: "fixture_http_error", 28: "fixture_http_timeout",
+               35: "fixture_tls_handshake_failed", 60: "fixture_tls_untrusted", 77: "fixture_ca_read_failed"}
+    require(code == 0, reasons.get(code, "fixture_curl_failed"))
+    return output
+
+
 def execute(temp, company):
     global STEP_END
     absolute_end = STEP_END
@@ -1431,11 +1440,10 @@ def execute(temp, company):
         except NETWORK.Blocked as error:
             raise Blocked(error.args[0]) from None
         report["networkIsolationBackend"] = "owned_pf_anchor"
-        allowed, _ = command(["/usr/bin/curl", "--silent",
-                              "--fail", "--max-time", "2", f"https://127.0.0.1:{port}/"], env=env)
+        allowed = checked_fixture_curl([f"https://127.0.0.1:{port}/"], env)
         require(json.loads(allowed).get("name") == "HonoWarden", "filter_allowed_loopback_failed")
-        api, _ = command(["/usr/bin/curl", "--silent", "--include", "--fail", "--max-time", "2",
-                          "--header", "Origin: null", f"https://127.0.0.1:{port}/api/config"], env=env)
+        api = checked_fixture_curl(["--include", "--header", "Origin: null",
+                                    f"https://127.0.0.1:{port}/api/config"], env)
         verify_public_api_response(api)
         report["apiCorsProbe"] = True
         # Use a live owned loopback listener outside the allowlist; never probe a third party.
