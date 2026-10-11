@@ -963,7 +963,7 @@ def public_report(report):
                 "worker_failure_projection_invalid")
     gui = report.get("gui")
     if gui is not None:
-        require(set(gui) == {"onConsole", "appWindowCount", "accessibilityGranted", "screenCaptureGranted"}
+        require(set(gui) == {"onConsole", "appWindowCount", "accessibilityGranted", "screenCaptureGranted", "securityAgentVisible"}
                 and type(gui["appWindowCount"]) is int and 0 <= gui["appWindowCount"] <= 100
                 and all(type(gui[k]) is bool for k in gui if k != "appWindowCount"), "gui_projection_invalid")
     require(report.get("authenticated") is False and report.get("credentialAdmission") is False, "credential_claim_refused")

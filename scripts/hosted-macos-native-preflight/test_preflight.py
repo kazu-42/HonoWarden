@@ -218,7 +218,7 @@ class PolicyTests(unittest.TestCase):
                 p.public_report({"authenticated": False, "credentialAdmission": False, key: "private"})
 
     def test_gui_projection_rejects_titles_and_bool_counts(self):
-        gui = {"onConsole": True, "appWindowCount": 1, "accessibilityGranted": False, "screenCaptureGranted": False}
+        gui = {"onConsole": True, "appWindowCount": 1, "accessibilityGranted": False, "screenCaptureGranted": False, "securityAgentVisible": False}
         p.public_report({"authenticated": False, "credentialAdmission": False, "gui": gui})
         with self.assertRaises(p.Blocked):
             p.public_report({"authenticated": False, "credentialAdmission": False, "gui": {**gui, "title": "private"}})

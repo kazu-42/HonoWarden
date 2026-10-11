@@ -22,6 +22,11 @@ let result: [String: Any] = [
     "appWindowCount": appWindows.count,
     "accessibilityGranted": AXIsProcessTrusted(),
     "screenCaptureGranted": CGPreflightScreenCaptureAccess(),
+    // Only a boolean is retained from other windows in the disposable guest.
+    "securityAgentVisible": windows.contains {
+        ($0[kCGWindowOwnerName as String] as? String) == "SecurityAgent" &&
+        ($0[kCGWindowLayer as String] as? Int) == 0
+    },
 ]
 let bytes = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
 FileHandle.standardOutput.write(bytes)
