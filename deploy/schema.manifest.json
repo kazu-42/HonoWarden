@@ -1,0 +1,650 @@
+[
+  {
+    "type": "index",
+    "name": "idx_account_deletions_state_cutoff",
+    "tbl_name": "account_deletions",
+    "sqlSha256": "eca5a1dbde39d3b7e80ac83cb3069cc6a21f5bf28852794d31863e7e0601e0f4"
+  },
+  {
+    "type": "index",
+    "name": "idx_account_lifecycle_tokens_active_purpose",
+    "tbl_name": "account_lifecycle_tokens",
+    "sqlSha256": "3a52dea2d7f21d5b42998d7180ed588464994df0f26728dc5bc9609b43285eb7"
+  },
+  {
+    "type": "index",
+    "name": "idx_account_lifecycle_tokens_expiry",
+    "tbl_name": "account_lifecycle_tokens",
+    "sqlSha256": "1e64d9c97e64c39eed511701a51f0c82262cf3409473715018b2c2275f08cb3e"
+  },
+  {
+    "type": "index",
+    "name": "idx_audit_events_actor_occurred",
+    "tbl_name": "audit_events",
+    "sqlSha256": "7d2d64e2bbaa7c6ebf34f2252edf59ca1d02a13cbb80b0ef1ab4f2307fb67c0e"
+  },
+  {
+    "type": "index",
+    "name": "idx_audit_events_name_occurred",
+    "tbl_name": "audit_events",
+    "sqlSha256": "035e424c2ea2e6ecf098fbaae43b33cc312a6f13674684683b201e133ccd1238"
+  },
+  {
+    "type": "index",
+    "name": "idx_audit_events_occurred_at",
+    "tbl_name": "audit_events",
+    "sqlSha256": "a63939e773d33064d66dc06c3f561d586f9e02a766d6eedf5f2294906845de3e"
+  },
+  {
+    "type": "index",
+    "name": "idx_audit_events_request_id",
+    "tbl_name": "audit_events",
+    "sqlSha256": "7832be80c3203d456d3dfb10987b3c8c5bb9d8e5c27985bb1bd926a1e1bafd16"
+  },
+  {
+    "type": "index",
+    "name": "idx_auth_attempts_bucket_occurred",
+    "tbl_name": "auth_attempts",
+    "sqlSha256": "e76c3bdd020640fb9fe9f1c4023d6bcbe8e90c03de7b639cb273867a80909f7e"
+  },
+  {
+    "type": "index",
+    "name": "idx_auth_attempts_subject_occurred",
+    "tbl_name": "auth_attempts",
+    "sqlSha256": "a5b991e4a41f827ab6fdd72daddf9d41a937566c752e65b76b17f4ad39c0f196"
+  },
+  {
+    "type": "index",
+    "name": "idx_auth_failure_buckets_locked_until",
+    "tbl_name": "auth_failure_buckets",
+    "sqlSha256": "0e0facd4bde8bebe2288e422f0432f8ead290e787c4337a64978cd1627ec03cb"
+  },
+  {
+    "type": "index",
+    "name": "idx_auth_requests_owner_status_expires",
+    "tbl_name": "auth_requests",
+    "sqlSha256": "9c2d001bbcc222045d86eaa8a4ecb6f6aed2b0c9cfcd5b8251bb321f7e4360e9"
+  },
+  {
+    "type": "index",
+    "name": "idx_auth_requests_requester_status",
+    "tbl_name": "auth_requests",
+    "sqlSha256": "fdfd7daa1e0dcb511af65fcd3c59ce08fd01218eb1b6c97630ed1b7ab809b4fe"
+  },
+  {
+    "type": "index",
+    "name": "idx_auth_requests_retention",
+    "tbl_name": "auth_requests",
+    "sqlSha256": "1a1111bc94a1be61435b7b1550d282fdc7ad4173f29bcd271a573d4b38e006ff"
+  },
+  {
+    "type": "index",
+    "name": "idx_auth_requests_single_pending",
+    "tbl_name": "auth_requests",
+    "sqlSha256": "1c6838f11362fbdfee47e9714ee40694d8ba665ea895bb14906028b40224d7c5"
+  },
+  {
+    "type": "index",
+    "name": "idx_cipher_attachments_user_cipher",
+    "tbl_name": "cipher_attachments",
+    "sqlSha256": "d3e1f21a5924f92f58e91ea561f652021681dcc7c4cdbc9e9768ed640317359f"
+  },
+  {
+    "type": "index",
+    "name": "idx_cipher_attachments_user_revision",
+    "tbl_name": "cipher_attachments",
+    "sqlSha256": "8bae9c351c9b3d4880b3b111827cf624da24b364cfad7f59c2976c4c32f85f8a"
+  },
+  {
+    "type": "index",
+    "name": "idx_ciphers_org",
+    "tbl_name": "ciphers",
+    "sqlSha256": "7d11577de0496afcf958999d3e6bf5e559a78bef19a186ba7b2d9917fa2a6dd2"
+  },
+  {
+    "type": "index",
+    "name": "idx_ciphers_user_deleted",
+    "tbl_name": "ciphers",
+    "sqlSha256": "64992d0cda46cb0d328cc933e6ee1c2f00b0e6557a2e1167bf6a478dca43cf4f"
+  },
+  {
+    "type": "index",
+    "name": "idx_ciphers_user_revision",
+    "tbl_name": "ciphers",
+    "sqlSha256": "4c47a9ef865492b19787e5fe1375eb76d6d353104d711a495e3ade50be99ae21"
+  },
+  {
+    "type": "index",
+    "name": "idx_collection_groups_collection",
+    "tbl_name": "collection_groups",
+    "sqlSha256": "fc80dd285e12ca6f541d14c0b6654fa0f267a058e8668392ee0bd85ab8fb0330"
+  },
+  {
+    "type": "index",
+    "name": "idx_collections_id_org",
+    "tbl_name": "collections",
+    "sqlSha256": "d9e91168e53d6e09da54b9159df9ec7bb019249874dcd543860872305e6b70a0"
+  },
+  {
+    "type": "index",
+    "name": "idx_collections_org",
+    "tbl_name": "collections",
+    "sqlSha256": "e23dd8bbe102d0d133d5a35e2b63c0b5e21d061c5fb1259bf886347a4de954ca"
+  },
+  {
+    "type": "index",
+    "name": "idx_devices_user_id",
+    "tbl_name": "devices",
+    "sqlSha256": "e4de464b8d29539e5d5a8d7be173c6540307877322f131f8876a13212cc8d7a1"
+  },
+  {
+    "type": "index",
+    "name": "idx_email_verification_challenges_expiry",
+    "tbl_name": "email_verification_challenges",
+    "sqlSha256": "9d52ed759fe2e411833f794c6ba8b60fbcadaa5d5df1f87efd2c481c1f272cce"
+  },
+  {
+    "type": "index",
+    "name": "idx_emergency_access_grantee_status",
+    "tbl_name": "emergency_access",
+    "sqlSha256": "82b88b48e8140b8da8a95a3c39dc49141eb7e743da8c5a10a211dd09eed222b1"
+  },
+  {
+    "type": "index",
+    "name": "idx_emergency_access_grantor_email_invited",
+    "tbl_name": "emergency_access",
+    "sqlSha256": "5b01407ecefac62042b2a8b4f294fca308ba77c78f87738d906aa26f5d487076"
+  },
+  {
+    "type": "index",
+    "name": "idx_emergency_access_grantor_grantee",
+    "tbl_name": "emergency_access",
+    "sqlSha256": "3c2672d415cc39364524b94702e3cea231f6544465f600852362d1d3d123d7bf"
+  },
+  {
+    "type": "index",
+    "name": "idx_emergency_access_grantor_status",
+    "tbl_name": "emergency_access",
+    "sqlSha256": "759d43df73c3f883324be3aa0b6bb7eca9f799deef3808efe1227e1b4bd226b5"
+  },
+  {
+    "type": "index",
+    "name": "idx_folders_user_revision",
+    "tbl_name": "folders",
+    "sqlSha256": "a7bcf3dd53ad290d88ded5aefec67cfb2b215e47a66bc12124ed05a18ef49b1f"
+  },
+  {
+    "type": "index",
+    "name": "idx_group_users_member",
+    "tbl_name": "organization_group_users",
+    "sqlSha256": "3adad7718f52ed0ed93a3a827abe7f737aa0b0a91f627743a568d40136c85d02"
+  },
+  {
+    "type": "index",
+    "name": "idx_inquiry_events_name_occurred",
+    "tbl_name": "inquiry_events",
+    "sqlSha256": "278c65ad6c02682baa10ebe6d9bb80a3eb2a638e547663d15d560114111eee88"
+  },
+  {
+    "type": "index",
+    "name": "idx_inquiry_events_thread_occurred",
+    "tbl_name": "inquiry_events",
+    "sqlSha256": "778fe80725176a6e0a5b1ebf3c46f285dcbb3fc1f138c38e6a66eccf4aa65c45"
+  },
+  {
+    "type": "index",
+    "name": "idx_inquiry_messages_delivery_status",
+    "tbl_name": "inquiry_messages",
+    "sqlSha256": "e281c36493618c04fb08a4f6f4afaada4a2975a87ac35f61b3868f856ac66a4b"
+  },
+  {
+    "type": "index",
+    "name": "idx_inquiry_messages_retention",
+    "tbl_name": "inquiry_messages",
+    "sqlSha256": "1276d7003d62bef1073dc141895f53e43e0533cf3eb30247fff10475f563ddb9"
+  },
+  {
+    "type": "index",
+    "name": "idx_inquiry_messages_thread_received",
+    "tbl_name": "inquiry_messages",
+    "sqlSha256": "d01dc1f983e21b32f56d952e083741c2efef665d98f478cc50b0517d832f5169"
+  },
+  {
+    "type": "index",
+    "name": "idx_inquiry_threads_mailbox_status",
+    "tbl_name": "inquiry_threads",
+    "sqlSha256": "3293d24170eb23a9cb4cfe9eccb9b784392d0d150619b6339232a2c384748b48"
+  },
+  {
+    "type": "index",
+    "name": "idx_inquiry_threads_retention",
+    "tbl_name": "inquiry_threads",
+    "sqlSha256": "9a1520b35a495a160a2e8a6cc3fd497b99dc1cc3ee125e68223466f439f40b35"
+  },
+  {
+    "type": "index",
+    "name": "idx_legacy_inquiry_messages_mailbox_received",
+    "tbl_name": "legacy_inquiry_messages_0009",
+    "sqlSha256": "c4f9df0efce1d7b4a5b85a48054b59140c6f46b9a3548919401ebd7d37a36c36"
+  },
+  {
+    "type": "index",
+    "name": "idx_legacy_inquiry_messages_message_id_sha256",
+    "tbl_name": "legacy_inquiry_messages_0009",
+    "sqlSha256": "c6629a04d92234dee116deba312e7a4e22e2b7d3c5c7504988534352e0ccd4b8"
+  },
+  {
+    "type": "index",
+    "name": "idx_legacy_inquiry_messages_retention",
+    "tbl_name": "legacy_inquiry_messages_0009",
+    "sqlSha256": "77f787d14b38d82d327065eb06831fab543629e6e59a2351ce6ce08fa68b18a9"
+  },
+  {
+    "type": "index",
+    "name": "idx_legacy_inquiry_messages_subject_sha256",
+    "tbl_name": "legacy_inquiry_messages_0009",
+    "sqlSha256": "cee77291feb4b41e075ae23f45b586dcf0d7561ccf130aa6a5acd67856735c5a"
+  },
+  {
+    "type": "index",
+    "name": "idx_org_groups_org",
+    "tbl_name": "organization_groups",
+    "sqlSha256": "b50bdf136c27eec279473ef321daa2338f702b459543e176349fcbf5f1461433"
+  },
+  {
+    "type": "index",
+    "name": "idx_org_users_id_org",
+    "tbl_name": "organization_users",
+    "sqlSha256": "fff27bccc0f0fb5301cf55119fb3ead0320f07ed32eb3989a13bfb452af07a90"
+  },
+  {
+    "type": "index",
+    "name": "idx_org_users_org",
+    "tbl_name": "organization_users",
+    "sqlSha256": "e16799d21fe630243c80645b4f9f6c5efa5136ad4c88a6be17c89e83840e38a7"
+  },
+  {
+    "type": "index",
+    "name": "idx_org_users_user",
+    "tbl_name": "organization_users",
+    "sqlSha256": "abc60f480639217971fca16b01b84c9704e301e3e7dea3526fef2eeb68a10391"
+  },
+  {
+    "type": "index",
+    "name": "idx_organization_audit_scope_occurred",
+    "tbl_name": "audit_events",
+    "sqlSha256": "6a37a234097afe28b6fd4c6fd60339a2b26111fea592e55a2efa538ce1c40787"
+  },
+  {
+    "type": "index",
+    "name": "idx_refresh_tokens_expires_at",
+    "tbl_name": "refresh_tokens",
+    "sqlSha256": "e2bea752345970be87b75ad88b0ce2704649a46dffec8e1bde09c14f2678cea0"
+  },
+  {
+    "type": "index",
+    "name": "idx_refresh_tokens_user_device",
+    "tbl_name": "refresh_tokens",
+    "sqlSha256": "75eee1c9e4c4a5c92a695f06d8f3e5c1f09bcc9cbf49400068d8e58d6473c021"
+  },
+  {
+    "type": "index",
+    "name": "idx_request_quota_buckets_blocked_until",
+    "tbl_name": "request_quota_buckets",
+    "sqlSha256": "e03dd257d398cedea85964e17ba23f7466a856778743539115cec79e9fd33d3b"
+  },
+  {
+    "type": "index",
+    "name": "idx_request_quota_buckets_scope_updated",
+    "tbl_name": "request_quota_buckets",
+    "sqlSha256": "ffffb621a1a34804125479c216e51529563af6fab8ea78b55ba40ce900e4a42f"
+  },
+  {
+    "type": "index",
+    "name": "idx_send_download_tickets_expiry",
+    "tbl_name": "send_download_tickets",
+    "sqlSha256": "0f16e6b62e0041f4407ad964d45baf42acd82aaa1c719ce33ffd5232a1b41b25"
+  },
+  {
+    "type": "index",
+    "name": "idx_send_files_cleanup",
+    "tbl_name": "send_files",
+    "sqlSha256": "7528ac5709f42b5a785276dc39659e1cfe360d634137b1a088c48925d61db930"
+  },
+  {
+    "type": "index",
+    "name": "idx_send_files_owner_pending",
+    "tbl_name": "send_files",
+    "sqlSha256": "df25db5806e4d07a0120a4b1465772db8388887b6655d774ee00ace8f66c62fe"
+  },
+  {
+    "type": "index",
+    "name": "idx_sends_owner_active",
+    "tbl_name": "sends",
+    "sqlSha256": "2353d672311a865451a66eb0ddc32417ae72bf9a0f4016ae0ac33b44e65b74f4"
+  },
+  {
+    "type": "index",
+    "name": "idx_sends_retention",
+    "tbl_name": "sends",
+    "sqlSha256": "5d97051f870d4b9dbde6c7a5f153225e46716c6efa0a326b0c115d0e679bc5d5"
+  },
+  {
+    "type": "index",
+    "name": "idx_totp_challenges_hash",
+    "tbl_name": "totp_challenges",
+    "sqlSha256": "c215820e10505e52c53b66eda411cd6bdb227b37f213ebf2c7599c5790b1337c"
+  },
+  {
+    "type": "index",
+    "name": "idx_totp_challenges_user_expires",
+    "tbl_name": "totp_challenges",
+    "sqlSha256": "cf7f465b63294b70612d04aa74ddb05d4e7265ad6d71c4bfdec1b198e43edbe6"
+  },
+  {
+    "type": "index",
+    "name": "idx_users_email_normalized",
+    "tbl_name": "users",
+    "sqlSha256": "f5cc6e0a67a14b8dfadfe2303a71a06e977f325737ff1fdd727a480d92091ce4"
+  },
+  {
+    "type": "index",
+    "name": "idx_webauthn_challenges_expires",
+    "tbl_name": "webauthn_challenges",
+    "sqlSha256": "1dee329d2e290bfa66a005d2e1fa9f67aae48130001ea293a43c1cada2391874"
+  },
+  {
+    "type": "index",
+    "name": "idx_webauthn_challenges_retention",
+    "tbl_name": "webauthn_challenges",
+    "sqlSha256": "3f87bdeb6100342a3fae5851ba21b97f1acc37cf712171fd2b8325db0f9574b5"
+  },
+  {
+    "type": "index",
+    "name": "idx_webauthn_credentials_user_revision",
+    "tbl_name": "webauthn_credentials",
+    "sqlSha256": "75f5eb16e77a877c7ec468f72e058edbd4866b212013e21b7eb6c6d84220fdec"
+  },
+  {
+    "type": "table",
+    "name": "account_deletions",
+    "tbl_name": "account_deletions",
+    "sqlSha256": "6cca2b105fd5f84e65898988e988d8f1f2955f10de7bcb8668c2946849a2c54f"
+  },
+  {
+    "type": "table",
+    "name": "account_kdf_population",
+    "tbl_name": "account_kdf_population",
+    "sqlSha256": "d7aa5d58cdaf47450d60d4fc6283a1f63bc194885ece621394782b8274e6b062"
+  },
+  {
+    "type": "table",
+    "name": "account_lifecycle_tokens",
+    "tbl_name": "account_lifecycle_tokens",
+    "sqlSha256": "b209f22b059524e286570e7b00b821352f6608192a73c7b216d37f3c737de99f"
+  },
+  {
+    "type": "table",
+    "name": "audit_events",
+    "tbl_name": "audit_events",
+    "sqlSha256": "190f37c8b04eaf30317f0a6fe4a8d0aff824b644ce66bb0bdcfb0450d08cc3ee"
+  },
+  {
+    "type": "table",
+    "name": "auth_attempts",
+    "tbl_name": "auth_attempts",
+    "sqlSha256": "c506cf9798ddc8af2aedcf94147f2322a0f786b564261c1618ca84f94d2897a6"
+  },
+  {
+    "type": "table",
+    "name": "auth_failure_buckets",
+    "tbl_name": "auth_failure_buckets",
+    "sqlSha256": "ee7c11ab2aa9a0571506f989a2926b706c1780d95644600371bbde9e62ec3f4e"
+  },
+  {
+    "type": "table",
+    "name": "auth_requests",
+    "tbl_name": "auth_requests",
+    "sqlSha256": "f3cdfda15065e6c5fc74859f69e83cb1727e83b7ea67f7a1be82160e16d7b18f"
+  },
+  {
+    "type": "table",
+    "name": "cipher_attachments",
+    "tbl_name": "cipher_attachments",
+    "sqlSha256": "475d7f75efb45b59735f6b0133ec90dc265daac2e0b1493954369a4daf8d7cdb"
+  },
+  {
+    "type": "table",
+    "name": "ciphers",
+    "tbl_name": "ciphers",
+    "sqlSha256": "9d4279d3f2ce3595969b336697db674e875ac38c2b6363dd39f4fe003666e08a"
+  },
+  {
+    "type": "table",
+    "name": "collection_ciphers",
+    "tbl_name": "collection_ciphers",
+    "sqlSha256": "689d7d4c35caf05380d163f7b91c1b01c360a6ae98c166fd9a5682f54eaab423"
+  },
+  {
+    "type": "table",
+    "name": "collection_groups",
+    "tbl_name": "collection_groups",
+    "sqlSha256": "90cd83fc37a1439cb5791082905ae96c07a2ba6e2e5ecf44ddcc8306c9c714ae"
+  },
+  {
+    "type": "table",
+    "name": "collection_users",
+    "tbl_name": "collection_users",
+    "sqlSha256": "8ac48294ecf6b10e9bb994ab3650ec6094254ea4b4b2e1ff1dfbc0d47de576ea"
+  },
+  {
+    "type": "table",
+    "name": "collections",
+    "tbl_name": "collections",
+    "sqlSha256": "5b7e9a12c37ea79b417e07f6def6be04debf78e25bb2edd34dcddcb390581e1e"
+  },
+  {
+    "type": "table",
+    "name": "devices",
+    "tbl_name": "devices",
+    "sqlSha256": "320b6ed828fc0032783486d891ef7919fee0724f6233e8069d80dae509d49a83"
+  },
+  {
+    "type": "table",
+    "name": "email_verification_challenges",
+    "tbl_name": "email_verification_challenges",
+    "sqlSha256": "64d2acbc28478ed026217cd3fae65460b7ef54cd7a8ac366d0c6a135fad51760"
+  },
+  {
+    "type": "table",
+    "name": "emergency_access",
+    "tbl_name": "emergency_access",
+    "sqlSha256": "50848068cf6f6af803e7ec48e225a768f52bd0de7f14b85976bccc13f242e7f8"
+  },
+  {
+    "type": "table",
+    "name": "folders",
+    "tbl_name": "folders",
+    "sqlSha256": "cab86c920776ac736e2d8e6076c2363bd0c6f74986a77b61724383d9b4b53523"
+  },
+  {
+    "type": "table",
+    "name": "initial_setup_receipt",
+    "tbl_name": "initial_setup_receipt",
+    "sqlSha256": "c1def46c65173e02a3b4ff4e75040d2803ea774e930841e4567b0b0af1782333"
+  },
+  {
+    "type": "table",
+    "name": "inquiry_events",
+    "tbl_name": "inquiry_events",
+    "sqlSha256": "394757dad6de7c298d04c425659907d9a54e4114769b5edb4d934df236050157"
+  },
+  {
+    "type": "table",
+    "name": "inquiry_messages",
+    "tbl_name": "inquiry_messages",
+    "sqlSha256": "11b5dbda762315ac5ccf7daaa646957ab14bd17c5f0ec05e6b7549855149a42c"
+  },
+  {
+    "type": "table",
+    "name": "inquiry_threads",
+    "tbl_name": "inquiry_threads",
+    "sqlSha256": "92f212f695f82f75c1fb3d8f84b3112e7478f6b8e7891f2fd79575a24c09db76"
+  },
+  {
+    "type": "table",
+    "name": "legacy_inquiry_messages_0009",
+    "tbl_name": "legacy_inquiry_messages_0009",
+    "sqlSha256": "8ebeaf5a780ed0142fbfc4ff3ad7e90c602ae1b78436aaaf2ea2f94b0d49c888"
+  },
+  {
+    "type": "table",
+    "name": "organization_company_settings",
+    "tbl_name": "organization_company_settings",
+    "sqlSha256": "afa5a45fee9a7b68a588db803a21fe1c4202beb128b025ca88617a9491ff4e6f"
+  },
+  {
+    "type": "table",
+    "name": "organization_group_users",
+    "tbl_name": "organization_group_users",
+    "sqlSha256": "f8a1782272debc05e244f4d097e6931c88a00a49d17bb7487fb9e745a578250d"
+  },
+  {
+    "type": "table",
+    "name": "organization_groups",
+    "tbl_name": "organization_groups",
+    "sqlSha256": "762ca6a38a3543f745c4ea25f0b4e57a39d5d11342a64d1eea54ecbad0370d30"
+  },
+  {
+    "type": "table",
+    "name": "organization_policies",
+    "tbl_name": "organization_policies",
+    "sqlSha256": "1b56aaf800fcd4877370f8e24beedb9b6ab6404ac1ee254894f4bd740623642f"
+  },
+  {
+    "type": "table",
+    "name": "organization_users",
+    "tbl_name": "organization_users",
+    "sqlSha256": "0c5f4441628d96b4f818f1549f84029d07f58f2b0d10964428d32fd4938c1a1b"
+  },
+  {
+    "type": "table",
+    "name": "organizations",
+    "tbl_name": "organizations",
+    "sqlSha256": "39b5c5b71faab61fad31d014e88c3aa01fe62ca4778a17cf935d9b558536c085"
+  },
+  {
+    "type": "table",
+    "name": "personal_api_keys",
+    "tbl_name": "personal_api_keys",
+    "sqlSha256": "73457672ac50c784d6b2f87508104b2260424dcfe012ff6f05dfed0b70b71e51"
+  },
+  {
+    "type": "table",
+    "name": "refresh_tokens",
+    "tbl_name": "refresh_tokens",
+    "sqlSha256": "892fe7a5002f7ff5caac61e64a224e435e53607bbd3151837121a791d59ba197"
+  },
+  {
+    "type": "table",
+    "name": "request_quota_buckets",
+    "tbl_name": "request_quota_buckets",
+    "sqlSha256": "0b97b2625b94ba2aae9da0b023694c8f7e2cbb1d4d461418540f4ac771c0752c"
+  },
+  {
+    "type": "table",
+    "name": "schema_migrations",
+    "tbl_name": "schema_migrations",
+    "sqlSha256": "e6cddc7432390ff464d89d515cf5326ab078485dad0f44c173eb397330545398"
+  },
+  {
+    "type": "table",
+    "name": "send_download_tickets",
+    "tbl_name": "send_download_tickets",
+    "sqlSha256": "88a03403716b3eba84540e83e77bc86b4b486a23e29d766db8230a3cd01fc5b3"
+  },
+  {
+    "type": "table",
+    "name": "send_files",
+    "tbl_name": "send_files",
+    "sqlSha256": "3aafd4cb7e1544871c48233fb97f696f441ee6bfe165179442a20755bc6dd6d2"
+  },
+  {
+    "type": "table",
+    "name": "sends",
+    "tbl_name": "sends",
+    "sqlSha256": "5fb8d12aa8c13b3b3ff8d7f34f32486d864322e57232802f585a2888fd48146a"
+  },
+  {
+    "type": "table",
+    "name": "totp_challenges",
+    "tbl_name": "totp_challenges",
+    "sqlSha256": "a76953d81a43d561c09a3266030e9d2ce89e35350479439ed4403fd2827f6592"
+  },
+  {
+    "type": "table",
+    "name": "user_key_rotation_wrapper_history",
+    "tbl_name": "user_key_rotation_wrapper_history",
+    "sqlSha256": "3c1a7af4969b874e85aff26fe78fe847f836b2ac2c3ecb50c8965f409a19860b"
+  },
+  {
+    "type": "table",
+    "name": "user_totp",
+    "tbl_name": "user_totp",
+    "sqlSha256": "aa537e3e9482604c8edc57a4fd626d0db35d34ef213b135ee6cef2466f3d7481"
+  },
+  {
+    "type": "table",
+    "name": "users",
+    "tbl_name": "users",
+    "sqlSha256": "fb2565fdb26a84d9dfdcd97201bfea344dd9e386b4947964c0c04816a6a4e295"
+  },
+  {
+    "type": "table",
+    "name": "webauthn_challenges",
+    "tbl_name": "webauthn_challenges",
+    "sqlSha256": "e0384e72597bdbdecd46a227ed3e669803a9ee6d801f16b15b0fec4df4143685"
+  },
+  {
+    "type": "table",
+    "name": "webauthn_credentials",
+    "tbl_name": "webauthn_credentials",
+    "sqlSha256": "1027aca7a8eb4dfa1e355f7995dffa069df4e04f65f0629f0a23b9bf2257ebe3"
+  },
+  {
+    "type": "trigger",
+    "name": "invalidate_session_mfa_on_totp_change",
+    "tbl_name": "user_totp",
+    "sqlSha256": "3e01e04600b431e8168754c50422538029cd9f5d53643734bc8b80191529c182"
+  },
+  {
+    "type": "trigger",
+    "name": "invalidate_session_mfa_on_totp_delete",
+    "tbl_name": "user_totp",
+    "sqlSha256": "32ab02d58e68ac31e17d66a4dcae19ea5047bfc6919bccb349e30a8651a3e09f"
+  },
+  {
+    "type": "trigger",
+    "name": "trg_users_kdf_population_delete",
+    "tbl_name": "users",
+    "sqlSha256": "11c2c7cc52019f4f6e2d6274aa3ae0c0fb6716f43a9343f4638a5a98e137fe32"
+  },
+  {
+    "type": "trigger",
+    "name": "trg_users_kdf_population_insert",
+    "tbl_name": "users",
+    "sqlSha256": "7a9044e708ba2544746e9d4dab671f33beb93d05ebed3f15d75f4a1b48bdd92b"
+  },
+  {
+    "type": "trigger",
+    "name": "trg_users_kdf_population_update",
+    "tbl_name": "users",
+    "sqlSha256": "449f1231bacc7bfe1717872b53a5ce1468d9b7171092f46658d78343cbb2a1d3"
+  },
+  {
+    "type": "trigger",
+    "name": "users_invalidate_stale_user_key_id",
+    "tbl_name": "users",
+    "sqlSha256": "239f5cbad63006f4c1c1b817f34f75292b3000e651e5bb5a43a24f36792d55e6"
+  }
+]

@@ -3,6 +3,8 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   root: fileURLToPath(new URL('./admin', import.meta.url)),
+  // Release builds must not read ambient .env.local or mode-specific dotenv files.
+  envDir: false,
   base: '/admin/',
   build: {
     outDir: fileURLToPath(new URL('./dist/admin', import.meta.url)),
