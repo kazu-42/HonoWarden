@@ -2,7 +2,7 @@
 
 Target: `v0.1.0-alpha`.
 
-Last updated: 2026-10-04.
+Last updated: 2026-10-11.
 
 These migration files are frozen for the alpha release line. Do not edit an
 already-applied migration. Add a new forward-only migration for future schema
@@ -27,7 +27,7 @@ changes and update this document in the same change.
 | `migrations/0012_auth_requests.sql`                           | `71fc9ca16ea9dd2e6e8dbe9c7c93cc2899b8375b482eaeaf3a673b6d01b50b3d` |
 | `migrations/0013_auth_request_supersede.sql`                  | `ad47a1465ca857903c97d837a943ace3ca2505ff20197e6533259c2154f6ac86` |
 | `migrations/0014_organizations.sql`                           | `95cc696e345d309a32e548f44e7ab7ebd91e8b2ba335f59c2048e36b9f27f9cb` |
-| `migrations/0014a_kdf_population.sql`                         | `96ec8647d11519c99ff14b88b89a0213472f5ad5c3af618adea958b9f920657f` |
+| `migrations/0014a_kdf_population.sql`                         | `3362fd550241d702875e5c4409e2ee871a2a3b2b820facd9bf44aabaa4e0ed78` |
 | `migrations/0015_webauthn.sql`                                | `e342fece7a091ffb60a3b2f55fbae0ef8fc2c6197216e891030bde6f655a6915` |
 | `migrations/0016_user_key_rotation_wrapper_history.sql`       | `5c99ca3973711d0031ed2b48bed77f3191ec2773af9ae570b1e48f5dfae209ac` |
 | `migrations/0017_account_lifecycle.sql`                       | `5ed91a78fea52d661b07bdebbc4d74654b4bab0a84010829874202bd6bf219dc` |
@@ -47,6 +47,17 @@ changes and update this document in the same change.
 | `migrations/0031_email_verification.sql`                      | `0875c85363623e89329499fbcf7fd7e3b3907c51015a2f76b68adfcd6b6a358a` |
 | `migrations/0032_company_settings.sql`                        | `86560684688c3332de0685fe703b5faacb012365573f7e43b658279dbf645338` |
 | `migrations/0033_initial_setup.sql`                           | `43e83312712f1c28582f526fcfa45dfaddc87f845a5f44c925d9f4d0e2a6a93c` |
+
+Migration 0014a was amended on 2026-10-11 before any remote apply. Remote D1
+rejected its two trigger guards written as `SELECT CASE WHEN NOT EXISTS (...)
+THEN RAISE(...) END;` with `incomplete input`, because the statement splitter
+treats that `END;` as the end of the trigger. Both guards now use the
+equivalent `SELECT RAISE(ABORT, ...) WHERE NOT EXISTS (...);`. A disposable D1
+database applied all 35 files, matched every `sqlite_master` hash in
+`deploy/schema.manifest.json`, and exercised insert, KDF update, aborted and
+normal delete. No environment had applied the earlier text; recreate any local
+development database that did. Avoid `CASE ... END;` inside trigger bodies in
+future migrations.
 
 Migration 0022 is a post-release, local-only source addition for nullable user-key
 ID metadata and old-writer invalidation. It has not been applied remotely. The

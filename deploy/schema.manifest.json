@@ -627,7 +627,7 @@
     "type": "trigger",
     "name": "trg_users_kdf_population_delete",
     "tbl_name": "users",
-    "sqlSha256": "11c2c7cc52019f4f6e2d6274aa3ae0c0fb6716f43a9343f4638a5a98e137fe32"
+    "sqlSha256": "cfc2d3c6efff81905f12646749acba8dc9060804c4eac02ae9c2404c49e80001"
   },
   {
     "type": "trigger",
@@ -639,7 +639,7 @@
     "type": "trigger",
     "name": "trg_users_kdf_population_update",
     "tbl_name": "users",
-    "sqlSha256": "449f1231bacc7bfe1717872b53a5ce1468d9b7171092f46658d78343cbb2a1d3"
+    "sqlSha256": "fa2d6e47a67502ac6c741203c8795510c20bb15ea3c350be6f1df65ebc0b05d5"
   },
   {
     "type": "trigger",

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
@@ -448,3 +448,25 @@ const allMigrations = [
   personalApiKeysMigration,
   emergencyAccessMigration,
 ].join('\n')
+
+describe('remote D1 statement splitting', () => {
+  it('keeps trigger bodies free of an inner END; that D1 reads as the trigger end', () => {
+    // Remote D1 rejected 0014a's former `SELECT CASE ... END;` guards with
+    // `incomplete input`. Use `SELECT RAISE(...) WHERE ...` instead.
+    const violations = readdirSync('migrations')
+      .filter((name) => name.endsWith('.sql'))
+      .sort()
+      .flatMap((name) =>
+        [
+          ...readFileSync(`migrations/${name}`, 'utf8').matchAll(
+            /CREATE TRIGGER[\s\S]*?\nEND;/g,
+          ),
+        ]
+          .filter((trigger) =>
+            /\bEND\s*;/.test(trigger[0].slice(0, -'\nEND;'.length)),
+          )
+          .map(() => name),
+      )
+    expect(violations).toEqual([])
+  })
+})
