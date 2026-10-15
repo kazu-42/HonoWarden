@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "scope": "source_only_preauth_not_authorized_to_execute",
+  "files": [
+    {
+      "path": "preflight.ps1",
+      "bytes": 19695,
+      "sha256": "77397ad06242f0c79134abf63bed25be60b4403e8e27dc5f2015f679c7d29a50"
+    },
+    {
+      "path": "preflight.mjs",
+      "bytes": 11219,
+      "sha256": "ae52fd3a3edf9ae60391cabbbc4759c22016548d8e494b3ab53b1404e4e8862a"
+    },
+    {
+      "path": "preflight-policy.mjs",
+      "bytes": 8623,
+      "sha256": "0cdfeab06f6700d664c792218c4f841b81a11577a232e43e895c6bfefa30c058"
+    },
+    {
+      "path": "preflight.node-check.mjs",
+      "bytes": 43913,
+      "sha256": "b1fe14abe848fb92f9e473cfddc716243206dd21074231de1861569823cae3d9"
+    },
+    {
+      "path": "preauth-native.cs",
+      "bytes": 3407,
+      "sha256": "6f64d5514e11b8236e8baa62fc8f897fbc778132d4bf2e93a7fafe4da12febd8"
+    },
+    {
+      "path": "windows-native.cs",
+      "bytes": 11400,
+      "sha256": "8e552d4a7e126a0bf5e347a81392fa0475ff98e8f71f30f9728941f5d36c6527"
+    },
+    {
+      "path": "windows-helper.ps1",
+      "bytes": 4077,
+      "sha256": "9264657c2f0eac443719f8d500b4000786e9e3346dd75fc26c9561bca3f52eb7"
+    },
+    {
+      "path": "windows.mjs",
+      "bytes": 7779,
+      "sha256": "08299f485763a24c28208cc506857ffc9395f2b1e47b6583e802dbe53bbdc7eb"
+    },
+    {
+      "path": "cdp.mjs",
+      "bytes": 4832,
+      "sha256": "4347920fa5a7e8ca54330263f05a372774c08ae9d6eaaec27c39ad4690e0fe84"
+    },
+    {
+      "path": "policy.mjs",
+      "bytes": 8485,
+      "sha256": "294115800f29345b46c0ef3df1c78d1a2707b3e4742ba0400a744a9c300264fc"
+    },
+    {
+      "path": "desktop-payload-manifest.json",
+      "bytes": 16982,
+      "sha256": "3b49f1f5db161f66901c378e0a7322575345bc8ab857f3eeda94177733915c3f"
+    },
+    {
+      "path": "company-source-manifest.json",
+      "bytes": 24136,
+      "sha256": "1a380f6818bed69e8e15b1f4091225a7d2b45ae7cd90868528c4f5d25c0cab3d"
+    },
+    {
+      "path": "parser-diagnostic.mjs",
+      "bytes": 7196,
+      "sha256": "b2302332bf4532ac5b25a4067f3486e58c2aa263053e9ebd79e24849b45eb0db"
+    },
+    {
+      "path": "parser-diagnostic.node-check.mjs",
+      "bytes": 18428,
+      "sha256": "e97a65d7b5a0630799439894c42521d23ed8007715130bd711402644c342df8d"
+    },
+    {
+      "path": "public-control-phases.mjs",
+      "bytes": 3146,
+      "sha256": "67d1eeb11f6f865fc9d96c1021f13048c74fa7409a97e0d0d640636f8b03e178"
+    },
+    {
+      "path": "utility-diagnostic.mjs",
+      "bytes": 11752,
+      "sha256": "61da08fd8994d9f6b8490695cbc07142e281e21413ca796cb490588cbb7dffd5"
+    },
+    {
+      "path": "utility-diagnostic.node-check.mjs",
+      "bytes": 12942,
+      "sha256": "b949a2883c46fbc56edebe573f1b9641e458c89ef2e2641aba176fd42ddbc518"
+    },
+    {
+      "path": "native-stdio.node-check.mjs",
+      "bytes": 4300,
+      "sha256": "384d597af1bb5a4997b1aeeb5b8b72d4bf0e66ff5bb97ae3ff8f2b7010cc0209"
+    }
+  ]
+}

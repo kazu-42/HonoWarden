@@ -1,0 +1,721 @@
+{
+  "companyCommit": "2deeee0cf159da92babc86e09de44c12eea2aa93",
+  "sourceSha256": "b44b94192b7f7e53fe80091b750715305bf0dd80b3602ebbe40d80f987c06fa7",
+  "files": [
+    {
+      "path": "admin/app.ts",
+      "bytes": 101374,
+      "sha256": "ddbb0aea864ff371e25cf2ac515c2eca7abe82a770e7555f0b5d0ee117f6af70"
+    },
+    {
+      "path": "admin/browser/admin-client.ts",
+      "bytes": 36151,
+      "sha256": "d50a9a401f740816fcaa9f20c958c19de6dfeed59d1546a13872b3b754cf1d58"
+    },
+    {
+      "path": "admin/browser/api.ts",
+      "bytes": 7781,
+      "sha256": "f7d2bc8912cdc91dcf904e2bea857c0089b237dd88fa1a665ed8f06019c7b349"
+    },
+    {
+      "path": "admin/browser/contracts.ts",
+      "bytes": 5808,
+      "sha256": "46c2eb3fe3894f505a445ef1e7a31b6d346dc8ac5f047c8c5d6f225937f5cd56"
+    },
+    {
+      "path": "admin/browser/crypto-client.ts",
+      "bytes": 3217,
+      "sha256": "55e0ee90ed141004b48dfd504835fbd25c4654ae909b56f8da47fb0934475401"
+    },
+    {
+      "path": "admin/browser/crypto.worker.ts",
+      "bytes": 2330,
+      "sha256": "c19d6201c97bcfc96c0c3b6714163189db322b0842d2289db567dec69cebed07"
+    },
+    {
+      "path": "admin/browser/crypto/argon2.ts",
+      "bytes": 830,
+      "sha256": "8d64aef4cca83851316f38edd63a44cde5cf7a869ae4b19617f7ef67a9501344"
+    },
+    {
+      "path": "admin/browser/crypto/enc-string.ts",
+      "bytes": 3830,
+      "sha256": "9939463dc47f483b498220b1560e7a0349887abbe0f03e2f7d1552392361a659"
+    },
+    {
+      "path": "admin/browser/crypto/encoding.ts",
+      "bytes": 1500,
+      "sha256": "9e7971f2991528b9b88cf2e4a41518b996e699d5d0535507e86b924689ce669a"
+    },
+    {
+      "path": "admin/browser/crypto/kdf.ts",
+      "bytes": 3198,
+      "sha256": "dcbe8138b893d07cdbd23cabec60c5eb3063f30fdcbb61471aabb537ba6f1b23"
+    },
+    {
+      "path": "admin/browser/crypto/keyring.ts",
+      "bytes": 5893,
+      "sha256": "535e82cac77b07d82b99529a2a9bc592f7085ed3b9c44c19d295a8d288b72c8a"
+    },
+    {
+      "path": "admin/browser/invitation.ts",
+      "bytes": 1005,
+      "sha256": "217d159c003f946e31a3eb8dab16bdd44d6780eb1a2f0c8f8c1b874f036cc093"
+    },
+    {
+      "path": "admin/index.html",
+      "bytes": 797,
+      "sha256": "2eefc05d688cd51287b2831e73edb0f7a5a4612238d5eba0d151fff83ab11807"
+    },
+    {
+      "path": "admin/styles.css",
+      "bytes": 20883,
+      "sha256": "d3c71793999390d0292f0a7a7065ddfe4a230d362ee4fcf77bd0c27f91d42fb5"
+    },
+    {
+      "path": "admin/tsconfig.json",
+      "bytes": 266,
+      "sha256": "cf8615a16a52bc5197d1545100dfc580d098c9bd869f5595dd9c3cf28294de00"
+    },
+    {
+      "path": "admin/tsconfig.test.json",
+      "bytes": 206,
+      "sha256": "d81c2059cea79c8d48adcb3b3a4653f3c986bc96498f0f270e14730a8c5c6567"
+    },
+    {
+      "path": "admin/tsconfig.worker.json",
+      "bytes": 202,
+      "sha256": "8d0488a78806e3e99f495ec8f09616d157115c586578939ed9c6a65722b56f6a"
+    },
+    {
+      "path": "migrations/0001_initial_schema.sql",
+      "bytes": 3191,
+      "sha256": "124d3363d110c5263c78c9742bf67fba8c5a3c4360489fd3c0cbcd710ca6a12f"
+    },
+    {
+      "path": "migrations/0002_login_defenses.sql",
+      "bytes": 1056,
+      "sha256": "4cb168c368cf54ef2017bcbd8539ea44886c9b040cff63ae3ca6f05da5cc7466"
+    },
+    {
+      "path": "migrations/0003_totp_login.sql",
+      "bytes": 1037,
+      "sha256": "9d2e06deeb9aad154e46ebe50aa18d4ba10e971bcfcc7fb2e393d4f19be6c68c"
+    },
+    {
+      "path": "migrations/0004_totp_change.sql",
+      "bytes": 244,
+      "sha256": "b03ccec7b6e9d689d4cb9b40c3d235844875ef5fab8050d43862e0953aff62fb"
+    },
+    {
+      "path": "migrations/0005_device_keys.sql",
+      "bytes": 266,
+      "sha256": "97071b22d753636c4f9a0fe4c699f0c3802c47f30ae235fd45e9d76137d275e0"
+    },
+    {
+      "path": "migrations/0006_cipher_attachments.sql",
+      "bytes": 897,
+      "sha256": "7b4328e31fc34c775c5971ada17c92ec44e89bc889a363c24b6beaa2d4b4e0c0"
+    },
+    {
+      "path": "migrations/0007_audit_events.sql",
+      "bytes": 912,
+      "sha256": "34e1661295fc9f521d898bca587f167a280fa490681d83e327828d43d326239d"
+    },
+    {
+      "path": "migrations/0008_request_quotas.sql",
+      "bytes": 654,
+      "sha256": "fe2955c3733bc4907b0e6711b9c37257dfa67e5973c7495d06bb847ed84ee884"
+    },
+    {
+      "path": "migrations/0009_inquiry_messages.sql",
+      "bytes": 1568,
+      "sha256": "3400d862d2d10da455a93b6fd739f534b55f22aa1c526b3283581bab672a4aeb"
+    },
+    {
+      "path": "migrations/0010_equivalent_domains.sql",
+      "bytes": 388,
+      "sha256": "4a6b2f2da77103955d78ed132afc8a1519ba4c0a59f50a6a4fdfb4194e6dc559"
+    },
+    {
+      "path": "migrations/0010a_inquiry_message_reconciliation.sql",
+      "bytes": 925,
+      "sha256": "27fc086baf750bfb75719581e4d7fbfd359b219a2ae6f60c174539a58422ab84"
+    },
+    {
+      "path": "migrations/0011_inquiry_inbox.sql",
+      "bytes": 3103,
+      "sha256": "a8c9524b32ecd398d540b052dbb6e96fc3dc500669ca6806089162c21b857bb8"
+    },
+    {
+      "path": "migrations/0012_auth_requests.sql",
+      "bytes": 1725,
+      "sha256": "71fc9ca16ea9dd2e6e8dbe9c7c93cc2899b8375b482eaeaf3a673b6d01b50b3d"
+    },
+    {
+      "path": "migrations/0013_auth_request_supersede.sql",
+      "bytes": 2814,
+      "sha256": "ad47a1465ca857903c97d837a943ace3ca2505ff20197e6533259c2154f6ac86"
+    },
+    {
+      "path": "migrations/0014_organizations.sql",
+      "bytes": 2578,
+      "sha256": "95cc696e345d309a32e548f44e7ab7ebd91e8b2ba335f59c2048e36b9f27f9cb"
+    },
+    {
+      "path": "migrations/0014a_kdf_population.sql",
+      "bytes": 5412,
+      "sha256": "96ec8647d11519c99ff14b88b89a0213472f5ad5c3af618adea958b9f920657f"
+    },
+    {
+      "path": "migrations/0015_webauthn.sql",
+      "bytes": 2299,
+      "sha256": "e342fece7a091ffb60a3b2f55fbae0ef8fc2c6197216e891030bde6f655a6915"
+    },
+    {
+      "path": "migrations/0016_user_key_rotation_wrapper_history.sql",
+      "bytes": 559,
+      "sha256": "5c99ca3973711d0031ed2b48bed77f3191ec2773af9ae570b1e48f5dfae209ac"
+    },
+    {
+      "path": "migrations/0017_account_lifecycle.sql",
+      "bytes": 2498,
+      "sha256": "5ed91a78fea52d661b07bdebbc4d74654b4bab0a84010829874202bd6bf219dc"
+    },
+    {
+      "path": "migrations/0018_text_sends.sql",
+      "bytes": 2497,
+      "sha256": "c4cc6047f2e2bebcc9d15ff034be340785a06e6c0d1fe39560a53cf0d32bf2de"
+    },
+    {
+      "path": "migrations/0019_send_files.sql",
+      "bytes": 2353,
+      "sha256": "d59ba11466f324a6664e03f775f37c100d2147cbfacee51a366b4367dc749ec9"
+    },
+    {
+      "path": "migrations/0020_personal_api_keys.sql",
+      "bytes": 428,
+      "sha256": "7b70b5c2284509990bc223991e5f5fcd09868027f0a5fae6ed17464d2618eb14"
+    },
+    {
+      "path": "migrations/0021_emergency_access.sql",
+      "bytes": 2802,
+      "sha256": "7fc2730ee3c2ff63c99bc27f27dcedfc16482813a66e6852fef38540848853d5"
+    },
+    {
+      "path": "migrations/0022_user_key_id.sql",
+      "bytes": 732,
+      "sha256": "608dfed8ec4c1e845a4704f0a0f0bf60390eae92bdf8812f897834058f984597"
+    },
+    {
+      "path": "migrations/0023_device_session_binding.sql",
+      "bytes": 268,
+      "sha256": "cbfeb4757dbc657ad60c275993eac56c1819637e641a8c4bc4e1330ba36cf55d"
+    },
+    {
+      "path": "migrations/0024_organization_invitations.sql",
+      "bytes": 222,
+      "sha256": "a80018a1ad21d0155b65f158239281b57cebdea69b473412f6d02fa8e6d02c77"
+    },
+    {
+      "path": "migrations/0025_organization_groups.sql",
+      "bytes": 2066,
+      "sha256": "77c435c557ed416962e84ed8d8afaa331f9e643bc0740cade340d2a7518730ff"
+    },
+    {
+      "path": "migrations/0026_organization_policies.sql",
+      "bytes": 595,
+      "sha256": "2167c4100e6b1df28faf056c94348e102b4194a763ad526474bca8879693e8c6"
+    },
+    {
+      "path": "migrations/0027_session_mfa_assurance.sql",
+      "bytes": 1088,
+      "sha256": "645e6ebcb8dfa1d9ad865a5e42dc0e8321e4bf9c9d5bf4c57bdeef9ff3491ec2"
+    },
+    {
+      "path": "migrations/0028_organization_audit_scope_index.sql",
+      "bytes": 577,
+      "sha256": "02f5c6b141b23c170843787bc114053caec9b505c288206e5132bc832a41c45f"
+    },
+    {
+      "path": "migrations/0029_organization_membership_mutation_marker.sql",
+      "bytes": 333,
+      "sha256": "bb7878e639689caba48825b914e0db21d8f8b83810a0037e0a4fb7f98b853b88"
+    },
+    {
+      "path": "migrations/0030_organization_policy_mutation_marker.sql",
+      "bytes": 313,
+      "sha256": "b353368af866d30d546f83188dc5cf5642b56047de1a8a2161b09a91d2ee7858"
+    },
+    {
+      "path": "package.json",
+      "bytes": 5973,
+      "sha256": "e848aa7bee8cfd684ff0c8e4338270249ad038d0a52a816934b847e21d99bb95"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "bytes": 113022,
+      "sha256": "0ce57cc2113cd768158d8827b9c2c71f24e29a1dcac9e0f5cf5518e9d6d1b920"
+    },
+    {
+      "path": "src/account-lifecycle-mailer.ts",
+      "bytes": 1422,
+      "sha256": "0377fb3e86d58419efbd029c9aa848c90f3b7c448989e82300cbc7247b344f4c"
+    },
+    {
+      "path": "src/account-lifecycle-operator.ts",
+      "bytes": 5017,
+      "sha256": "7ca94921be39bd7d4c861e812ce2c358fdc58d7b3ae1726b3af076548a765c6e"
+    },
+    {
+      "path": "src/account-lifecycle-purge.ts",
+      "bytes": 4109,
+      "sha256": "a28d834c1866fac463b4c85745bc0b06a3345873b6581904a1e101a5986c4210"
+    },
+    {
+      "path": "src/admin-routes.ts",
+      "bytes": 3753,
+      "sha256": "c0426dee7a64e255681065d6d68ed75e10ba1203f25e7b62c6fd447b25c4421b"
+    },
+    {
+      "path": "src/app.ts",
+      "bytes": 332194,
+      "sha256": "723015ad153de87b7627161efb866f5ce4f0c9f2cd027da6a19ffa3f85d910c7"
+    },
+    {
+      "path": "src/bindings.ts",
+      "bytes": 2046,
+      "sha256": "16bc4501688d0fb375fefd72669e1676e82aaf2c89834fd7fa141a925aea6953"
+    },
+    {
+      "path": "src/build-provenance.ts",
+      "bytes": 2518,
+      "sha256": "9a587d3be37b0676161deef52566df4394a618600df8f193102a798148a8b557"
+    },
+    {
+      "path": "src/domain/account-credentials.ts",
+      "bytes": 17835,
+      "sha256": "9165131681091edb64dd0a1e0ee9d2b88947db6a18a88d5806d67bef4ce5c9de"
+    },
+    {
+      "path": "src/domain/account-keys.ts",
+      "bytes": 3837,
+      "sha256": "93c077dec745d12264757b5f02ff110a1af4ff037c8dbc757cb040dec7329500"
+    },
+    {
+      "path": "src/domain/account-lifecycle.ts",
+      "bytes": 8215,
+      "sha256": "ef208757d39656bb91123386742a441b8af9defeb8131fbde222b2615580afc7"
+    },
+    {
+      "path": "src/domain/attachment.ts",
+      "bytes": 944,
+      "sha256": "fb355a57798ce9c71d5833c45c9dcce481f9148661147855bdd3523f1209701e"
+    },
+    {
+      "path": "src/domain/audit.ts",
+      "bytes": 5039,
+      "sha256": "0b26325194b756ee28caabae8294da431f89b1eae5192a800d671c29b2c7fd5c"
+    },
+    {
+      "path": "src/domain/auth-request.ts",
+      "bytes": 8352,
+      "sha256": "f089b8d876a9a386a2cda794f02ed62ac6d9a3389da35cbfd98e4846c5bd019d"
+    },
+    {
+      "path": "src/domain/bootstrap.ts",
+      "bytes": 4259,
+      "sha256": "cdf896d714d22dadb6af5274f690fd84369d87dc8e4cb6a291e6a3b5e0b95003"
+    },
+    {
+      "path": "src/domain/emergency-access.ts",
+      "bytes": 10305,
+      "sha256": "4246972437ed3eb13f52fd974edb178623060097d89e0a5e117487b0d5ebbf2d"
+    },
+    {
+      "path": "src/domain/inquiry.ts",
+      "bytes": 8276,
+      "sha256": "e57e4235fc2b6a5ff48484094044fa969e5fe0b556ef157d7c8918ab159f9463"
+    },
+    {
+      "path": "src/domain/login-defense.ts",
+      "bytes": 2361,
+      "sha256": "2ad4274881c4356b96d3d7ca31162c6ec8578fd5b9a09f9566286e41af748393"
+    },
+    {
+      "path": "src/domain/mfa-session.ts",
+      "bytes": 666,
+      "sha256": "dd78eba3f925defc0157ee49c6d3c6187a393d3e9e54d561f07aa78129420ae4"
+    },
+    {
+      "path": "src/domain/organization-audit.ts",
+      "bytes": 14899,
+      "sha256": "f5f87340d43fb67a74719dcea5f563cf0871e544d7d3ad30b87f37db55e647d0"
+    },
+    {
+      "path": "src/domain/organization-groups.ts",
+      "bytes": 4572,
+      "sha256": "164d2b00ead3eadf8f5213795dc9cf6f2bbe9ff8a069783d8055e8affbb1627c"
+    },
+    {
+      "path": "src/domain/organization-membership.ts",
+      "bytes": 13227,
+      "sha256": "222091161ff15a41ef5ef63a358018beeb8f50f29a904bf0958cc57c39e19ec1"
+    },
+    {
+      "path": "src/domain/organization-policy.ts",
+      "bytes": 2685,
+      "sha256": "48d0f1c3ccf183c1ddcbaf11f498f9d7bc80488efe7980e2aa5eb06822b74870"
+    },
+    {
+      "path": "src/domain/personal-api-key.ts",
+      "bytes": 3559,
+      "sha256": "aa9fbbf2b536e0b1674f206d7c6ead81c656be94bf26b5607889fa51d00a9838"
+    },
+    {
+      "path": "src/domain/prelogin.ts",
+      "bytes": 7876,
+      "sha256": "0fa52410217d1eaebb473125c8a553084fefc40c0a5ee7f50e093ae3166be1b1"
+    },
+    {
+      "path": "src/domain/premium.ts",
+      "bytes": 129,
+      "sha256": "078839eae050f26ed84b212c6542d94c35bc0e43b0a45c6241ec3972bf616a5d"
+    },
+    {
+      "path": "src/domain/request-quota.ts",
+      "bytes": 1864,
+      "sha256": "7d19ef76513e91a6b3319fe5176a3b30837a3e859b542932f8c383a9379a788f"
+    },
+    {
+      "path": "src/domain/send-file.ts",
+      "bytes": 8681,
+      "sha256": "2fe9243436a40f9b3f4a4c300e37d2b7d6e9046dc9630629f38c8625ce9a06a5"
+    },
+    {
+      "path": "src/domain/text-send.ts",
+      "bytes": 17388,
+      "sha256": "cfabfedd0daa23f54e0acbdcd130e02c4fb315b45698a6a0de5a653a7c076b40"
+    },
+    {
+      "path": "src/domain/tokens.ts",
+      "bytes": 15650,
+      "sha256": "0263b69c865c8e5d70efff9ade3a1fa32533f3598d65785219920a03b3244dae"
+    },
+    {
+      "path": "src/domain/totp-secret.ts",
+      "bytes": 2616,
+      "sha256": "cb0249560e106aa791459f6648a2d09ef6f9d646a2fd510ad15fea2face15446"
+    },
+    {
+      "path": "src/domain/totp.ts",
+      "bytes": 4465,
+      "sha256": "b7ac98c26e01953812ee1e12f8b8eabeae56576d28c4c05eccce7f4126725082"
+    },
+    {
+      "path": "src/domain/user-key-id.ts",
+      "bytes": 675,
+      "sha256": "9af780d933e98146a36d90f24a46c88c5c453ee533886f11eb8db8cdd131a865"
+    },
+    {
+      "path": "src/domain/user-key-rotation-cipher.ts",
+      "bytes": 19711,
+      "sha256": "cc0b55346e1d48dbfd3b165b64750f1df89551b56452b53adc03340aaf20b50b"
+    },
+    {
+      "path": "src/domain/user-key-rotation-input.ts",
+      "bytes": 10484,
+      "sha256": "4b1d7a41ac7c44b3d73f7bf5a8788ab585fb960a27da4277b6346deb2f6e3acd"
+    },
+    {
+      "path": "src/domain/user-key-rotation-policy.ts",
+      "bytes": 844,
+      "sha256": "75dbb4674c7ad97fc9418e9675b102fb866d890047aa0d116b4e3c1957c2fccc"
+    },
+    {
+      "path": "src/domain/user-key-rotation-types.ts",
+      "bytes": 1881,
+      "sha256": "1fe2e416c933ed8d541768839ff6523daf99c2b801b1ac64d389eeee42466018"
+    },
+    {
+      "path": "src/domain/user-key-rotation.ts",
+      "bytes": 12539,
+      "sha256": "45f1cb076a278617060e43d0b0185c8ae0dee17f178a9e02b5a8c40b56ac7cd4"
+    },
+    {
+      "path": "src/domain/webauthn-registration.ts",
+      "bytes": 11111,
+      "sha256": "baa8d813334a47593af819d271c23b3372fb0cd1ab9d417e46cda49d7d71be2c"
+    },
+    {
+      "path": "src/domain/webauthn-verifier.ts",
+      "bytes": 4924,
+      "sha256": "1e6239ed9c2d0a544a5c13389efb3ac4f2679da1520e5d68c0ab44f63c8e4c21"
+    },
+    {
+      "path": "src/domain/webauthn.ts",
+      "bytes": 10220,
+      "sha256": "9999523cb345471d3b546056a3c3d492d6ef596b2ba29e893a283dd2f1d08fef"
+    },
+    {
+      "path": "src/emergency-access-trust.ts",
+      "bytes": 11381,
+      "sha256": "349d0c9f795d552a87718524f87eb827a20ef9ab9821c85d92c6545bedaecef9"
+    },
+    {
+      "path": "src/index.ts",
+      "bytes": 1701,
+      "sha256": "d2640b24e5b2894a6f5a3269854a1a84801eba28c1bf54ae6a852514ef0877ab"
+    },
+    {
+      "path": "src/infra/bounded-json.ts",
+      "bytes": 2004,
+      "sha256": "8cd20bacdf889fad2b49db067776ecbc7448498aa448bf9d4775c58520ae49ed"
+    },
+    {
+      "path": "src/infra/db-health.ts",
+      "bytes": 2591,
+      "sha256": "7aaa74d1bd1dc8a34cdf2d1a9c1f7d71ee963dfbc997dfe4b9d287854d5f1651"
+    },
+    {
+      "path": "src/infra/environment.ts",
+      "bytes": 505,
+      "sha256": "a99827c833f8129960947e80192520521021ed8a579c4dd66d3066f25f4a0d11"
+    },
+    {
+      "path": "src/inquiry-email.ts",
+      "bytes": 2687,
+      "sha256": "a2490569819636417e4053e3bbd2cf544e773fa592f15e9b5ab061d145364a62"
+    },
+    {
+      "path": "src/maintenance/retention-cleanup.ts",
+      "bytes": 3522,
+      "sha256": "a1f460c6a585e57255d6f71f75816e4c72772f327c223ed4fff7d88cad2c4681"
+    },
+    {
+      "path": "src/notification-hub.ts",
+      "bytes": 10880,
+      "sha256": "79b5d17c7d2ee4c55413a7d2eaaf0328d17304c3065cc1138a0cdb04dde7a45b"
+    },
+    {
+      "path": "src/organization-audit-routes.ts",
+      "bytes": 5407,
+      "sha256": "2e013e0a0b9cc75b9784ba492c0d43255d69828c57b38716803153908d88a3e8"
+    },
+    {
+      "path": "src/organization-audit.ts",
+      "bytes": 2555,
+      "sha256": "5300d500bc87bdb4af1e42a25c4d91e8b2f597472b985576f6ec40617dee56f1"
+    },
+    {
+      "path": "src/organization-groups-routes.ts",
+      "bytes": 6907,
+      "sha256": "482f4b3aeaacf401d13e9692bcac936f8ae42e2513ebf25049be54e1fbfa7d0c"
+    },
+    {
+      "path": "src/organization-groups.ts",
+      "bytes": 4675,
+      "sha256": "c44b6021a33c7aef339329ec97b88d4f2554dd32624f9ae916073726509a2b06"
+    },
+    {
+      "path": "src/organization-membership-routes.ts",
+      "bytes": 10119,
+      "sha256": "5acd855347abb9818bcbc35c57382e5d78647505977ef496fc6ebdaccba15959"
+    },
+    {
+      "path": "src/organization-membership.ts",
+      "bytes": 12961,
+      "sha256": "e75c81eba5f0f3008613e4ea70194993b0b945706adf3101b646892703cc67c7"
+    },
+    {
+      "path": "src/organization-policy-routes.ts",
+      "bytes": 7596,
+      "sha256": "821bf0c104c9fb9b3ae7da4ccce912c8add0acb4f9df57bc7d93de5e62c390ba"
+    },
+    {
+      "path": "src/organization-policy.ts",
+      "bytes": 2587,
+      "sha256": "b26394032aa3cdc9523bf514d336ab40bff8a5ec7f31a56e1b8b15444c97bcf4"
+    },
+    {
+      "path": "src/protocol/config.ts",
+      "bytes": 1361,
+      "sha256": "49ef1cb32ccb446c090b66c814e6d9ae87994241e3f7bf0d4022b6e814958b1c"
+    },
+    {
+      "path": "src/repositories/account-lifecycle-repository.ts",
+      "bytes": 49808,
+      "sha256": "025b5cc2a1c5db2d28d179f70a175bffb585d4077c563a6597d9c14492f87a47"
+    },
+    {
+      "path": "src/repositories/attachment-repository.ts",
+      "bytes": 13850,
+      "sha256": "ae65bcc899f6759bfb1117827d8595039447f331d16ad8a27fe3c257eae1a5ef"
+    },
+    {
+      "path": "src/repositories/audit-event-repository.ts",
+      "bytes": 1798,
+      "sha256": "2550bd891f13cb30cdce44a7819d0bb7fc7b90dc3677f7844b5db9dab7e6d85f"
+    },
+    {
+      "path": "src/repositories/auth-repository.ts",
+      "bytes": 52861,
+      "sha256": "8cac5adcbe16af1481d7455b3d5f18fb43fefc9de711e3d150950666ce3f1a87"
+    },
+    {
+      "path": "src/repositories/auth-request-repository.ts",
+      "bytes": 13941,
+      "sha256": "abae10020ec80ffc3415a39181c540e0af5006c1d2ae6fa8b94b4baaf0de158a"
+    },
+    {
+      "path": "src/repositories/cipher-repository.ts",
+      "bytes": 32060,
+      "sha256": "86bd9da2e43930d495b52fa4829d9056fa02d3ef82c9bf405c2d7c8ec268ca20"
+    },
+    {
+      "path": "src/repositories/credential-repository.ts",
+      "bytes": 20917,
+      "sha256": "6adfcf99b71599b225768768c9cb1574a30e90cec0a7ae18ec452a8890a4bd0b"
+    },
+    {
+      "path": "src/repositories/credential-wrapper-history-sql.ts",
+      "bytes": 1293,
+      "sha256": "2a0559b8b73de8f8bd8e73cd676083b776cbb4f64002301532099f7f5234071f"
+    },
+    {
+      "path": "src/repositories/domain-settings-repository.ts",
+      "bytes": 3549,
+      "sha256": "5c24a8a6a7e7b50db25edf341f58d4a528554722aaa5b1d782ffdefbe4b28a1a"
+    },
+    {
+      "path": "src/repositories/emergency-access-repository.ts",
+      "bytes": 13336,
+      "sha256": "fdf78e3e00c226d10930fbf2b3a4888b42552a7f529b2a18990bd1891eb2d079"
+    },
+    {
+      "path": "src/repositories/folder-repository.ts",
+      "bytes": 6775,
+      "sha256": "2ce4f1b9b7a5eef741bc94a2e4809182541a24154776864aede6d9596d24d88b"
+    },
+    {
+      "path": "src/repositories/inquiry-repository.ts",
+      "bytes": 5267,
+      "sha256": "74c53c9d715577bfdfddf0ddc3146573b72182b14ddd0f4099046883e275ea47"
+    },
+    {
+      "path": "src/repositories/mfa-session-repository.ts",
+      "bytes": 11064,
+      "sha256": "9f9d8a076825f930a8d646ba03903e976f46a46594bb793d582f6da657229217"
+    },
+    {
+      "path": "src/repositories/organization-audit-repository.ts",
+      "bytes": 5150,
+      "sha256": "c996420a3587aad2a7e05e0ade9b42b39c583b3acad091f94e3866e575668615"
+    },
+    {
+      "path": "src/repositories/organization-cipher-mutation-repository.ts",
+      "bytes": 7381,
+      "sha256": "bc84ea9b98e010dfc49bb6515a90bc2fc4979a6962b0352faf050f73959b9198"
+    },
+    {
+      "path": "src/repositories/organization-collection-access-sql.ts",
+      "bytes": 4337,
+      "sha256": "2a6eb1527050d889d75ee7a505531f6ab1d88d738c43a12f11ca17854c37733f"
+    },
+    {
+      "path": "src/repositories/organization-groups-repository.ts",
+      "bytes": 17542,
+      "sha256": "d23f874cda5086fc4837c6eb8ad7e898ca99fd0aa892b5cfbdd19b5aad424ff7"
+    },
+    {
+      "path": "src/repositories/organization-membership-repository.ts",
+      "bytes": 30773,
+      "sha256": "333b5102b3abb0e95d65a1098d82b40481981f0003ca9c2eb94da8bc019aa282"
+    },
+    {
+      "path": "src/repositories/organization-policy-repository.ts",
+      "bytes": 13531,
+      "sha256": "c967cca32a371a2372a3923a596d65e58b5b4b6abff769f81c02e0a1dc8d5cf5"
+    },
+    {
+      "path": "src/repositories/organization-policy-sql.ts",
+      "bytes": 2566,
+      "sha256": "2b7e2bdb66ec1414426130ab92071d967b2e1b5501e099c81f5be9562f68ba1e"
+    },
+    {
+      "path": "src/repositories/organization-repository.ts",
+      "bytes": 26126,
+      "sha256": "51fd127173abea9e1696fa173d8ddaddeae9b7bec0faf4604d96161515a8777c"
+    },
+    {
+      "path": "src/repositories/personal-api-key-repository.ts",
+      "bytes": 5129,
+      "sha256": "103bb203ecd2d9908638d8089a7a0328c66f0888eaf47d98af32faa9f8123516"
+    },
+    {
+      "path": "src/repositories/request-quota-repository.ts",
+      "bytes": 3709,
+      "sha256": "f29d9a8dea752a59292c0187c1d03c9876e23ef62aee170ba019fadaff48f8bb"
+    },
+    {
+      "path": "src/repositories/send-file-repository.ts",
+      "bytes": 15837,
+      "sha256": "0d4208b21d9918e983c33db77e4afdf6e2ff2f3c99fff1c62928e6ed6cdb431d"
+    },
+    {
+      "path": "src/repositories/text-send-repository.ts",
+      "bytes": 12697,
+      "sha256": "4267cbdaf18a83aa9626f2e2f7fc9f5f49038ea33885882d16c02eb5a43b61df"
+    },
+    {
+      "path": "src/repositories/totp-repository.ts",
+      "bytes": 12489,
+      "sha256": "2a6a59978ade32908d5ee78cd7d35e0809db871629e8e5dc638d6049cdf79868"
+    },
+    {
+      "path": "src/repositories/user-key-id-repository.ts",
+      "bytes": 2006,
+      "sha256": "24866d1211053514e1f3f1f1fb89a3f9d7c1f2d66976a256e08d05f38682d84d"
+    },
+    {
+      "path": "src/repositories/user-key-rotation-repository.ts",
+      "bytes": 36384,
+      "sha256": "dd25078bae8333582ab3ff774268c6c18695c6a1f2ada0871972afba66567f9a"
+    },
+    {
+      "path": "src/repositories/user-key-rotation-sql.ts",
+      "bytes": 16801,
+      "sha256": "5877948aeca838c2e9fe5d9d5e035ac51db85e6c6508ce1953a53c76411d096e"
+    },
+    {
+      "path": "src/repositories/user-repository.ts",
+      "bytes": 5162,
+      "sha256": "a6f9ee5ec2ec414609d0058689fb70cd495f3dfab5142bed83ef9d1ccd01dd70"
+    },
+    {
+      "path": "src/repositories/webauthn-repository.ts",
+      "bytes": 17488,
+      "sha256": "d9c4abcea44e3b547cccb3c70743d75293b977d703be9e7b82f4c423fa092b84"
+    },
+    {
+      "path": "src/send-file-owner.ts",
+      "bytes": 8230,
+      "sha256": "3c02f0f186ba08477fe950e9a908fc103702867a492cf529d956baa5f6f28446"
+    },
+    {
+      "path": "src/text-send-owner.ts",
+      "bytes": 11763,
+      "sha256": "dbf14930b2fbcf08304d4c68c7ea351f761a1e36f0500f02ae927c82774d03a3"
+    },
+    {
+      "path": "src/version.ts",
+      "bytes": 44,
+      "sha256": "96b6181fdce46b805ad31111d3e29839feff2072fbe71e4ee98642ffc0c95d07"
+    },
+    {
+      "path": "vite.admin.config.ts",
+      "bytes": 580,
+      "sha256": "da41db654b54b986f5daf1444ee44571f5c7fbc9559ea573f05adcc09eb016f4"
+    }
+  ]
+}

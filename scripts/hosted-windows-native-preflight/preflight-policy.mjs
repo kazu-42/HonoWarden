@@ -1,0 +1,306 @@
+import { createHash } from 'node:crypto'
+import { Buffer } from 'node:buffer'
+import { TextDecoder } from 'node:util'
+import { URL } from 'node:url'
+import { hasControlCharacter } from './policy.mjs'
+
+export const COMPANY = '2deeee0cf159da92babc86e09de44c12eea2aa93'
+const PAYLOAD_SHA256 =
+  '7baaf42799ec914f5e0f08cffca3641d97b3c4b98bd02da06ec678c7cedbd2a8'
+const EXECUTABLE_SHA256 =
+  '48232882cc5412f8c9e3ddb1b2b1dc50f7247f7f9444fde2bee5c5f010ffac8a'
+
+const PUBLIC_CONTROL_PHASE_CODES = {
+  version: ['powershell_version'],
+  parser: ['powershell_parse'],
+  functions: ['public_functions'],
+  legacy_array: ['legacy_array_control'],
+  direct_array: ['direct_array_control'],
+  single_array: ['single_array_control'],
+  object_array: ['object_array_control'],
+  manifest: [
+    'external_data_encoding',
+    'payload_encoding',
+    'payload_equivalence',
+    'asset_members',
+    'asset_url',
+    'public_manifest_control',
+  ],
+  members: ['public_member_control'],
+  executable: ['public_executable_control'],
+}
+
+export function publicControlFailureCode(value) {
+  const generic = 'powershell_public_payload_control_failed'
+  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > 4096)
+    return generic
+  const match = value.match(
+    /^\{"object":"windowsPayloadControlFailure","phase":"([a-z_]+)","code":"([a-z_]+)"\}$/,
+  )
+  if (
+    !match ||
+    match[0] !== value ||
+    !Object.hasOwn(PUBLIC_CONTROL_PHASE_CODES, match[1]) ||
+    (match[2] !== 'unexpected_public_control_failure' &&
+      !PUBLIC_CONTROL_PHASE_CODES[match[1]].includes(match[2]))
+  )
+    return generic
+  return generic + '_' + match[1] + '_' + match[2]
+}
+
+export function publicExecFailureMetadata(error) {
+  let code, status, stdout, stderr
+  try {
+    if (error && typeof error === 'object') {
+      code = error.code
+      status = error.status
+      stdout = error.stdout
+      stderr = error.stderr
+    }
+  } catch {
+    return {
+      object: 'windowsPublicControlExecFailure',
+      code: 'OTHER',
+      statusBucket: 'other',
+      stdoutType: 'other',
+      stdoutBytes: null,
+      stdoutFrameValid: false,
+      stderrBytes: null,
+    }
+  }
+  const byteCount = (value) => {
+    if (typeof value === 'string') return Buffer.byteLength(value, 'utf8')
+    if (Buffer.isBuffer(value)) return value.length
+    if (value === null || value === undefined) return 0
+    return null
+  }
+  return {
+    object: 'windowsPublicControlExecFailure',
+    code: [
+      'ETIMEDOUT',
+      'ENOENT',
+      'EACCES',
+      'ENOBUFS',
+      'E2BIG',
+      'OTHER',
+    ].includes(code)
+      ? code
+      : 'OTHER',
+    statusBucket:
+      status === null
+        ? 'null'
+        : status === 0
+          ? 'zero'
+          : Number.isSafeInteger(status)
+            ? 'nonzero'
+            : 'other',
+    stdoutType:
+      typeof stdout === 'string'
+        ? 'string'
+        : Buffer.isBuffer(stdout)
+          ? 'buffer'
+          : stdout === null || stdout === undefined
+            ? 'absent'
+            : 'other',
+    stdoutBytes: byteCount(stdout),
+    stdoutFrameValid:
+      publicControlFailureCode(stdout) !==
+      'powershell_public_payload_control_failed',
+    stderrBytes: byteCount(stderr),
+  }
+}
+
+export function decodeExternalUtf8(value, maximum = 16384) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 4 * Math.ceil(maximum / 3) ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    )
+  )
+    throw Error('external_data_encoding')
+  const bytes = Buffer.from(value, 'base64')
+  if (bytes.length > maximum || bytes.toString('base64') !== value)
+    throw Error('external_data_encoding')
+  return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+    bytes,
+  )
+}
+
+export function requirePayloadPath(value) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    Buffer.byteLength(value, 'utf8') > 2048 ||
+    /[:\\]/.test(value) ||
+    hasControlCharacter(value) ||
+    value
+      .split('/')
+      .some((part) => part === '' || part === '.' || part === '..')
+  )
+    throw Error('asset_path')
+  return value
+}
+
+export function decodeDesktopPayload(value) {
+  if (value?.schemaVersion !== 1 || value.encoding !== 'canonical-base64-utf8')
+    throw Error('payload_encoding')
+  const text = decodeExternalUtf8(value.payloadBase64)
+  if (
+    createHash('sha256').update(text, 'utf8').digest('hex') !== PAYLOAD_SHA256
+  )
+    throw Error('payload_equivalence')
+  const files = JSON.parse(text)
+  if (!Array.isArray(files) || files.length !== 85) throw Error('asset_members')
+  const paths = new Set()
+  for (const file of files) {
+    requirePayloadPath(file.path)
+    const canonical = file.path.toLowerCase()
+    if (
+      paths.has(canonical) ||
+      !Number.isSafeInteger(file.bytes) ||
+      file.bytes < 0 ||
+      !/^[a-f0-9]{64}$/.test(file.sha256)
+    )
+      throw Error('asset_member')
+    paths.add(canonical)
+  }
+  const executable = files.filter((file) => file.sha256 === EXECUTABLE_SHA256)
+  if (executable.length !== 1) throw Error('asset_executable')
+  const assetUrl = decodeExternalUtf8(value.assetUrlBase64, 2048)
+  const url = new URL(assetUrl)
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'github.com' ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.search ||
+    url.hash
+  )
+    throw Error('asset_url')
+  const appDataVariable = decodeExternalUtf8(value.appDataVariableBase64, 128)
+  if (!/^[A-Z][A-Z0-9_]*$/.test(appDataVariable))
+    throw Error('asset_environment')
+  return {
+    files,
+    assetUrl,
+    appDataVariable,
+    executablePath: executable[0].path,
+  }
+}
+export function admitProbe(value, now = Date.now()) {
+  if (
+    value?.companyCommit !== COMPANY ||
+    value.platform !== 'win32' ||
+    value.arch !== 'x64' ||
+    value.nodeVersion !== '22.22.0' ||
+    value.freshHostedGuest !== true ||
+    !Number.isSafeInteger(value.freeBytes) ||
+    value.freeBytes < 2 ** 30 ||
+    !Number.isSafeInteger(value.createdAtMs) ||
+    !Number.isSafeInteger(value.expiresAtMs) ||
+    value.createdAtMs > now ||
+    value.expiresAtMs <= now ||
+    value.expiresAtMs - value.createdAtMs > 300000
+  )
+    throw Error('preauth_admission_failed')
+  return true
+}
+export function remainingBudget(deadline, now = Date.now(), maximum = 10000) {
+  const remaining = deadline - now
+  if (!Number.isFinite(remaining) || remaining <= 0)
+    throw Error('preauth_deadline')
+  return Math.min(remaining, maximum)
+}
+export const NATIVE_PHASES = [
+  'not_started',
+  'bundle',
+  'worker_start',
+  'migration',
+  'd1_probe',
+  'r2_probe',
+  'worker_config',
+  'desktop_launch',
+  'desktop_attach',
+  'desktop_revalidate',
+  'window_proof',
+  'dom_probe',
+  'complete',
+  'cleanup',
+]
+export const NATIVE_FAILURES = [
+  'none',
+  'build_pin',
+  'websocket_pin',
+  'migration_incomplete',
+  'not_empty',
+  'r2_probe',
+  'r2_cleanup',
+  'worker_not_loopback',
+  'worker_config',
+  'preauth_deadline',
+  'gui_unavailable',
+  'prelogin_dom_unavailable',
+  'ERR_RUNTIME_FAILURE',
+  'ERR_MODULE_NOT_FOUND',
+  'MODULE_NOT_FOUND',
+  'ERR_DLOPEN_FAILED',
+  'windows_helper_failed',
+  'windows_helper_timeout',
+  'windows_helper_spawn',
+  'windows_helper_input',
+  'windows_helper_output',
+  'windows_helper_output_bound',
+  'windows_helper_json',
+  'windows_helper_exit',
+  'windows_helper_compile',
+  'windows_helper_job',
+  'windows_helper_process',
+  'windows_helper_listener',
+  'windows_helper_window',
+  'desktop_process_exited',
+  'process_identity_invalid',
+  'desktop_target_not_unique',
+  'cdp_timeout',
+  'cdp_closed',
+  'cdp_malformed',
+  'cdp_command_failed',
+  'other',
+]
+export function nativeFailureCode(error) {
+  try {
+    for (const field of ['code', 'message']) {
+      const value = Object.getOwnPropertyDescriptor(error, field)
+      if (
+        value &&
+        Object.hasOwn(value, 'value') &&
+        NATIVE_FAILURES.includes(value.value) &&
+        value.value !== 'none'
+      )
+        return value.value
+    }
+  } catch {
+    /* Fixed projection only. */
+  }
+  return 'other'
+}
+export function projectedResult(value) {
+  return {
+    object: 'windowsHostedPreauth',
+    worker: value.worker === true,
+    gui: value.gui === true,
+    dpapi: value.dpapi === true,
+    credentialMarker: value.credentialMarker === true,
+    cleanup: value.cleanup === true,
+    authenticated: false,
+    windows11Acceptance: false,
+    nodePhase: NATIVE_PHASES.includes(value.nodePhase)
+      ? value.nodePhase
+      : 'not_started',
+    nodeFailure: NATIVE_FAILURES.includes(value.nodeFailure)
+      ? value.nodeFailure
+      : 'other',
+  }
+}
