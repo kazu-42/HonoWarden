@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { parse as parseJsonc } from 'jsonc-parser'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
 import {
   activeVersion,
@@ -220,6 +220,84 @@ function baselineSchemaRows() {
       .all()
   } finally {
     db.close()
+  }
+}
+
+function postDeployFixture() {
+  const fx = fixture()
+  const db = new DatabaseSync(':memory:')
+  onTestFinished(() => db.close())
+  const createdAt = '2026-10-13 00:00:00'
+  const addUser = (id: string) =>
+    db
+      .prepare(
+        `INSERT INTO users (
+          id, email, email_normalized, kdf_algorithm, kdf_iterations,
+          master_password_hash, security_stamp, revision_date, created_at
+        ) VALUES (?, ?, ?, 'PBKDF2', 600000, 'synthetic-hash', 'stamp', ?, ?)`,
+      )
+      .run(id, `${id}@example.test`, `${id}@example.test`, createdAt, createdAt)
+  for (const name of migrationNames) {
+    if (name === '0017_account_lifecycle.sql') {
+      addUser('legacy')
+      db.exec(`INSERT INTO user_totp (
+        user_id, encrypted_secret, enabled, verified_at
+      ) VALUES ('legacy', 'synthetic-envelope', 1, '${createdAt}')`)
+    }
+    db.exec(readFileSync(join(process.cwd(), 'migrations', name), 'utf8'))
+  }
+  // Identical timestamps cannot distinguish the migration's legacy cohort.
+  addUser('later')
+  db.exec('CREATE TABLE d1_migrations (id INTEGER PRIMARY KEY, name TEXT)')
+  const applied = db.prepare('INSERT INTO d1_migrations (name) VALUES (?)')
+  for (const name of migrationNames) applied.run(name)
+  const queries: string[] = []
+  const responses = new Map<string, string>()
+  const runner: NonNullable<
+    Parameters<typeof releaseExecutor>[1]
+  >['runner'] = async (command, args, options) => {
+    if (command !== 'wrangler' || !args.includes('execute'))
+      return fx.runner(command, args)
+    expect(args[args.indexOf('execute') + 1]).toBe('DB')
+    expect(args[args.indexOf('--env') + 1]).toBe('staging')
+    expect(args).toContain('--remote')
+    expect(args).toContain('--no-experimental-provision')
+    expect(readFileSync(args[args.indexOf('--env-file') + 1]!, 'utf8')).toBe('')
+    expect(options.env.CLOUDFLARE_ACCOUNT_ID).toBe(accountId)
+    expect(options.env.CLOUDFLARE_API_KEY).toBeUndefined()
+    const query = args[args.indexOf('--command') + 1]!
+    queries.push(query)
+    return {
+      stdout:
+        responses.get(query) ??
+        JSON.stringify([{ results: db.prepare(query).all() }]),
+      code: 0,
+    }
+  }
+  return {
+    db,
+    queries,
+    responses,
+    verify: () =>
+      release(
+        [
+          'verify-db',
+          '--target',
+          'staging',
+          '--expect-pending',
+          '',
+          '--post-deploy',
+        ],
+        { ...fx, runner, cwd: process.cwd() },
+      ),
+    journal: () =>
+      readFileSync(
+        join(fx.root, 'honowarden/release/staging/test-run/journal.jsonl'),
+        'utf8',
+      )
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
   }
 }
 
@@ -584,61 +662,156 @@ describe('Cloudflare release executor', () => {
     ).rejects.toThrow('foreign_key_check_unavailable')
   })
 
-  it('runs both post-deploy backfill checks through the sealed DB binding', async () => {
-    const fx = fixture()
-    const queries: string[] = []
-    const runner = async (command: string, args: string[]) => {
-      if (command !== 'wrangler' || !args.includes('execute'))
-        return fx.runner(command, args)
-      expect(args[args.indexOf('execute') + 1]).toBe('DB')
-      expect(
-        args.slice(args.indexOf('--env'), args.indexOf('--env') + 2),
-      ).toEqual(['--env', 'staging'])
-      const query = args[args.indexOf('--command') + 1]!
-      queries.push(query)
-      const results = query.includes('COUNT(*) AS n FROM d1_migrations')
-        ? [{ n: 35 }]
-        : query.includes('MAX(version)')
-          ? [{ n: 35, version: '0033' }]
-          : query.includes(
-                'SELECT type, name, tbl_name, sql FROM sqlite_master',
-              )
-            ? localSchemaRows()
-            : query.includes('sqlite_master')
-              ? [
-                  { type: 'index', n: 61 },
-                  { type: 'table', n: 41 },
-                  { type: 'trigger', n: 6 },
-                ]
-              : query.includes('foreign_key_check')
-                ? []
-                : query.includes('email_verified_at IS NULL')
-                  ? [{ n: 1 }]
-                  : query.includes('credential_generation IS NULL')
-                    ? [{ n: 0 }]
-                    : migrationNames.map((name) => ({ name }))
-      return { stdout: JSON.stringify([{ results }]), code: 0 }
+  describe('post-deploy verification', () => {
+    const countQueries = [
+      'SELECT COUNT(*) AS n FROM users WHERE email_verified_at IS NULL',
+      'SELECT COUNT(*) AS n FROM user_totp WHERE enabled = 1 AND verified_at IS NOT NULL AND credential_generation IS NULL',
+    ]
+    const observation = {
+      usersWithoutVerifiedEmail: 1,
+      usersWithoutVerifiedEmailStatus: 'informational',
+      emailLegacyBackfillStatus: 'not_verified',
+      totpWithoutCredentialGeneration: 0,
     }
-    await expect(
-      release(
+
+    it('accepts a later unverified user after real 0017 backfill without modifying accounts', async () => {
+      const fx = postDeployFixture()
+      const users = () =>
+        fx.db
+          .prepare(
+            'SELECT id, created_at, email_verified_at FROM users ORDER BY id',
+          )
+          .all()
+      const before = users()
+      expect(before).toEqual([
+        {
+          id: 'later',
+          created_at: '2026-10-13 00:00:00',
+          email_verified_at: null,
+        },
+        {
+          id: 'legacy',
+          created_at: '2026-10-13 00:00:00',
+          email_verified_at: '2026-10-13 00:00:00',
+        },
+      ])
+      expect(
+        fx.db.prepare('SELECT credential_generation FROM user_totp').get(),
+      ).toEqual({ credential_generation: expect.any(String) })
+      await expect(fx.verify()).resolves.toMatchObject(observation)
+      expect(users()).toEqual(before)
+      expect(fx.queries).toHaveLength(8)
+      expect(fx.queries.slice(-2)).toEqual(countQueries)
+      expect(fx.queries.every((sql) => /^(SELECT |PRAGMA )/u.test(sql))).toBe(
+        true,
+      )
+      expect(fx.journal()).toEqual([
+        expect.objectContaining({ kind: 'schema_verified' }),
+        {
+          at: expect.any(String),
+          kind: 'post_deploy_verified',
+          ...observation,
+        },
+      ])
+    })
+
+    it('accepts zero unverified users without claiming legacy cohort proof', async () => {
+      const fx = postDeployFixture()
+      fx.db.exec("DELETE FROM users WHERE id = 'later'")
+      const expected = { ...observation, usersWithoutVerifiedEmail: 0 }
+      await expect(fx.verify()).resolves.toMatchObject(expected)
+      expect(fx.journal().at(-1)).toEqual({
+        at: expect.any(String),
+        kind: 'post_deploy_verified',
+        ...expected,
+      })
+    })
+
+    it('preserves the actual maximum safe integer email observation', async () => {
+      const fx = postDeployFixture()
+      fx.responses.set(
+        countQueries[0]!,
+        JSON.stringify([{ results: [{ n: Number.MAX_SAFE_INTEGER }] }]),
+      )
+      const expected = {
+        ...observation,
+        usersWithoutVerifiedEmail: Number.MAX_SAFE_INTEGER,
+      }
+      await expect(fx.verify()).resolves.toMatchObject(expected)
+      expect(fx.journal().at(-1)).toMatchObject(expected)
+    })
+
+    it.each([false, true])(
+      'rejects missing TOTP generation with later unverified users present: %s',
+      async (withLaterUser) => {
+        const fx = postDeployFixture()
+        if (!withLaterUser) fx.db.exec("DELETE FROM users WHERE id = 'later'")
+        fx.db.exec('UPDATE user_totp SET credential_generation = NULL')
+        await expect(fx.verify()).rejects.toThrow(
+          'post_deploy_totp_generation_incomplete',
+        )
+        expect(fx.queries.slice(-2)).toEqual(countQueries)
+        expect(fx.journal().map((row) => row.kind)).toEqual(['schema_verified'])
+      },
+    )
+
+    describe.each(countQueries)('count query %s', (query) => {
+      it.each([
+        ['missing row', []],
+        ['multiple rows', [{ n: 0 }, { n: 0 }]],
+        ['null row', [null]],
+        ['array row', [[]]],
+        ['scalar row', [0]],
+        ['missing count', [{}]],
+        ['null count', [{ n: null }]],
+        ['string count', [{ n: '0' }]],
+        ['boolean count', [{ n: false }]],
+        ['array count', [{ n: [] }]],
+        ['object count', [{ n: {} }]],
+        ['negative count', [{ n: -1 }]],
+        ['fractional count', [{ n: 0.5 }]],
+        ['unsafe integer count', [{ n: Number.MAX_SAFE_INTEGER + 1 }]],
+        ['huge count', [{ n: Number.MAX_VALUE }]],
+      ])('rejects %s', async (_name, results) => {
+        const fx = postDeployFixture()
+        fx.responses.set(query, JSON.stringify([{ results }]))
+        await expect(fx.verify()).rejects.toThrow('post_deploy_count_invalid')
+        expect(fx.journal().map((row) => row.kind)).toEqual(['schema_verified'])
+      })
+
+      it.each([
+        ['invalid JSON', '{', 'wrangler_json_invalid'],
+        ['missing response', '[]', 'schema_readback_unresolved'],
+        ['null response', '[null]', 'schema_readback_unresolved'],
+        ['missing results', '[{}]', 'schema_readback_unresolved'],
+        ['null results', '[{"results":null}]', 'schema_readback_unresolved'],
         [
-          'verify-db',
-          '--target',
-          'staging',
-          '--expect-pending',
-          '',
-          '--post-deploy',
+          'object results',
+          '[{"results":{"n":0}}]',
+          'schema_readback_unresolved',
         ],
-        { ...fx, runner, cwd: process.cwd() },
-      ),
-    ).rejects.toThrow('post_deploy_backfill_incomplete')
-    expect(
-      queries.some((query) => query.includes('email_verified_at IS NULL')),
-    ).toBe(true)
-    expect(
-      queries.some((query) => query.includes('credential_generation IS NULL')),
-    ).toBe(true)
-    expect(fx.calls.some((call) => call.includes('apply'))).toBe(false)
+        [
+          'failed response',
+          '[{"success":false,"results":[{"n":0}]}]',
+          'schema_readback_unresolved',
+        ],
+        [
+          'multiple responses',
+          '[{"results":[{"n":0}]},{"results":[{"n":0}]}]',
+          'schema_readback_unresolved',
+        ],
+        [
+          'non-finite count',
+          '[{"results":[{"n":1e400}]}]',
+          'post_deploy_count_invalid',
+        ],
+      ])('rejects %s', async (_name, response, error) => {
+        const fx = postDeployFixture()
+        fx.responses.set(query, response)
+        await expect(fx.verify()).rejects.toThrow(error)
+        expect(fx.journal().map((row) => row.kind)).toEqual(['schema_verified'])
+      })
+    })
   })
 
   it('rejects a changed migration manifest before touching D1', async () => {

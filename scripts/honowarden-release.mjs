@@ -1621,7 +1621,7 @@ export async function release(argv, deps = {}) {
         fail('pending_migrations_drift')
       if (observed.length) fail('schema_pending_migrations')
       const schema = await verifyDb()
-      let backfill = null
+      let postDeploy = null
       if (args['post-deploy']) {
         const email = await readDbRows(
           'SELECT COUNT(*) AS n FROM users WHERE email_verified_at IS NULL',
@@ -1630,19 +1630,26 @@ export async function release(argv, deps = {}) {
           'SELECT COUNT(*) AS n FROM user_totp WHERE enabled = 1 AND verified_at IS NOT NULL AND credential_generation IS NULL',
         )
         if (
-          email.length !== 1 ||
-          totp.length !== 1 ||
-          email[0].n !== 0 ||
-          totp[0].n !== 0
+          [email, totp].some(
+            (rows) =>
+              rows.length !== 1 ||
+              !Number.isSafeInteger(rows[0]?.n) ||
+              rows[0].n < 0,
+          )
         )
-          fail('post_deploy_backfill_incomplete')
-        backfill = {
-          usersWithoutVerifiedEmail: 0,
-          totpWithoutCredentialGeneration: 0,
+          fail('post_deploy_count_invalid')
+        if (totp[0].n !== 0) fail('post_deploy_totp_generation_incomplete')
+        // Migration 0017 backfills only users present when it runs. Current
+        // unverified users are an observation, not proof of that legacy cohort.
+        postDeploy = {
+          usersWithoutVerifiedEmail: email[0].n,
+          usersWithoutVerifiedEmailStatus: 'informational',
+          emailLegacyBackfillStatus: 'not_verified',
+          totpWithoutCredentialGeneration: totp[0].n,
         }
-        record('post_deploy_backfill_verified', backfill)
+        record('post_deploy_verified', postDeploy)
       }
-      return { ...schema, ...(backfill ?? {}), journal: journalPath }
+      return { ...schema, ...(postDeploy ?? {}), journal: journalPath }
     }
     if (args.command === 'backup-db') {
       if (info.kind !== 'vault') fail('vault_only')
