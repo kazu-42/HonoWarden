@@ -11,7 +11,7 @@ export type OrganizationCipherUpdateInput = OrganizationAccessContext & {
   type: number
   favorite: boolean
   encryptedJson: string
-  cipherKey?: string
+  cipherKey?: string | null
   revisionDate: string
   expectedRevisionDate: string
 }
@@ -61,6 +61,7 @@ export async function updateOrganizationCipher(
 > {
   if (
     input.cipherKey !== undefined &&
+    input.cipherKey !== null &&
     (typeof input.cipherKey !== 'string' ||
       input.cipherKey.length === 0 ||
       new TextEncoder().encode(input.cipherKey).byteLength > 65_536)
@@ -76,7 +77,7 @@ export async function updateOrganizationCipher(
       ${organizationCollectionAccessCte}
       UPDATE ciphers
       SET type = ?, favorite = ?, encrypted_json = ?,
-        cipher_key = COALESCE(?, cipher_key),
+        cipher_key = ?,
         revision_date = ?, updated_at = ?
       WHERE id = ? AND deleted_at IS NULL AND revision_date = ?
         AND revision_date < ?

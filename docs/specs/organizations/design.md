@@ -19,26 +19,26 @@ to match existing `compat/fixtures`. Requests arrive camelCase.
 
 ### Endpoints (slice-ordered)
 
-| Slice | Method            | Path                                                                       | Request                                                             | Response                                                           |
-| ----- | ----------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 1     | POST              | `/api/organizations`                                                       | `OrganizationCreateRequest`                                         | `OrganizationResponse`                                             |
-| 1     | GET               | `/api/sync` (extend)                                                       | –                                                                   | org in `Profile.Organizations[]`, `Collections[]`, org `Ciphers[]` |
-| 1     | GET               | `/api/organizations/{id}`                                                  | –                                                                   | `OrganizationResponse`                                             |
-| 2     | GET               | `/api/organizations/{id}/collections`                                      | –                                                                   | `ListResponse<CollectionResponse>`                                 |
-| 2     | GET               | `/api/collections`                                                         | –                                                                   | `ListResponse<CollectionResponse>` (assigned)                      |
-| 2     | POST              | `/api/organizations/{id}/collections`                                      | `CreateCollectionRequest`                                           | `CollectionAccessDetailsResponse`                                  |
-| 2     | PUT               | `/api/organizations/{id}/collections/{cid}`                                | `UpdateCollectionRequest`                                           | `CollectionAccessDetailsResponse`                                  |
-| 2     | DELETE            | `/api/organizations/{id}/collections/{cid}` (+ bulk `DELETE /collections`) | `CollectionBulkDeleteRequest`                                       | –                                                                  |
-| 3     | POST              | `/api/ciphers/create`                                                      | `CipherCreateRequest` `{cipher, collectionIds}`                     | `CipherResponse`                                                   |
-| 3     | PUT               | `/api/ciphers/{id}/share`                                                  | `CipherShareRequest` `{cipher(+organizationId,key), collectionIds}` | `CipherResponse`                                                   |
-| 3     | PUT               | `/api/ciphers/{id}/collections_v2`                                         | `CipherCollectionsRequest` `{collectionIds}`                        | `OptionalCipherResponse`                                           |
-| 3     | PUT               | `/api/ciphers/share` (bulk)                                                | `CipherBulkShareRequest`                                            | `ListResponse<CipherResponse>`                                     |
-| 4     | GET               | `/api/organizations/{id}/users?includeGroups&includeCollections`           | –                                                                   | `ListResponse<OrganizationUserUserDetailsResponse>`                |
-| 4     | POST              | `/api/organizations/{id}/users/invite`                                     | `{emails[], type, collections[], permissions}`                      | –                                                                  |
-| 4     | POST              | `/api/organizations/{id}/users/{uid}/accept`                               | `{token}`                                                           | –                                                                  |
-| 4     | POST              | `/api/organizations/{id}/users/{uid}/confirm`                              | `{key}`                                                             | –                                                                  |
-| 4     | POST              | `/api/organizations/{id}/users/public-keys`                                | `{ids[]}`                                                           | `ListResponse<...PublicKey>`                                       |
-| 4     | PUT/DELETE/revoke | `/api/organizations/{id}/users/{uid}[...]`                                 | role/remove                                                         | –                                                                  |
+| Slice | Method            | Path                                                                       | Request                                                                       | Response                                                           |
+| ----- | ----------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1     | POST              | `/api/organizations`                                                       | `OrganizationCreateRequest`                                                   | `OrganizationResponse`                                             |
+| 1     | GET               | `/api/sync` (extend)                                                       | –                                                                             | org in `Profile.Organizations[]`, `Collections[]`, org `Ciphers[]` |
+| 1     | GET               | `/api/organizations/{id}`                                                  | –                                                                             | `OrganizationResponse`                                             |
+| 2     | GET               | `/api/organizations/{id}/collections`                                      | –                                                                             | `ListResponse<CollectionResponse>`                                 |
+| 2     | GET               | `/api/collections`                                                         | –                                                                             | `ListResponse<CollectionResponse>` (assigned)                      |
+| 2     | POST              | `/api/organizations/{id}/collections`                                      | `CreateCollectionRequest`                                                     | `CollectionAccessDetailsResponse`                                  |
+| 2     | PUT               | `/api/organizations/{id}/collections/{cid}`                                | `UpdateCollectionRequest`                                                     | `CollectionAccessDetailsResponse`                                  |
+| 2     | DELETE            | `/api/organizations/{id}/collections/{cid}` (+ bulk `DELETE /collections`) | `CollectionBulkDeleteRequest`                                                 | –                                                                  |
+| 3     | POST              | `/api/ciphers/create`                                                      | `CipherCreateRequest` `{cipher, collectionIds}`                               | `CipherResponse`                                                   |
+| 3     | PUT               | `/api/ciphers/{id}/share`                                                  | `CipherShareRequest` `{cipher(+organizationId, optional key), collectionIds}` | `CipherResponse`                                                   |
+| 3     | PUT               | `/api/ciphers/{id}/collections_v2`                                         | `CipherCollectionsRequest` `{collectionIds}`                                  | `OptionalCipherResponse`                                           |
+| 3     | PUT               | `/api/ciphers/share` (bulk)                                                | `CipherBulkShareRequest`                                                      | `ListResponse<CipherResponse>`                                     |
+| 4     | GET               | `/api/organizations/{id}/users?includeGroups&includeCollections`           | –                                                                             | `ListResponse<OrganizationUserUserDetailsResponse>`                |
+| 4     | POST              | `/api/organizations/{id}/users/invite`                                     | `{emails[], type, collections[], permissions}`                                | –                                                                  |
+| 4     | POST              | `/api/organizations/{id}/users/{uid}/accept`                               | `{token}`                                                                     | –                                                                  |
+| 4     | POST              | `/api/organizations/{id}/users/{uid}/confirm`                              | `{key}`                                                                       | –                                                                  |
+| 4     | POST              | `/api/organizations/{id}/users/public-keys`                                | `{ids[]}`                                                                     | `ListResponse<...PublicKey>`                                       |
+| 4     | PUT/DELETE/revoke | `/api/organizations/{id}/users/{uid}[...]`                                 | role/remove                                                                   | –                                                                  |
 
 Gotchas: move-to-collection is `collections_v2` (not `/collections`); `share`
 requires the source cipher to have **no** `organizationId`; the create response
@@ -55,8 +55,10 @@ its `Key`, and default collection must appear in the next `/api/sync`.
 - **`Collections[]`** (inside sync): `"object":"collectionDetails"`, `Id`,
   `OrganizationId`, `Name` (org-key-encrypted), `ReadOnly:false`,
   `HidePasswords:false`, `Manage:true`, `Type:0`.
-- **org `Ciphers[]`**: `OrganizationId`, `CollectionIds[]`, `Key` (cipher key
-  wrapped by org key), `Edit:true`, `ViewPassword` (omit → treated true).
+- **org `Ciphers[]`**: `OrganizationId`, `CollectionIds[]`, nullable `Key`
+  (wrapped cipher key when cipher-key encryption is enabled; otherwise fields
+  are encrypted directly with the organization key), `Edit:true`,
+  `ViewPassword` (omit → treated true).
 - **List envelope**: `{object:"list", data:[...], continuationToken:null}`.
 
 ### `OrganizationCreateRequest` (load-bearing)
@@ -170,7 +172,9 @@ The server generates and inspects **none** of these; it stores and returns them:
 
 - org `key` per member = org symmetric key RSA-OAEP to that member's `users.public_key`.
 - org `keys.encryptedPrivateKey` = org RSA private key, AES under the org key.
-- collection `encrypted_name`, cipher `cipher_key` and `encrypted_json` = AES under org key.
+- collection `encrypted_name` and cipher `encrypted_json` = encrypted under the
+  organization key when cipher-key encryption is disabled. Optional cipher
+  `cipher_key` is a wrapped per-cipher key when that mode is used.
 - confirm `key` = org key RSA-OAEP to the confirmed member's public key.
 
 **Invariant**: each confirmed member's `/api/sync` `Profile.Organizations[].Key`

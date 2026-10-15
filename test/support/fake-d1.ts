@@ -2993,7 +2993,7 @@ function applyOrganizationCipherMutation(
       updatedAt: String(values[7]),
       deletedAt: null,
       organizationId,
-      cipherKey: String(values[9]),
+      cipherKey: values[9] === null ? null : String(values[9]),
     })
     return 1
   }
@@ -3031,7 +3031,7 @@ function applyOrganizationCipherMutation(
     revisionDate: String(values[3]),
     updatedAt: String(values[4]),
     organizationId: String(values[5]),
-    cipherKey: String(values[6]),
+    cipherKey: values[6] === null ? null : String(values[6]),
   })
   return 1
 }

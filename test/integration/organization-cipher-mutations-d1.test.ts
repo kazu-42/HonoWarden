@@ -118,6 +118,20 @@ describe('organization cipher mutations on real local D1', () => {
     expect(await readState(database)).toEqual(updated)
   })
 
+  it('clears a prior wrapped key when the updated ciphertext uses the organization key', async () => {
+    const database = await createDatabase()
+    await expect(
+      updateOrganizationCipher(database, {
+        ...updateInput(),
+        cipherKey: null,
+      }),
+    ).resolves.toMatchObject({ status: 'updated', cipher: { cipherKey: null } })
+    expect(await readState(database)).toMatchObject({
+      cipher: { cipher_key: null, encrypted_json: '{"name":"2.updated"}' },
+      mappings: [{ collection_id: 'collection', cipher_id: 'cipher' }],
+    })
+  })
+
   it.each(['', 'x'.repeat(65537), 'é'.repeat(32769)])(
     'rejects invalid wrapped key size without changing either key or payload (%#)',
     async (cipherKey) => {
@@ -390,6 +404,7 @@ function updateInput() {
     type: 2,
     favorite: true,
     encryptedJson: '{"name":"2.updated"}',
+    cipherKey: '2.original-key',
     revisionDate: nextRevision,
     expectedRevisionDate: originalRevision,
   }

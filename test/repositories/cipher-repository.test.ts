@@ -104,6 +104,25 @@ describe('cipher repository', () => {
     )
   })
 
+  it('binds SQL NULL for a keyless organization cipher without changing the collection guard', async () => {
+    const database = new RecordingCipherD1Database([], { batchChanges: [1, 1] })
+    await expect(
+      createOrganizationCipher(database, {
+        id: 'keyless-cipher',
+        userId: 'member',
+        organizationId: 'org',
+        collectionIds: ['collection'],
+        type: 1,
+        favorite: false,
+        encryptedJson: '{"name":"2.synthetic"}',
+        cipherKey: null,
+        now: '2026-10-12T00:00:00.000Z',
+      }),
+    ).resolves.toEqual({ status: 'created' })
+    expect(database.boundValues).toContain(null)
+    expect(database.queries[0]).toContain('COUNT(DISTINCT collection.id)')
+  })
+
   it('shares an active personal cipher without changing its id or provenance owner', async () => {
     const database = new RecordingCipherD1Database([], {
       batchChanges: [1, 2],
@@ -371,7 +390,7 @@ describe('cipher repository', () => {
     expect(findDatabase.queries.join('\n')).toContain('cipher.id = ?')
   })
 
-  it('rejects organization ciphers that are missing their opaque key', async () => {
+  it('projects organization ciphers encrypted directly by the organization key', async () => {
     const database = new RecordingCipherD1Database([
       {
         id: 'organization-cipher-id',
@@ -390,8 +409,35 @@ describe('cipher repository', () => {
 
     await expect(
       listAccessibleCiphersByUser(database, 'user-id'),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        organizationId: 'organization-id',
+        cipherKey: null,
+        collectionIds: ['collection-id'],
+      }),
+    ])
+  })
+
+  it('still rejects a malformed present organization cipher key', async () => {
+    const database = new RecordingCipherD1Database([
+      {
+        id: 'organization-cipher-id',
+        userId: 'creator-user-id',
+        folderId: null,
+        type: 1,
+        favorite: 0,
+        encryptedJson: '{"name":"2.organization"}',
+        revisionDate: '2026-07-06T00:06:00.000Z',
+        createdAt: '2026-07-06T00:05:00.000Z',
+        organizationId: 'organization-id',
+        cipherKey: '',
+        collectionIdsJson: '["collection-id"]',
+      },
+    ])
+    await expect(
+      listAccessibleCiphersByUser(database, 'user-id'),
     ).rejects.toThrow(
-      'Accessible organization cipher is missing its opaque key.',
+      'Accessible organization cipher has an invalid opaque key.',
     )
   })
 

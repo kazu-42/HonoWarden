@@ -88,7 +88,7 @@ export type OrganizationCipherWriteInput = OrganizationAccessContext & {
   type: number
   favorite: boolean
   encryptedJson: string
-  cipherKey: string
+  cipherKey: string | null
   now: string
 }
 
@@ -783,7 +783,10 @@ function assertOrganizationCipherInput(
     !input.id ||
     !input.userId ||
     !input.organizationId ||
-    !input.cipherKey ||
+    (input.cipherKey !== null &&
+      (typeof input.cipherKey !== 'string' ||
+        input.cipherKey.length === 0 ||
+        new TextEncoder().encode(input.cipherKey).byteLength > 65_536)) ||
     !hasUniqueCollectionIds(input.collectionIds)
   ) {
     throw new Error('Organization cipher input is invalid.')
@@ -1223,8 +1226,11 @@ function accessibleCipherFromRow(
     }
   }
 
-  if (!row.cipherKey) {
-    throw new Error('Accessible organization cipher is missing its opaque key.')
+  if (
+    row.cipherKey !== null &&
+    (typeof row.cipherKey !== 'string' || row.cipherKey.length === 0)
+  ) {
+    throw new Error('Accessible organization cipher has an invalid opaque key.')
   }
 
   const parsedCollectionIds: unknown = JSON.parse(row.collectionIdsJson)

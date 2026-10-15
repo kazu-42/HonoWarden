@@ -22,6 +22,7 @@ import { hotp } from '../src/domain/totp'
 import * as retentionCleanup from '../src/maintenance/retention-cleanup'
 import { FakeD1Database, requiredTables } from './support/fake-d1'
 import { FakeR2Bucket } from './support/fake-r2'
+import { desktopOrganizationCipherRequest } from './support/desktop-organization-cipher-fixture'
 
 const testAttachmentStorageQuotaBytes = attachmentStoragePolicy.maxStorageBytes
 
@@ -12289,7 +12290,10 @@ describe('HonoWarden app', () => {
         cipherKey: requestCipher.key,
       }),
     ])
-    expect(JSON.parse(String(ciphers[0]?.encryptedJson))).toEqual(requestCipher)
+    expect(JSON.parse(String(ciphers[0]?.encryptedJson))).toEqual({
+      ...requestCipher,
+      encryptedFor: undefined,
+    })
     expect(collectionCiphers).toEqual([
       { collectionId: access.collectionId, cipherId },
     ])
@@ -12329,6 +12333,86 @@ describe('HonoWarden app', () => {
       ],
     })
   })
+
+  it.each(['absent', 'null'] as const)(
+    'accepts the Desktop organization cipher shape with %s key and shares it',
+    async (keyForm) => {
+      const user = authUserRecord()
+      const accessToken = await accessTokenFor(user)
+      const access = organizationCipherAccessFixture(user.id)
+      const personalCipher = cipherRecord()
+      const ciphers: Record<string, unknown>[] = [personalCipher]
+      const collectionCiphers: Record<string, unknown>[] = []
+      const env = {
+        DB: new FakeD1Database(null, [], {
+          authUser: user,
+          ciphers,
+          collectionCiphers,
+          ...access.records,
+        }),
+        HONOWARDEN_TOKEN_SECRET: 'test-token-secret',
+      }
+      const body = desktopOrganizationCipherRequest(
+        access.organizationId,
+        access.collectionId,
+        user.id,
+      )
+      const cipher =
+        keyForm === 'null' ? { ...body.cipher, key: null } : body.cipher
+      const headers = {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      }
+      const create = await app.request(
+        '/api/ciphers/create',
+        { method: 'POST', headers, body: JSON.stringify({ ...body, cipher }) },
+        env,
+      )
+      expect(create.status).toBe(200)
+      const created = (await create.json()) as Record<string, unknown>
+      expect(created).toMatchObject({
+        key: null,
+        collectionIds: [access.collectionId],
+      })
+      expect(ciphers.find((row) => row.id === created.id)?.cipherKey).toBeNull()
+      const sync = await app.request('/api/sync', { headers }, env)
+      expect(sync.status).toBe(200)
+      await expect(sync.json()).resolves.toMatchObject({
+        ciphers: expect.arrayContaining([
+          expect.objectContaining({
+            id: created.id,
+            key: null,
+            collectionIds: [access.collectionId],
+          }),
+        ]),
+      })
+
+      const share = await app.request(
+        `/api/ciphers/${personalCipher.id}/share`,
+        {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            ...body,
+            cipher: {
+              ...cipher,
+              lastKnownRevisionDate: personalCipher.revisionDate,
+            },
+          }),
+        },
+        env,
+      )
+      expect(share.status).toBe(200)
+      await expect(share.json()).resolves.toMatchObject({
+        id: personalCipher.id,
+        key: null,
+        collectionIds: [access.collectionId],
+      })
+      expect(
+        ciphers.find((row) => row.id === personalCipher.id)?.cipherKey,
+      ).toBeNull()
+    },
+  )
 
   it('shares an active personal cipher while preserving its id', async () => {
     const user = authUserRecord()
@@ -12396,7 +12480,10 @@ describe('HonoWarden app', () => {
         cipherKey: requestCipher.key,
       }),
     ])
-    expect(JSON.parse(String(ciphers[0]?.encryptedJson))).toEqual(requestCipher)
+    expect(JSON.parse(String(ciphers[0]?.encryptedJson))).toEqual({
+      ...requestCipher,
+      encryptedFor: undefined,
+    })
     expect(collectionCiphers).toEqual([
       { collectionId: access.collectionId, cipherId: personalCipher.id },
     ])
@@ -12559,6 +12646,14 @@ describe('HonoWarden app', () => {
           collectionIds: [access.collectionId],
         },
       },
+      ...[{}, '', 'é'.repeat(32769)].map((key) => ({
+        method: 'POST',
+        path: '/api/ciphers/create',
+        body: {
+          cipher: { ...validCipher, key },
+          collectionIds: [access.collectionId],
+        },
+      })),
       {
         method: 'PUT',
         path: `/api/ciphers/${personalCipher.id}/share`,

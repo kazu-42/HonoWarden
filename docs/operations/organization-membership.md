@@ -205,11 +205,12 @@ Payload updates require the current `revisionDate` (the existing parser also
 accepts `lastKnownRevisionDate`). The SQL compare-and-swap requires an exact
 revision match and rechecks membership, enabled organization, and mapped writable
 grants at the write. A stale revision returns `409 revision_conflict` without
-changing either encrypted payload or wrapped cipher key. An optional `key` must
-be a nonempty opaque string of at most 65,536 UTF-8 bytes; a supplied key and the
-encrypted payload change together in the same compare-and-swap. Omitting `key`
-preserves the current key. Organization ownership cannot change through this
-update, and a non-null personal `folderId` is unsupported. Use the dedicated
+changing either encrypted payload or wrapped cipher key. A missing or explicit
+null `key` persists SQL `NULL`, clearing any prior wrapper in the same
+compare-and-swap as the encrypted payload. A present non-null `key` must be a
+nonempty opaque string of at most 65,536 UTF-8 bytes and changes together with the
+encrypted payload. Organization ownership cannot change through this update,
+and a non-null personal `folderId` is unsupported. Use the dedicated
 assignment operation for collection changes; update body `collectionIds` does
 not replace persisted mappings.
 
