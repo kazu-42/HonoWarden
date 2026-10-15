@@ -8118,6 +8118,7 @@ app.put('/api/ciphers/:id', async (c) => {
           payload.organizationId !== access.organizationId) ||
         cipherRequest.cipher.folderId !== null ||
         (payload.key !== undefined &&
+          payload.key !== null &&
           (typeof payload.key !== 'string' ||
             payload.key.length === 0 ||
             new TextEncoder().encode(payload.key).byteLength > 65_536))
@@ -8139,7 +8140,10 @@ app.put('/api/ciphers/:id', async (c) => {
       folderId: cipherRequest.cipher.folderId,
       type: cipherRequest.cipher.type,
       favorite: cipherRequest.cipher.favorite,
-      encryptedJson: cipherRequest.cipher.encryptedJson,
+      encryptedJson:
+        access.organizationId !== null
+          ? serializeOrganizationCipherPayload(payload)
+          : cipherRequest.cipher.encryptedJson,
       expectedRevisionDate: cipherRequest.cipher.revisionDate,
       revisionDate: now,
       createdAt: now,
@@ -8149,9 +8153,7 @@ app.put('/api/ciphers/:id', async (c) => {
         ? await updateOrganizationCipher(c.env.DB, {
             actor: organizationActor(auth),
             ...input,
-            ...(typeof payload.key === 'string'
-              ? { cipherKey: payload.key }
-              : {}),
+            cipherKey: typeof payload.key === 'string' ? payload.key : null,
           })
         : await updateCipher(c.env.DB, input)
 
@@ -13228,7 +13230,7 @@ function parseCipherBulkMoveRequestBody(body: unknown):
   }
 }
 
-function parseOrganizationCipherTransitionRequestBody(
+export function parseOrganizationCipherTransitionRequestBody(
   body: unknown,
   requireRevision: boolean,
 ):
@@ -13240,7 +13242,7 @@ function parseOrganizationCipherTransitionRequestBody(
         type: 1 | 2
       }
       organizationId: string
-      cipherKey: string
+      cipherKey: string | null
       collectionIds: string[]
       encryptedFor: string | null
       expectedRevisionDate: string | null
@@ -13262,7 +13264,10 @@ function parseOrganizationCipherTransitionRequestBody(
   }
 
   const organizationId = parseBoundedIdentifier(body.cipher.organizationId)
-  const cipherKey = parseRequiredOpaqueString(body.cipher.key)
+  const cipherKey =
+    body.cipher.key === undefined || body.cipher.key === null
+      ? null
+      : parseRequiredOpaqueString(body.cipher.key)
   const encryptedForValue = body.cipher.encryptedFor
   const encryptedFor =
     encryptedForValue === undefined || encryptedForValue === null
@@ -13275,7 +13280,9 @@ function parseOrganizationCipherTransitionRequestBody(
     : null
   if (
     !organizationId ||
-    !cipherKey ||
+    cipherKey === undefined ||
+    (cipherKey !== null &&
+      new TextEncoder().encode(cipherKey).byteLength > 65_536) ||
     encryptedFor === undefined ||
     (requireRevision && !expectedRevisionDate)
   ) {
@@ -13296,7 +13303,7 @@ function parseOrganizationCipherTransitionRequestBody(
   return {
     ok: true,
     cipher: {
-      encryptedJson: cipherRequest.cipher.encryptedJson,
+      encryptedJson: serializeOrganizationCipherPayload(body.cipher),
       favorite: cipherRequest.cipher.favorite,
       type: cipherRequest.cipher.type,
     },
@@ -13306,6 +13313,15 @@ function parseOrganizationCipherTransitionRequestBody(
     encryptedFor,
     expectedRevisionDate: expectedRevisionDate ?? null,
   }
+}
+
+function serializeOrganizationCipherPayload(
+  cipher: Record<string, unknown>,
+): string {
+  const storedCipher = { ...cipher }
+  delete storedCipher.encryptedByKeyId
+  delete storedCipher.encryptedFor
+  return JSON.stringify(storedCipher)
 }
 
 function parseBoundedIdentifier(value: unknown): string | undefined {

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import app from '../../src/app'
 import { signAccessToken } from '../../src/domain/tokens'
+import { desktopOrganizationCipherRequest } from '../support/desktop-organization-cipher-fixture'
 
 const instances: Miniflare[] = []
 const initialRevision = '2026-10-01T00:00:00.000Z'
@@ -27,6 +28,200 @@ afterEach(async () => {
 })
 
 describe('organization cipher routes on real D1', () => {
+  it('stores and projects Desktop keyless organization create, update, share, and restore', async () => {
+    const db = await createDatabase()
+    const body = desktopOrganizationCipherRequest(
+      organizationId,
+      collectionId,
+      actor,
+    )
+    const createdResponse = await request(
+      db,
+      'POST',
+      '/api/ciphers/create',
+      body,
+    )
+    expect(createdResponse.status).toBe(200)
+    const created = await createdResponse.json<Record<string, unknown>>()
+    const id = String(created.id)
+    expect(created).toMatchObject({ key: null, collectionIds: [collectionId] })
+    expect(await cipherRow(db, id)).toMatchObject({ cipher_key: null })
+    expect(
+      JSON.parse(String((await cipherRow(db, id))?.encrypted_json)),
+    ).not.toHaveProperty('encryptedByKeyId')
+    expect(
+      JSON.parse(String((await cipherRow(db, id))?.encrypted_json)),
+    ).not.toHaveProperty('encryptedFor')
+
+    const updatedResponse = await request(db, 'PUT', `/api/ciphers/${id}`, {
+      ...body.cipher,
+      name: '2.updated-name',
+      key: null,
+      revisionDate: created.revisionDate,
+    })
+    expect(updatedResponse.status).toBe(200)
+    const updated = await updatedResponse.json<Record<string, unknown>>()
+    expect(updated).toMatchObject({ key: null, name: '2.updated-name' })
+    expect(await cipherRow(db, id)).toMatchObject({ cipher_key: null })
+
+    for (const path of [`/api/ciphers/${id}`, '/api/ciphers', '/api/sync']) {
+      const response = await request(db, 'GET', path)
+      expect(response.status).toBe(200)
+      const result = await response.json<Record<string, unknown>>()
+      const cipher =
+        path === '/api/ciphers'
+          ? (result.data as Array<Record<string, unknown>>).find(
+              (item) => item.id === id,
+            )
+          : path === '/api/sync'
+            ? (result.ciphers as Array<Record<string, unknown>>).find(
+                (item) => item.id === id,
+              )
+            : result
+      expect(cipher).toMatchObject({
+        id,
+        key: null,
+        collectionIds: [collectionId],
+      })
+    }
+
+    expect((await request(db, 'PUT', `/api/ciphers/${id}/delete`)).status).toBe(
+      200,
+    )
+    expect(
+      (await request(db, 'PUT', `/api/ciphers/${id}/restore`)).status,
+    ).toBe(200)
+    expect(await cipherRow(db, id)).toMatchObject({
+      cipher_key: null,
+      deleted_at: null,
+    })
+
+    await db
+      .prepare(
+        'INSERT INTO ciphers (id, user_id, type, encrypted_json, revision_date) VALUES (?, ?, 1, ?, ?)',
+      )
+      .bind(
+        'personal-to-share',
+        actor,
+        JSON.stringify(payload()),
+        initialRevision,
+      )
+      .run()
+    const sharedResponse = await request(
+      db,
+      'PUT',
+      '/api/ciphers/personal-to-share/share',
+      {
+        ...body,
+        cipher: { ...body.cipher, lastKnownRevisionDate: initialRevision },
+      },
+    )
+    expect(sharedResponse.status).toBe(200)
+    expect(await sharedResponse.json()).toMatchObject({
+      key: null,
+      collectionIds: [collectionId],
+    })
+    expect(await cipherRow(db, 'personal-to-share')).toMatchObject({
+      cipher_key: null,
+    })
+  })
+
+  it.each(['omitted', 'null'] as const)(
+    'clears a stored wrapped key on Desktop organization update when key is %s',
+    async (keyMode) => {
+      const db = await createDatabase()
+      const body = desktopOrganizationCipherRequest(
+        organizationId,
+        collectionId,
+        actor,
+      )
+      const wrappedKey = '2.synthetic-wrapped-cipher-key'
+      const createdResponse = await request(db, 'POST', '/api/ciphers/create', {
+        ...body,
+        cipher: { ...body.cipher, key: wrappedKey },
+      })
+      expect(createdResponse.status).toBe(200)
+      const created = await createdResponse.json<Record<string, unknown>>()
+      const id = String(created.id)
+      expect(created).toMatchObject({
+        key: wrappedKey,
+        organizationId,
+        collectionIds: [collectionId],
+      })
+      expect(await cipherRow(db, id)).toMatchObject({ cipher_key: wrappedKey })
+
+      const updatedResponse = await request(db, 'PUT', `/api/ciphers/${id}`, {
+        ...body.cipher,
+        name: '2.updated-name',
+        revisionDate: created.revisionDate,
+        ...(keyMode === 'null' ? { key: null } : {}),
+      })
+      expect(updatedResponse.status).toBe(200)
+      const updated = await updatedResponse.json<Record<string, unknown>>()
+      expect(updated).toMatchObject({
+        id,
+        name: '2.updated-name',
+        key: null,
+        organizationId,
+        collectionIds: [collectionId],
+      })
+      expect(updated.revisionDate).not.toBe(created.revisionDate)
+      const persisted = await cipherRow(db, id)
+      expect(persisted).toMatchObject({
+        cipher_key: null,
+        revision_date: updated.revisionDate,
+      })
+      expect(JSON.parse(String(persisted?.encrypted_json))).toMatchObject({
+        name: '2.updated-name',
+      })
+
+      for (const path of [`/api/ciphers/${id}`, '/api/ciphers', '/api/sync']) {
+        const response = await request(db, 'GET', path)
+        expect(response.status).toBe(200)
+        const result = await response.json<Record<string, unknown>>()
+        const cipher =
+          path === '/api/ciphers'
+            ? (result.data as Array<Record<string, unknown>>).find(
+                (item) => item.id === id,
+              )
+            : path === '/api/sync'
+              ? (result.ciphers as Array<Record<string, unknown>>).find(
+                  (item) => item.id === id,
+                )
+              : result
+        expect(cipher).toMatchObject({
+          id,
+          name: '2.updated-name',
+          key: null,
+          organizationId,
+          collectionIds: [collectionId],
+        })
+      }
+    },
+  )
+
+  it.each(['read_only', 'non_member'] as const)(
+    'rejects Desktop keyless organization create for %s without mutation',
+    async (reason) => {
+      const db = await createDatabase({ readOnly: reason === 'read_only' })
+      if (reason === 'non_member') {
+        await db
+          .prepare('UPDATE organization_users SET status = 0 WHERE user_id = ?')
+          .bind(actor)
+          .run()
+      }
+      const before = await snapshot(db)
+      const response = await request(
+        db,
+        'POST',
+        '/api/ciphers/create',
+        desktopOrganizationCipherRequest(organizationId, collectionId, actor),
+      )
+      expect(response.status).toBe(404)
+      expect(await snapshot(db)).toEqual(before)
+    },
+  )
+
   it.each([0, 1, 2])(
     'runs the full cipher lifecycle for assigned role %i without collection management rights',
     async (role) => {
@@ -49,6 +244,7 @@ describe('organization cipher routes on real D1', () => {
       const updatedResponse = await request(db, 'PUT', `/api/ciphers/${id}`, {
         ...payload('2.updated-name'),
         organizationId,
+        key: '2.initial-cipher-key',
         revisionDate: created.revisionDate,
         edit: false,
         viewPassword: true,
@@ -399,7 +595,6 @@ describe('organization cipher routes on real D1', () => {
       { organizationId: null },
       { folderId: 'personal-folder' },
       { key: '' },
-      { key: null },
       { key: {} },
       { key: 'あ'.repeat(21_846) },
     ]) {
