@@ -23,6 +23,7 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.HONOWARDEN_INTERX_R2_SECRET_ACCESS_KEY }}
       HONOWARDEN_BACKUP_ARCHIVE_KEY: ${{ secrets.HONOWARDEN_INTERX_BACKUP_ARCHIVE_KEY }}
       WRANGLER_SEND_METRICS: 'false'
+      WRANGLER_HIDE_BANNER: 'true'
     steps:
       - uses: actions/checkout@v7
       - run: corepack enable
@@ -45,7 +46,7 @@ jobs:
         shell: bash
         run: |
           umask 077
-          if ! node scripts/honowarden-backup.mjs export \
+          if ! pnpm exec node scripts/honowarden-backup.mjs export \
             --out "$RUNNER_TEMP/interx-snapshot" \
             --database honowarden-interx --bucket honowarden-interx-vault-objects \
             --mode remote --env interx --r2-list --r2-s3 --execute \
