@@ -544,7 +544,10 @@ export function parseArguments(argv) {
     args.confirm !== args.target
   )
     fail('target_confirmation_required')
-  if (args.profile && !['upload', 'activate', 'verify'].includes(command))
+  if (
+    args.profile &&
+    !['upload', 'first-deploy', 'activate', 'verify'].includes(command)
+  )
     fail('profile_not_supported')
   if (command === 'generate-secrets' && !args.out)
     fail('secret_output_required')
@@ -582,7 +585,7 @@ export function parseArguments(argv) {
   )
     fail('expected_module_sha256_invalid')
   if (
-    command === 'upload' &&
+    ['upload', 'first-deploy'].includes(command) &&
     ['production', 'interx'].includes(args.target) &&
     (!args.config || path.basename(args.config) === 'wrangler.jsonc') &&
     !args['expect-admin-manifest']
@@ -590,7 +593,8 @@ export function parseArguments(argv) {
     fail('expected_admin_manifest_required')
   if (
     args['expect-admin-manifest'] &&
-    (command !== 'upload' || !['production', 'interx'].includes(args.target))
+    (!['upload', 'first-deploy'].includes(command) ||
+      !['production', 'interx'].includes(args.target))
   )
     fail('expected_admin_manifest_not_supported')
   if (
@@ -1654,7 +1658,7 @@ export async function release(argv, deps = {}) {
       // A mailer can be absent before its first deploy. Prove that absence
       // through the exact Worker GET before treating its secret set as empty.
       const absentMailer =
-        info.kind !== 'vault' &&
+        (info.kind !== 'vault' || args.target === 'interx') &&
         (await cloudflareRead(
           credentials.accountId,
           credentials.token,
@@ -2330,7 +2334,8 @@ export async function release(argv, deps = {}) {
       return { queues: info.expected.queues, journal: journalPath }
     }
     if (args.command === 'first-deploy') {
-      if (info.kind === 'vault') fail('mailer_only')
+      if (info.kind === 'vault' && args.target !== 'interx') fail('mailer_only')
+      if (info.kind === 'vault' && !profile) fail('profile_required')
       let secretCopy = null
       let newSecrets = { names: [], secrets: {} }
       if (args['secrets-file']) {
@@ -2346,6 +2351,11 @@ export async function release(argv, deps = {}) {
         !newSecrets.names.includes('HONOWARDEN_ACCOUNT_MAIL_ENCRYPTION_KEYS')
       )
         fail('mandatory_secret_missing')
+      if (
+        info.kind === 'vault' &&
+        [...secretNames.vault].some((name) => !newSecrets.names.includes(name))
+      )
+        fail('mandatory_secret_missing')
       const scriptPath = `/accounts/${credentials.accountId}/workers/scripts/${info.expected.name}`
       const existing = await cloudflareRead(
         credentials.accountId,
@@ -2355,6 +2365,48 @@ export async function release(argv, deps = {}) {
         true,
       )
       if (existing !== null) fail('worker_already_exists')
+      let assets = []
+      let assetArgs = []
+      const varArgs = Object.entries(profile?.vars ?? {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .flatMap(([name, value]) => ['--var', `${name}:${value}`])
+      if (info.kind === 'vault') {
+        if ((await pending()).length) fail('schema_pending_migrations')
+        await verifyDb()
+        if (info.env.vars.HONOWARDEN_INITIAL_SETUP_ENABLED !== 'false')
+          fail('initial_setup_must_be_closed')
+        const assetsDir = path.join(runDir, 'admin')
+        record('intent', { operation: 'admin build' })
+        const built = await run(
+          'vite',
+          ['build', '--config', 'vite.admin.config.ts', '--outDir', assetsDir],
+          {
+            cwd,
+            env: {
+              PATH: parent.PATH ?? '',
+              HOME: parent.HOME ?? os.homedir(),
+              NO_COLOR: '1',
+            },
+            timeout: 120000,
+          },
+        )
+        record('result', {
+          operation: 'admin build',
+          success: built.code === 0,
+        })
+        if (built.code !== 0) fail('admin_build_failed')
+        fs.chmodSync(assetsDir, 0o700)
+        assets = adminAssetHashes(assetsDir)
+        const expected = readAdminManifest(
+          args['expect-admin-manifest'],
+          args.commit,
+          args['expect-module-sha256'],
+        )
+        if (JSON.stringify(assets) !== JSON.stringify(expected))
+          fail('production_admin_manifest_mismatch')
+        record('admin_assets_built', { assets })
+        assetArgs = ['--assets', assetsDir]
+      }
       const outdir = path.join(runDir, 'first-dry-run')
       await wrangler(
         [
@@ -2363,6 +2415,8 @@ export async function release(argv, deps = {}) {
           '--outdir',
           outdir,
           '--no-experimental-auto-create',
+          ...assetArgs,
+          ...varArgs,
         ],
         {
           timeout: 120000,
@@ -2380,8 +2434,8 @@ export async function release(argv, deps = {}) {
         builtSha256 !== args['expect-module-sha256']
       )
         fail('production_module_digest_mismatch')
-      // First deploy is serving by definition; only private, absent mailers
-      // may use Wrangler deploy's --secrets-file path here.
+      // First deploy is serving by definition. The new InterX vault requires
+      // a complete schema, fresh secrets, staging build proof and closed setup.
       const deployArgs = [
         'deploy',
         '--tag',
@@ -2390,6 +2444,8 @@ export async function release(argv, deps = {}) {
         `HonoWarden ${info.kind} ${args.target} ${args.commit}`,
         '--strict',
         '--no-experimental-auto-create',
+        ...assetArgs,
+        ...varArgs,
       ]
       if (secretCopy) deployArgs.push('--secrets-file', secretCopy)
       try {
@@ -2423,6 +2479,7 @@ export async function release(argv, deps = {}) {
           args.commit,
           `HonoWarden ${info.kind} ${args.target} ${args.commit}`,
           info,
+          { ...(info.env.vars ?? {}), ...(profile?.vars ?? {}) },
         )
         verifySecretNames(view, new Set(newSecrets.names))
         const proof = await readModuleProof(
@@ -2438,9 +2495,9 @@ export async function release(argv, deps = {}) {
           version,
           commit: args.commit,
           moduleSha256: builtSha256,
-          assets: [],
+          assets,
           secretNames: newSecrets.names,
-          profileSha256: null,
+          profileSha256: profile?.sha256 ?? null,
           initialSetupEnabled: false,
           message: `HonoWarden ${info.kind} ${args.target} ${args.commit}`,
         })

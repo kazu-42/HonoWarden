@@ -241,6 +241,123 @@ describe('fresh InterX database initialization', () => {
   )
 })
 
+describe('InterX vault first serving deploy admission', () => {
+  it.each([
+    'missing-secrets',
+    'pending-schema',
+    'wrong-staging-proof',
+    'module-mismatch',
+  ])('blocks %s before any serving write', async (failure) => {
+    const fx = fixture()
+    const secretFile = join(fx.root, 'vault.json')
+    writeFileSync(
+      secretFile,
+      JSON.stringify({
+        target: 'interx',
+        secrets: Object.fromEntries(
+          [
+            'HONOWARDEN_TOKEN_SECRET',
+            'HONOWARDEN_TOTP_SECRET',
+            'HONOWARDEN_ORGANIZATION_INVITE_SECRET',
+            'HONOWARDEN_ACCOUNT_LIFECYCLE_TOKEN_SECRET',
+            'HONOWARDEN_BOOTSTRAP_TOKEN',
+          ].map((name) => [
+            name,
+            'synthetic-secret-value-for-release-tests-only',
+          ]),
+        ),
+      }),
+      { mode: 0o600 },
+    )
+    const proofFile = join(fx.root, 'staging.jsonl')
+    const html = '<html>synthetic admin</html>'
+    writeFileSync(
+      proofFile,
+      JSON.stringify({
+        kind: 'upload_verified',
+        target: failure === 'wrong-staging-proof' ? 'interx' : 'staging',
+        commit: sha,
+        moduleSha256: 'b'.repeat(64),
+        assets: [
+          {
+            path: 'index.html',
+            bytes: Buffer.byteLength(html),
+            sha256: createHash('sha256').update(html).digest('hex'),
+          },
+        ],
+      }) + '\n',
+      { mode: 0o600 },
+    )
+    let servingWrites = 0
+    const result = release(
+      [
+        'first-deploy',
+        '--target',
+        'interx',
+        '--commit',
+        sha,
+        '--execute',
+        '--confirm',
+        'interx',
+        '--profile',
+        'deploy/profiles/interx-company-launch.json',
+        '--expect-module-sha256',
+        'b'.repeat(64),
+        '--expect-admin-manifest',
+        proofFile,
+        ...(failure === 'missing-secrets'
+          ? []
+          : ['--secrets-file', secretFile]),
+      ],
+      {
+        ...fx,
+        fetch: async () => new Response('', { status: 404 }),
+        runner: async (command, parts) => {
+          if (parts[0] === 'deploy' && !parts.includes('--dry-run'))
+            servingWrites++
+          if (parts.includes('--dry-run')) {
+            const dir = parts[parts.indexOf('--outdir') + 1]!
+            mkdirSync(dir)
+            writeFileSync(join(dir, 'index.js'), 'different module')
+            return { stdout: '', code: 0 }
+          }
+          if (parts.includes('execute')) {
+            const query = parts[parts.indexOf('--command') + 1]!
+            const results = query.includes('COUNT(*) AS n FROM d1_migrations')
+              ? [{ n: 35 }]
+              : query.includes('MAX(version)')
+                ? [{ n: 35, version: '0033' }]
+                : query.includes('SELECT type, name, tbl_name, sql')
+                  ? localSchemaRows()
+                  : query.includes('sqlite_master')
+                    ? [
+                        { type: 'index', n: 61 },
+                        { type: 'table', n: 41 },
+                        { type: 'trigger', n: 6 },
+                      ]
+                    : query.includes('foreign_key_check')
+                      ? []
+                      : failure === 'pending-schema'
+                        ? []
+                        : migrationNames.map((name) => ({ name }))
+            return { stdout: JSON.stringify([{ results }]), code: 0 }
+          }
+          return fx.runner(command, parts)
+        },
+      },
+    )
+    await expect(result).rejects.toThrow(
+      {
+        'missing-secrets': 'mandatory_secret_missing',
+        'pending-schema': 'schema_pending_migrations',
+        'wrong-staging-proof': 'admin_manifest_invalid',
+        'module-mismatch': 'production_module_digest_mismatch',
+      }[failure],
+    )
+    expect(servingWrites).toBe(0)
+  })
+})
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'honowarden-release-test-'))
   writeFileSync(

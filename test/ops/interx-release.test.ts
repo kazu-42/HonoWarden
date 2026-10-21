@@ -58,6 +58,17 @@ describe('InterX explicit release boundary', () => {
     )
     expect(() =>
       parseArguments([...args, '--expect-module-sha256', 'b'.repeat(64)]),
+    ).toThrow('expected_admin_manifest_required')
+    expect(() =>
+      parseArguments([
+        ...args,
+        '--expect-module-sha256',
+        'b'.repeat(64),
+        '--expect-admin-manifest',
+        '/synthetic/staging.jsonl',
+        '--profile',
+        'deploy/profiles/interx-company-launch.json',
+      ]),
     ).not.toThrow()
     expect(() =>
       parseArguments(
