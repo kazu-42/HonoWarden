@@ -41,6 +41,87 @@ type FreshRestoreTarget = {
 }
 
 describe('backup CLI', () => {
+  it.each([200, 404])(
+    'downloads scoped S3 objects without Wrangler R2 credentials, HTTP %s',
+    async (status) => {
+      const workDir = await fixtureDir(`s3-download-${status}`)
+      const fake = await createExportingFakeWrangler(
+        workDir,
+        'CREATE TABLE probe (id TEXT);',
+      )
+      const out = join(workDir, 'snapshot')
+      const seen: string[] = []
+      const server = await startS3ListServer((request) => {
+        seen.push(request.url ?? '')
+        expect(request.headers.authorization).toContain(
+          'Credential=test-access-key/',
+        )
+        if (request.url?.includes('list-type='))
+          return listObjectsXml({
+            contents: [objectOneKey],
+            isTruncated: false,
+          })
+        return {
+          status,
+          body:
+            status === 200
+              ? 'exact synthetic encrypted object'
+              : 'private provider diagnostic',
+        }
+      })
+      try {
+        const result = execFileAsync(
+          'node',
+          [
+            backupScript,
+            'export',
+            '--out',
+            out,
+            '--database',
+            'honowarden',
+            '--bucket',
+            'honowarden-vault-objects',
+            '--mode',
+            'remote',
+            '--r2-list',
+            '--r2-s3',
+            '--r2-list-endpoint',
+            server.endpoint,
+            '--execute',
+          ],
+          {
+            env: {
+              ...fake.env,
+              R2_ACCESS_KEY_ID: 'test-access-key',
+              R2_SECRET_ACCESS_KEY: 'test-secret-key',
+            },
+          },
+        )
+        if (status === 200) {
+          await result
+          expect(await readFile(join(out, objectOneFile), 'utf8')).toBe(
+            'exact synthetic encrypted object',
+          )
+          expect((await lstat(join(out, objectOneFile))).mode & 0o777).toBe(
+            0o600,
+          )
+        } else {
+          await expect(result).rejects.toMatchObject({
+            stderr: expect.stringContaining(
+              'R2 object download failed with HTTP 404',
+            ),
+          })
+          await expect(
+            readFile(join(out, objectOneFile)),
+          ).rejects.toMatchObject({ code: 'ENOENT' })
+        }
+        expect(await readFile(fake.operations, 'utf8')).toBe('d1 export\n')
+        expect(seen).toHaveLength(2)
+      } finally {
+        await server.close()
+      }
+    },
+  )
   it('plans a local D1 and R2 export with a manifest', async () => {
     const workDir = await fixtureDir('export')
     const objectList = join(workDir, 'objects.txt')
@@ -3084,12 +3165,17 @@ async function waitForFile(path: string): Promise<void> {
 }
 
 async function startS3ListServer(
-  handler: (request: IncomingMessage) => string,
+  handler: (
+    request: IncomingMessage,
+  ) => string | { status: number; body: string },
 ): Promise<{ endpoint: string; close: () => Promise<void> }> {
   const server = createServer(
     (request: IncomingMessage, response: ServerResponse) => {
-      response.writeHead(200, { 'content-type': 'application/xml' })
-      response.end(handler(request))
+      const result = handler(request)
+      response.writeHead(typeof result === 'string' ? 200 : result.status, {
+        'content-type': 'application/xml',
+      })
+      response.end(typeof result === 'string' ? result : result.body)
     },
   )
 

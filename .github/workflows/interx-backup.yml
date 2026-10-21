@@ -1,0 +1,78 @@
+name: InterX Backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '47 18 * * *' # 03:47 JST
+
+permissions:
+  contents: read
+
+concurrency:
+  group: honowarden-interx-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HONOWARDEN_INTERX_BACKUP_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HONOWARDEN_INTERX_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.HONOWARDEN_INTERX_R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.HONOWARDEN_INTERX_R2_SECRET_ACCESS_KEY }}
+      HONOWARDEN_BACKUP_ARCHIVE_KEY: ${{ secrets.HONOWARDEN_INTERX_BACKUP_ARCHIVE_KEY }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify target and required credentials
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import { createHash } from 'node:crypto'
+          for (const key of ['CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY','HONOWARDEN_BACKUP_ARCHIVE_KEY']) {
+            if (!process.env[key]) throw new Error(`Missing ${key}`)
+          }
+          if (createHash('sha256').update(process.env.CLOUDFLARE_ACCOUNT_ID).digest('hex') !== '3f641d358e0972f1644ced98730b4d808da031fb3d51285364a77af74f8865b5') throw new Error('InterX account mismatch')
+          JS
+      - name: Export InterX D1 and all R2 objects
+        shell: bash
+        run: |
+          umask 077
+          node scripts/honowarden-backup.mjs export \
+            --out "$RUNNER_TEMP/interx-snapshot" \
+            --database honowarden-interx --bucket honowarden-interx-vault-objects \
+            --mode remote --env interx --r2-list --r2-s3 --execute
+          node scripts/honowarden-backup.mjs evidence \
+            --from "$RUNNER_TEMP/interx-snapshot" \
+            --out "$RUNNER_TEMP/interx-backup-evidence.json" \
+            --source-commit "$GITHUB_SHA" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Encrypt and authenticate backup archive
+        shell: bash
+        run: |
+          umask 077
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/interx-backup.tar.gz" interx-snapshot
+          node scripts/honowarden-backup-archive.mjs encrypt "$RUNNER_TEMP/interx-backup.tar.gz" "$RUNNER_TEMP/interx-backup.tar.gz.enc"
+          node scripts/honowarden-backup-archive.mjs decrypt "$RUNNER_TEMP/interx-backup.tar.gz.enc" "$RUNNER_TEMP/interx-verified.tar.gz"
+          cmp "$RUNNER_TEMP/interx-backup.tar.gz" "$RUNNER_TEMP/interx-verified.tar.gz"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: honowarden-interx-backup-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/interx-backup.tar.gz.enc
+            ${{ runner.temp }}/interx-backup-evidence.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Remove plaintext snapshot
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/interx-snapshot"
+          rm -f "$RUNNER_TEMP/interx-backup.tar.gz" "$RUNNER_TEMP/interx-verified.tar.gz"
