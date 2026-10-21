@@ -25,6 +25,27 @@ const HONOWARDEN_ACCOUNT_SHA256 =
 const versionPattern =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u
 const identity = Object.freeze({
+  interx: {
+    accountIdSha256:
+      '3f641d358e0972f1644ced98730b4d808da031fb3d51285364a77af74f8865b5',
+    vault: {
+      name: 'honowarden-interx',
+      host: 'honowarden.interx.co.jp',
+      db: 'honowarden-interx',
+      dbId: '6acc3d1a-0622-4cf8-9183-bb6e6142a220',
+      inquiryDb: 'honowarden-interx-inquiry',
+      inquiryDbId: '7ebaf8ce-4384-4f20-b0ba-7ea24443731a',
+      r2: 'honowarden-interx-vault-objects',
+    },
+    invitation: { name: 'honowarden-interx-invitation-mailer' },
+    account: {
+      name: 'honowarden-interx-account-mailer',
+      queues: [
+        'honowarden-interx-account-mail',
+        'honowarden-interx-account-mail-dlq',
+      ],
+    },
+  },
   staging: {
     accountIdSha256: HONOWARDEN_ACCOUNT_SHA256,
     vault: {
@@ -112,6 +133,7 @@ const expectedMigrations = Object.freeze([
   '0033_initial_setup.sql',
 ])
 const mutable = new Set([
+  'initialize-db',
   'backup-db',
   'migrate-db',
   'upload',
@@ -465,6 +487,7 @@ export function parseArguments(argv) {
   if (
     ![
       'plan',
+      'initialize-db',
       'backup-db',
       'migrate-db',
       'upload',
@@ -507,6 +530,8 @@ export function parseArguments(argv) {
     args[key] = tokens[++i]
   }
   if (!Object.hasOwn(identity, args.target)) fail('target_invalid')
+  if (command === 'initialize-db' && args.target !== 'interx')
+    fail('initialization_target_not_supported')
   if (!args['credentials-file']) fail('credentials_file_required')
   if (args.execute && mutable.has(command) && args.confirm !== args.target)
     fail('target_confirmation_required')
@@ -515,11 +540,14 @@ export function parseArguments(argv) {
     fail('setup_window_not_supported')
   if (
     args['initial-setup-window'] &&
-    args.target === 'production' &&
-    args.confirm !== 'production'
+    ['production', 'interx'].includes(args.target) &&
+    args.confirm !== args.target
   )
     fail('target_confirmation_required')
-  if (args.profile && !['upload', 'activate', 'verify'].includes(command))
+  if (
+    args.profile &&
+    !['upload', 'first-deploy', 'activate', 'verify'].includes(command)
+  )
     fail('profile_not_supported')
   if (command === 'generate-secrets' && !args.out)
     fail('secret_output_required')
@@ -527,6 +555,7 @@ export function parseArguments(argv) {
   if (
     [
       'plan',
+      'initialize-db',
       'upload',
       'first-deploy',
       'backup-db',
@@ -540,13 +569,13 @@ export function parseArguments(argv) {
     fail('commit_invalid')
   if (
     command === 'upload' &&
-    args.target === 'production' &&
+    ['production', 'interx'].includes(args.target) &&
     !/^[a-f0-9]{64}$/u.test(args['expect-module-sha256'] ?? '')
   )
     fail('expected_module_sha256_required')
   if (
     ['upload', 'first-deploy'].includes(command) &&
-    args.target === 'production' &&
+    ['production', 'interx'].includes(args.target) &&
     !args['expect-module-sha256']
   )
     fail('expected_module_sha256_required')
@@ -556,15 +585,16 @@ export function parseArguments(argv) {
   )
     fail('expected_module_sha256_invalid')
   if (
-    command === 'upload' &&
-    args.target === 'production' &&
+    ['upload', 'first-deploy'].includes(command) &&
+    ['production', 'interx'].includes(args.target) &&
     (!args.config || path.basename(args.config) === 'wrangler.jsonc') &&
     !args['expect-admin-manifest']
   )
     fail('expected_admin_manifest_required')
   if (
     args['expect-admin-manifest'] &&
-    (command !== 'upload' || args.target !== 'production')
+    (!['upload', 'first-deploy'].includes(command) ||
+      !['production', 'interx'].includes(args.target))
   )
     fail('expected_admin_manifest_not_supported')
   if (
@@ -607,7 +637,7 @@ export function expectedAccountSha256(target) {
   return identity[target]?.accountIdSha256
 }
 
-export function readCredentialsFile(file) {
+export function readCredentialsFile(file, target) {
   const stat = fs.lstatSync(file)
   if (
     !stat.isFile() ||
@@ -627,6 +657,9 @@ export function readCredentialsFile(file) {
       ![
         'CLOUDFLARE_HONOWARDEN_RELEASE_TOKEN',
         'CLOUDFLARE_ACCOUNT_ID',
+        ...(target === 'interx'
+          ? ['CLOUDFLARE_API_KEY', 'CLOUDFLARE_EMAIL']
+          : []),
       ].includes(key) ||
       values.has(key)
     )
@@ -635,6 +668,18 @@ export function readCredentialsFile(file) {
   }
   const token = values.get('CLOUDFLARE_HONOWARDEN_RELEASE_TOKEN')
   const accountId = values.get('CLOUDFLARE_ACCOUNT_ID')
+  if (target === 'interx' && values.has('CLOUDFLARE_API_KEY')) {
+    const globalKey = values.get('CLOUDFLARE_API_KEY')
+    const email = values.get('CLOUDFLARE_EMAIL')
+    if (
+      values.size !== 3 ||
+      !/^[!-~]+$/u.test(globalKey ?? '') ||
+      !/^[^\s@]+@[^\s@]+$/u.test(email ?? '') ||
+      !/^[a-f0-9]{32}$/u.test(accountId ?? '')
+    )
+      fail('credentials_file_shape')
+    return { token: { globalKey, email }, accountId }
+  }
   if (
     values.size !== 2 ||
     !token ||
@@ -655,7 +700,12 @@ export function childEnvironment(parent, outputPath, credentials) {
   return {
     PATH: parent.PATH ?? '',
     HOME: parent.HOME ?? os.homedir(),
-    CLOUDFLARE_API_TOKEN: credentials.token,
+    ...(typeof credentials.token === 'string'
+      ? { CLOUDFLARE_API_TOKEN: credentials.token }
+      : {
+          CLOUDFLARE_API_KEY: credentials.token.globalKey,
+          CLOUDFLARE_EMAIL: credentials.token.email,
+        }),
     CLOUDFLARE_ACCOUNT_ID: credentials.accountId,
     CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false',
     NO_COLOR: '1',
@@ -981,6 +1031,7 @@ export async function release(argv, deps = {}) {
   const cwd = deps.cwd ?? process.cwd()
   const credentials = readCredentialsFile(
     path.resolve(cwd, args['credentials-file']),
+    args.target,
   )
   const pinnedAccountSha256 =
     deps.expectedAccountSha256 && deps.runner
@@ -1178,11 +1229,14 @@ export async function release(argv, deps = {}) {
     activeVersion(await json(['deployments', 'status', '--json']))
   const authenticate = async () => {
     const who = await json(['whoami', '--json'])
+    const globalAuth =
+      args.target === 'interx' && typeof credentials.token === 'object'
     if (
       who.loggedIn !== true ||
-      who.authType !== 'User API Token' ||
-      who.accounts?.length !== 1 ||
-      who.accounts[0]?.id !== credentials.accountId
+      who.authType !== (globalAuth ? 'Global API Key' : 'User API Token') ||
+      (!globalAuth && who.accounts?.length !== 1) ||
+      who.accounts?.filter((account) => account.id === credentials.accountId)
+        .length !== 1
     )
       fail('account_mismatch')
   }
@@ -1553,6 +1607,7 @@ export async function release(argv, deps = {}) {
     if (
       [
         'plan',
+        'initialize-db',
         'upload',
         'first-deploy',
         'backup-db',
@@ -1564,11 +1619,46 @@ export async function release(argv, deps = {}) {
     )
       await source()
     await authenticate()
+    if (args.command === 'initialize-db') {
+      if (info.kind !== 'vault') fail('vault_only')
+      const existing = await cloudflareRead(
+        credentials.accountId,
+        credentials.token,
+        `/accounts/${credentials.accountId}/workers/scripts/${info.expected.name}`,
+        deps.fetch ?? globalThis.fetch,
+        true,
+      )
+      if (existing !== null) fail('worker_already_exists')
+      // Include the migration ledger: a partially initialized database must
+      // never be mistaken for a fresh one or retried automatically.
+      const objects = await readDbRows(
+        "SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name <> '_cf_KV' ORDER BY name",
+      )
+      if (objects.length !== 0) fail('initialization_requires_empty_database')
+      const before = migrationManifest(cwd)
+      record('empty_database_verified', { migrations: before })
+      const bookmark = await json(['d1', 'time-travel', 'info', 'DB', '--json'])
+      if (!validBookmark(bookmark.bookmark)) fail('bookmark_invalid')
+      record('bookmark', { bookmark: bookmark.bookmark })
+      try {
+        await wrangler(['d1', 'migrations', 'apply', 'DB', '--remote'], {
+          effect: true,
+          timeout: 120000,
+        })
+        if ((await pending()).length) fail('schema_pending_migrations')
+        const schema = await verifyDb()
+        record('initialization_verified', { schema })
+        return { schema, bookmark: bookmark.bookmark, journal: journalPath }
+      } catch {
+        record('classification', { state: 'initialization_unverified' })
+        fail('initialization_unverified_inspect_before_retry')
+      }
+    }
     if (args.command === 'generate-secrets') {
       // A mailer can be absent before its first deploy. Prove that absence
       // through the exact Worker GET before treating its secret set as empty.
       const absentMailer =
-        info.kind !== 'vault' &&
+        (info.kind !== 'vault' || args.target === 'interx') &&
         (await cloudflareRead(
           credentials.accountId,
           credentials.token,
@@ -1878,7 +1968,7 @@ export async function release(argv, deps = {}) {
         fs.chmodSync(assetsDir, 0o700)
         assets = adminAssetHashes(assetsDir)
         record('admin_assets_built', { assets })
-        if (args.target === 'production') {
+        if (['production', 'interx'].includes(args.target)) {
           const expectedAssets = readAdminManifest(
             args['expect-admin-manifest'],
             args.commit,
@@ -1914,7 +2004,7 @@ export async function release(argv, deps = {}) {
       if (files.length !== 1) fail('dry_run_module_unresolved')
       const moduleSha256 = digest(fs.readFileSync(path.join(outdir, files[0])))
       if (
-        args.target === 'production' &&
+        ['production', 'interx'].includes(args.target) &&
         moduleSha256 !== args['expect-module-sha256']
       )
         fail('production_module_digest_mismatch')
@@ -2244,7 +2334,8 @@ export async function release(argv, deps = {}) {
       return { queues: info.expected.queues, journal: journalPath }
     }
     if (args.command === 'first-deploy') {
-      if (info.kind === 'vault') fail('mailer_only')
+      if (info.kind === 'vault' && args.target !== 'interx') fail('mailer_only')
+      if (info.kind === 'vault' && !profile) fail('profile_required')
       let secretCopy = null
       let newSecrets = { names: [], secrets: {} }
       if (args['secrets-file']) {
@@ -2260,6 +2351,11 @@ export async function release(argv, deps = {}) {
         !newSecrets.names.includes('HONOWARDEN_ACCOUNT_MAIL_ENCRYPTION_KEYS')
       )
         fail('mandatory_secret_missing')
+      if (
+        info.kind === 'vault' &&
+        [...secretNames.vault].some((name) => !newSecrets.names.includes(name))
+      )
+        fail('mandatory_secret_missing')
       const scriptPath = `/accounts/${credentials.accountId}/workers/scripts/${info.expected.name}`
       const existing = await cloudflareRead(
         credentials.accountId,
@@ -2269,6 +2365,48 @@ export async function release(argv, deps = {}) {
         true,
       )
       if (existing !== null) fail('worker_already_exists')
+      let assets = []
+      let assetArgs = []
+      const varArgs = Object.entries(profile?.vars ?? {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .flatMap(([name, value]) => ['--var', `${name}:${value}`])
+      if (info.kind === 'vault') {
+        if ((await pending()).length) fail('schema_pending_migrations')
+        await verifyDb()
+        if (info.env.vars.HONOWARDEN_INITIAL_SETUP_ENABLED !== 'false')
+          fail('initial_setup_must_be_closed')
+        const assetsDir = path.join(runDir, 'admin')
+        record('intent', { operation: 'admin build' })
+        const built = await run(
+          'vite',
+          ['build', '--config', 'vite.admin.config.ts', '--outDir', assetsDir],
+          {
+            cwd,
+            env: {
+              PATH: parent.PATH ?? '',
+              HOME: parent.HOME ?? os.homedir(),
+              NO_COLOR: '1',
+            },
+            timeout: 120000,
+          },
+        )
+        record('result', {
+          operation: 'admin build',
+          success: built.code === 0,
+        })
+        if (built.code !== 0) fail('admin_build_failed')
+        fs.chmodSync(assetsDir, 0o700)
+        assets = adminAssetHashes(assetsDir)
+        const expected = readAdminManifest(
+          args['expect-admin-manifest'],
+          args.commit,
+          args['expect-module-sha256'],
+        )
+        if (JSON.stringify(assets) !== JSON.stringify(expected))
+          fail('production_admin_manifest_mismatch')
+        record('admin_assets_built', { assets })
+        assetArgs = ['--assets', assetsDir]
+      }
       const outdir = path.join(runDir, 'first-dry-run')
       await wrangler(
         [
@@ -2277,6 +2415,8 @@ export async function release(argv, deps = {}) {
           '--outdir',
           outdir,
           '--no-experimental-auto-create',
+          ...assetArgs,
+          ...varArgs,
         ],
         {
           timeout: 120000,
@@ -2290,12 +2430,12 @@ export async function release(argv, deps = {}) {
         fs.readFileSync(path.join(outdir, builtFiles[0])),
       )
       if (
-        args.target === 'production' &&
+        ['production', 'interx'].includes(args.target) &&
         builtSha256 !== args['expect-module-sha256']
       )
         fail('production_module_digest_mismatch')
-      // First deploy is serving by definition; only private, absent mailers
-      // may use Wrangler deploy's --secrets-file path here.
+      // First deploy is serving by definition. The new InterX vault requires
+      // a complete schema, fresh secrets, staging build proof and closed setup.
       const deployArgs = [
         'deploy',
         '--tag',
@@ -2304,6 +2444,8 @@ export async function release(argv, deps = {}) {
         `HonoWarden ${info.kind} ${args.target} ${args.commit}`,
         '--strict',
         '--no-experimental-auto-create',
+        ...assetArgs,
+        ...varArgs,
       ]
       if (secretCopy) deployArgs.push('--secrets-file', secretCopy)
       try {
@@ -2337,6 +2479,7 @@ export async function release(argv, deps = {}) {
           args.commit,
           `HonoWarden ${info.kind} ${args.target} ${args.commit}`,
           info,
+          { ...(info.env.vars ?? {}), ...(profile?.vars ?? {}) },
         )
         verifySecretNames(view, new Set(newSecrets.names))
         const proof = await readModuleProof(
@@ -2352,9 +2495,9 @@ export async function release(argv, deps = {}) {
           version,
           commit: args.commit,
           moduleSha256: builtSha256,
-          assets: [],
+          assets,
           secretNames: newSecrets.names,
-          profileSha256: null,
+          profileSha256: profile?.sha256 ?? null,
           initialSetupEnabled: false,
           message: `HonoWarden ${info.kind} ${args.target} ${args.commit}`,
         })
@@ -2608,7 +2751,9 @@ async function cloudflareRead(
         redirect: 'manual',
         signal: globalThis.AbortSignal.timeout(15000),
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(typeof token === 'string'
+            ? { Authorization: `Bearer ${token}` }
+            : { 'X-Auth-Key': token.globalKey, 'X-Auth-Email': token.email }),
           Accept: 'application/json',
           'Accept-Encoding': 'identity',
         },

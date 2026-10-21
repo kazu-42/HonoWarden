@@ -986,6 +986,14 @@ function resolveRouteBuildProvenance(c: AppContext) {
 }
 
 app.get('/', (c) => {
+  if (
+    c.env?.HONOWARDEN_ADMIN_ENABLED === 'true' &&
+    c.req.header('Sec-Fetch-Mode') === 'navigate' &&
+    c.req.header('Sec-Fetch-Dest') === 'document'
+  ) {
+    c.header('Cache-Control', 'no-store')
+    return c.redirect('/admin/', 302)
+  }
   return c.json({
     name: 'HonoWarden',
     description: serviceDescription,

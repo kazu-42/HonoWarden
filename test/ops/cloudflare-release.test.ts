@@ -121,6 +121,243 @@ const release = (
   )
 }
 
+describe('fresh InterX database initialization', () => {
+  const args = [
+    'initialize-db',
+    '--target',
+    'interx',
+    '--commit',
+    sha,
+    '--execute',
+    '--confirm',
+    'interx',
+  ]
+  it.each([false, true])(
+    'verifies schema after initialization, apply failure=%s',
+    async (failApply) => {
+      const fx = fixture()
+      let applied = false
+      const result = release(args, {
+        ...fx,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({ success: false, errors: [{ code: 10007 }] }),
+            { status: 404 },
+          ),
+        runner: async (command, parts) => {
+          if (parts.includes('time-travel'))
+            return {
+              stdout: JSON.stringify({
+                bookmark: '00000001-00000001-00000001-00000001',
+              }),
+              code: 0,
+            }
+          if (parts.includes('apply')) {
+            applied = true
+            return { stdout: '', code: failApply ? 1 : 0 }
+          }
+          if (parts.includes('execute')) {
+            const query = parts[parts.indexOf('--command') + 1]!
+            const results = query.startsWith('SELECT name FROM sqlite_master')
+              ? []
+              : query.includes('COUNT(*) AS n FROM d1_migrations')
+                ? [{ n: 35 }]
+                : query.includes('MAX(version)')
+                  ? [{ n: 35, version: '0033' }]
+                  : query.includes('SELECT type, name, tbl_name, sql')
+                    ? localSchemaRows()
+                    : query.includes('sqlite_master')
+                      ? [
+                          { type: 'index', n: 61 },
+                          { type: 'table', n: 41 },
+                          { type: 'trigger', n: 6 },
+                        ]
+                      : query.includes('foreign_key_check')
+                        ? []
+                        : migrationNames.map((name) => ({ name }))
+            return { stdout: JSON.stringify([{ results }]), code: 0 }
+          }
+          return fx.runner(command, parts)
+        },
+      })
+      if (failApply)
+        await expect(result).rejects.toThrow(
+          'initialization_unverified_inspect_before_retry',
+        )
+      else
+        await expect(result).resolves.toMatchObject({
+          schema: { tables: 41, foreignKeyViolations: 0 },
+        })
+      expect(applied).toBe(true)
+    },
+  )
+  it('does not offer initialization of existing deployment targets', () => {
+    expect(() =>
+      parseArguments(['initialize-db', '--target', 'staging', '--commit', sha]),
+    ).toThrow('initialization_target_not_supported')
+    expect(() => parseArguments(args.slice(0, -2))).toThrow(
+      'target_confirmation_required',
+    )
+  })
+  it('refuses an existing Worker before reading or mutating its database', async () => {
+    const fx = fixture()
+    await expect(
+      release(args, {
+        ...fx,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({ success: true, result: { id: 'existing' } }),
+          ),
+      }),
+    ).rejects.toThrow('worker_already_exists')
+    expect(fx.calls.some((c) => c.includes('d1'))).toBe(false)
+  })
+  it.each(['d1_migrations', 'users'])(
+    'refuses a nonempty database containing %s',
+    async (name) => {
+      const fx = fixture()
+      await expect(
+        release(args, {
+          ...fx,
+          fetch: async () =>
+            new Response(
+              JSON.stringify({ success: false, errors: [{ code: 10007 }] }),
+              { status: 404 },
+            ),
+          runner: async (command, parts) => {
+            if (parts.includes('execute')) {
+              fx.calls.push([command, ...parts])
+              return {
+                stdout: JSON.stringify([{ results: [{ name }] }]),
+                code: 0,
+              }
+            }
+            return fx.runner(command, parts)
+          },
+        }),
+      ).rejects.toThrow('initialization_requires_empty_database')
+      expect(fx.calls.some((c) => c.includes('apply'))).toBe(false)
+    },
+  )
+})
+
+describe('InterX vault first serving deploy admission', () => {
+  it.each([
+    'missing-secrets',
+    'pending-schema',
+    'wrong-staging-proof',
+    'module-mismatch',
+  ])('blocks %s before any serving write', async (failure) => {
+    const fx = fixture()
+    const secretFile = join(fx.root, 'vault.json')
+    writeFileSync(
+      secretFile,
+      JSON.stringify({
+        target: 'interx',
+        secrets: Object.fromEntries(
+          [
+            'HONOWARDEN_TOKEN_SECRET',
+            'HONOWARDEN_TOTP_SECRET',
+            'HONOWARDEN_ORGANIZATION_INVITE_SECRET',
+            'HONOWARDEN_ACCOUNT_LIFECYCLE_TOKEN_SECRET',
+            'HONOWARDEN_BOOTSTRAP_TOKEN',
+          ].map((name) => [
+            name,
+            'synthetic-secret-value-for-release-tests-only',
+          ]),
+        ),
+      }),
+      { mode: 0o600 },
+    )
+    const proofFile = join(fx.root, 'staging.jsonl')
+    const html = '<html>synthetic admin</html>'
+    writeFileSync(
+      proofFile,
+      JSON.stringify({
+        kind: 'upload_verified',
+        target: failure === 'wrong-staging-proof' ? 'interx' : 'staging',
+        commit: sha,
+        moduleSha256: 'b'.repeat(64),
+        assets: [
+          {
+            path: 'index.html',
+            bytes: Buffer.byteLength(html),
+            sha256: createHash('sha256').update(html).digest('hex'),
+          },
+        ],
+      }) + '\n',
+      { mode: 0o600 },
+    )
+    let servingWrites = 0
+    const result = release(
+      [
+        'first-deploy',
+        '--target',
+        'interx',
+        '--commit',
+        sha,
+        '--execute',
+        '--confirm',
+        'interx',
+        '--profile',
+        'deploy/profiles/interx-company-launch.json',
+        '--expect-module-sha256',
+        'b'.repeat(64),
+        '--expect-admin-manifest',
+        proofFile,
+        ...(failure === 'missing-secrets'
+          ? []
+          : ['--secrets-file', secretFile]),
+      ],
+      {
+        ...fx,
+        fetch: async () => new Response('', { status: 404 }),
+        runner: async (command, parts) => {
+          if (parts[0] === 'deploy' && !parts.includes('--dry-run'))
+            servingWrites++
+          if (parts.includes('--dry-run')) {
+            const dir = parts[parts.indexOf('--outdir') + 1]!
+            mkdirSync(dir)
+            writeFileSync(join(dir, 'index.js'), 'different module')
+            return { stdout: '', code: 0 }
+          }
+          if (parts.includes('execute')) {
+            const query = parts[parts.indexOf('--command') + 1]!
+            const results = query.includes('COUNT(*) AS n FROM d1_migrations')
+              ? [{ n: 35 }]
+              : query.includes('MAX(version)')
+                ? [{ n: 35, version: '0033' }]
+                : query.includes('SELECT type, name, tbl_name, sql')
+                  ? localSchemaRows()
+                  : query.includes('sqlite_master')
+                    ? [
+                        { type: 'index', n: 61 },
+                        { type: 'table', n: 41 },
+                        { type: 'trigger', n: 6 },
+                      ]
+                    : query.includes('foreign_key_check')
+                      ? []
+                      : failure === 'pending-schema'
+                        ? []
+                        : migrationNames.map((name) => ({ name }))
+            return { stdout: JSON.stringify([{ results }]), code: 0 }
+          }
+          return fx.runner(command, parts)
+        },
+      },
+    )
+    await expect(result).rejects.toThrow(
+      {
+        'missing-secrets': 'mandatory_secret_missing',
+        'pending-schema': 'schema_pending_migrations',
+        'wrong-staging-proof': 'admin_manifest_invalid',
+        'module-mismatch': 'production_module_digest_mismatch',
+      }[failure],
+    )
+    expect(servingWrites).toBe(0)
+  })
+})
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'honowarden-release-test-'))
   writeFileSync(

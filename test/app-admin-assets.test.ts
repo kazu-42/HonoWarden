@@ -23,6 +23,32 @@ function assets(response: Response) {
 
 describe('organization administration asset boundary', () => {
   it.each([
+    { enabled: 'true', navigation: true, status: 302 },
+    { enabled: 'false', navigation: true, status: 200 },
+    { enabled: 'true', navigation: false, status: 200 },
+  ])(
+    'routes browser navigation to the enabled admin UI: %j',
+    async ({ enabled, navigation, status }) => {
+      const response = await workerApp.request(
+        'https://vault.example.com/',
+        {
+          headers: navigation
+            ? { 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' }
+            : { Accept: 'application/json' },
+        },
+        { HONOWARDEN_ADMIN_ENABLED: enabled },
+      )
+      expect(response.status).toBe(status)
+      if (status === 302) {
+        expect(response.headers.get('Location')).toBe('/admin/')
+        expect(response.headers.get('Cache-Control')).toBe('no-store')
+      } else
+        expect(((await response.json()) as { name: string }).name).toBe(
+          'HonoWarden',
+        )
+    },
+  )
+  it.each([
     {
       flag: 'true',
       issuers: true,

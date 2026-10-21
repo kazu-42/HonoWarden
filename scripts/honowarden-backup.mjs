@@ -78,6 +78,8 @@ async function runExport(options) {
   const database = requireValue(options.database, '--database')
   const bucket = requireValue(options.bucket, '--bucket')
   const mode = parseMode(options.mode)
+  if (options.r2S3 && (mode !== 'remote' || !options.r2List))
+    throw new Error('--r2-s3 requires remote export with --r2-list')
   const generationManifestSha256 = validateOptionalSha256(
     options.generationManifestSha256,
     '--generation-manifest-sha256',
@@ -112,7 +114,7 @@ async function runExport(options) {
       }))
       const commands = [
         buildD1ExportCommand({ database, d1File, mode, options }),
-        ...objects.map((object) =>
+        ...(options.r2S3 ? [] : objects).map((object) =>
           buildR2GetCommand({
             bucket,
             key: object.key,
@@ -165,6 +167,16 @@ async function runExport(options) {
         } else {
           await runCommands(commands)
         }
+        if (options.r2S3) {
+          const config = resolveR2ListConfig(options)
+          for (const object of objects)
+            await downloadR2Object({
+              bucket,
+              key: object.key,
+              file: join(outDir, object.file),
+              config,
+            })
+        }
         await addManifestHashes(outDir, manifest)
         if (generationManifestSha256) {
           manifest.credentialGeneration = deriveCredentialGenerationBinding({
@@ -193,6 +205,7 @@ async function runExport(options) {
 }
 
 async function runRestore(options) {
+  if (options.r2S3) throw new Error('--r2-s3 is export-only')
   rejectUnsupportedBindingOptions('restore', options)
   const fromDir = resolveRequiredPath(options.from, '--from')
   const expectedManifestSha256 = validateOptionalSha256(
@@ -659,7 +672,7 @@ async function fetchR2ListObjectsPage({
   continuationToken,
   config,
 }) {
-  const request = buildR2ListObjectsRequest({
+  const request = buildR2GetRequest({
     bucket,
     prefix,
     pageSize,
@@ -670,31 +683,63 @@ async function fetchR2ListObjectsPage({
   const response = await globalThis.fetch(request.url, {
     method: 'GET',
     headers: request.headers,
+    redirect: 'error',
+    signal: globalThis.AbortSignal.timeout(30000),
   })
   const body = await response.text()
 
   if (!response.ok) {
-    throw new Error(
-      `R2 object listing failed with HTTP ${response.status}: ${body.slice(0, 500)}`,
-    )
+    throw new Error(`R2 object listing failed with HTTP ${response.status}`)
   }
 
   return parseListObjectsXml(body)
 }
 
-function buildR2ListObjectsRequest({
+async function downloadR2Object({ bucket, key, file, config }) {
+  const request = buildR2GetRequest({ bucket, key, config, now: new Date() })
+  const response = await globalThis.fetch(request.url, {
+    method: 'GET',
+    headers: request.headers,
+    redirect: 'error',
+    signal: globalThis.AbortSignal.timeout(120000),
+  })
+  if (response.status !== 200 || !response.body)
+    throw new Error(`R2 object download failed with HTTP ${response.status}`)
+  const handle = await open(file, 'wx', 0o600)
+  let bytes = 0
+  try {
+    for await (const chunk of response.body) {
+      bytes += chunk.byteLength
+      if (bytes > 1024 * 1024 * 1024)
+        throw new Error('R2 object download exceeds 1 GiB limit')
+      await handle.writeFile(chunk)
+    }
+    await handle.sync()
+  } catch (error) {
+    await rm(file, { force: true })
+    throw error
+  } finally {
+    await handle.close()
+  }
+}
+
+function buildR2GetRequest({
   bucket,
+  key,
   prefix,
   pageSize,
   continuationToken,
   config,
   now,
 }) {
-  const query = [
-    ['encoding-type', 'url'],
-    ['list-type', '2'],
-    ['max-keys', String(pageSize)],
-  ]
+  const query =
+    key === undefined
+      ? [
+          ['encoding-type', 'url'],
+          ['list-type', '2'],
+          ['max-keys', String(pageSize)],
+        ]
+      : []
 
   if (prefix) {
     query.push(['prefix', prefix])
@@ -709,6 +754,10 @@ function buildR2ListObjectsRequest({
     bucket,
     query,
   })
+  if (key !== undefined) {
+    validateObjectKey(key)
+    url.pathname += '/' + key.split('/').map(encodePathSegment).join('/')
+  }
   const amzDate = formatAmzDate(now)
   const dateStamp = amzDate.slice(0, 8)
   const payloadHash = sha256Hex('')
@@ -895,6 +944,9 @@ function parseOptions(args) {
         break
       case '--r2-list':
         options.r2List = true
+        break
+      case '--r2-s3':
+        options.r2S3 = true
         break
       case '--out':
       case '--from':
@@ -2317,6 +2369,7 @@ function printUsage() {
   node scripts/honowarden-backup.mjs restore --from <dir> [--database <name>] [--bucket <name>] [--mode local|remote] [--config <file>] [--expected-manifest-sha256 <sha256>] [--expected-generation-manifest-sha256 <sha256>] [--execute --confirm-fresh-target]
   node scripts/honowarden-backup.mjs evidence --from <dir> [--out <file>] [--source-commit <sha>] [--run-url <url>]
 
+Remote export accepts --r2-s3 with --r2-list to download using bucket-scoped S3 read credentials instead of Wrangler R2 access.
 Generation-bound export is execute-only and requires --mode local, --config <file>, --persist-to <config-directory>/.wrangler/state, and --r2-objects <file>.
 `)
 }
