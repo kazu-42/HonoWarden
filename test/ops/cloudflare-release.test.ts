@@ -121,6 +121,126 @@ const release = (
   )
 }
 
+describe('fresh InterX database initialization', () => {
+  const args = [
+    'initialize-db',
+    '--target',
+    'interx',
+    '--commit',
+    sha,
+    '--execute',
+    '--confirm',
+    'interx',
+  ]
+  it.each([false, true])(
+    'verifies schema after initialization, apply failure=%s',
+    async (failApply) => {
+      const fx = fixture()
+      let applied = false
+      const result = release(args, {
+        ...fx,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({ success: false, errors: [{ code: 10007 }] }),
+            { status: 404 },
+          ),
+        runner: async (command, parts) => {
+          if (parts.includes('time-travel'))
+            return {
+              stdout: JSON.stringify({
+                bookmark: '00000001-00000001-00000001-00000001',
+              }),
+              code: 0,
+            }
+          if (parts.includes('apply')) {
+            applied = true
+            return { stdout: '', code: failApply ? 1 : 0 }
+          }
+          if (parts.includes('execute')) {
+            const query = parts[parts.indexOf('--command') + 1]!
+            const results = query.startsWith('SELECT name FROM sqlite_master')
+              ? []
+              : query.includes('COUNT(*) AS n FROM d1_migrations')
+                ? [{ n: 35 }]
+                : query.includes('MAX(version)')
+                  ? [{ n: 35, version: '0033' }]
+                  : query.includes('SELECT type, name, tbl_name, sql')
+                    ? localSchemaRows()
+                    : query.includes('sqlite_master')
+                      ? [
+                          { type: 'index', n: 61 },
+                          { type: 'table', n: 41 },
+                          { type: 'trigger', n: 6 },
+                        ]
+                      : query.includes('foreign_key_check')
+                        ? []
+                        : migrationNames.map((name) => ({ name }))
+            return { stdout: JSON.stringify([{ results }]), code: 0 }
+          }
+          return fx.runner(command, parts)
+        },
+      })
+      if (failApply)
+        await expect(result).rejects.toThrow(
+          'initialization_unverified_inspect_before_retry',
+        )
+      else
+        await expect(result).resolves.toMatchObject({
+          schema: { tables: 41, foreignKeyViolations: 0 },
+        })
+      expect(applied).toBe(true)
+    },
+  )
+  it('does not offer initialization of existing deployment targets', () => {
+    expect(() =>
+      parseArguments(['initialize-db', '--target', 'staging', '--commit', sha]),
+    ).toThrow('initialization_target_not_supported')
+    expect(() => parseArguments(args.slice(0, -2))).toThrow(
+      'target_confirmation_required',
+    )
+  })
+  it('refuses an existing Worker before reading or mutating its database', async () => {
+    const fx = fixture()
+    await expect(
+      release(args, {
+        ...fx,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({ success: true, result: { id: 'existing' } }),
+          ),
+      }),
+    ).rejects.toThrow('worker_already_exists')
+    expect(fx.calls.some((c) => c.includes('d1'))).toBe(false)
+  })
+  it.each(['d1_migrations', 'users'])(
+    'refuses a nonempty database containing %s',
+    async (name) => {
+      const fx = fixture()
+      await expect(
+        release(args, {
+          ...fx,
+          fetch: async () =>
+            new Response(
+              JSON.stringify({ success: false, errors: [{ code: 10007 }] }),
+              { status: 404 },
+            ),
+          runner: async (command, parts) => {
+            if (parts.includes('execute')) {
+              fx.calls.push([command, ...parts])
+              return {
+                stdout: JSON.stringify([{ results: [{ name }] }]),
+                code: 0,
+              }
+            }
+            return fx.runner(command, parts)
+          },
+        }),
+      ).rejects.toThrow('initialization_requires_empty_database')
+      expect(fx.calls.some((c) => c.includes('apply'))).toBe(false)
+    },
+  )
+})
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'honowarden-release-test-'))
   writeFileSync(

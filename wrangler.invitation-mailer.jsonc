@@ -15,6 +15,26 @@
     "HONOWARDEN_INVITATION_ADMIN_ORIGIN": "https://vault.example.test",
   },
   "env": {
+    "interx": {
+      "name": "honowarden-interx-invitation-mailer",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+      },
+      "send_email": [
+        {
+          "name": "EMAIL",
+          "allowed_sender_addresses": ["no-reply@honowarden.interx.co.jp"],
+        },
+      ],
+      "vars": {
+        "HONOWARDEN_INVITATION_SENDER_EMAIL": "no-reply@honowarden.interx.co.jp",
+        "HONOWARDEN_INVITATION_ADMIN_ORIGIN": "https://honowarden.interx.co.jp",
+      },
+    },
     "staging": {
       "name": "honowarden-invitation-mailer-staging",
       "workers_dev": false,

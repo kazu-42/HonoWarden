@@ -6,14 +6,20 @@ export function parseArguments(argv: string[]): {
   'initial-setup-window'?: boolean
 }
 export function expectedAccountSha256(target: string): string | undefined
-export function readCredentialsFile(file: string): {
-  token: string
+export function readCredentialsFile(
+  file: string,
+  target?: string,
+): {
+  token: string | { globalKey: string; email: string }
   accountId: string
 }
 export function childEnvironment(
   parent: Record<string, string | undefined>,
   outputPath: string,
-  credentials: { token: string; accountId: string },
+  credentials: {
+    token: string | { globalKey: string; email: string }
+    accountId: string
+  },
 ): Record<string, string>
 export function validateSecretsFile(
   file: string,

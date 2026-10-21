@@ -84,6 +84,107 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NotificationHub"] }],
   "env": {
+    "interx": {
+      "name": "honowarden-interx",
+      "services": [
+        {
+          "binding": "ORGANIZATION_MEMBERSHIP_MAILER",
+          "service": "honowarden-interx-invitation-mailer",
+        },
+        {
+          "binding": "ACCOUNT_LIFECYCLE_MAILER",
+          "service": "honowarden-interx-account-mailer",
+        },
+      ],
+      "assets": {
+        "directory": "./dist/admin",
+        "binding": "ADMIN_ASSETS",
+        "run_worker_first": true,
+        "not_found_handling": "none",
+        "html_handling": "none",
+      },
+      "preview_urls": false,
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "honowarden.interx.co.jp",
+          "custom_domain": true,
+        },
+      ],
+      "triggers": {
+        "crons": ["0 * * * *"],
+      },
+      "logpush": true,
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+      },
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA",
+      },
+      "vars": {
+        "HONOWARDEN_ADMIN_ENABLED": "false",
+        "HONOWARDEN_DESKTOP_CLIENTS_ENABLED": "false",
+        "HONOWARDEN_ACCOUNT_KEYS_ENABLED": "false",
+        "HONOWARDEN_ACCOUNT_LIFECYCLE_ENABLED": "false",
+        "HONOWARDEN_EMAIL_VERIFICATION_ENABLED": "false",
+        "HONOWARDEN_EMAIL_VERIFICATION_RP_ORIGIN": "",
+        "HONOWARDEN_EMAIL_VERIFICATION_ISSUERS": "[]",
+        "HONOWARDEN_EMAIL_VERIFICATION_ORIGIN_TRIAL_TOKEN": "",
+        "HONOWARDEN_ALLOWED_EMAILS": "",
+        "HONOWARDEN_AUDIT_LOGS": "false",
+        "HONOWARDEN_AUTH_REQUESTS_ENABLED": "false",
+        "HONOWARDEN_DURABLE_NOTIFICATIONS_ENABLED": "false",
+        "HONOWARDEN_EMERGENCY_ACCESS_RUNTIME_ENABLED": "false",
+        "HONOWARDEN_BOOTSTRAP_ENABLED": "false",
+        "HONOWARDEN_ENV": "production",
+        "HONOWARDEN_GLOBAL_REQUEST_QUOTA": "false",
+        "HONOWARDEN_KDF_MUTATION_ENABLED": "false",
+        "HONOWARDEN_PASSWORD_CHANGE_ENABLED": "false",
+        "HONOWARDEN_PERSONAL_API_KEYS_ENABLED": "false",
+        "HONOWARDEN_USER_KEY_ROTATION_ENABLED": "false",
+        "HONOWARDEN_USER_KEY_ID_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_MEMBERSHIP_ENABLED": "false",
+        "HONOWARDEN_INVITATION_REGISTRATION_ENABLED": "false",
+        "HONOWARDEN_COMPANY_SETTINGS_ENABLED": "false",
+        "HONOWARDEN_INITIAL_SETUP_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_GROUPS_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_POLICIES_ENABLED": "false",
+        "HONOWARDEN_ORGANIZATION_AUDIT_ENABLED": "false",
+        "HONOWARDEN_PREMIUM_FEATURES_ENABLED": "false",
+        "HONOWARDEN_REFRESH_TOKEN_RETENTION_ENABLED": "false",
+        "HONOWARDEN_WEBAUTHN_ENABLED": "false",
+        "HONOWARDEN_INQUIRY_DOMAINS": "honowarden.com",
+        "HONOWARDEN_INQUIRY_MAILBOXES": "security,support,hello,admin,postmaster,abuse",
+        "HONOWARDEN_INQUIRY_MAX_RAW_BYTES": "1000000",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "honowarden-interx",
+          "database_id": "6acc3d1a-0622-4cf8-9183-bb6e6142a220",
+        },
+        {
+          "binding": "INQUIRY_DB",
+          "database_name": "honowarden-interx-inquiry",
+          "database_id": "7ebaf8ce-4384-4f20-b0ba-7ea24443731a",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "VAULT_OBJECTS",
+          "bucket_name": "honowarden-interx-vault-objects",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "NOTIFICATION_HUB",
+            "class_name": "NotificationHub",
+          },
+        ],
+      },
+    },
     "staging": {
       "name": "honowarden-staging",
       "services": [
