@@ -45,10 +45,14 @@ jobs:
         shell: bash
         run: |
           umask 077
-          node scripts/honowarden-backup.mjs export \
+          if ! node scripts/honowarden-backup.mjs export \
             --out "$RUNNER_TEMP/interx-snapshot" \
             --database honowarden-interx --bucket honowarden-interx-vault-objects \
-            --mode remote --env interx --r2-list --r2-s3 --execute
+            --mode remote --env interx --r2-list --r2-s3 --execute \
+            > "$RUNNER_TEMP/interx-export-private.log" 2>&1; then
+            echo '::error::InterX export failed. Reproduce with private operator diagnostics; raw provider output is withheld.'
+            exit 1
+          fi
           node scripts/honowarden-backup.mjs evidence \
             --from "$RUNNER_TEMP/interx-snapshot" \
             --out "$RUNNER_TEMP/interx-backup-evidence.json" \
@@ -76,3 +80,4 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/interx-snapshot"
           rm -f "$RUNNER_TEMP/interx-backup.tar.gz" "$RUNNER_TEMP/interx-verified.tar.gz"
+          rm -f "$RUNNER_TEMP/interx-export-private.log"
